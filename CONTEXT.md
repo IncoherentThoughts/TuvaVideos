@@ -1,6 +1,6 @@
 # TuvaVideos
 
-A single-user local player for a personal library of Tuvan music videos, browsed in the browser and enriched with artists, chapters, tracks and lyrics mirrored from the Tuvan Lyrics Archive. This glossary fixes the words the project uses for its own concepts; it is not a spec.
+A single-user local player for a personal library of Tuvan music videos, browsed in the browser and enriched with artists, chapters, studio tracks and lyrics mirrored from the Tuvan Lyrics Archive. This glossary fixes the words the project uses for its own concepts; it is not a spec.
 
 ## Language
 
@@ -53,15 +53,11 @@ _Avoid_: remux (the act), transcode (the act), converted file, pipe
 ### Enrichment
 
 **Chapter**:
-A start time and a title inside a Video, optionally pointing at a Song and a Version. The unit the player jumps between in a concert.
+A start time and a title inside a Video, optionally pointing at a Song and a Version (and through the Song, its Studio tracks). The unit the player jumps between in a concert.
 _Avoid_: marker, segment, timestamp, cue
 
-**Link (track)**:
-The association from a Video or a Chapter to a studio Track, so the user can hear the studio recording of what is being performed.
-_Avoid_: reference, attachment, match
-
-**Suggested (a link, chapter, song or type)**:
-Created by an automatic source (a YouTube comment or description, an archive Performance, the Track matcher) rather than the user, and not yet confirmed. Behaves like a confirmed one until rejected. Every Suggested thing remembers its source.
+**Suggested (a chapter, song, type or Studio track)**:
+Created by an automatic source (a YouTube comment or description, an archive Performance, the Studio matcher) rather than the user, and not yet confirmed. Behaves like a confirmed one until rejected. Every Suggested thing remembers its source.
 _Avoid_: auto, pending, unverified, draft
 
 **Mirror**:
@@ -86,6 +82,14 @@ _Avoid_: viewer, video element, mpv (which is the reference, not the thing)
 The ordered list of Videos the Player steps through with previous/next: the list the Video was opened from (grid as filtered and sorted, Favorites, search results), or library order when opened by URL.
 _Avoid_: queue, playlist, context
 
+**Studio track**:
+A Music.app track, held by its persistent id, that the Player can play for a Song. Either the match found for one of the Song's Mirror Tracks (at most one per Mirror Track; Suggested when found automatically after an import, confirmed when picked by hand) or a Local Studio track. Every Video and Chapter of the Song shows all of them.
+_Avoid_: match, Music.app link, linked track, studio recording
+
+**Local Studio track**:
+A Studio track attached to a Song directly, without a Mirror Track behind it, because the archive lists no such Track. Never exported; absorbed into a match if a later import brings a Mirror Track with the same recording.
+_Avoid_: custom track, manual track, extra track
+
 **Studio playback**:
-Playing a Linked Track in Music.app, driven from the browser, with the Video paused meanwhile.
+Playing a Studio track in Music.app, driven from the browser (play, pause, seek, loop), with the Video paused meanwhile.
 _Avoid_: Apple Music mode, audio mode, track preview

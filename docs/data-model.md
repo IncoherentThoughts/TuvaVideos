@@ -27,9 +27,7 @@ CREATE TABLE video (
   type_suggested INTEGER NOT NULL DEFAULT 0,
   song_id TEXT, version_id TEXT,          -- Mirror uuids, what a song Video performs
   song_suggested INTEGER NOT NULL DEFAULT 0,
-  track_id TEXT,                          -- the Link: Mirror track uuid
-  track_suggested INTEGER NOT NULL DEFAULT 0,
-  suggestion_source TEXT CHECK (suggestion_source IN ('manual','comment','description','performance','matcher')),
+  suggestion_source TEXT CHECK (suggestion_source IN ('manual','comment','description','performance')),
   favorited_at TEXT,
   resume_s REAL, last_played_at TEXT,
   thumbnail_generated_at TEXT, thumbnail_copy_id INTEGER,
@@ -69,17 +67,29 @@ CREATE TABLE chapter (
   start_s REAL NOT NULL,                  -- no end: the next Chapter's start or the Video's end
   title TEXT NOT NULL, title_latin TEXT, title_latin_source TEXT,
   song_id TEXT, version_id TEXT,
-  track_id TEXT, track_suggested INTEGER NOT NULL DEFAULT 0,
   suggested INTEGER NOT NULL DEFAULT 0,
-  source TEXT NOT NULL CHECK (source IN ('manual','comment','description','performance','matcher')),
+  source TEXT NOT NULL CHECK (source IN ('manual','comment','description','performance')),
   favorited_at TEXT,
   UNIQUE (video_id, start_s)
+);
+
+CREATE TABLE studio_track (                -- Studio tracks of a Song (#15)
+  id INTEGER PRIMARY KEY,
+  song_id TEXT NOT NULL,                  -- Mirror song uuid, no FK (ADR-0001)
+  mirror_track_id TEXT UNIQUE,            -- Mirror track uuid when this is that Track's match; NULL = Local Studio track
+  persistent_id TEXT NOT NULL,            -- Music.app persistent ID
+  suggested INTEGER NOT NULL DEFAULT 0,   -- 1 when found by the Studio matcher and not yet confirmed
+  added_at TEXT NOT NULL
+);
+
+CREATE TABLE studio_last (                 -- which Studio track `t` starts for a Song
+  song_id TEXT PRIMARY KEY, studio_track_id INTEGER NOT NULL REFERENCES studio_track(id)
 );
 
 CREATE TABLE mirror_import (
   id INTEGER PRIMARY KEY, backup_name TEXT NOT NULL, imported_at TEXT NOT NULL,
   row_counts TEXT NOT NULL,               -- JSON per table
-  dangling_refs INTEGER NOT NULL          -- local rows whose song/version/track/artist uuid no longer exists
+  dangling_refs INTEGER NOT NULL          -- local rows whose song/version/artist uuid no longer exists
 );
 ```
 
@@ -88,7 +98,8 @@ Rules:
 - **Identity**: YouTube id from the filename when present, otherwise SHA-256 of the whole file (computed only for id-less files). Several files with one id are Copies of one Video; cleanup of surplus Copies is #18.
 - **Scan**: new file → new Copy, and a new Video unless identity matches. Type and Song default from the Mirror (id on exactly one Performance → `song` with that Song Suggested; id on 2+ Performances → `concert`), else `other`. Partials (`.fNNN`, `.temp`), `._*` and non-video files are skipped. A rescan never overwrites an edited title, Type, Song or Artists. A file gone from a mounted Root sets `missing_since`; an unmounted Root changes nothing.
 - **Copy to play**: local Root first; then `playback = native`, then larger resolution, then smaller size. No per-Video pin.
-- **Links and song pointers are columns**, not tables: at most one Linked Track and one Song/Version per Video or Chapter. Every Suggested value records its source.
+- **Song pointers are columns**: one Song/Version per Video or Chapter. Every Suggested value records its source. There is no per-Video track link: a Video's Studio tracks are derived from its Song (#15 superseded #13's `track_id` columns).
+- **Studio tracks** live in `studio_track`, keyed by Song uuid; the Studio matcher fills it after every Mirror import, a stale persistent id triggers a re-dump and re-match (a changed confirmed match drops to Suggested). Rules in `docs/studio-playback.md`.
 - **Favorites** are `favorited_at` on Video and Chapter; the Favorites view orders by it. **Resume** is `resume_s` + `last_played_at` on Video. No play count.
 - **Artists**: one table. A Local Artist has `mirror_id` NULL. Merging a Local Artist into a Mirror one is an update of `video_artist`. Chapters carry no Artists in v1.
 

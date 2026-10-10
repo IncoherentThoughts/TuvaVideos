@@ -31,6 +31,7 @@ CREATE TABLE video (
   favorited_at TEXT,
   resume_s REAL, last_played_at TEXT,
   thumbnail_generated_at TEXT, thumbnail_copy_id INTEGER,
+  strip_frames INTEGER, strip_columns INTEGER, strip_rows INTEGER, strip_frame_w INTEGER, strip_frame_h INTEGER,  -- strip geometry (#22, migration 0002); 0 frames = poster only
   created_at TEXT NOT NULL,
   CHECK (youtube_id IS NOT NULL OR content_hash IS NOT NULL)
 );
@@ -42,6 +43,7 @@ CREATE TABLE copy (
   rel_path TEXT NOT NULL,                 -- relative to the Root
   size INTEGER NOT NULL, mtime TEXT NOT NULL,
   duration_s REAL, container TEXT, video_codec TEXT, audio_codec TEXT, width INTEGER, height INTEGER,
+  r_frame_rate TEXT,                      -- from ffprobe; frame step needs it (#10); added in migration 0002
   playback TEXT NOT NULL CHECK (playback IN ('native','remux','transcode')),  -- from ffprobe at scan (#3)
   fallback_file TEXT,                     -- cached remux/transcode under remux/, when made
   content_hash TEXT,                      -- when computed

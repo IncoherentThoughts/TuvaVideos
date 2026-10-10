@@ -113,10 +113,10 @@ ffprobe at scan time decides `playback`:
 | Condition | `playback` | Job | When |
 |---|---|---|---|
 | audio codec outside {aac, opus, vorbis, mp3, flac} (the E-AC3 file) | `transcode` | `-c:v copy -c:a aac` | at scan time, ≈19× realtime |
-| missing duration / no Cues (yt-dlp `.fNNN` partials) | `remux` | `-c copy -cues_to_front 1`, pairing the `.f251` audio sibling when present | lazily on first play, <1 s |
+| ffprobe reports no format duration (the no-Cues case) | `remux` | `-c copy -cues_to_front 1` (mkv/webm) or `-movflags +faststart` (mp4), pairing a `.f251` audio sibling when present | lazily on first play, <1 s |
 | otherwise | `native` | none | |
 
-Written as cached files under `remux/`, never a live pipe. One ffmpeg queue, one job at a time; play requests go to the front, scan-time jobs fill the rest. A Copy whose Fallback is not ready plays after a "preparing" state with progress.
+Written as cached files under `remux/` named `<copyId>.<ext>` (a transcode of a webm lands in mkv, since webm cannot hold AAC), never a live pipe. yt-dlp `.fNNN` partials themselves are skipped at scan (§2.3), so `remux` arises only for a normally named file without a duration; in the 2026-10-10 library no Copy needs it. A Copy whose Fallback is not ready answers `GET /copy/:id` with 503 + `Retry-After` and a JSON state; the UI polls `/api/copies/:id`. One ffmpeg queue, one job at a time; play requests go to the front, scan-time jobs fill the rest. A Copy whose Fallback is not ready plays after a "preparing" state with progress.
 
 ### 3.5 Thumbnails
 
@@ -130,7 +130,7 @@ One poster and one scrub strip per Video (not per Copy), from the Preferred Copy
 | Extraction | single pass `-skip_frame nokey` for H.264 under 30 min; seek-per-frame otherwise; 4 files in parallel |
 | Whole cache | ~230 MB for ~1200 Videos |
 
-Probe for no-video first; cap N at duration; treat I/O errors from the external Root as retryable, never as "no video". Strip geometry (N, columns, frame width) is recorded per Video so the UI can map a timestamp to a tile. The cache from #21 (`scripts/generate-thumbnails.mjs`, `manifest.json`) is the seed. The app generates missing Thumbnails itself after each scan, newest Videos first, in a pool of 4 ffmpeg processes separate from the Fallback queue (§3.4); the pool pauses while a play-requested Fallback job runs. A Video whose only Copies are unavailable waits for the next scan.
+Probe for no-video first; cap N at duration; treat I/O errors from the external Root as retryable, never as "no video". Strip geometry (frames, columns, rows, frame size) is recorded per Video in `video.strip_*` columns so the UI can map a timestamp to a tile; `strip_frames = 0` means poster only. "Newest first" means newest Copy mtime. When single-pass extraction yields nothing (too few keyframes), the pool falls back to seek-per-frame. The cache from #21 (`scripts/generate-thumbnails.mjs`, `manifest.json`) is the seed. The app generates missing Thumbnails itself after each scan, newest Videos first, in a pool of 4 ffmpeg processes separate from the Fallback queue (§3.4); the pool pauses while a play-requested Fallback job runs. A Video whose only Copies are unavailable waits for the next scan.
 
 ---
 

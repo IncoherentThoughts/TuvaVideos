@@ -1,6 +1,6 @@
 // Client-side data: the whole library (~1100 Videos) is fetched once and filtered in memory (ticket #23).
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { ArtistDto, FavoriteItem, ScanDto, SearchResponse, SongDto, VideoDto, VideoPatch } from "../shared/types";
+import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, ScanDto, SearchResponse, SongDto, VideoDto, VideoPatch } from "../shared/types";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { signal });
@@ -14,8 +14,18 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
-async function send<T>(method: "PATCH" | "PUT", url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+/** The server's `{error}` message out of an Error thrown by `get`/`post`/`send`, else the raw text. */
+export function apiError(e: unknown): string {
+  const m = String((e as Error)?.message ?? e).replace(/^\/api\/\S+: \d+ /, "");
+  try {
+    const j = JSON.parse(m) as { error?: string };
+    if (j.error) return j.error;
+  } catch {}
+  return m;
+}
+
+async function send<T>(method: "PATCH" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
+  const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!r.ok) throw new Error(`${url}: ${r.status} ${await r.text().catch(() => "")}`);
   return (await r.json()) as T;
 }
@@ -36,6 +46,13 @@ export const api = {
   patchVideo: (id: number, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
   createArtist: (name: string) => post<{ id: number; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
+  chapters: (videoId: number) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),
+  addChapter: (videoId: number, body: ChapterCreate) => post<ChapterDto>(`/api/videos/${videoId}/chapters`, body),
+  patchChapter: (id: number, patch: ChapterPatch) => send<ChapterDto>("PATCH", `/api/chapters/${id}`, patch),
+  deleteChapter: (id: number) => send<{ deleted: true; tombstoned: boolean }>("DELETE", `/api/chapters/${id}`),
+  confirmChapter: (id: number) => post<ChapterDto>(`/api/chapters/${id}/confirm`),
+  rejectChapter: (id: number) => post<{ rejected: true }>(`/api/chapters/${id}/reject`),
+  confirmAllChapters: (videoId: number) => post<{ confirmed: number; chapters: ChapterDto[] }>(`/api/videos/${videoId}/chapters/confirm-all`),
   videos: () => get<VideoDto[]>("/api/videos"),
   video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
   artists: () => get<ArtistDto[]>("/api/artists"),

@@ -164,7 +164,44 @@ select.chip { background: var(--bg2); cursor: pointer; padding-right: 6px; }
 .favtoggle .fav { margin: 0; top: 0; width: 22px; height: 22px; }
 .fav.off { --c: var(--fg3); background: transparent; border-style: dashed; }
 .favtoggle:hover .fav.off { --c: var(--t3); }
-.chapter-strip { margin-top: 16px; min-height: 108px; border: 1px dashed var(--line); border-radius: var(--r); display: grid; place-items: center; font-size: .9em; }
+/* ---- chapter filmstrip (spec 5.3) ---- */
+.chapter-strip { margin-top: 18px; font-size: .9em; }
+.chs-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.chs-head h2 { font-size: 1em; font-weight: 600; margin-right: auto; }
+.chs-wrap { position: relative; }
+.chs-scroll { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 10px; scrollbar-width: thin; min-height: 60px; align-items: flex-start; }
+.chs-empty { align-self: center; padding: 14px; border: 1px dashed var(--line); border-radius: var(--r); }
+.chcard { flex: none; width: 188px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2); padding: 6px; display: flex; flex-direction: column; gap: 6px; outline: none; }
+.chcard.sug { border-style: dashed; border-color: color-mix(in srgb, var(--t3) 55%, var(--line)); }
+.chcard.cur { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
+.chcard:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.chthumb { position: relative; display: block; width: 100%; padding: 0; border-radius: calc(var(--r) * .7); }
+.chthumb:hover .thumb { box-shadow: 0 0 0 2px var(--accent); }
+.chnote { position: absolute; right: 5px; bottom: 4px; z-index: 1; color: var(--t3); font-size: 1.1em; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+.chbody { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chline { display: flex; align-items: center; gap: 6px; }
+.chtime { color: var(--t3); font-size: .9em; padding: 0 3px; border-radius: 4px; }
+.chtime:hover { background: var(--bg3); }
+.chtime-in { width: 84px; background: var(--bg); border: 1px solid var(--accent); border-radius: 5px; padding: 1px 5px; outline: none; font-size: .9em; }
+.chtitle-in { width: 100%; background: var(--bg); border: 1px solid var(--accent); border-radius: 5px; padding: 3px 6px; outline: none; }
+.sugmark { font-size: .72em; letter-spacing: .04em; color: var(--t3); border: 1px dashed color-mix(in srgb, var(--t3) 70%, transparent); border-radius: 4px; padding: 0 5px; line-height: 1.5; }
+.chfav { margin-left: auto; }
+.chfav .fav { width: 18px; height: 18px; }
+.chtitle { font-weight: 600; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; min-height: 2.6em; cursor: text; }
+.chsong { font-size: .85em; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chpills .pill { font-size: .75em; padding: 0 7px; }
+.chact { display: flex; flex-wrap: wrap; gap: 4px; }
+.chbtn { font-size: .78em; padding: 1px 7px; border: 1px solid var(--line); border-radius: 5px; color: var(--fg2); }
+.chbtn:hover { color: var(--fg); border-color: var(--fg3); }
+.chbtn.ok { color: var(--t4); border-color: color-mix(in srgb, var(--t4) 55%, var(--line)); }
+.chbtn.ok:hover { background: color-mix(in srgb, var(--t4) 18%, transparent); }
+.chbtn.no:hover { color: var(--t1); border-color: var(--t1); }
+.chconfirm { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: .85em; color: var(--t1); }
+.btn.danger { border-color: var(--t1); color: var(--t1); }
+.chrerr { margin-top: 0; }
+.chs-pick { position: absolute; left: 0; top: 0; z-index: 26; padding: 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 14px 40px rgba(0, 0, 0, .55); }
+.chs-picklbl { font-size: .8em; margin-bottom: 4px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chs-pick .pk-list { position: static; margin-top: 4px; box-shadow: none; }
 
 .player { position: relative; background: #000; border-radius: var(--r); outline: none; box-shadow: 0 0 0 1px var(--line); overflow: visible; }
 .player:focus { box-shadow: 0 0 0 1px var(--accent); }

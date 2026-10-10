@@ -15,14 +15,27 @@ import { Timeline, type ChapterMark } from "./Timeline";
 
 export type { ChapterMark } from "./Timeline";
 
+export interface PlayerCtl {
+  time(): number;
+  seekTo(t: number): void;
+  say(text: string): void;
+  focus(): void;
+}
+
 type Phase = "loading" | "preparing" | "ready" | "unavailable" | "failed";
 
 interface Props {
   video: VideoDto;
   /** `?t=` of the URL, else the Resume position. */
   startT: number | null;
-  /** Extension point for ticket #26. Empty until Chapters exist. */
+  /** The Video's Chapters (any order); the timeline ticks and `!` `@` PgUp PgDn read them. */
   chapters: ChapterMark[];
+  /** `c`: add a Chapter at the playhead. */
+  onAddChapter?(t: number): void;
+  /** The playhead, whenever it moves (the page derives the current Chapter from it). */
+  onTime?(t: number): void;
+  /** Filled with a handle on the Player so the Chapter cards can read the playhead, seek, flash the OSD and take focus back. */
+  ctl?: { current: PlayerCtl | null };
   /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
   onStep(dir: 1 | -1): string | null;
 }
@@ -69,7 +82,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -301,6 +314,9 @@ export function Player({ video, startT, chapters, onStep }: Props) {
     setTime(c);
   };
 
+  useEffect(() => onTime?.(time), [time]);
+  if (ctl) ctl.current = { time: () => vid.current?.currentTime ?? time, seekTo: (t) => seekTo(t), say: (text) => say(text, 2200), focus: refocus };
+
   // ---- media events ----
   useEffect(() => {
     const v = vid.current!;
@@ -528,6 +544,9 @@ export function Player({ video, startT, chapters, onStep }: Props) {
         flash();
         break;
       }
+      case "chapterAdd":
+        if (onAddChapter) onAddChapter(v.currentTime);
+        break;
       case "video": {
         const label = onStep(a.dir);
         say(label ?? "No other Video in Playing from", 2200);

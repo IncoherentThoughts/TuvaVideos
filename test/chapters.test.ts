@@ -495,3 +495,13 @@ describe("Chapter endpoints", () => {
     expect((app.db.query("SELECT COUNT(*) n FROM search WHERE kind = 'chapter'").get() as any).n).toBe(n);
   });
 });
+
+describe("Player key for adding a Chapter", () => {
+  test("c adds a Chapter at the playhead, only while the Player is focused, never repeated", async () => {
+    const { dispatchKey, keyAction } = await import("../src/shared/keymap");
+    expect(keyAction({ key: "c" })).toEqual({ type: "chapterAdd" });
+    expect(keyAction({ key: "c", metaKey: true })).toBeNull();
+    expect(dispatchKey({ key: "c" }, { containerFocused: false })).toEqual({ action: null, handled: false });
+    expect(dispatchKey({ key: "c", repeat: true }, { containerFocused: true })).toEqual({ action: null, handled: true });
+  });
+});

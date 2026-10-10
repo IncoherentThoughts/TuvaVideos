@@ -2,19 +2,17 @@
 // favorite badge, Type and Artist tags (edited inline, HeaderEdit.tsx), with the Chapter strip area reserved below
 // (ticket #26) and the Lyrics drawer on the right (Lyrics.tsx, spec 5.4).
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { lyricsTarget } from "../shared/lyrics/target";
+import { chapterAt, lyricsTarget } from "../shared/lyrics/target";
 import { positionIn, resolvePlayingFrom, SOURCE_LABEL, stepFrom } from "../shared/playingFrom";
-import type { VideoDto } from "../shared/types";
-import { Player, type ChapterMark } from "./Player";
-import { api, setLastPlayed, toggleFavorite, useStore } from "./data";
+import type { ChapterDto, VideoDto } from "../shared/types";
+import { Player, type PlayerCtl } from "./Player";
+import { ChapterStrip } from "./Chapters";
+import { api, apiError, replaceVideo, setLastPlayed, toggleFavorite, useStore } from "./data";
 import { loadPlayingFrom, onPlayingFromChange, savePlayingFrom } from "./playingFrom";
 import { navigate, playHref } from "./router";
 import { HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
-
-/** Chapters arrive with ticket #26; the Player, the timeline ticks and the strip area already take this list. */
-const NO_CHAPTERS: ChapterMark[] = [];
 
 const POLL_MS = 3000;
 
@@ -65,6 +63,51 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
 
   const refresh = () => api.video(videoId).then(setV).catch(() => {});
 
+  // ---- Chapters (spec 5.3) ----
+  const [chapters, setChapters] = useState<ChapterDto[]>([]);
+  const [newId, setNewId] = useState<number | null>(null);
+  const [curId, setCurId] = useState<number | null>(null);
+  const ctl = useRef<PlayerCtl | null>(null);
+  const chaptersRef = useRef<ChapterDto[]>([]);
+  const playhead = useRef(0);
+  const pointCurrent = () => setCurId(chapterAt(chaptersRef.current, playhead.current)?.id ?? null);
+  const acceptChapters = (list: ChapterDto[]) => {
+    chaptersRef.current = list;
+    setChapters(list);
+    pointCurrent();
+    // the Library's in-memory copy carries chapterCount: keep it right
+    void api.video(videoId).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {});
+  };
+  useEffect(() => {
+    chaptersRef.current = [];
+    setChapters([]);
+    setNewId(null);
+    setCurId(null);
+    playhead.current = 0;
+    let alive = true;
+    api.chapters(videoId).then((list) => alive && (chaptersRef.current = list, setChapters(list), pointCurrent())).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [videoId]);
+  const onTime = useCallback((t: number) => {
+    playhead.current = t;
+    const id = chapterAt(chaptersRef.current, t)?.id ?? null;
+    setCurId((cur) => (cur === id ? cur : id));
+  }, []);
+  const addChapter = async (t?: number) => {
+    const at = t ?? ctl.current?.time() ?? playhead.current;
+    try {
+      const c = await api.addChapter(videoId, { startS: at });
+      setNewId(c.id);
+      acceptChapters(await api.chapters(videoId));
+    } catch (e) {
+      ctl.current?.say(apiError(e));
+    }
+  };
+  const marks = useMemo(() => chapters.map((c) => ({ startS: c.startS, title: c.title || "untitled", suggested: c.suggested })), [chapters]);
+  const curChapter = chapters.find((c) => c.id === curId) ?? null;
+
   // The drawer: closed by default; opened by its button or by choosing a Song in the search box (`?lyrics=<song>`).
   const [drawer, setDrawer] = useState(!!lyrics);
   const [focusDrawer, setFocusDrawer] = useState(!!lyrics);
@@ -79,10 +122,10 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     if (lyrics) navigate(playHref(videoId, t), { replace: true });
     document.querySelector<HTMLElement>("[data-player]")?.focus({ preventScroll: true });
   };
-  // Chapters arrive with #26: the first argument is the Chapter the playhead is in (none yet), then the Video's own Song.
+  // The Chapter the playhead is in, if it has a Song; else the Video's own Song (spec 5.4).
   const target = lyrics
     ? { songId: lyrics, versionId: lyricsVersion, fromChapter: false }
-    : v ? lyricsTarget(null, v) : null;
+    : v ? lyricsTarget(curChapter, v) : null;
 
   if (v === undefined) return <div class="np"><p class="muted">Loading…</p></div>;
   if (v === null || v.id !== videoId) return <div class="empty-state">No such Video.</div>;
@@ -90,7 +133,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={v.id} video={v} startT={t} chapters={NO_CHAPTERS} onStep={onStep} />
+        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} />
         <div class="np-head">
           <div class="np-titlerow">
             <HeaderTitle video={v} onChange={setV} />
@@ -121,14 +164,12 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
           </div>
           <HeaderFields video={v} onChange={setV} />
         </div>
-        <div class="chapter-strip" aria-label="Chapters">
-          <span class="dim">No Chapters yet</span>
-        </div>
+        <ChapterStrip video={v} chapters={chapters} curId={curId} ctl={ctl} newId={newId} onList={acceptChapters} onAdd={() => void addChapter()} onNewDone={() => setNewId(null)} />
       </div>
       {drawer && (
         <div class="drawer-wrap">
           {target ? (
-            <LyricsReader key={`${target.songId}`} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} autoFocus={focusDrawer} />
+            <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
           ) : (
             <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
               <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>

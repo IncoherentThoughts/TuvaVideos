@@ -47,6 +47,7 @@ describe("key dispatcher: the table of spec 4.5", () => {
     ["o", {}, { type: "osd", always: false }],
     ["O", { shiftKey: true }, { type: "osd", always: true }],
     ["t", {}, { type: "studio" }],
+    ["c", {}, { type: "chapterAdd" }],
   ];
   for (const [key, extra, want] of cases) {
     test(`${extra.shiftKey ? "shift+" : ""}${key === " " ? "space" : key}`, () => {
@@ -57,7 +58,7 @@ describe("key dispatcher: the table of spec 4.5", () => {
   }
 
   test("unbound keys are not handled, so they keep their default", () => {
-    for (const k of ["a", "Tab", "Enter", "Escape", "F5", "/", "1", "x", "c", "F"]) {
+    for (const k of ["a", "Tab", "Enter", "Escape", "F5", "/", "1", "x", "d", "F"]) {
       expect(dispatchKey({ key: k }, focused)).toEqual({ action: null, handled: false });
     }
   });

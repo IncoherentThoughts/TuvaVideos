@@ -35,9 +35,11 @@ export interface LyricsReaderProps {
   onClose?: () => void;
   /** Take focus once the Song has loaded (opened from the button or the search box). */
   autoFocus?: boolean;
+  /** Called once the drawer has taken that focus, so the page can stop asking (a Chapter change must not steal focus from the Player). */
+  onFocused?: () => void;
 }
 
-export function LyricsReader({ songId, versionId, fromChapter = false, onClose, autoFocus = false }: LyricsReaderProps) {
+export function LyricsReader({ songId, versionId, fromChapter = false, onClose, autoFocus = false, onFocused }: LyricsReaderProps) {
   const [song, setSong] = useState<SongDto | null | undefined>(undefined);
   const [pick, setPick] = useState<string | null>(null);
   const [script, setScript] = useState<ScriptKey>(scriptPref);
@@ -56,7 +58,10 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
   }, [songId]);
   useEffect(() => setPick(null), [versionId]);
   useEffect(() => {
-    if (autoFocus && song) root.current?.focus({ preventScroll: true });
+    if (autoFocus && song) {
+      root.current?.focus({ preventScroll: true });
+      onFocused?.();
+    }
   }, [autoFocus, song]);
 
   const versions = song?.versions ?? [];

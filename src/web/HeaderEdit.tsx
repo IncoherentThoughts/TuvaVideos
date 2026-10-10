@@ -9,11 +9,11 @@ import { api, loadArtists, replaceVideo } from "./data";
 import { ArtistTag, TypeTag } from "./ui";
 
 type Change = (v: VideoDto) => void;
-type SongRow = Extract<SearchRow, { kind: "song" }>;
+export type SongRow = Extract<SearchRow, { kind: "song" }>;
 type ArtistRow = Extract<SearchRow, { kind: "artist" }>;
 
 /** A search field with a result list under it. `create` is the clearly separate "make a new one" row. */
-function Picker<T>(props: {
+export function Picker<T>(props: {
   placeholder: string;
   search: (q: string) => Promise<T[]>;
   row: (item: T) => ComponentChildren;
@@ -26,6 +26,8 @@ function Picker<T>(props: {
   const [items, setItems] = useState<T[] | null>(null);
   const [hi, setHi] = useState(0);
   const box = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => field.current?.focus(), []);
 
   useEffect(() => {
     if (!q.trim()) return void setItems(null);
@@ -53,6 +55,7 @@ function Picker<T>(props: {
   return (
     <div class="picker" ref={box}>
       <input
+        ref={field}
         autoFocus
         class="pk-in"
         placeholder={props.placeholder}
@@ -97,7 +100,7 @@ function Picker<T>(props: {
   );
 }
 
-function rowsOf<K extends "song" | "artist">(kind: K) {
+export function rowsOf<K extends "song" | "artist">(kind: K) {
   return async (q: string): Promise<Extract<SearchRow, { kind: K }>[]> => {
     const res = await api.search(`#${kind}s ${q}`);
     return res.groups.flatMap((g) => g.rows).filter((r) => r.kind === kind) as Extract<SearchRow, { kind: K }>[];

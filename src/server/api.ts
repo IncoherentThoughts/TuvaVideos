@@ -14,6 +14,7 @@ import { listArtists, listFavoriteRows, mergeArtist, recordResume, setFavorite }
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
 import { createLocalArtist, patchVideo, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
+import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
 import { songDto, songRef, videosPerforming } from "./songs";
 import type { VideoType } from "../shared/filters";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
@@ -211,10 +212,7 @@ export function createHandler(s: Services) {
     return new Map(rows.map((v) => [v.id, videoJson(v, copies.get(v.id) ?? [], ex.get(v.id))]));
   };
 
-  const chapterJson = (c: any): ChapterDto => ({
-    id: c.id, videoId: c.video_id, startS: c.start_s, title: c.title, titleLatin: c.title_latin,
-    suggested: !!c.suggested, favoritedAt: c.favorited_at,
-  });
+  const chapterJson = (c: ChapterRow): ChapterDto => chapterDto(s.db, c);
 
   const allVideos = () => {
     const videos = s.db.query("SELECT * FROM video ORDER BY created_at DESC, id DESC").all() as VideoDbRow[];
@@ -292,6 +290,10 @@ export function createHandler(s: Services) {
           if (!v) return json({ error: "no such video" }, 404);
           return json(videoJson(v, s.db.query(`${COPY_SQL} WHERE c.video_id = ?`).all(v.id) as CopyDbRow[], extrasFor([v.id]).get(v.id)));
         }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/chapters$/))) {
+          const list = listChapters(s.db, Number(m[1]));
+          return list ? json(list) : json({ error: "no such video" }, 404);
+        }
         if (p === "/api/artists") return json(listArtists(s.db));
         if ((m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
           const song = songDto(s.db, m[1]!);
@@ -309,14 +311,14 @@ export function createHandler(s: Services) {
         if (p === "/api/favorites") {
           const rows = listFavoriteRows(s.db);
           const vids = videosByIds(rows.map((r) => r.video_id));
-          const chapters = new Map<number, any>();
-          for (const c of s.db.query("SELECT * FROM chapter WHERE favorited_at IS NOT NULL").all() as any[]) chapters.set(c.id, c);
+          const chapters = new Map<number, ChapterRow>();
+          for (const c of s.db.query("SELECT * FROM chapter WHERE favorited_at IS NOT NULL").all() as ChapterRow[]) chapters.set(c.id, c);
           const items: FavoriteItem[] = [];
           for (const r of rows) {
             const video = vids.get(r.video_id);
             if (!video) continue;
             if (r.kind === "video") items.push({ kind: "video", favoritedAt: r.favorited_at, video });
-            else items.push({ kind: "chapter", favoritedAt: r.favorited_at, video, chapter: chapterJson(chapters.get(r.chapter_id!)) });
+            else items.push({ kind: "chapter", favoritedAt: r.favorited_at, video, chapter: chapterJson(chapters.get(r.chapter_id!)!) });
           }
           return json(items);
         }
@@ -356,6 +358,24 @@ export function createHandler(s: Services) {
           if (at === undefined) return json({ error: `no such ${table}` }, 404);
           return json({ id: Number(m[2]), favorite: at !== null, favoritedAt: at });
         }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/chapters$/))) {
+          const body = await readJson(req);
+          if (!body) return json({ error: "body must be a JSON object" }, 400);
+          const r = addChapter(s.db, Number(m[1]), body);
+          return r.ok ? json(r.value, 201) : json({ error: r.error }, r.status);
+        }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/chapters\/confirm-all$/))) {
+          const r = confirmAll(s.db, Number(m[1]));
+          return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+        }
+        if ((m = p.match(/^\/api\/chapters\/(\d+)\/confirm$/))) {
+          const r = confirmChapter(s.db, Number(m[1]));
+          return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+        }
+        if ((m = p.match(/^\/api\/chapters\/(\d+)\/reject$/))) {
+          const r = rejectChapter(s.db, Number(m[1]));
+          return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+        }
         if ((m = p.match(/^\/api\/videos\/(\d+)\/resume$/))) {
           let body: { resumeS?: unknown; copyId?: unknown } = {};
           try {
@@ -391,6 +411,16 @@ export function createHandler(s: Services) {
         const r = patchVideo(s.db, Number(m[1]), body);
         if (!r.ok) return json({ error: r.error }, r.status);
         return videoResponse(Number(m[1]));
+      }
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/chapters\/(\d+)$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = patchChapter(s.db, Number(m[1]), body);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/chapters\/(\d+)$/))) {
+        const r = deleteChapter(s.db, Number(m[1]));
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
       if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/(\d+)\/artists$/))) {
         const body = await readJson(req);

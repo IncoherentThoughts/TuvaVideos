@@ -7,6 +7,8 @@ export interface Config {
   dbPath: string;
   thumbsDir: string;
   remuxDir: string;
+  /** YouTube info cache (spec 8): `<id>.info.json` files written by scripts/fetch-youtube-info.ts. */
+  ytCacheDir: string;
   screenshotDir: string;
   logPath: string;
   port: number;
@@ -34,6 +36,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     dbPath: join(dataDir, "library.db"),
     thumbsDir: join(dataDir, "thumbs"),
     remuxDir: join(dataDir, "remux"),
+    ytCacheDir: env.TUVA_YT_CACHE ?? join(dataDir, "youtube-info"),
     screenshotDir: env.TUVA_SCREENSHOT_DIR ?? join(homedir(), "Desktop"),
     logPath: join(dataDir, "log.txt"),
     port: Number(env.TUVA_PORT ?? 4400),

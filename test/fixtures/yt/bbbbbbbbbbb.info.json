@@ -1,0 +1,12 @@
+{
+  "id": "bbbbbbbbbbb",
+  "title": "Concert (trimmed fixture of a yt-dlp info.json)",
+  "duration": 5400,
+  "uploader": "Someone",
+  "description": "Full concert, 2019.\n\nSetlist:\n1:30 Aa-shuu dekei-oo\n10:00 - Bai Taiga (live)\n30:00 Something nobody has heard of\n1:02:00 Changys baglaash\n\nThanks for watching!",
+  "chapters": null,
+  "comments": [
+    { "id": "c1", "text": "0:00 Wrong list\n5:00 never used\n9:00 because the description wins", "like_count": 40, "author_is_uploader": false, "is_pinned": false, "parent": "root" },
+    { "id": "c2", "text": "Amazing!", "like_count": 3, "author_is_uploader": false, "is_pinned": false, "parent": "root" }
+  ]
+}

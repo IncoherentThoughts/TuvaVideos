@@ -103,7 +103,29 @@ export interface ChapterDto {
   title: string;
   titleLatin: string | null;
   suggested: boolean;
+  /** Where a Suggested Chapter came from; `manual` for one made by hand (confirmed Chapters keep their source). */
+  source: "manual" | "comment" | "description" | "performance";
+  songId: string | null;
+  versionId: string | null;
+  /** The Chapter's Song (name and Version labels), or null. `name: null` is a dangling uuid. */
+  song: SongRef | null;
   favoritedAt: string | null;
+}
+
+/** POST /api/videos/:id/chapters */
+export interface ChapterCreate {
+  startS: number;
+  title?: string;
+  songId?: string | null;
+  versionId?: string | null;
+}
+
+/** PATCH /api/chapters/:id. Any key may be left out. Editing the title or start confirms a Suggested Chapter; the Song does not. */
+export interface ChapterPatch {
+  title?: string;
+  startS?: number;
+  songId?: string | null;
+  versionId?: string | null;
 }
 
 export type FavoriteItem =

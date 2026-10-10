@@ -57,7 +57,7 @@ function loadSongs(db: Db): Map<string, SongNames> {
  * Recomputes every Latin title whose source is not `manual`. Only changed rows are written. `videoId` limits the pass to
  * one Video (after its title was edited); Chapters and Artists are skipped then.
  */
-export function fillLatinTitles(db: Db, opts: { videoId?: number } = {}): LatinFillStats {
+export function fillLatinTitles(db: Db, opts: { videoId?: number; chapterId?: number } = {}): LatinFillStats {
   const stats: LatinFillStats = { videos: 0, chapters: 0, artists: 0, archive: 0, table: 0, cleared: 0 };
   const songs = loadSongs(db);
   const apply = (table: "video" | "chapter" | "artist", cur: { id: number; text: string; latin: string | null; source: string | null; song: string | null }) => {
@@ -74,6 +74,11 @@ export function fillLatinTitles(db: Db, opts: { videoId?: number } = {}): LatinF
     else stats.cleared++;
   };
   db.transaction(() => {
+    if (opts.chapterId != null) {
+      for (const r of db.query("SELECT id, title, title_latin, title_latin_source, song_id FROM chapter WHERE id = ?").all(opts.chapterId) as any[])
+        apply("chapter", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
+      return;
+    }
     const vq = opts.videoId != null ? "SELECT id, title, title_latin, title_latin_source, song_id FROM video WHERE id = ?" : "SELECT id, title, title_latin, title_latin_source, song_id FROM video";
     for (const r of db.query(vq).all(...(opts.videoId != null ? [opts.videoId] : [])) as any[])
       apply("video", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });

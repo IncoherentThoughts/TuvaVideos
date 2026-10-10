@@ -109,6 +109,16 @@ export function reindexVideo(db: Db, id: number) {
   db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('video', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
 }
 
+/** One Chapter's index row, replaced in place (or removed when the Chapter is gone). */
+export function reindexChapter(db: Db, id: number) {
+  db.query("DELETE FROM search WHERE kind = 'chapter' AND ref_id = ?").run(String(id));
+  const r = db.query("SELECT id, title, title_latin FROM chapter WHERE id = ?").get(id) as { id: number; title: string; title_latin: string | null } | null;
+  if (!r) return;
+  const p = [r.title, r.title_latin].filter((x): x is string => !!x && x.trim() !== "");
+  if (!p.length) return;
+  db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('chapter', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
+}
+
 /** One Artist's index row (a Local Artist created from the chip editor). */
 export function indexArtist(db: Db, id: number) {
   db.query("DELETE FROM search WHERE kind = 'artist' AND ref_id = ?").run(String(id));

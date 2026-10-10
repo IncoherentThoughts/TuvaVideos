@@ -8,7 +8,9 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "import": "bun src/server/import.ts",
-    "latin-titles": "bun src/server/latinTitles.ts"
+    "latin-titles": "bun src/server/latinTitles.ts",
+    "suggest-chapters": "bun src/server/chapters/cli.ts",
+    "fetch-youtube-info": "bun scripts/fetch-youtube-info.ts"
   },
   "bin": {
     "tuva": "src/server/index.ts"

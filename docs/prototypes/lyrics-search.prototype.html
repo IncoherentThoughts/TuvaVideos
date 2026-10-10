@@ -315,7 +315,7 @@ function stage(){
     <div class="tags" style="margin-top:6px">${avail(v.root)}<span class="tag" style="--c:var(--t3)">concert</span>${[...(SONG_ARTISTS[s.id]||[])].slice(0,3).map(a=>tagArtist(ART[a].name)).join('')}<span class="dim" style="margin-left:6px">${vids.length} other Video${vids.length===1?'':'s'} of “${esc(s.name)}” in the library</span></div>
     <div class="film">${chapters.map(c=>`<div class="ch ${c.s.id===s.id?'cur':''}" style="${thumb(c.s.id)}" onclick="pickSong('${c.s.id}','${c.ver||''}')"><div class="strip">${'<i></i>'.repeat(6)}</div><div class="t"><span>${fmt(c.t)}</span><span>♪${c.ver?' <span class="dim">v</span>':''}</span></div><div class="n">${esc(c.s.name)}</div></div>`).join('')}</div>
     <p class="note">Chapters are synthetic (a fake concert of 8 Songs that have lyrics). A chapter marked <span class="mono">v</span> points at a specific Version (a real Track Version from the backup); clicking it opens that Version. The current line advances with <kbd>space</kbd> while the stage is focused, or the ▶ sync button in the drawer.</p>
-    <div class="keys"><span><kbd>space</kbd> next line</span><span><kbd>/</kbd> search</span><span><kbd>esc</kbd> close results</span><span><kbd>[</kbd><kbd>]</kbd> prev/next footnote</span><span><kbd>←</kbd><kbd>→</kbd> variant</span></div>
+    <div class="keys"><span><kbd>space</kbd> next line</span><span><kbd>/</kbd> search · <kbd>↑</kbd><kbd>↓</kbd><kbd>⏎</kbd> pick</span><span><kbd>esc</kbd> close results</span><span><kbd>[</kbd><kbd>]</kbd> prev/next footnote</span><span><kbd>←</kbd><kbd>→</kbd> variant</span></div>
   </div>`;
 }
 function footnoteList(v,scripts){
@@ -464,6 +464,13 @@ document.addEventListener('click',e=>{const s=e.target.closest('sup.fn');if(s){e
   if(S.variant==='A'&&S.res==='1'&&!e.target.closest('.sbox'))set('res','0')});
 document.addEventListener('keydown',e=>{
   const inField=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if(e.target.id==='q'&&S.res==='1'&&['ArrowDown','ArrowUp','Enter'].includes(e.key)){
+    const rows=[...document.querySelectorAll('.dd .r[onclick]')];if(!rows.length)return;e.preventDefault();
+    let i=rows.findIndex(r=>r.classList.contains('sel'));
+    if(e.key==='Enter'){if(i>=0){rows[i].click();document.getElementById('q').blur()}return}
+    i=e.key==='ArrowDown'?Math.min(i+1,rows.length-1):Math.max(i-1,0);
+    rows.forEach((r,j)=>r.classList.toggle('sel',j===i));rows[i].scrollIntoView({block:'nearest'});return;
+  }
   if(e.key==='Escape'){if(S.res==='1'){set('res','0');document.getElementById('q').blur()}else document.activeElement?.blur();return}
   if(inField)return;
   if(e.key==='/'){e.preventDefault();const q=document.getElementById('q');q.focus();if(S.q)set('res','1');return}

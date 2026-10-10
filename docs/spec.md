@@ -149,12 +149,12 @@ Plain `<video src>` over the Range server. No MediaSource, no mpv IPC, no transc
 
 ### 4.3 Resume and autoplay
 
-- Resume position is written every 5 s while playing and on pause, seek, Copy switch and leaving the page. A Video reopens at it without asking; within 30 s of the end counts as finished and reopens at 0.
+- Resume position is written every 5 s while playing and on pause, seek, Copy switch and leaving the page (`POST /api/videos/:id/resume`). A Video reopens at it without asking; within 30 s of the end counts as finished and is stored as 0. The Player's tick runs on a timer, not `requestAnimationFrame`, so a background tab keeps writing Resume and looping A-B (#24).
 - Opening a Video autoplays; the poster shows until the first frame.
 
 ### 4.4 Playing from
 
-`<` `>` step through a snapshot of the list the Video was opened from (grid as filtered and sorted, Favorites, search results), taken when the Player opens; library order when opened by URL.
+`<` `>` step through a snapshot of the list the Video was opened from (grid as filtered and sorted, Favorites, search results), taken when the Player opens; library order when opened by URL. They skip Videos with no Available Copy and wrap at both ends (#24).
 
 ### 4.5 Keyboard
 
@@ -176,7 +176,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 | l | A-B loop: set A, set B, off |
 | ! @, PgUp PgDn | previous / next Chapter (no-op with OSD "no chapters" when the Video has none) |
 | < > | previous / next Video in Playing from |
-| s | screenshot: PNG `<title> @ <seconds>s.png` to `~/Desktop`, not settable |
+| s | screenshot: the current frame drawn to a canvas and posted to the server, which writes `<title> @ <seconds>s.png` to `~/Desktop` (`TUVA_SCREENSHOT_DIR` only for tests) |
 | o / O | OSD flash / always on |
 | t | Studio playback (§7.4) |
 

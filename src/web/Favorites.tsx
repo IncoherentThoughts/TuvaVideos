@@ -1,15 +1,16 @@
 import { useEffect, useState } from "preact/hooks";
 import type { FavoriteItem } from "../shared/types";
 import { api, useStore } from "./data";
+import { savePlayingFrom } from "./playingFrom";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, StripFrame, Tags, fmtDuration } from "./ui";
 
 type Show = "both" | "videos" | "chapters";
 
-function VideoRow({ item }: { item: Extract<FavoriteItem, { kind: "video" }> }) {
+function VideoRow({ item, onOpen }: { item: Extract<FavoriteItem, { kind: "video" }>; onOpen: () => void }) {
   const v = item.video;
   return (
-    <Link href={playHref(v.id)} class="frow" data-item="" data-id={v.id} data-fav-kind="video">
+    <Link href={playHref(v.id)} class="frow" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <div class="thumbcol">
         <Poster video={v} />
       </div>
@@ -28,11 +29,11 @@ function VideoRow({ item }: { item: Extract<FavoriteItem, { kind: "video" }> }) 
   );
 }
 
-function ChapterRow({ item }: { item: Extract<FavoriteItem, { kind: "chapter" }> }) {
+function ChapterRow({ item, onOpen }: { item: Extract<FavoriteItem, { kind: "chapter" }>; onOpen: () => void }) {
   const { video: v, chapter: c } = item;
   const pos = v.durationS ? Math.min(100, Math.max(0, (c.startS / v.durationS) * 100)) : 0;
   return (
-    <Link href={playHref(v.id, c.startS)} class="frow chapter" data-item="" data-id={c.id} data-fav-kind="chapter">
+    <Link href={playHref(v.id, c.startS)} class="frow chapter" data-item="" data-id={c.id} data-fav-kind="chapter" onClickCapture={onOpen}>
       <div class="thumbcol">
         <StripFrame video={v} t={c.startS} />
         <div class="posbar" title={`${fmtDuration(c.startS)} of ${fmtDuration(v.durationS)}`}>
@@ -72,6 +73,7 @@ export function Favorites({ search }: { search: string }) {
   }, [favVersion]);
 
   const setShow = (s: Show) => navigate(`/favorites${s === "both" ? "" : `?show=${s}`}`, { replace: true });
+  const snapshot = () => savePlayingFrom("favorites", shown.map((i) => i.video.id));
   const shown = (items ?? []).filter((i) => show === "both" || (show === "videos" ? i.kind === "video" : i.kind === "chapter"));
 
   return (
@@ -88,7 +90,7 @@ export function Favorites({ search }: { search: string }) {
       {items && shown.length === 0 && <div class="empty-state">Nothing starred yet. Press <kbd>f</kbd> on a Video in the Library to add one.</div>}
       <div class="flist">
         {shown.map((i) =>
-          i.kind === "video" ? <VideoRow key={`v${i.video.id}`} item={i} /> : <ChapterRow key={`c${i.chapter.id}`} item={i} />,
+          i.kind === "video" ? <VideoRow key={`v${i.video.id}`} item={i} onOpen={snapshot} /> : <ChapterRow key={`c${i.chapter.id}`} item={i} onOpen={snapshot} />,
         )}
       </div>
     </div>

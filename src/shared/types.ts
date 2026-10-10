@@ -22,13 +22,20 @@ export interface StripDto {
 export interface CopyDto {
   id: number;
   rootKind: "local" | "external";
+  size: number;
+  container: string | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
   width: number | null;
   height: number | null;
   durationS: number | null;
+  rFrameRate: string | null;
+  /** r_frame_rate as a number (29.97), for frame stepping. */
+  frameRate: number | null;
   available: boolean;
   missing: boolean;
-  playback: string;
-  fallback: { state: string; progress?: number | null };
+  playback: "native" | "remux" | "transcode";
+  fallback: { state: string; progress?: number | null; error?: string };
   url: string;
 }
 

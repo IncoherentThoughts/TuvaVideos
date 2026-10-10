@@ -1,0 +1,666 @@
+// The Player (spec 4, playback-architecture.md): a plain <video> over the Range server inside a focusable container
+// that owns the mpv-style keys. State machine of what is on screen: loading -> (preparing) -> ready, or unavailable.
+import { useEffect, useRef, useState } from "preact/hooks";
+import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
+import { awaitCopy } from "../shared/prepare";
+import { dispatchKey, type PlayerAction } from "../shared/keymap";
+import {
+  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, speedBy, volumeBy, type AbLoop,
+} from "../shared/playerMath";
+import { RESUME_INTERVAL_MS, ResumeClock, startPosition } from "../shared/resume";
+import { SeekThrottle } from "../shared/seekThrottle";
+import type { CopyDto, VideoDto } from "../shared/types";
+import { CopyPicker, copyLabel } from "./CopyPicker";
+import { Timeline, type ChapterMark } from "./Timeline";
+
+export type { ChapterMark } from "./Timeline";
+
+type Phase = "loading" | "preparing" | "ready" | "unavailable" | "failed";
+
+interface Props {
+  video: VideoDto;
+  /** `?t=` of the URL, else the Resume position. */
+  startT: number | null;
+  /** Extension point for ticket #26. Empty until Chapters exist. */
+  chapters: ChapterMark[];
+  /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
+  onStep(dir: 1 | -1): string | null;
+}
+
+// Volume and mute survive stepping from one Video to the next within a page session (not persisted).
+const audio = { volume: 1, muted: false };
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+const VOL_ICON = {
+  off: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5 6 9H2v6h4l5 4z" />
+      <path d="m23 9-6 6M17 9l6 6" />
+    </svg>
+  ),
+  low: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5 6 9H2v6h4l5 4z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+    </svg>
+  ),
+  high: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5 6 9H2v6h4l5 4z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M19 5a9 9 0 0 1 0 14" />
+    </svg>
+  ),
+};
+const FS_ICON = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+  </svg>
+);
+const PLAY_ICON = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M8 5v14l11-7z" />
+  </svg>
+);
+const PAUSE_ICON = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" />
+  </svg>
+);
+
+export function Player({ video, startT, chapters, onStep }: Props) {
+  const box = useRef<HTMLDivElement>(null);
+  const vid = useRef<HTMLVideoElement>(null);
+
+  // ---- what is on screen ----
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [prep, setPrep] = useState<number | null>(null);
+  const [copyId, setCopyId] = useState<number | null>(null);
+  const [time, setTime] = useState(0);
+  const [bufEnd, setBufEnd] = useState(0);
+  const [paused, setPaused] = useState(true);
+  const [rate, setRate] = useState(1);
+  const [vol, setVol] = useState({ volume: audio.volume, muted: audio.muted });
+  const [buffering, setBuffering] = useState(false);
+  const [fs, setFs] = useState(false);
+  const [ab, setAb] = useState<AbLoop>(AB_OFF);
+  const [aspect, setAspect] = useState<number | null>(null);
+  const [osd, setOsd] = useState<{ text: string; n: number } | null>(null);
+  const [osdFlash, setOsdFlash] = useState(false);
+  const [osdAlways, setOsdAlways] = useState(false);
+
+  // ---- mutable state that handlers read ----
+  const V = useRef(video);
+  V.current = video;
+  const R = useRef({
+    copyId: null as number | null,
+    token: 0, // bumped by every load and on unmount; a stale async load stops when it sees a newer one
+    started: false, // metadata loaded and the start position applied: only then may Resume be written
+    resumeOn: true, // false while no Copy plays, so the Resume position is kept as it was
+    pending: { at: 0, play: true },
+    failed: new Set<number>(),
+    retries: new Map<number, number>(),
+    lastPos: 0,
+    hold: 0, // position kept while "Copy unavailable"
+    wasPlaying: true,
+    ab: AB_OFF as AbLoop,
+    phase: "loading" as Phase,
+    osdN: 0,
+    osdTimer: 0 as unknown as ReturnType<typeof setTimeout>,
+    flashTimer: 0 as unknown as ReturnType<typeof setTimeout>,
+    seekWrite: 0 as unknown as ReturnType<typeof setTimeout>,
+    firstT: true,
+  });
+  const rateRef = useRef(1);
+  const alwaysRef = useRef(false);
+  const clock = useRef(new ResumeClock(RESUME_INTERVAL_MS));
+  const throttle = useRef(new SeekThrottle((t) => {
+    const v = vid.current;
+    if (v) v.currentTime = t;
+  }));
+  R.current.ab = ab;
+  R.current.phase = phase;
+  R.current.copyId = copyId;
+
+  const copies = video.copies;
+  const copy = copies.find((c) => c.id === copyId) ?? null;
+  const duration = (vid.current && Number.isFinite(vid.current.duration) ? vid.current.duration : null) ?? copy?.durationS ?? video.durationS;
+
+  const refocus = () => box.current?.focus({ preventScroll: true });
+
+  // ---- OSD ----
+  const say = (text: string, ms = 1400) => {
+    const r = R.current;
+    setOsd({ text, n: ++r.osdN });
+    clearTimeout(r.osdTimer);
+    r.osdTimer = setTimeout(() => setOsd(null), ms);
+  };
+  const flash = () => {
+    const r = R.current;
+    setOsdFlash(true);
+    clearTimeout(r.flashTimer);
+    r.flashTimer = setTimeout(() => setOsdFlash(false), 1600);
+  };
+
+  // ---- Resume (spec 4.3) ----
+  const writeResume = (beacon = false) => {
+    const r = R.current;
+    if (!r.started || !r.resumeOn) return;
+    const v = vid.current;
+    const pos = v && v.readyState > 0 ? v.currentTime : r.lastPos;
+    const url = `/api/videos/${V.current.id}/resume`;
+    const body = JSON.stringify({ resumeS: pos, copyId: r.copyId });
+    clock.current.wrote(Date.now());
+    try {
+      if (beacon && navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+      else void fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+    } catch {}
+  };
+
+  // ---- loading a Copy ----
+  const attach = (id: number, at: number, play: boolean) => {
+    const v = vid.current;
+    if (!v) return;
+    const r = R.current;
+    r.pending = { at, play };
+    r.started = false;
+    throttle.current.reset();
+    v.src = `/copy/${id}`;
+    v.load();
+  };
+
+  /** Waits out a "preparing" Fallback (spec 3.4): the overlay shows while `awaitCopy` polls. */
+  const prepare = async (id: number, token: number): Promise<boolean> => {
+    const res = await awaitCopy(id, {
+      fetch: (url, init) => fetch(url, init),
+      sleep,
+      cancelled: () => token !== R.current.token,
+      onProgress: (p) => {
+        setPhase("preparing");
+        setPrep(p);
+      },
+    });
+    return res === "ready";
+  };
+
+  const loadCopy = async (id: number, at: number, play: boolean, forcePrepare = false) => {
+    const r = R.current;
+    const token = ++r.token;
+    r.copyId = id;
+    r.wasPlaying = play;
+    r.resumeOn = true;
+    setCopyId(id);
+    setPhase("loading");
+    setPrep(null);
+    const c = V.current.copies.find((x) => x.id === id);
+    if (forcePrepare || (c && needsPrepare(c))) {
+      const ok = await prepare(id, token);
+      if (token !== r.token) return;
+      if (!ok) return void lose(id, true, at, play);
+    }
+    attach(id, at, play);
+  };
+
+  /** The playing Copy is gone (Root unmounted) or broken: next Available Copy at the same timestamp, else "Copy unavailable". */
+  const lose = (id: number, markFailed: boolean, atOverride?: number, playOverride?: boolean) => {
+    const r = R.current;
+    const v = vid.current;
+    const pos = atOverride ?? (v && v.readyState > 0 ? v.currentTime : r.lastPos);
+    const wasPlaying = playOverride ?? (v ? !v.paused : r.wasPlaying);
+    if (markFailed) r.failed.add(id);
+    writeResume();
+    const n = nextCopy(V.current.copies, id, r.failed);
+    if (n) {
+      say(`Switching to ${n.rootKind} Copy · ${copyLabel(n)}`, 2200);
+      void loadCopy(n.id, pos, wasPlaying);
+      return;
+    }
+    // none left: keep the Resume position, show the overlay
+    r.token++;
+    r.hold = pos;
+    r.wasPlaying = wasPlaying;
+    r.resumeOn = false;
+    r.started = false;
+    if (v) {
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+    }
+    setPaused(true);
+    setPhase(markFailed ? "failed" : "unavailable");
+  };
+
+  const pickCopy = (id: number) => {
+    const v = vid.current;
+    const pos = v && v.readyState > 0 ? v.currentTime : R.current.lastPos;
+    writeResume();
+    R.current.failed.delete(id);
+    say(`Copy: ${copyLabel(V.current.copies.find((c) => c.id === id) ?? { container: null, height: null })}`);
+    void loadCopy(id, pos, v ? !v.paused : true);
+  };
+
+  // open: pick the Preferred Copy and start at ?t= or the Resume position
+  useEffect(() => {
+    const r = R.current;
+    const c = bestCopy(video.copies);
+    if (!c) {
+      r.resumeOn = false;
+      r.hold = startPosition({ t: startT, resumeS: video.resumeS, durationS: video.durationS });
+      setPhase("unavailable");
+    } else {
+      void loadCopy(c.id, startPosition({ t: startT, resumeS: video.resumeS, durationS: c.durationS ?? video.durationS }), true);
+    }
+    refocus();
+    return () => {
+      r.token++;
+      clearTimeout(r.osdTimer);
+      clearTimeout(r.flashTimer);
+      clearTimeout(r.seekWrite);
+      writeResume(true); // leaving the Player (route change) writes the position
+      const v = vid.current;
+      if (v) {
+        v.pause();
+        v.removeAttribute("src");
+        v.load();
+      }
+    };
+  }, []);
+
+  // `?t=` changed while this Video is open (a Chapter row or result for the same Video): seek there
+  useEffect(() => {
+    const r = R.current;
+    if (r.firstT) {
+      r.firstT = false;
+      return;
+    }
+    if (startT != null && r.started) seekTo(startT);
+  }, [startT]);
+
+  // the library poll: a Root unmounting under the playing Copy, or a Copy coming back after "unavailable"
+  useEffect(() => {
+    const r = R.current;
+    const cur = copyId != null ? video.copies.find((c) => c.id === copyId) : null;
+    if (phase === "unavailable" || phase === "failed") {
+      const b = bestCopy(video.copies, r.failed);
+      if (b) {
+        say(`Copy available again · ${copyLabel(b)}`, 2200);
+        void loadCopy(b.id, r.hold, r.wasPlaying);
+      }
+      return;
+    }
+    if (cur && (!cur.available || cur.missing)) lose(cur.id, false);
+  }, [video, copyId, phase]);
+
+  // ---- seeking ----
+  const seekTo = (t: number, throttled = false) => {
+    const v = vid.current;
+    if (!v || v.readyState === 0) return;
+    const c = clampTime(t, Number.isFinite(v.duration) ? v.duration : null);
+    throttle.current.request(c, throttled);
+    setTime(c);
+  };
+
+  // ---- media events ----
+  useEffect(() => {
+    const v = vid.current!;
+    const r = R.current;
+    const on = (ev: string, f: (e: Event) => void) => v.addEventListener(ev, f);
+    on("loadedmetadata", () => {
+      const { at, play } = r.pending;
+      v.volume = audio.volume;
+      v.muted = audio.muted;
+      v.defaultPlaybackRate = v.playbackRate = rateRef.current;
+      if (v.videoWidth && v.videoHeight) setAspect(v.videoWidth / v.videoHeight);
+      if (at > 0) v.currentTime = clampTime(at, v.duration);
+      r.started = true;
+      r.resumeOn = true;
+      r.lastPos = at;
+      setTime(at);
+      setPhase("ready");
+      setBuffering(false);
+      if (play) {
+        v.play().catch(() => {
+          setPaused(true);
+          say("Press space to play", 3000);
+        });
+      }
+    });
+    on("play", () => setPaused(false));
+    on("playing", () => {
+      setPaused(false);
+      setBuffering(false);
+    });
+    on("pause", () => {
+      setPaused(v.paused);
+      clock.current.stopped();
+      if (r.started) {
+        r.lastPos = v.currentTime;
+        writeResume();
+      }
+      setTime(v.currentTime);
+    });
+    on("waiting", () => r.started && setBuffering(true));
+    on("canplay", () => setBuffering(false));
+    on("seeked", () => {
+      throttle.current.landed();
+      setTime(v.currentTime);
+      r.lastPos = v.currentTime;
+      clearTimeout(r.seekWrite);
+      r.seekWrite = setTimeout(() => writeResume(), 400); // one write per burst of seeks (a scrub drag is many)
+    });
+    on("ratechange", () => {
+      rateRef.current = v.playbackRate;
+      setRate(v.playbackRate);
+    });
+    on("volumechange", () => {
+      audio.volume = v.volume;
+      audio.muted = v.muted;
+      setVol({ volume: v.volume, muted: v.muted });
+    });
+    on("ended", () => {
+      const t = abLoopTarget(r.ab, v.currentTime, true);
+      if (t != null) {
+        v.currentTime = t;
+        void v.play();
+      }
+    });
+    on("error", () => void onMediaError());
+    const fsChange = () => setFs(document.fullscreenElement === box.current);
+    document.addEventListener("fullscreenchange", fsChange);
+
+    // page leave: sendBeacon, so it survives the unload
+    const leave = () => writeResume(true);
+    const vis = () => document.visibilityState === "hidden" && writeResume(true);
+    window.addEventListener("pagehide", leave);
+    document.addEventListener("visibilitychange", vis);
+
+    // frame loop: time, buffered span, A-B loop; the 5 s Resume cadence rides the same loop
+    let raf = 0;
+    let lastUi = 0;
+    const loop = (now: number) => {
+      raf = requestAnimationFrame(loop);
+      if (!r.started) return;
+      const t = v.currentTime;
+      r.lastPos = t;
+      if (!v.paused) {
+        const tgt = abLoopTarget(r.ab, t);
+        if (tgt != null) seekTo(tgt);
+        if (clock.current.tick(Date.now(), true)) writeResume();
+      }
+      if (now - lastUi >= 100) {
+        lastUi = now;
+        if (!throttle.current.busy) setTime(t);
+        let end = 0;
+        for (let i = 0; i < v.buffered.length; i++) if (v.buffered.start(i) <= t + 0.5 && v.buffered.end(i) >= end) end = v.buffered.end(i);
+        setBufEnd(end);
+      }
+    };
+    raf = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("fullscreenchange", fsChange);
+      window.removeEventListener("pagehide", leave);
+      document.removeEventListener("visibilitychange", vis);
+    };
+  }, []);
+  /** The element failed: ask the server why. A Fallback still being made is "preparing"; a gone Copy fails over. */
+  const onMediaError = async () => {
+    const r = R.current;
+    const id = r.copyId;
+    const v = vid.current;
+    if (id == null || !v || !v.getAttribute("src")) return;
+    const pos = r.started ? v.currentTime : r.pending.at;
+    const play = r.started ? !v.paused : r.pending.play;
+    const res = await fetch(`/copy/${id}`, { headers: { range: "bytes=0-0" } }).catch(() => null);
+    if (R.current.copyId !== id) return;
+    void res?.body?.cancel();
+    if (res && res.status === 503) {
+      const body = (await fetch(`/api/copies/${id}`).then((x) => x.json()).catch(() => null)) as CopyDto | null;
+      if (body && body.playback !== "native" && readPrepare(body.fallback).kind !== "ready") return void loadCopy(id, pos, play, true);
+      const tries = r.retries.get(id) ?? 0; // the drive hiccuped (EIO): try the same Copy twice more before giving up
+      if (tries < 2) {
+        r.retries.set(id, tries + 1);
+        await sleep(1500);
+        if (R.current.copyId === id) void loadCopy(id, pos, play);
+        return;
+      }
+    }
+    lose(id, true, pos, play);
+  };
+
+  // ---- actions ----
+  const togglePause = () => {
+    const v = vid.current;
+    if (!v || !R.current.started) return;
+    if (v.paused) void v.play().catch(() => {});
+    else v.pause();
+  };
+
+  const takeScreenshot = async () => {
+    const v = vid.current;
+    if (!v || !v.videoWidth) return say("Screenshot: no frame yet");
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    c.getContext("2d")!.drawImage(v, 0, 0);
+    const t = v.currentTime;
+    const blob = await new Promise<Blob | null>((res) => c.toBlob(res, "image/png"));
+    if (!blob) return say("Screenshot failed");
+    try {
+      const res = await fetch(`/api/videos/${V.current.id}/screenshot?t=${t.toFixed(2)}`, { method: "POST", headers: { "content-type": "image/png" }, body: blob });
+      const j = (await res.json()) as { saved?: string; error?: string };
+      say(j.saved ? `Screenshot: ${j.saved.replace(/^\/Users\/[^/]+/, "~")}` : `Screenshot failed: ${j.error ?? res.status}`, 3200);
+    } catch (e) {
+      say(`Screenshot failed: ${(e as Error).message}`);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void box.current?.requestFullscreen().catch(() => {});
+  };
+
+  const perform = (a: PlayerAction) => {
+    const v = vid.current;
+    if (!v) return;
+    const dur = Number.isFinite(v.duration) ? v.duration : null;
+    switch (a.type) {
+      case "togglePause":
+        togglePause();
+        flash();
+        break;
+      case "seekBy":
+        seekTo(v.currentTime + a.seconds);
+        flash();
+        break;
+      case "frameStep": {
+        const fps = copy?.frameRate ?? FALLBACK_FPS;
+        v.pause();
+        const target = frameStepTarget(v.currentTime, fps, a.dir, dur);
+        seekTo(target);
+        say(`Frame ${frameNumber(target, fps)}${copy?.frameRate ? "" : ` (${FALLBACK_FPS} fps assumed)`}`);
+        break;
+      }
+      case "speedBy": {
+        const r = speedBy(v.playbackRate, a.delta);
+        v.defaultPlaybackRate = v.playbackRate = r;
+        say(`Speed: ${r.toFixed(2)}×`);
+        break;
+      }
+      case "speedSet":
+        v.defaultPlaybackRate = v.playbackRate = a.rate;
+        say(`Speed: ${a.rate.toFixed(2)}×`);
+        break;
+      case "volumeBy": {
+        const n = volumeBy(v.volume, a.delta);
+        v.volume = n;
+        say(`Volume: ${Math.round(n * 100)}${v.muted ? " (muted)" : ""}`);
+        break;
+      }
+      case "mute":
+        v.muted = !v.muted;
+        say(v.muted ? "Mute: yes" : "Mute: no");
+        break;
+      case "fullscreen":
+        toggleFullscreen();
+        break;
+      case "abLoop": {
+        const s = abToggle(R.current.ab, v.currentTime);
+        R.current.ab = s.ab;
+        setAb(s.ab);
+        say(s.label);
+        break;
+      }
+      case "chapter": {
+        if (!chapters.length) return say("no chapters");
+        const sorted = [...chapters].sort((x, y) => x.startS - y.startS);
+        let i = -1;
+        sorted.forEach((c, k) => {
+          if (v.currentTime >= c.startS - 0.001) i = k;
+        });
+        if (a.dir < 0 && i >= 0 && v.currentTime - sorted[i]!.startS >= 2) i += 1; // restart the current one first
+        const to = sorted[Math.min(sorted.length - 1, Math.max(0, i + a.dir))]!;
+        seekTo(to.startS);
+        say(`Chapter: ${to.title}`);
+        flash();
+        break;
+      }
+      case "video": {
+        const label = onStep(a.dir);
+        say(label ?? "No other Video in Playing from", 2200);
+        break;
+      }
+      case "screenshot":
+        void takeScreenshot();
+        break;
+      case "osd":
+        if (a.always) {
+          alwaysRef.current = !alwaysRef.current;
+          setOsdAlways(alwaysRef.current);
+          say(`OSD: ${alwaysRef.current ? "always" : "auto"}`);
+        } else flash();
+        break;
+      case "studio":
+        say("studio playback not built yet", 2000);
+        break;
+    }
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    const { action, handled } = dispatchKey(e, { containerFocused: document.activeElement === box.current });
+    if (!handled) return;
+    e.preventDefault();
+    if (action) perform(action);
+  };
+
+  // ---- render ----
+  const fps = copy?.frameRate ?? null;
+  const shownAspect = aspect ?? (copy?.width && copy?.height ? copy.width / copy.height : video.width && video.height ? video.width / video.height : 16 / 9);
+  const volState = vol.muted || vol.volume === 0 ? "off" : vol.volume < 0.5 ? "low" : "high";
+  const showStatus = osdAlways || osdFlash;
+  const poster = video.thumbnail?.poster;
+
+  return (
+    <div
+      class={`player${fs ? " fs" : ""}`}
+      ref={box}
+      tabIndex={0}
+      data-player=""
+      role="application"
+      aria-label="Video player. Keys are active while this has focus."
+      onKeyDown={onKeyDown}
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest("[data-keep-focus]")) refocus();
+      }}
+    >
+      <div class="stage" style={{ "--ar": String(shownAspect), aspectRatio: String(shownAspect) }}>
+        <video
+          ref={vid}
+          class="vid"
+          playsInline
+          preload="auto"
+          poster={poster}
+          onClick={() => {
+            togglePause();
+            flash();
+          }}
+          onDblClick={toggleFullscreen}
+        />
+        {(osd || showStatus) && (
+          <div class="osd mono" aria-live="polite">
+            {osd && <div class="m">{osd.text}</div>}
+            {showStatus && (
+              <div class="s">
+                {paused ? "⏸" : "▶"} {fmtClock(time)} / {fmtClock(duration)}
+                {rate !== 1 && `  ${rate.toFixed(2)}×`}
+                {vol.muted && "  muted"}
+                {paused && fps != null && `  #${frameNumber(time, fps)}`}
+              </div>
+            )}
+          </div>
+        )}
+        {(buffering || phase === "loading") && <div class="spin" aria-label="Loading" />}
+        {phase === "preparing" && (
+          <div class="overlay" role="status">
+            <div class="card">
+              <h3>Preparing this Copy…</h3>
+              <p>The browser cannot play the file as it is. A one-time conversion is running; playback starts when it lands.</p>
+              <div class="pbar">
+                <i style={prep != null ? { width: `${Math.round(prep * 100)}%` } : { width: "35%" }} class={prep == null ? "ind" : ""} />
+              </div>
+              <span class="mono dim">{prep != null ? `${Math.round(prep * 100)}%` : "working…"}</span>
+            </div>
+          </div>
+        )}
+        {(phase === "unavailable" || phase === "failed") && (
+          <div class="overlay" role="alert">
+            <div class="card">
+              <h3>Copy unavailable</h3>
+              <p>
+                {phase === "failed"
+                  ? "Every Copy of this Video failed to play."
+                  : "No Copy of this Video is on a mounted drive right now. Plug the drive in and playback continues by itself."}{" "}
+                Your place, <span class="mono">{fmtClock(R.current.hold)}</span>, is kept.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+      <Timeline video={video} time={time} duration={duration} bufferedEnd={bufEnd} chapters={chapters} ab={ab} onSeek={seekTo} />
+      <div class="ctl" data-keep-focus="">
+        <button class="ib" tabIndex={-1} title="Play / pause (space)" onClick={() => (togglePause(), refocus())}>
+          {paused ? PLAY_ICON : PAUSE_ICON}
+        </button>
+        <span class="mono clock">
+          {fmtClock(time)} <span class="dim">/ {fmtClock(duration)}</span>
+        </span>
+        {paused && fps != null && phase === "ready" && <span class="mono dim" title="Frame number">#{frameNumber(time, fps)}</span>}
+        {rate !== 1 && <span class="mono rate">{rate.toFixed(2)}×</span>}
+        {ab.a != null && (
+          <span class="mono ablbl">
+            A {fmtClock(ab.a)}
+            {ab.b != null ? ` – B ${fmtClock(ab.b)}` : ""}
+          </span>
+        )}
+        <span class="grow" />
+        <CopyPicker copies={copies} playingId={copyId} onPick={pickCopy} refocus={refocus} />
+        <button
+          class="ib"
+          tabIndex={-1}
+          title={`Volume ${Math.round(vol.volume * 100)}${vol.muted ? " (muted)" : ""} (9 / 0, m)`}
+          onClick={() => {
+            if (vid.current) vid.current.muted = !vid.current.muted;
+            refocus();
+          }}
+        >
+          {VOL_ICON[volState]}
+        </button>
+        <button class="ib" tabIndex={-1} title="Fullscreen (f)" onClick={() => (toggleFullscreen(), refocus())}>
+          {FS_ICON}
+        </button>
+      </div>
+    </div>
+  );
+}

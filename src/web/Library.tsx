@@ -5,15 +5,16 @@ import {
 } from "../shared/libraryView";
 import type { VideoDto } from "../shared/types";
 import { useStore } from "./data";
+import { savePlayingFrom } from "./playingFrom";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, Tags, resolutionLabel } from "./ui";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played" };
 
-function Card({ v }: { v: VideoDto }) {
+function Card({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
   const res = resolutionLabel(v.height);
   return (
-    <Link href={playHref(v.id)} class="card" data-item="" data-id={v.id} data-fav-kind="video">
+    <Link href={playHref(v.id)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <Poster video={v} dur edge />
       <div class="ttl">
         {v.favoritedAt && <FavoriteBadge />}
@@ -89,7 +90,7 @@ export function Library({ search }: { search: string }) {
           </Link>
         </div>
       ) : (
-        <div class="wall">{shown.map((v) => <Card key={v.id} v={v} />)}</div>
+        <div class="wall">{shown.map((v) => <Card key={v.id} v={v} onOpen={() => savePlayingFrom("library", shown.map((x) => x.id))} />)}</div>
       )}
     </div>
   );

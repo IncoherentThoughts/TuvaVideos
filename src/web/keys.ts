@@ -17,9 +17,10 @@ export function focusSearch() {
 /** Esc: give focus back to where `/` came from, else just leave the box. */
 export function releaseSearch() {
   const el = document.getElementById(SEARCH_ID) as HTMLInputElement | null;
-  const back = returnFocus && document.contains(returnFocus) ? returnFocus : null;
+  const player = document.querySelector<HTMLElement>("[data-player]"); // on the Now playing screen Esc always lands on the Player
+  const back = player ?? (returnFocus && document.contains(returnFocus) ? returnFocus : null);
   returnFocus = null;
-  if (back) back.focus();
+  if (back) back.focus({ preventScroll: true });
   else el?.blur();
 }
 

@@ -67,13 +67,15 @@ const DRIVE = (
   </svg>
 );
 
-export function FavoriteBadge() {
+export function FavoriteBadge({ off }: { off?: boolean } = {}) {
   return (
-    <span class="fav" title="Favorite">
+    <span class={`fav${off ? " off" : ""}`} title={off ? "Not a Favorite" : "Favorite"}>
       {STAR}
     </span>
   );
 }
+
+export { LAPTOP as LaptopIcon, DRIVE as DriveIcon };
 
 /** Laptop (green) for a local Copy, drive (blue) for an external one, dashed grey drive when unavailable. Icons only. */
 export function AvailabilityIcon({ availability }: { availability: "local" | "external" | null }) {

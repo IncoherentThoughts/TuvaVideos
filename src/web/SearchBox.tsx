@@ -6,6 +6,7 @@ import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
 import type { SearchResponse, SearchRow } from "../shared/types";
 import { api } from "./data";
 import { SEARCH_ID, releaseSearch } from "./keys";
+import { savePlayingFrom } from "./playingFrom";
 import { navigate, playHref } from "./router";
 import { fmtDuration } from "./ui";
 
@@ -121,9 +122,15 @@ export function SearchBox() {
     setNote(null);
   };
 
+  /** Playing from: the Videos the dropdown shows, in order (a chapter row stands for its Video). */
+  const snapshotResults = () => {
+    const ids = flat.flatMap((r) => (r.kind === "video" ? [r.id] : r.kind === "chapter" ? [r.videoId] : []));
+    savePlayingFrom("search", ids);
+  };
+
   const openRow = (row: SearchRow) => {
-    if (row.kind === "video") navigate(playHref(row.id));
-    else if (row.kind === "chapter") navigate(playHref(row.videoId, row.startS));
+    if (row.kind === "video") (snapshotResults(), navigate(playHref(row.id)));
+    else if (row.kind === "chapter") (snapshotResults(), navigate(playHref(row.videoId, row.startS)));
     else if (row.kind === "artist") navigate(`/${libraryQuery({ ...defaultLibraryState(), artist: row.name })}`);
     else {
       // Songs, Tracks and Albums open lyrics in the Now playing drawer, which ticket #24/#25 build.

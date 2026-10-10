@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "prototype",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "const h=require('http'),f=require('fs'),p=require('path');const R=p.resolve('docs/prototypes');const M={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.css':'text/css'};h.createServer((q,s)=>{let u=decodeURIComponent(new URL(q.url,'http://x').pathname);if(u==='/')u='/index.html';const a=p.join(R,u);if(!a.startsWith(R)||!f.existsSync(a)||f.statSync(a).isDirectory()){s.writeHead(404);return s.end('not found')}s.writeHead(200,{'Content-Type':M[p.extname(a)]||'application/octet-stream'});f.createReadStream(a).pipe(s)}).listen(4411,()=>console.log('prototypes on http://localhost:4411'))"],
+      "port": 4411
+    },
+    {
+      "name": "player",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["docs/prototypes/player.prototype.mjs"],
+      "port": 4412
+    }
+  ]
+}

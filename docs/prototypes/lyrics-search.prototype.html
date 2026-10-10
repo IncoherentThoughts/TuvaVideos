@@ -1,0 +1,452 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Issue #12: lyrics panel and search results with highlighted context.
+  Three variants of the Wall direction's Now-playing screen (issue #11), switchable with ?variant= and the
+  floating bottom bar (← → keys). Each variant disagrees about how Versions and Scripts are switched in the
+  lyrics drawer AND about how search results group. Data is real: every Song, Version, Footnote, Artist, Track
+  and Album from the 2026-10-07 archive backup plus the 836 Videos of the root inventory
+  (lyrics-search.data.prototype.js). Video↔Song links come from the archive's Performances (YouTube ids).
+  Open by double-clicking, or `python3 -m http.server 4411 --directory docs/prototypes`. Nothing persists;
+  the URL carries the whole state (variant, song, ver, scripts, q, cur) so a state is shareable.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TuvaVideos — lyrics & search prototype</title>
+<link rel="icon" href="olchey.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Inter:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1f1e1d;--bg2:#262624;--bg3:#30302e;--line:#3d3c3a;--fg:#d9d8d5;--fg2:#93918c;--fg3:#75726c;
+  --accent:#d97757;--accent-fg:#1a0f0a;
+  --t1:#fb4934;--t2:#fe8019;--t3:#fabd2f;--t4:#b8bb26;--t5:#8ec07c;--t6:#83a598;--t7:#d3869b;--t8:#ebdbb2;
+  --ok:var(--t4);--ext:var(--t6);
+  --font-ui:'IBM Plex Sans',sans-serif;--font-lyrics:'Inter',sans-serif;--font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --fs:14px;--r:10px;--pad:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:var(--fs);line-height:1.4;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+select{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r);padding:4px 8px;outline:none}
+input[type=checkbox]{appearance:none;width:14px;height:14px;border:1px solid var(--fg3);border-radius:4px;background:var(--bg3);display:inline-grid;place-items:center;cursor:pointer;flex:none}
+input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+input[type=checkbox]:checked::after{content:"";width:8px;height:5px;border:2px solid var(--accent-fg);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+kbd{font-family:var(--font-mono);font-size:.85em;background:var(--bg3);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--fg2)}
+mark{background:color-mix(in srgb,var(--t3) 35%,transparent);color:var(--t3);border-radius:3px;padding:0 1px}
+.mono{font-family:var(--font-mono)}.muted{color:var(--fg2)}.dim{color:var(--fg3)}
+.scroll{overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+
+/* tags, chips, segments (Wall tokens) */
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:.85em;font-weight:600;line-height:1;padding:3px 6px;border-radius:var(--r);white-space:nowrap;border:1px solid color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c)}
+.tag.sug{border-style:dashed;opacity:.85}
+.tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.chip{padding:3px 8px;border:1px solid var(--line);border-radius:var(--r);color:var(--fg2);font-size:.9em;white-space:nowrap}
+.chip.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+.chip.tgl{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+.chip.tgl.on{background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--fg);border-color:var(--accent);font-weight:500}
+.chip.tgl.off{opacity:.55}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:none}
+.seg button{padding:4px 10px;color:var(--fg2);border-right:1px solid var(--line)}.seg button:last-child{border-right:0}
+.seg button.on{background:var(--fg);color:var(--bg);font-weight:600}
+.seg button:disabled{opacity:.3;cursor:default}
+.pill{padding:3px 10px;border:1px solid var(--line);border-radius:999px;color:var(--fg2);font-size:.88em;white-space:nowrap}
+.pill.on{color:var(--fg);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.pill .b{font-size:.8em;color:var(--fg3);margin-left:5px}
+.avail{display:inline-flex;align-items:center}.avail svg{display:block}.avail.local{color:var(--ok)}.avail.external{color:var(--ext)}.avail.none{color:var(--fg3);opacity:.6}.avail.none svg{stroke-dasharray:2 2}
+.typ{font-family:var(--font-mono);font-size:.72em;text-transform:uppercase;letter-spacing:.08em;color:var(--fg3);white-space:nowrap}
+.typ.video{color:var(--t1)}.typ.song{color:var(--t4)}.typ.artist{color:var(--t6)}.typ.track{color:var(--t7)}.typ.album{color:var(--t3)}
+
+/* frame */
+#app{position:absolute;inset:0;display:grid;grid-template-rows:48px 1fr;overflow:hidden}
+.top{display:flex;align-items:center;gap:18px;padding:0 20px;border-bottom:1px solid var(--line);position:relative;z-index:5}
+.top .brand{width:28px;height:28px;border-radius:7px;display:block}
+.tabs{display:flex;gap:2px}.tabs button{padding:14px 12px;color:var(--fg2);border-bottom:2px solid transparent}.tabs button.on{color:var(--fg);border-color:var(--accent)}
+.sbox{margin-left:auto;position:relative;width:360px}
+.search{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:5px 30px 5px 8px;color:var(--fg);outline:none;width:100%}
+.search:focus{border-color:var(--accent)}
+.sbox .k{position:absolute;right:7px;top:6px}
+.now{display:grid;grid-template-columns:minmax(0,1fr) var(--dw,400px);height:100%;min-height:0;position:relative}
+.now>*{min-width:0}
+.stage{padding:16px 20px;display:flex;flex-direction:column;min-height:0;overflow:auto;scrollbar-width:thin}
+.stage>*{flex:none}
+.video{position:relative;width:100%;max-width:calc(58vh * 16 / 9);margin:0 auto;aspect-ratio:16/9;border-radius:var(--r);background:var(--th);overflow:hidden}
+.video::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,rgba(255,255,255,.08),transparent 40%),repeating-linear-gradient(90deg,transparent 0 23%,rgba(0,0,0,.25) 23% 25%)}
+.video .osd{position:absolute;left:10px;top:8px;font-family:var(--font-mono);font-size:.8em;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:5px;z-index:1}
+.video .play{position:absolute;inset:0;display:grid;place-items:center;font-size:40px;color:#fff;opacity:.7;z-index:1}
+.timeline{height:6px;background:var(--bg3);border-radius:3px;position:relative;margin:12px auto 6px;max-width:calc(58vh * 16 / 9)}
+.timeline .done{position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--accent);border-radius:3px}
+.timeline i{position:absolute;top:-3px;width:2px;height:12px;background:var(--fg2)}
+.stage h1{font-size:1.4em;font-weight:700;letter-spacing:-.02em;margin-top:10px}
+.film{display:flex;gap:8px;overflow-x:auto;padding:10px 0 6px;scrollbar-width:thin}
+.film .ch{flex:none;width:168px;cursor:pointer;border:1px solid var(--line);border-radius:var(--r);padding:8px 10px 9px;background:var(--bg2);display:flex;flex-direction:column;gap:5px}
+.film .ch.cur{border-color:var(--accent);background:var(--bg3)}
+.film .strip{display:flex;gap:1px;height:14px;border-radius:4px;overflow:hidden}.film .strip i{flex:1;background:var(--th);opacity:.75}.film .strip i:nth-child(odd){filter:brightness(.7)}
+.film .t{font-family:var(--font-mono);font-size:.8em;color:var(--fg2);display:flex;justify-content:space-between}
+.film .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.keys{display:flex;flex-wrap:wrap;gap:12px;color:var(--fg3);font-size:.85em;margin-top:auto;padding-top:12px}
+.keys span{white-space:nowrap}
+
+/* drawer */
+.drawer{border-left:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column;min-height:0}
+.drawer .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.drawer .hd .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.drawer .hd .ttl{font-weight:600;font-size:1.05em;display:flex;gap:6px;align-items:baseline;min-width:0}
+.drawer .hd .ttl .en{font-weight:400;color:var(--fg2);font-size:.9em}
+.drawer .body{padding:16px;overflow:auto;scrollbar-width:thin;flex:1;min-height:0}
+.lyr{font-family:var(--font-lyrics);font-size:calc(var(--fs) * 1.12);line-height:1.55}
+.lyr .l{display:grid;grid-template-columns:28px 1fr;gap:6px;margin-bottom:.3em;border-radius:6px;padding:1px 4px 1px 0;margin-left:-4px;cursor:pointer}
+.lyr .l:hover{background:var(--bg3)}
+.lyr .l.cur{color:var(--accent)}
+.lyr .l.hit{background:color-mix(in srgb,var(--t3) 10%,transparent)}
+.lyr .ln{font-family:var(--font-mono);font-size:.72em;color:var(--fg3);text-align:right;padding-top:.5em;user-select:none}
+.lyr .l.cur .ln{color:var(--accent)}
+.lyr .gap{height:.9em}
+.lyr .sub{color:var(--fg2);font-size:.9em}.lyr .sub.eng{font-style:italic}
+.lyr .l.cur .sub{color:color-mix(in srgb,var(--accent) 70%,var(--fg2))}
+sup.fn{font-family:var(--font-mono);font-size:.68em;color:var(--accent);vertical-align:super;line-height:0;margin-left:1px;cursor:pointer;padding:0 1px;border-radius:3px}
+sup.fn:hover,sup.fn:focus{background:color-mix(in srgb,var(--accent) 25%,transparent);outline:none}
+sup.fn.orphan{color:var(--t1);text-decoration:line-through}
+sup.fn[data-adj]::before{content:",";color:var(--fg3);margin:0 1px 0 -1px}
+.fnh{font-size:.78em;text-transform:uppercase;letter-spacing:.12em;color:var(--fg3);margin:22px 0 8px;padding-top:12px;border-top:1px solid var(--line);font-weight:600;font-family:var(--font-ui);display:flex;justify-content:space-between;align-items:center}
+.fnlist{font-size:.9em;color:var(--fg2);font-family:var(--font-ui)}
+.fnlist li{list-style:none;display:flex;gap:8px;margin-bottom:6px;padding:2px 4px;border-radius:5px;transition:background .3s}
+.fnlist li.flash{background:color-mix(in srgb,var(--accent) 25%,transparent)}
+.fnlist li.unref{color:var(--t1)}
+.fnlist b{font-family:var(--font-mono);color:var(--accent);font-weight:600;min-width:1.2em}
+.fnlist .sc{font-family:var(--font-mono);font-size:.75em;color:var(--fg3);margin-left:auto;align-self:center}
+#tip{position:fixed;z-index:50;max-width:320px;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.9em;color:var(--fg);box-shadow:0 8px 24px rgba(0,0,0,.45);pointer-events:none;display:none;font-family:var(--font-ui)}
+#tip b{font-family:var(--font-mono);color:var(--accent);margin-right:6px}
+.empty{color:var(--fg3);font-style:italic;padding:8px 0}
+.note{color:var(--fg3);font-size:.85em;margin-top:10px}
+
+/* A — Reader: one Script at a time, Version pills, grouped dropdown */
+.vA .pills{display:flex;flex-wrap:wrap;gap:5px}
+.dd{position:absolute;top:calc(100% + 6px);right:0;width:560px;max-height:70vh;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 16px 40px rgba(0,0,0,.5);z-index:20;scrollbar-width:thin}
+.dd h5{font-size:.72em;text-transform:uppercase;letter-spacing:.12em;color:var(--fg3);padding:10px 12px 4px;position:sticky;top:0;background:var(--bg2);display:flex;justify-content:space-between}
+.dd .r{padding:6px 12px;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:baseline}
+.dd .r:hover,.dd .r.sel{background:var(--bg3)}
+.dd .r .nm{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd .r .nm .en{color:var(--fg2);font-weight:400}
+.dd .r .sn{grid-column:1/-1;color:var(--fg2);font-size:.9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd .r .sn::before{content:"Lyrics: ";color:var(--fg3);font-size:.85em}
+.dd .r .by{grid-column:1/-1;color:var(--fg3);font-size:.85em}
+
+/* B — Stack: Script checkboxes, interlinear lines, Version select, flat ranked page */
+.vB .res{position:absolute;inset:0;background:var(--bg);z-index:4;overflow:auto;padding:20px 28px;scrollbar-width:thin}
+.vB .res .sum{color:var(--fg3);font-family:var(--font-mono);font-size:.85em;margin-bottom:12px;display:flex;gap:14px;flex-wrap:wrap}
+.vB .res .sum b{color:var(--fg2);font-weight:500}
+.vB .row{display:grid;grid-template-columns:72px 1fr auto;gap:4px 14px;padding:9px 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);cursor:pointer;border-radius:6px;align-items:baseline}
+.vB .row:hover{background:var(--bg2)}
+.vB .row .nm{font-weight:500}.vB .row .nm .en{color:var(--fg2);font-weight:400}
+.vB .row .by{color:var(--fg3);font-size:.85em;font-family:var(--font-mono)}
+.vB .row .lines{grid-column:2/-1;display:flex;flex-direction:column;gap:2px;color:var(--fg2);font-size:.92em}
+.vB .row .lines div{display:grid;grid-template-columns:150px 1fr;gap:10px}
+.vB .row .lines .w{font-family:var(--font-mono);font-size:.78em;color:var(--fg3);padding-top:.25em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* C — Columns: Script chips → side-by-side columns, Version stepper, song-centric results in the drawer */
+.vC .cols{display:grid;grid-template-columns:24px repeat(var(--nc,1),minmax(0,1fr));column-gap:14px;row-gap:.3em;align-items:start}
+.vC .cols h6{font-size:.72em;text-transform:uppercase;letter-spacing:.12em;color:var(--fg3);margin-bottom:4px;font-family:var(--font-ui);font-weight:600}
+.vC .cols .ln{font-family:var(--font-mono);font-size:.72em;color:var(--fg3);text-align:right;padding-top:.5em;user-select:none}
+.vC .cols .c{font-family:var(--font-lyrics);font-size:calc(var(--fs) * 1.05);line-height:1.5;cursor:pointer;border-radius:5px;padding:1px 4px;margin:-1px -4px}
+.vC .cols .r:hover .c{background:var(--bg3)}
+.vC .cols .r.cur .c,.vC .cols .r.cur .ln{color:var(--accent)}
+.vC .cols .r.hit .c{background:color-mix(in srgb,var(--t3) 10%,transparent)}
+.vC .cols .r{display:contents}
+.vC .cols .gap{grid-column:1/-1;height:.6em}
+.vC .step{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:var(--r);padding:0 4px}
+.vC .step button{padding:3px 6px;color:var(--fg2);font-size:1.1em}.vC .step button:hover{color:var(--fg)}
+.vC .step .lab{font-weight:500;min-width:120px;text-align:center}.vC .step .lab .b{color:var(--fg3);font-size:.8em;margin-left:6px;font-family:var(--font-mono)}
+.vC .card{border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;overflow:hidden;background:var(--bg)}
+.vC .card .ch{padding:8px 12px;display:flex;gap:8px;align-items:baseline;cursor:pointer}
+.vC .card .ch:hover{background:var(--bg3)}
+.vC .card .ch .nm{font-weight:600}.vC .card .ch .en{color:var(--fg2)}
+.vC .card .ver{padding:4px 12px 8px;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.vC .card .ver .vl{font-family:var(--font-mono);font-size:.75em;color:var(--fg3);margin:4px 0 2px;display:flex;gap:8px}
+.vC .card .ver .q{display:grid;grid-template-columns:34px 1fr;gap:8px;color:var(--fg2);font-size:.92em;cursor:pointer;padding:1px 0;border-radius:4px}
+.vC .card .ver .q:hover{background:var(--bg3)}
+.vC .card .ver .q .sc{font-family:var(--font-mono);font-size:.75em;color:var(--fg3);padding-top:.3em}
+.vC .card .kids{padding:6px 12px 8px;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent);display:flex;flex-direction:column;gap:3px}
+.vC .card .kids div{display:flex;gap:8px;align-items:baseline;font-size:.92em;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vC .card .kids div:hover{color:var(--accent)}
+.vC .side{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;display:flex;flex-wrap:wrap;gap:6px}
+.vC .side .pill{cursor:pointer}
+
+/* prototype chrome */
+#bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:#fff;color:#111;border-radius:999px;padding:6px 10px 6px 14px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:100;font-size:13px}
+#bar button{width:28px;height:28px;border-radius:50%;background:#111;color:#fff;font-weight:700}
+#bar .st{font-family:var(--font-mono);font-weight:400;color:#555;font-size:11px;border-left:1px solid #ddd;padding-left:12px;max-width:52vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){.now{grid-template-columns:minmax(0,1fr) 340px}.sbox{width:220px}.dd{width:440px}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="tip"></div>
+<div id="bar"><button onclick="cycle(-1)">‹</button><span id="barlab"></span><button onclick="cycle(1)">›</button><span class="st" id="barst"></span></div>
+<script src="lyrics-search.data.prototype.js"></script>
+<script>
+/* ---------------- data index ---------------- */
+const D=window.DATA;
+const SCRIPTS=[{k:'cyr',label:'Тыва',lang:'tyv',fn:'fn_cyr'},{k:'lat',label:'Latin',lang:'tyv-Latn',fn:'fn_lat'},{k:'eng',label:'English',lang:'en',fn:'fn_eng'}];
+const SONG=Object.fromEntries(D.songs.map(s=>[s.id,s]));
+const ART=Object.fromEntries(D.artists.map(a=>[a.id,a]));
+const ALB=Object.fromEntries(D.albums.map(a=>[a.id,a]));
+const VERS={};for(const v of D.versions)(VERS[v.song_id]??=[]).push(v);for(const k in VERS)VERS[k].sort((a,b)=>a.order-b.order);
+const TRACK_VER=new Set(D.tracks.map(t=>t.version_id).filter(Boolean));
+const TA={};for(const x of D.track_artists)(TA[x.track_id]??=[]).push(x.artist_id);
+const VID=Object.fromEntries(D.videos.map(v=>[v.id,v]));
+const VID_SONGS={},SONG_VIDS={};
+for(const p of D.performances){const m=/(?:v=|youtu\.be\/)([\w-]{11})/.exec(p.url||'');if(m&&VID[m[1]]){(VID_SONGS[m[1]]??=new Set()).add(p.song_id);(SONG_VIDS[p.song_id]??=new Set()).add(m[1])}}
+const SONG_ARTISTS={};
+for(const t of D.tracks){if(!t.song_id)continue;const ids=TA[t.id]?.length?TA[t.id]:[ALB[t.album_id]?.artist_id].filter(Boolean);for(const a of ids)(SONG_ARTISTS[t.song_id]??=new Set()).add(a)}
+const trackArtists=t=>(TA[t.id]?.length?TA[t.id]:[ALB[t.album_id]?.artist_id]).filter(Boolean).map(a=>ART[a]?.name).filter(Boolean);
+
+/* ---------------- lyrics parsing (ports of the archive's normalize.ts, trimmed) ---------------- */
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function parseHtmlToLines(html){
+  if(!html)return[];const out=[];const re=/<p(?:[^>]*)>([\s\S]*?)<\/p>/gi;let m,any=false;
+  while((m=re.exec(html))){any=true;const inner=m[1];const blank=/^(\s|&nbsp;|<br\s*\/?>)*$/i.test(inner);out.push({html:inner,blank})}
+  if(!any)out.push({html,blank:false});return out;
+}
+const stripHtml=h=>h.replace(/<sup\b[^>]*data-fn[^>]*>[\s\S]*?<\/sup>/gi,'').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\s+/g,' ').trim();
+const markersOf=h=>[...h.matchAll(/<sup\b[^>]*\bdata-fn="(\d+)"/gi)].map(m=>+m[1]);
+function entriesById(list){const m=new Map();for(const e of list||[])if(!m.has(e.id))m.set(e.id,e);return m}
+// numbered lines: continuous 1-based numbers across stanzas
+function numbered(html){let n=0;return parseHtmlToLines(html).map(l=>({...l,n:l.blank?null:++n}))}
+const present=v=>SCRIPTS.filter(s=>v&&(v[s.k]||'').trim()).map(s=>s.k);
+const clampScript=(pref,pres)=>pres.includes(pref)?pref:(pres[0]||'cyr');
+function lineHtml(html,fnMap,script){ // rewrite markers: adjacent comma, orphan flag, hover/click hooks
+  let prev=false;return html.replace(/<sup\b[^>]*\bdata-fn="(\d+)"[^>]*>[\s\S]*?<\/sup>(\s*)/gi,(all,id,ws)=>{
+    const adj=prev&&!ws;prev=!ws||ws==='';const e=fnMap.get(+id);
+    return `<sup class="fn${e?'':' orphan'}" data-fn="${id}" data-sc="${script}"${adj?' data-adj':''} tabindex="0">${id}</sup>${ws}`}).replace(/\s+$/,'');
+}
+
+/* ---------------- search: folding with index map (Cyrillic→Latin so a Latin query hits Cyrillic rows) ---------------- */
+const TR={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',ң:'ng',ҥ:'ng',о:'o',ө:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ү:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya',ŋ:'ng',ñ:'ng',x:'kh',ɨ:'y'};
+function fold(s){const chars=[],map=[];let i=0;for(const ch of String(s)){const lc=ch.toLowerCase();let r=TR[lc];if(r===undefined)r=lc.normalize('NFKD').replace(/\p{M}/gu,'');if(r in TR&&r!==lc)r=TR[r];for(const c of r){chars.push(c);map.push(i)}i+=ch.length}return{f:chars.join(''),map,len:i}}
+function matches(text,needle){ // returns [[start,end]] in original text
+  const{f,map,len}=fold(text);const out=[];let from=0;
+  while(needle.f&&(from=f.indexOf(needle.f,from))>=0){const s=map[from],e=(from+needle.f.length<map.length?map[from+needle.f.length]:len);out.push([s,e]);from+=needle.f.length}
+  return out;
+}
+function hl(text,needle){const ms=matches(text,needle);if(!ms.length)return esc(text);let o='',p=0;for(const[s,e]of ms){o+=esc(text.slice(p,s))+'<mark>'+esc(text.slice(s,e))+'</mark>';p=e}return o+esc(text.slice(p))}
+function score(text,needle){const{f}=fold(text);if(!needle.f)return null;if(f===needle.f)return 0;if(f.startsWith(needle.f))return 1;const i=f.indexOf(needle.f);if(i<0)return null;return(i>0&&/[\s\-'’"(]/.test(f[i-1]))?1.5:2}
+const alts=x=>Array.isArray(x)?x:String(x||'').split(',').map(t=>t.trim()).filter(Boolean); // the backup stores alternates as comma-separated strings
+const LYRIC_LINES={}; // version id → [{script,n,text}]
+for(const v of D.versions)LYRIC_LINES[v.id]=SCRIPTS.flatMap(s=>numbered(v[s.k]).filter(l=>!l.blank).map(l=>({script:s.k,n:l.n,text:stripHtml(l.html)})));
+function search(q){
+  const needle=fold(q.trim());const res={video:[],song:[],artist:[],track:[],album:[]};if(needle.f.length<1)return res;
+  const lyricsOk=needle.f.length>=3;
+  for(const v of D.videos){const sc=score(v.title,needle);if(sc!==null)res.video.push({type:'video',id:v.id,score:sc,v})}
+  for(const s of D.songs){
+    let sc=null,by=null;const names=[['name',s.name],['english',s.english_name],...alts(s.alternate_titles).map(t=>['alt',t]),...alts(s.alternate_spellings).map(t=>['alt',t])];
+    for(const[k,t]of names){if(!t)continue;const x=score(t,needle);if(x!==null){const adj=x+(k==='name'?0:k==='english'?3:4);if(sc===null||adj<sc){sc=adj;by=k}}}
+    const hits=[];
+    if(lyricsOk)for(const ver of VERS[s.id]||[])for(const l of LYRIC_LINES[ver.id]){if(matches(l.text,needle).length)hits.push({ver,...l})}
+    if(sc!==null||hits.length)res.song.push({type:'song',id:s.id,score:sc??5,by:sc===null?'lyrics':by,hits,s});
+  }
+  for(const a of D.artists){const sc=score(a.name,needle);if(sc!==null)res.artist.push({type:'artist',id:a.id,score:sc,a})}
+  for(const t of D.tracks){const sc=score(t.name,needle);if(sc!==null)res.track.push({type:'track',id:t.id,score:sc,t})}
+  for(const a of D.albums){const sc=score(a.name,needle);if(sc!==null)res.album.push({type:'album',id:a.id,score:sc,a})}
+  const nm=r=>(r.v?.title||r.s?.name||r.a?.name||r.t?.name||'');
+  for(const k in res)res[k].sort((x,y)=>x.score-y.score||nm(x).localeCompare(nm(y)));
+  res.needle=needle;return res;
+}
+
+const tip=document.getElementById('tip');
+/* ---------------- state ---------------- */
+const DEFAULT_SONG=D.songs.find(s=>s.name==='Saryglarlar')?.id||D.songs[0].id;
+const DEFAULTS={variant:'A',song:DEFAULT_SONG.slice(0,8),ver:'0',sc:'cyr',scs:'cyr,eng',q:'',cur:'3',res:'0'};
+const S={...DEFAULTS};const qs=new URLSearchParams(location.search);for(const k in DEFAULTS)if(qs.has(k))S[k]=qs.get(k);
+function set(k,v,{rerender=true}={}){S[k]=String(v);const u=new URL(location);for(const k2 in S){if(S[k2]!==DEFAULTS[k2])u.searchParams.set(k2,S[k2]);else u.searchParams.delete(k2)}history.replaceState(null,'',u);if(rerender)render()}
+const song=()=>D.songs.find(s=>s.id.startsWith(S.song))||SONG[DEFAULT_SONG];
+const versions=()=>VERS[song().id]||[];
+const verIdx=()=>Math.min(Math.max(+S.ver||0,0),Math.max(versions().length-1,0));
+const version=()=>versions()[verIdx()];
+const VARIANTS={A:'Reader — one Script, Version pills, grouped dropdown',B:'Stack — interlinear Scripts, Version select, flat ranked page',C:'Columns — parallel Scripts, Version stepper, Song-centric results'};
+function cycle(d){const ks=Object.keys(VARIANTS);set('variant',ks[(ks.indexOf(S.variant)+d+ks.length)%ks.length])}
+function pickSong(id,verId){set('song',id.slice(0,8),{rerender:false});const vs=VERS[id]||[];let i=verId?vs.findIndex(v=>v.id===verId):0;if(i<0)i=0;set('ver',i,{rerender:false});set('cur',3,{rerender:false});set('res','0')}
+function openingVersionIndex(s){const vs=VERS[s.id]||[];const t=D.tracks.find(t=>t.song_id===s.id&&t.version_id);const i=t?vs.findIndex(v=>v.id===t.version_id):-1;return i<0?0:i}
+
+/* ---------------- shared pieces ---------------- */
+const hash=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))|0;return Math.abs(h)};
+const thumb=id=>{const h=hash(id)%360;return `--th:linear-gradient(135deg,hsl(${h} 35% 22%),hsl(${(h+60)%360} 40% 12%))`};
+const fmt=d=>{if(d==null)return'–:––';d=Math.round(d);const h=Math.floor(d/3600),m=Math.floor(d%3600/60),s=d%60;return(h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0')};
+const ICON_LAPTOP='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M1 20h22"/></svg>';
+const ICON_DRIVE='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 15h18"/><circle cx="17.5" cy="17.5" r="0.9" fill="currentColor" stroke="none"/></svg>';
+const avail=r=>`<span class="avail ${r}" title="${r==='local'?'Local copy':'External drive'}">${r==='local'?ICON_LAPTOP:ICON_DRIVE}</span>`;
+const artistCol=a=>1+(hash(a)%8);
+const tagArtist=a=>`<span class="tag" style="--c:var(--t${artistCol(a)})">${esc(a)}</span>`;
+const CONCERT=D.videos.filter(v=>v.dur&&v.dur>1800&&v.dur<4000).sort((a,b)=>b.dur-a.dur)[0]; // a real long Video stands in for the concert
+const CHAPTER_SONGS=['Saryglarlar','Öske cherde','Mezhegei','Alash','Xoor chonga','Aa-shuu, dekei-oo','Kozhai-bile Torgalyg','Dadyr-Dadyr'].map(n=>D.songs.find(s=>s.name===n)).filter(Boolean);
+function stage(){
+  const s=song();const vids=[...(SONG_VIDS[s.id]||[])].map(id=>VID[id]);const v=CONCERT;
+  const title=v.title;
+  const chapters=CHAPTER_SONGS.map((cs,i)=>{const tv=D.tracks.find(t=>t.song_id===cs.id&&t.version_id);return{s:cs,t:i*412+37,ver:tv?.version_id}});
+  return `<div class="stage">
+    <div class="video" style="${thumb(v?v.id:s.id)}"><div class="osd">${v.h}p · ${v.root==='local'?'local copy':'/Volumes/General'} · ${fmt(v.dur)} · 1.0×</div><div class="play">▶</div></div>
+    <div class="timeline"><div class="done"></div>${chapters.map((c,i)=>`<i style="left:${(i/chapters.length)*100}%"></i>`).join('')}</div>
+    <h1>${esc(title)}</h1>
+    <div class="tags" style="margin-top:6px">${avail(v.root)}<span class="tag" style="--c:var(--t3)">concert</span>${[...(SONG_ARTISTS[s.id]||[])].slice(0,3).map(a=>tagArtist(ART[a].name)).join('')}<span class="dim" style="margin-left:6px">${vids.length} other Video${vids.length===1?'':'s'} of “${esc(s.name)}” in the library</span></div>
+    <div class="film">${chapters.map(c=>`<div class="ch ${c.s.id===s.id?'cur':''}" style="${thumb(c.s.id)}" onclick="pickSong('${c.s.id}','${c.ver||''}')"><div class="strip">${'<i></i>'.repeat(6)}</div><div class="t"><span>${fmt(c.t)}</span><span>♪${c.ver?' <span class="dim">v</span>':''}</span></div><div class="n">${esc(c.s.name)}</div></div>`).join('')}</div>
+    <p class="note">Chapters are synthetic (a fake concert of 8 Songs that have lyrics). A chapter marked <span class="mono">v</span> points at a specific Version (a real Track Version from the backup); clicking it opens that Version. The current line advances with <kbd>space</kbd> while the stage is focused, or the ▶ sync button in the drawer.</p>
+    <div class="keys"><span><kbd>space</kbd> next line</span><span><kbd>/</kbd> search</span><span><kbd>esc</kbd> close results</span><span><kbd>[</kbd><kbd>]</kbd> prev/next footnote</span><span><kbd>←</kbd><kbd>→</kbd> variant</span></div>
+  </div>`;
+}
+function footnoteList(v,scripts){
+  const items=[];for(const k of scripts){const sdef=SCRIPTS.find(x=>x.k===k);const used=new Set(markersOf(v[k]||''));for(const e of v[sdef.fn]||[])items.push({k,e,unref:!used.has(e.id)})}
+  if(!items.length)return'';
+  const multi=scripts.length>1;
+  return `<div class="fnh"><span>Footnotes</span><span class="dim" style="letter-spacing:0;text-transform:none;font-weight:400">${items.length}</span></div><ul class="fnlist">${items.map(({k,e,unref})=>`<li id="fn-${k}-${e.id}" class="${unref?'unref':''}"><b>${e.id}</b><span>${e.text||'<i class="dim">(empty)</i>'}</span>${multi?`<span class="sc">${SCRIPTS.find(x=>x.k===k).label}</span>`:''}</li>`).join('')}</ul>`;
+}
+const fnMapFor=(v,k)=>entriesById(v[SCRIPTS.find(x=>x.k===k).fn]);
+const hitLines=(v,needle)=>{const s=new Set();if(!needle?.f||needle.f.length<3)return s;for(const l of LYRIC_LINES[v.id])if(matches(l.text,needle).length)s.add(l.n);return s};
+
+/* ======================= A — Reader ======================= */
+function drawerA(){
+  const s=song(),vs=versions(),v=version();if(!v)return `<div class="drawer vA"><div class="hd"><div class="row"><span class="ttl">${esc(s.name)}</span></div></div><div class="body empty">This Song has no Version in the Mirror.</div></div>`;
+  const pres=present(v),sc=clampScript(S.sc,pres),fm=fnMapFor(v,sc),cur=+S.cur,hits=hitLines(v,S.q?fold(S.q):null);
+  const lines=numbered(v[sc]);
+  return `<div class="drawer vA">
+   <div class="hd">
+    <div class="row"><span class="ttl">${esc(s.name)}${s.english_name?`<span class="en">· ${esc(s.english_name)}</span>`:''}</span>
+     <span class="seg">${SCRIPTS.map(x=>`<button class="${sc===x.k?'on':''}" ${pres.includes(x.k)?'':'disabled title="This Version has no '+x.label+'"'} onclick="set('sc','${x.k}')">${x.label}</button>`).join('')}</span></div>
+    ${vs.length>1?`<div class="pills">${vs.map((x,i)=>`<button class="pill ${i===verIdx()?'on':''}" onclick="set('ver',${i})">${esc(x.label)}${TRACK_VER.has(x.id)?'<span class="b">· this chapter</span>':''}</button>`).join('')}</div>`:''}
+   </div>
+   <div class="body" id="lyrbody"><div class="lyr" lang="${SCRIPTS.find(x=>x.k===sc).lang}">${lines.map(l=>l.blank?'<div class="gap"></div>':`<div class="l ${l.n===cur?'cur':''} ${hits.has(l.n)?'hit':''}" onclick="set('cur',${l.n})"><span class="ln">${l.n}</span><span>${S.q&&hits.has(l.n)?hlHtml(l.html,fm,sc):lineHtml(l.html,fm,sc)}</span></div>`).join('')}</div>${footnoteList(v,[sc])}
+   <p class="note">A: the archive's model. One Script at a time (segmented, disabled when the Version lacks it), Versions as pills under the title (${vs.length} here), footnotes for the shown Script only. Hover a marker for its text, click it to jump.</p></div>
+  </div>`;
+}
+function hlHtml(html,fm,sc){ // highlight query inside a line while keeping markers: mark the stripped text, then re-append markers at the end
+  const txt=stripHtml(html);const ids=markersOf(html);return hl(txt,fold(S.q))+ids.map(id=>`<sup class="fn${fm.get(id)?'':' orphan'}" data-fn="${id}" data-sc="${sc}" tabindex="0">${id}</sup>`).join('');
+}
+function resultsA(R){
+  const groups=[['video','Videos'],['song','Songs'],['artist','Artists'],['track','Tracks'],['album','Albums']];const n=groups.reduce((a,[k])=>a+R[k].length,0);
+  if(!n)return `<div class="dd"><div class="empty" style="padding:12px">No results for “${esc(S.q)}”</div></div>`;
+  return `<div class="dd">${groups.map(([k,lab])=>R[k].length?`<h5><span>${lab}</span><span>${R[k].length}</span></h5>${R[k].slice(0,8).map(r=>rowA(r,R.needle)).join('')}${R[k].length>8?`<div class="r dim">… ${R[k].length-8} more</div>`:''}`:'').join('')}</div>`;
+}
+function rowA(r,nd){
+  if(r.type==='video'){const songs=[...(VID_SONGS[r.id]||[])].map(x=>SONG[x].name);return `<div class="r" onclick="openVideo('${r.id}')"><span class="nm">${hl(r.v.title,nd)}</span><span class="typ video">video · ${fmt(r.v.dur)}</span>${songs.length?`<span class="by">♪ ${esc(songs.join(', '))}</span>`:''}</div>`}
+  if(r.type==='song'){const h=r.hits[0];return `<div class="r" onclick="pickSong('${r.id}')"><span class="nm">${hl(r.s.name,nd)}${r.s.english_name?` <span class="en">· ${hl(r.s.english_name,nd)}</span>`:''}</span><span class="typ song">song${r.by==='lyrics'?' · lyrics':''}</span>${h?`<span class="sn">${hl(h.text,nd)}</span>`:''}</div>`}
+  if(r.type==='artist')return `<div class="r"><span class="nm">${hl(r.a.name,nd)}</span><span class="typ artist">artist</span></div>`;
+  if(r.type==='track'){const al=ALB[r.t.album_id];return `<div class="r" ${r.t.song_id?`onclick="pickSong('${r.t.song_id}','${r.t.version_id||''}')"`:''}><span class="nm">${hl(r.t.name,nd)} <span class="en">· ${esc(al?.name||'')}</span></span><span class="typ track">track</span><span class="by">by ${esc(trackArtists(r.t).join(' & ')||'—')}${r.t.song_id?' · ♪ has lyrics':''}</span></div>`}
+  if(r.type==='album')return `<div class="r"><span class="nm">${hl(r.a.name,nd)}</span><span class="typ album">album${r.a.year?' · '+r.a.year:''}</span><span class="by">${esc(ART[r.a.artist_id]?.name||'Various Artists')}</span></div>`;
+}
+function openVideo(id){const ss=[...(VID_SONGS[id]||[])];if(ss.length)pickSong(ss[0]);else set('res','0')}
+
+/* ======================= B — Stack ======================= */
+function drawerB(){
+  const s=song(),vs=versions(),v=version();if(!v)return `<div class="drawer vB"><div class="hd"><div class="row"><span class="ttl">${esc(s.name)}</span></div></div><div class="body empty">This Song has no Version in the Mirror.</div></div>`;
+  const pres=present(v);let on=S.scs.split(',').filter(k=>pres.includes(k));if(!on.length)on=[pres[0]];
+  const primary=on[0];const cur=+S.cur,hits=hitLines(v,S.q?fold(S.q):null);
+  const per=Object.fromEntries(on.map(k=>[k,numbered(v[k])]));const byN=k=>Object.fromEntries(per[k].filter(l=>!l.blank).map(l=>[l.n,l]));const maps=Object.fromEntries(on.map(k=>[k,byN(k)]));
+  const maxN=Math.max(...on.map(k=>per[k].filter(l=>!k||!l.blank).length));
+  const blanksAfter=new Set();{let n=0;for(const l of per[primary]){if(l.blank)blanksAfter.add(n);else n=l.n}}
+  const rows=[];for(let n=1;n<=maxN;n++){rows.push(`<div class="l ${n===cur?'cur':''} ${hits.has(n)?'hit':''}" onclick="set('cur',${n})"><span class="ln">${n}</span><span>${on.map((k,i)=>{const l=maps[k][n];const fm=fnMapFor(v,k);const body=l?(S.q&&hits.has(n)?hlHtml(l.html,fm,k):lineHtml(l.html,fm,k)):'<span class="dim">—</span>';return i===0?`<div lang="${SCRIPTS.find(x=>x.k===k).lang}">${body}</div>`:`<div class="sub ${k}" lang="${SCRIPTS.find(x=>x.k===k).lang}">${body}</div>`}).join('')}</span></div>`);if(blanksAfter.has(n))rows.push('<div class="gap"></div>')}
+  return `<div class="drawer vB">
+   <div class="hd">
+    <div class="row"><span class="ttl">${esc(s.name)}${s.english_name?`<span class="en">· ${esc(s.english_name)}</span>`:''}</span>
+     ${vs.length>1?`<select onchange="set('ver',this.value)" title="Version">${vs.map((x,i)=>`<option value="${i}" ${i===verIdx()?'selected':''}>${esc(x.label)}${TRACK_VER.has(x.id)?' · this chapter':''}  (${i+1}/${vs.length})</option>`).join('')}</select>`:`<span class="dim">1 Version</span>`}</div>
+    <div class="row" style="justify-content:flex-start">${SCRIPTS.map(x=>`<label class="chip tgl ${on.includes(x.k)?'on':'off'}" ${pres.includes(x.k)?'':'style="visibility:hidden"'}><input type="checkbox" ${on.includes(x.k)?'checked':''} onchange="toggleScript('${x.k}')">${x.label}</label>`).join('')}<button class="chip" style="margin-left:auto" onclick="toggleSync()" id="syncbtn">${SYNC?'■ stop':'▶ sync'}</button></div>
+   </div>
+   <div class="body" id="lyrbody"><div class="lyr">${rows.join('')}</div>${footnoteList(v,on)}
+   <p class="note">B: Scripts are checkboxes and stack under each line (first checked = primary); line numbers are shared so the Scripts stay aligned even when a Version's translation has fewer lines. Versions in a select with “n/N”. Footnotes from every shown Script, labelled.</p></div>
+  </div>`;
+}
+function toggleScript(k){const v=version();const pres=present(v);let on=S.scs.split(',').filter(x=>pres.includes(x));if(on.includes(k)){if(on.length>1)on=on.filter(x=>x!==k)}else on=SCRIPTS.map(x=>x.k).filter(x=>on.includes(x)||x===k);set('scs',on.join(','))}
+function resultsB(R){
+  const all=[...R.video,...R.song,...R.artist,...R.track,...R.album].sort((x,y)=>x.score-y.score||(x.type>y.type?1:-1));
+  const counts=['video','song','artist','track','album'].map(k=>`<span><b>${R[k].length}</b> ${k}${R[k].length===1?'':'s'}</span>`).join('');
+  return `<div class="res"><div class="sum"><span>“${esc(S.q)}”</span>${counts}<span class="dim">ranked: exact 0 · prefix 1 · word 1.5 · contains 2 · english +3 · alternate +4 · lyrics-only 5</span></div>
+   ${all.length?all.slice(0,80).map(r=>rowB(r,R.needle)).join(''):`<div class="empty">No results</div>`}${all.length>80?`<div class="empty">… ${all.length-80} more</div>`:''}</div>`;
+}
+function rowB(r,nd){
+  const typ=`<span class="typ ${r.type}">${r.type}<span class="dim" style="margin-left:6px">${r.score}</span></span>`;
+  if(r.type==='video'){const songs=[...(VID_SONGS[r.id]||[])].map(x=>SONG[x].name);return `<div class="row" onclick="openVideo('${r.id}')">${typ}<span class="nm">${hl(r.v.title,nd)}</span><span class="by">${fmt(r.v.dur)} · ${r.v.root}${songs.length?' · ♪ '+esc(songs.join(', ')):''}</span></div>`}
+  if(r.type==='song'){const byVer=new Map();for(const h of r.hits){(byVer.get(h.ver)??byVer.set(h.ver,[]).get(h.ver)).push(h)}const lines=[];for(const[ver,hs]of byVer){for(const h of hs.slice(0,3))lines.push(`<div><span class="w">${esc(ver.label)} · ${SCRIPTS.find(x=>x.k===h.script).label} · ${h.n}</span><span onclick="event.stopPropagation();pickSong('${r.id}','${ver.id}');set('cur',${h.n})">${hl(h.text,nd)}</span></div>`);if(hs.length>3)lines.push(`<div><span class="w"></span><span class="dim">… ${hs.length-3} more lines in ${esc(ver.label)}</span></div>`)}
+    return `<div class="row" onclick="pickSong('${r.id}')">${typ}<span class="nm">${hl(r.s.name,nd)}${r.s.english_name?` <span class="en">· ${hl(r.s.english_name,nd)}</span>`:''}</span><span class="by">${(VERS[r.id]||[]).length} version${(VERS[r.id]||[]).length===1?'':'s'} · ${(SONG_VIDS[r.id]||new Set()).size} videos · matched in ${r.by}</span>${lines.length?`<div class="lines">${lines.join('')}</div>`:''}</div>`}
+  if(r.type==='artist')return `<div class="row">${typ}<span class="nm">${hl(r.a.name,nd)}</span><span class="by"></span></div>`;
+  if(r.type==='track')return `<div class="row" ${r.t.song_id?`onclick="pickSong('${r.t.song_id}','${r.t.version_id||''}')"`:''}>${typ}<span class="nm">${hl(r.t.name,nd)} <span class="en">· ${esc(ALB[r.t.album_id]?.name||'')}</span></span><span class="by">${esc(trackArtists(r.t).join(' & ')||'—')}${r.t.song_id?' · ♪':''}</span></div>`;
+  if(r.type==='album')return `<div class="row">${typ}<span class="nm">${hl(r.a.name,nd)}</span><span class="by">${esc(ART[r.a.artist_id]?.name||'Various Artists')}${r.a.year?' · '+r.a.year:''}</span></div>`;
+}
+
+/* ======================= C — Columns ======================= */
+function drawerC(){
+  const s=song(),vs=versions(),v=version();
+  if(S.res==='1'&&S.q)return `<div class="drawer vC"><div class="hd"><div class="row"><span class="ttl">Results <span class="en">· “${esc(S.q)}”</span></span><button class="chip" onclick="set('res','0')">× back to lyrics</button></div></div><div class="body">${resultsC(search(S.q))}</div></div>`;
+  if(!v)return `<div class="drawer vC"><div class="hd"><div class="row"><span class="ttl">${esc(s.name)}</span></div></div><div class="body empty">This Song has no Version in the Mirror.</div></div>`;
+  const pres=present(v);let on=S.scs.split(',').filter(k=>pres.includes(k));if(!on.length)on=[pres[0]];on=SCRIPTS.map(x=>x.k).filter(k=>on.includes(k));
+  const cur=+S.cur,hits=hitLines(v,S.q?fold(S.q):null);const i=verIdx();
+  const per=Object.fromEntries(on.map(k=>[k,numbered(v[k])]));const maps=Object.fromEntries(on.map(k=>[k,Object.fromEntries(per[k].filter(l=>!l.blank).map(l=>[l.n,l]))]));
+  const maxN=Math.max(...on.map(k=>per[k].filter(l=>!l.blank).length));const blanksAfter=new Set();{let n=0;for(const l of per[on[0]]){if(l.blank)blanksAfter.add(n);else n=l.n}}
+  let cols=`<span></span>${on.map(k=>`<h6>${SCRIPTS.find(x=>x.k===k).label}</h6>`).join('')}`;
+  for(let n=1;n<=maxN;n++){cols+=`<div class="r ${n===cur?'cur':''} ${hits.has(n)?'hit':''}" onclick="set('cur',${n})"><span class="ln">${n}</span>${on.map(k=>{const l=maps[k][n];const fm=fnMapFor(v,k);return `<div class="c" lang="${SCRIPTS.find(x=>x.k===k).lang}">${l?(S.q&&hits.has(n)?hlHtml(l.html,fm,k):lineHtml(l.html,fm,k)):'<span class="dim">—</span>'}</div>`}).join('')}</div>`;if(blanksAfter.has(n))cols+='<div class="gap"></div>'}
+  return `<div class="drawer vC">
+   <div class="hd">
+    <div class="row"><span class="ttl">${esc(s.name)}${s.english_name?`<span class="en">· ${esc(s.english_name)}</span>`:''}</span>
+     ${vs.length>1?`<span class="step"><button onclick="set('ver',${(i-1+vs.length)%vs.length})" title="Previous Version">‹</button><span class="lab">${esc(v.label)}<span class="b">${i+1} of ${vs.length}${TRACK_VER.has(v.id)?' · this chapter':''}</span></span><button onclick="set('ver',${(i+1)%vs.length})" title="Next Version">›</button></span>`:`<span class="dim">${esc(v.label)}</span>`}</div>
+    <div class="row" style="justify-content:flex-start">${SCRIPTS.map(x=>`<button class="chip tgl ${on.includes(x.k)?'on':'off'}" ${pres.includes(x.k)?'':'disabled style="opacity:.25"'} onclick="toggleScript('${x.k}')">${on.includes(x.k)?'●':'○'} ${x.label}</button>`).join('')}<button class="chip" style="margin-left:auto" onclick="toggleSync()" id="syncbtn">${SYNC?'■ stop':'▶ sync'}</button></div>
+   </div>
+   <div class="body" id="lyrbody"><div class="cols" style="--nc:${on.length}">${cols}</div>${footnoteList(v,on)}
+   <p class="note">C: Scripts are columns (chips toggle them; the drawer widens to fit), lines aligned by number. Versions in a ‹ › stepper that wraps. Search results replace this drawer and group by Song with every matching line under its Version.</p></div>
+  </div>`;
+}
+function resultsC(R){
+  const nd=R.needle;const n=['video','song','artist','track','album'].reduce((a,k)=>a+R[k].length,0);if(!n)return `<div class="empty">No results for “${esc(S.q)}”</div>`;
+  // song-centric: a card per Song with its hit lines (by Version) and its Videos/Tracks nested; Videos/Tracks with no Song fall through to a plain list
+  const vidsUsed=new Set(),tracksUsed=new Set();
+  const cards=R.song.map(r=>{
+    const byVer=new Map();for(const h of r.hits){(byVer.get(h.ver)??byVer.set(h.ver,[]).get(h.ver)).push(h)}
+    const vids=[...(SONG_VIDS[r.id]||[])].map(id=>VID[id]);vids.forEach(v=>vidsUsed.add(v.id));
+    const trs=D.tracks.filter(t=>t.song_id===r.id);trs.forEach(t=>tracksUsed.add(t.id));
+    return `<div class="card"><div class="ch" onclick="pickSong('${r.id}')"><span class="typ song">song</span><span class="nm">${hl(r.s.name,nd)}</span>${r.s.english_name?`<span class="en">${hl(r.s.english_name,nd)}</span>`:''}<span class="dim" style="margin-left:auto;font-size:.85em">${(VERS[r.id]||[]).length} ver · matched in ${r.by}</span></div>
+     ${[...byVer].map(([ver,hs])=>`<div class="ver"><div class="vl"><span>${esc(ver.label)}</span><span>${hs.length} line${hs.length===1?'':'s'}</span></div>${hs.slice(0,4).map(h=>`<div class="q" onclick="pickSong('${r.id}','${ver.id}');set('cur',${h.n});set('scs','${h.script}')"><span class="sc">${SCRIPTS.find(x=>x.k===h.script).label.slice(0,3)} ${h.n}</span><span>${hl(h.text,nd)}</span></div>`).join('')}${hs.length>4?`<div class="q"><span class="sc"></span><span class="dim">… ${hs.length-4} more</span></div>`:''}</div>`).join('')}
+     ${vids.length||trs.length?`<div class="kids">${vids.slice(0,4).map(v=>`<div onclick="pickSong('${r.id}')"><span class="typ video">video</span>${avail(v.root)}<span>${hl(v.title,nd)}</span><span class="dim mono" style="font-size:.8em">${fmt(v.dur)}</span></div>`).join('')}${vids.length>4?`<div class="dim">… ${vids.length-4} more videos</div>`:''}${trs.slice(0,3).map(t=>`<div onclick="pickSong('${r.id}','${t.version_id||''}')"><span class="typ track">track</span><span>${hl(t.name,nd)} <span class="dim">· ${esc(ALB[t.album_id]?.name||'')} · ${esc(trackArtists(t).join(' & '))}</span></span></div>`).join('')}${trs.length>3?`<div class="dim">… ${trs.length-3} more tracks</div>`:''}</div>`:''}
+    </div>`}).join('');
+  const loose=[...R.video.filter(r=>!vidsUsed.has(r.id)).map(r=>`<div class="card"><div class="ch" onclick="openVideo('${r.id}')"><span class="typ video">video</span>${avail(r.v.root)}<span class="nm" style="font-weight:500">${hl(r.v.title,nd)}</span><span class="dim mono" style="margin-left:auto;font-size:.8em">${fmt(r.v.dur)}</span></div></div>`),
+    ...R.track.filter(r=>!tracksUsed.has(r.id)).slice(0,10).map(r=>`<div class="card"><div class="ch"><span class="typ track">track</span><span class="nm" style="font-weight:500">${hl(r.t.name,nd)}</span><span class="dim">· ${esc(ALB[r.t.album_id]?.name||'')} · ${esc(trackArtists(r.t).join(' & ')||'—')}</span></div></div>`)];
+  const side=[...R.artist.map(r=>`<span class="pill"><span class="typ artist" style="margin-right:6px">artist</span>${hl(r.a.name,nd)}</span>`),...R.album.map(r=>`<span class="pill"><span class="typ album" style="margin-right:6px">album</span>${hl(r.a.name,nd)}${r.a.year?` <span class="dim">${r.a.year}</span>`:''}</span>`)];
+  return `${cards}${loose.length?`<div class="fnh" style="margin-top:8px"><span>Videos & Tracks without a Song</span><span class="dim">${R.video.length-vidsUsed.size+R.track.filter(r=>!tracksUsed.has(r.id)).length}</span></div>${loose.join('')}`:''}${side.length?`<div class="side">${side.join('')}</div>`:''}`;
+}
+
+/* ---------------- render ---------------- */
+let SYNC=null;
+function toggleSync(){if(SYNC){clearInterval(SYNC);SYNC=null}else SYNC=setInterval(()=>advance(1),1600);render()}
+function advance(d){const v=version();if(!v)return;const k=S.variant==='A'?clampScript(S.sc,present(v)):(S.scs.split(',').find(x=>present(v).includes(x))||present(v)[0]);const n=numbered(v[k]).filter(l=>!l.blank).length;let c=+S.cur+d;if(c>n)c=1;if(c<1)c=n;set('cur',c)}
+function render(){
+  tip.style.display='none';
+  const R=S.q?search(S.q):null;
+  const top=`<div class="top"><img class="brand" src="olchey.svg" alt="" width="28" height="28"><div class="tabs"><button>Library</button><button class="on">Now playing</button><button>Favorites</button><button>Artists</button></div>
+    <div class="sbox"><input class="search" id="q" placeholder="Search titles, artists, lyrics…" value="${esc(S.q)}" autocomplete="off" oninput="onQ(this.value)" onfocus="if(S.q)set('res','1')"><span class="k"><kbd>/</kbd></span>${S.variant==='A'&&S.res==='1'&&R?resultsA(R):''}</div></div>`;
+  const drawer={A:drawerA,B:drawerB,C:drawerC}[S.variant]();
+  const dw=S.variant==='C'?`${Math.max(400,(S.scs.split(',').length)*300)}px`:'420px';
+  document.getElementById('app').innerHTML=top+`<div class="now v${S.variant}" style="--dw:${dw}">${stage()}${drawer}${S.variant==='B'&&S.res==='1'&&R?resultsB(R):''}</div>`;
+  document.getElementById('barlab').textContent=`${S.variant} — ${VARIANTS[S.variant].split(' — ')[1]}`;
+  const v=version();document.getElementById('barst').textContent=`song=${song().name} · ver ${verIdx()+1}/${versions().length}${v?' "'+v.label+'"':''} · scripts=${S.variant==='A'?clampScript(S.sc,present(v)):S.scs} · present=${present(v).join('+')||'none'} · cur=${S.cur}${R?` · q="${S.q}" → ${['video','song','artist','track','album'].map(k=>k[0]+R[k].length).join(' ')}`:''}`;
+  const q=document.getElementById('q');if(document.activeElement?.id==='q'||QFOCUS){q.focus();q.setSelectionRange(q.value.length,q.value.length)}
+  const cur=document.querySelector('#lyrbody .l.cur');if(cur&&SYNC)cur.scrollIntoView({block:'center',behavior:'smooth'});
+}
+let QFOCUS=false,QT=null;
+function onQ(val){QFOCUS=true;clearTimeout(QT);QT=setTimeout(()=>{set('q',val,{rerender:false});set('res',val?'1':'0');QFOCUS=false},120)}
+
+/* footnote tooltip + jump, keys */
+document.addEventListener('mouseover',e=>{const s=e.target.closest('sup.fn');if(!s)return;const v=version();if(!v)return;const e2=fnMapFor(v,s.dataset.sc).get(+s.dataset.fn);tip.innerHTML=e2?`<b>${e2.id}</b>${e2.text||'<i class="dim">(empty)</i>'}`:`<b>${s.dataset.fn}</b><i class="dim">no footnote with this number (orphan marker)</i>`;tip.style.display='block';const r=s.getBoundingClientRect();tip.style.left=Math.min(r.left,innerWidth-340)+'px';tip.style.top=(r.bottom+6)+'px'});
+document.addEventListener('mouseout',e=>{if(e.target.closest?.('sup.fn'))tip.style.display='none'});
+document.addEventListener('click',e=>{const s=e.target.closest('sup.fn');if(s){e.stopPropagation();const el=document.getElementById(`fn-${s.dataset.sc}-${s.dataset.fn}`);if(el){el.scrollIntoView({block:'center',behavior:'smooth'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600)}return}
+  if(S.variant==='A'&&S.res==='1'&&!e.target.closest('.sbox'))set('res','0')});
+document.addEventListener('keydown',e=>{
+  const inField=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if(e.key==='Escape'){if(S.res==='1'){set('res','0');document.getElementById('q').blur()}else document.activeElement?.blur();return}
+  if(inField)return;
+  if(e.key==='/'){e.preventDefault();const q=document.getElementById('q');q.focus();if(S.q)set('res','1');return}
+  if(e.key==='ArrowLeft')cycle(-1);else if(e.key==='ArrowRight')cycle(1);
+  else if(e.key===' '){e.preventDefault();advance(1)}
+  else if(e.key===']'||e.key==='['){const sups=[...document.querySelectorAll('#lyrbody sup.fn')];if(!sups.length)return;const i=sups.indexOf(document.activeElement);const j=(i+(e.key===']'?1:-1)+sups.length)%sups.length;sups[j].focus();sups[j].dispatchEvent(new MouseEvent('mouseover',{bubbles:true}))}
+});
+render();
+</script>
+</body>
+</html>

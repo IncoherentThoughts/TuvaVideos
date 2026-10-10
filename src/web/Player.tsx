@@ -375,11 +375,10 @@ export function Player({ video, startT, chapters, onStep }: Props) {
     window.addEventListener("pagehide", leave);
     document.addEventListener("visibilitychange", vis);
 
-    // frame loop: time, buffered span, A-B loop; the 5 s Resume cadence rides the same loop
-    let raf = 0;
+    // The tick: time, buffered span, A-B loop and the 5 s Resume cadence. A timer, not requestAnimationFrame: a tab in
+    // the background keeps playing audio, and rAF stops there, which would silently stop Resume writes and the loop.
     let lastUi = 0;
-    const loop = (now: number) => {
-      raf = requestAnimationFrame(loop);
+    const tick = () => {
       if (!r.started) return;
       const t = v.currentTime;
       r.lastPos = t;
@@ -388,6 +387,7 @@ export function Player({ video, startT, chapters, onStep }: Props) {
         if (tgt != null) seekTo(tgt);
         if (clock.current.tick(Date.now(), true)) writeResume();
       }
+      const now = performance.now();
       if (now - lastUi >= 100) {
         lastUi = now;
         if (!throttle.current.busy) setTime(t);
@@ -396,15 +396,16 @@ export function Player({ video, startT, chapters, onStep }: Props) {
         setBufEnd(end);
       }
     };
-    raf = requestAnimationFrame(loop);
+    const timer = setInterval(tick, 50);
 
     return () => {
-      cancelAnimationFrame(raf);
+      clearInterval(timer);
       document.removeEventListener("fullscreenchange", fsChange);
       window.removeEventListener("pagehide", leave);
       document.removeEventListener("visibilitychange", vis);
     };
   }, []);
+
   /** The element failed: ask the server why. A Fallback still being made is "preparing"; a gone Copy fails over. */
   const onMediaError = async () => {
     const r = R.current;

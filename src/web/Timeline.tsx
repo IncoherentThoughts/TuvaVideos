@@ -51,6 +51,7 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
   const [hover, setHover] = useState<{ x: number; t: number } | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const moved = useRef(false);
+  const dragging = useRef(false); // the handlers read the ref: state would lag a burst of pointer events
   const dur = duration && duration > 0 ? duration : null;
 
   const at = (e: PointerEvent) => {
@@ -75,7 +76,10 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
       data-keep-focus=""
       onPointerDown={(e) => {
         if (!dur || e.button !== 0) return;
-        bar.current!.setPointerCapture(e.pointerId);
+        try {
+          bar.current!.setPointerCapture(e.pointerId);
+        } catch {}
+        dragging.current = true;
         const p = at(e);
         moved.current = false;
         setDrag(p.t);
@@ -85,19 +89,23 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
         if (!dur) return;
         const p = at(e);
         setHover({ x: Math.min(p.w - half, Math.max(half, p.x)), t: p.t });
-        if (drag !== null) {
+        if (dragging.current) {
           moved.current = true;
           setDrag(p.t);
           onSeek(p.t, true);
         }
       }}
       onPointerUp={(e) => {
-        if (drag === null) return;
+        if (!dragging.current) return;
+        dragging.current = false;
         const p = at(e);
         setDrag(null);
         if (moved.current) onSeek(p.t, false); // after a drag the release lands exactly where the pointer is
       }}
-      onPointerCancel={() => setDrag(null)}
+      onPointerCancel={() => {
+        dragging.current = false;
+        setDrag(null);
+      }}
       onPointerLeave={() => setHover(null)}
     >
       <div class="tl-track">

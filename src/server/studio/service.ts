@@ -385,9 +385,9 @@ export class Studio {
     }
     if (this.session !== s || this.busy) return; // a command ran meanwhile
     const young = Date.now() - s.startedAt < this.graceMs;
-    if (young && st.persistentId !== s.persistentId) return; // Music.app has not caught up with the play yet
+    if (young && (st.persistentId !== s.persistentId || st.state === "stopped")) return; // Music.app has not caught up with the play yet
+    if (st.state === "stopped") return this.end("stopped"); // checked first: a stopped player has no current track either
     if (st.persistentId !== s.persistentId) return this.end("external");
-    if (!young && st.state === "stopped") return this.end("stopped");
     this.record(st);
   }
 }

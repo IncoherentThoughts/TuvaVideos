@@ -1,0 +1,16 @@
+{
+  "takenAt": "2026-10-10T00:00:00.000Z",
+  "ms": 1,
+  "tracks": [
+    { "persistentId": "T1", "name": "Alash Oglumga", "album": "Achai", "artist": "Alash", "albumArtist": "Alash", "duration": 289.9, "cloudStatus": "subscription" },
+    { "persistentId": "T2", "name": "Dyngyldai (Live)", "album": "Where Young Grass Grows", "artist": "Huun-Huur-Tu", "albumArtist": "Huun-Huur-Tu", "duration": 240, "cloudStatus": "uploaded" },
+    { "persistentId": "T3", "name": "Barlyk River", "album": "Best Live", "artist": "Huun-Huur-Tu", "albumArtist": "Huun-Huur-Tu", "duration": 301, "cloudStatus": "matched" },
+    { "persistentId": "T4", "name": "Barlyk River", "album": "Best Live", "artist": "Alash", "albumArtist": "Alash", "duration": 255, "cloudStatus": "subscription" },
+    { "persistentId": "T5", "name": "Kozhamyk", "album": "Sketches", "artist": "Ondar", "albumArtist": "Ondar", "duration": 200, "cloudStatus": "subscription" },
+    { "persistentId": "T6", "name": "Kozhamyk", "album": "Sketches", "artist": "Ondar", "albumArtist": "Ondar", "duration": 203, "cloudStatus": "subscription" },
+    { "persistentId": "T7", "name": "Throat Song", "album": "Roots", "artist": "Kongar-ool Ondar", "albumArtist": "Various", "duration": 180, "cloudStatus": "subscription" },
+    { "persistentId": "T8", "name": "Throat Song", "album": "Roots", "artist": "Sainkho", "albumArtist": "Various", "duration": 182, "cloudStatus": "subscription" },
+    { "persistentId": "T9", "name": "Lonely", "album": "Gone", "artist": "Alash", "albumArtist": "Alash", "duration": 100, "cloudStatus": "no longer available" },
+    { "persistentId": "T10", "name": "Igil Solo", "album": "The Music of Tuva", "artist": "Various", "albumArtist": "Various", "duration": 150, "cloudStatus": "subscription" }
+  ]
+}

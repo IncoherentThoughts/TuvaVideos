@@ -283,7 +283,7 @@ export function createHandler(s: Services) {
   /** The Studio endpoints that write or drive Music.app (spec 7). Null: not one of ours. */
   async function studioPost(req: Request, p: string): Promise<Response | null> {
     let m: RegExpMatchArray | null;
-    if ((m = p.match(/^\/api\/tracks\/([0-9a-fA-F-]{8,64})\/match$/))) {
+    if ((m = p.match(/^\/api\/tracks\/([^/]+)\/match$/))) {
       const b = await readJson(req);
       if (!b || typeof b.persistentId !== "string" || !b.persistentId) return json({ error: "persistentId is required" }, 400);
       return reply(await s.studio.matchMirrorTrack(m[1]!, b.persistentId));

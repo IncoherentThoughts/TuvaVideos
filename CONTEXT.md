@@ -31,8 +31,12 @@ One of a fixed set — song, concert, interview, other — describing what the f
 _Avoid_: category, kind, genre, tag
 
 **Favorite**:
-A Video the user has starred. Filterable and searchable.
+A Video or a Chapter the user has starred. Filterable and searchable; listed in the order they were starred.
 _Avoid_: star (the gesture), like, bookmark, pin
+
+**Missing (a Copy)**:
+A Copy whose Root is mounted but whose file is no longer there. Kept, not deleted, so it revives if the file returns. A Copy on an unmounted Root is not missing, only unavailable.
+_Avoid_: deleted, gone, orphaned, stale
 
 **Resume position**:
 The timestamp the user last left a Video at; playback reopens there.
@@ -48,13 +52,17 @@ _Avoid_: marker, segment, timestamp, cue
 The association from a Video or a Chapter to a studio Track, so the user can hear the studio recording of what is being performed.
 _Avoid_: reference, attachment, match
 
-**Suggested (a link or chapter)**:
-Created by an automatic matcher rather than the user, and not yet confirmed. Behaves like a confirmed one until rejected.
+**Suggested (a link, chapter, song or type)**:
+Created by an automatic source (a YouTube comment or description, an archive Performance, the Track matcher) rather than the user, and not yet confirmed. Behaves like a confirmed one until rejected. Every Suggested thing remembers its source.
 _Avoid_: auto, pending, unverified, draft
 
 **Mirror**:
 The read-only copy of the Tuvan Lyrics Archive's entities (Song, Artist, Album, Track, Version, Footnote, Performance) imported from a backup. Edited only on the archive and re-imported; never edited here.
 _Avoid_: sync, cache, import (the act), upstream data
+
+**Latin title**:
+The Latin-script form of a Cyrillic title on a Video, Chapter or Local Artist, used so the library can be searched from a Latin keyboard. Generated once, editable afterwards, empty when the title is already Latin. Uses the archive's spelling where the archive has one, otherwise the project's transliteration table.
+_Avoid_: transliteration (the act), romanized title, english title (the archive's English name is a translation, not a transliteration)
 
 **Local Artist**:
 An Artist created here because the Mirror has no row for them. Never exported to the archive.

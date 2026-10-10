@@ -1,0 +1,423 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Issue #11: design direction for library grid, player and lyrics panel.
+  Three structurally different variants (A Console / B Wall / C Ledger) on one file, switchable with
+  ?variant= and the floating bottom bar (← → keys). The right-hand Tweaks panel changes fonts, palette,
+  tag style, density and radius; every setting lives in the URL so a state is shareable.
+  Open by double-clicking. Nothing persists. Fonts load from Google Fonts; falls back to system if offline.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TuvaVideos — design prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=PT+Sans:wght@400;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1f1e1d;--bg2:#262624;--bg3:#30302e;--line:#3d3c3a;--fg:#faf9f5;--fg2:#a8a59f;--fg3:#75726c;
+  --accent:#d97757;--accent-fg:#1a0f0a;
+  --ok:#8fcf7a;--ext:#6cb8ff;--warn:#ffcc4d;
+  --t1:#e8845f;--t2:#8fcf7a;--t3:#6cb8ff;--t4:#c59bff;--t5:#ffcc4d;--t6:#ff7eb6;--t7:#5fe0d0;--t8:#d6c7a1;
+  --font-ui:'Inter',system-ui,sans-serif;--font-lyrics:'Source Serif 4',Georgia,serif;--font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --fs:13px;--r:3px;--pad:8px;--row:30px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:var(--fs);line-height:1.4;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+kbd{font-family:var(--font-mono);font-size:.85em;background:var(--bg3);border:1px solid var(--line);border-bottom-width:2px;border-radius:var(--r);padding:0 5px;color:var(--fg2)}
+#app{position:absolute;inset:0;overflow:hidden}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--fg2)}.dim{color:var(--fg3)}
+.scroll{overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+
+/* ---- thumbnails (CSS placeholders, no images) ---- */
+.thumb{position:relative;aspect-ratio:16/9;background:var(--th);border-radius:var(--r);overflow:hidden;flex:none}
+.thumb::after{content:"";position:absolute;inset:0;background:
+  linear-gradient(115deg,rgba(255,255,255,.08),transparent 40%),
+  repeating-linear-gradient(90deg,transparent 0 23%,rgba(0,0,0,.25) 23% 25%)}
+.thumb.unavail{filter:grayscale(1) brightness(.45)}
+.thumb .dur{position:absolute;right:4px;bottom:4px;font-family:var(--font-mono);font-size:.8em;background:rgba(0,0,0,.75);padding:1px 4px;border-radius:var(--r);z-index:1}
+.strip{display:flex;gap:1px;height:14px}.strip i{flex:1;background:var(--th);opacity:.75}.strip i:nth-child(odd){filter:brightness(.7)}
+
+/* ---- tags ---- */
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:.85em;font-weight:600;line-height:1;padding:3px 6px;border-radius:var(--r);white-space:nowrap;letter-spacing:.01em;border:1px solid transparent}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+[data-tagstyle=filled] .tag{background:var(--c);color:#0b0b0b}
+[data-tagstyle=tint] .tag{background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c);border-color:color-mix(in srgb,var(--c) 45%,transparent)}
+[data-tagstyle=outline] .tag{color:var(--c);border-color:var(--c)}
+[data-tagstyle=text] .tag{color:var(--c);padding-left:0;padding-right:0}
+[data-tagstyle=text] .tag::before{content:"#";opacity:.6}
+[data-tagstyle=dot] .tag{color:var(--fg);padding-left:0}
+[data-tagstyle=dot] .tag::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c);display:inline-block}
+.tag.sug{border-style:dashed!important;opacity:.85}
+.avail{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:.8em;font-weight:600}
+.avail svg{display:block}
+.avail.local{color:var(--ok)}
+.avail.external{color:var(--ext)}
+.avail.none{color:var(--fg3);opacity:.6}.avail.none svg{stroke-dasharray:2 2}
+.star{color:var(--warn);font-weight:400}
+.fav{display:inline-grid;place-items:center;--c:var(--t3);width:20px;height:20px;border-radius:calc(var(--r) * .6);background:color-mix(in srgb,var(--t3) 18%,transparent);border:1px solid color-mix(in srgb,var(--t3) 45%,transparent);color:var(--t3);line-height:1;vertical-align:middle;position:relative;top:-1px;margin-right:6px}
+.fav svg{display:block}
+.chip{padding:3px 8px;border:1px solid var(--line);border-radius:var(--r);color:var(--fg2);font-size:.9em}
+.chip.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.seg button{padding:4px 10px;color:var(--fg2);border-right:1px solid var(--line)}.seg button:last-child{border-right:0}
+.seg button.on{background:var(--fg);color:var(--bg);font-weight:600}
+.search{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:5px 8px;color:var(--fg);outline:none;width:100%}
+.search:focus{border-color:var(--accent)}
+.fn{font-family:var(--font-mono);font-size:.7em;color:var(--accent);vertical-align:super;margin-left:2px;cursor:pointer}
+.video{position:relative;aspect-ratio:16/9;background:var(--th);border-radius:var(--r);overflow:hidden;display:grid;place-items:center}
+.video::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 60%,rgba(255,255,255,.1),transparent 60%),linear-gradient(0deg,rgba(0,0,0,.6),transparent 40%)}
+.video .play{width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.6);border:2px solid var(--fg);display:grid;place-items:center;z-index:1;font-size:18px}
+.video .osd{position:absolute;left:10px;top:8px;font-family:var(--font-mono);font-size:.85em;color:var(--fg);z-index:1;text-shadow:0 1px 2px #000}
+.timeline{position:relative;height:6px;background:var(--bg3);border-radius:var(--r);margin:8px 0}
+.timeline .done{position:absolute;left:0;top:0;bottom:0;background:var(--accent);width:37%}
+.timeline .tick{position:absolute;top:-3px;width:2px;height:12px;background:var(--fg)}
+.timeline .tick.sug{background:var(--fg3)}
+.controls{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:.9em;color:var(--fg2)}
+.controls .t{color:var(--fg)}
+.lyr p{margin:0 0 .35em;font-family:var(--font-lyrics);font-size:calc(var(--fs) * 1.18);line-height:1.55}
+.lyr p.cur{color:var(--accent)}
+.lyr.numbered p{display:grid;grid-template-columns:28px 1fr;gap:6px}
+.lyr .ln{font-family:var(--font-mono);font-size:.72em;color:var(--fg3);text-align:right;padding-top:.45em;user-select:none}
+.lyr p.cur .ln{color:var(--accent)}
+.lyr h4{font-size:.8em;text-transform:uppercase;letter-spacing:.12em;color:var(--fg3);margin:22px 0 8px;padding-top:12px;border-top:1px solid var(--line);font-weight:600}
+.fnlist{font-size:.92em;color:var(--fg2)}
+.vA .fnlist,.vC .fnlist{border-top:1px solid var(--line);margin-top:14px;padding-top:10px}
+.fnlist li{list-style:none;display:flex;gap:8px;margin-bottom:6px}.fnlist b{font-family:var(--font-mono);color:var(--accent);font-weight:600}
+.keys{display:flex;gap:10px;flex-wrap:wrap;color:var(--fg3);font-size:.85em}.keys span{display:inline-flex;gap:4px;align-items:center}
+
+/* ================= A — Console ================= */
+.vA{display:grid;grid-template-rows:38px 1fr;height:100%}
+.vA .top{display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.vA .top .brand{font-weight:700;letter-spacing:-.02em;margin-right:6px}.vA .top .brand b{color:var(--accent)}
+.vA .top .search{max-width:420px}
+.vA .body{display:grid;grid-template-columns:320px 1fr 360px;min-height:0}
+.vA .lib{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.vA .filters{display:flex;gap:4px;padding:var(--pad);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.vA .row{display:grid;grid-template-columns:54px 1fr auto;gap:8px;padding:calc(var(--pad) * .6) var(--pad);border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);align-items:center;cursor:pointer}
+.vA .row:hover{background:var(--bg2)}.vA .row.sel{background:var(--bg3);box-shadow:inset 3px 0 0 var(--accent)}
+.vA .row .ttl{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vA .row .sub{display:flex;gap:6px;align-items:center;margin-top:2px}
+.vA .center{display:flex;flex-direction:column;min-height:0;padding:var(--pad) calc(var(--pad) * 1.5)}
+.vA .chap{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;margin-top:8px;overflow:auto}
+.vA .chap div{display:grid;grid-template-columns:52px 1fr auto;gap:8px;padding:4px 6px;border-radius:var(--r);align-items:center;cursor:pointer}
+.vA .chap div:hover{background:var(--bg2)}.vA .chap div.cur{background:var(--bg3);color:var(--accent)}
+.vA .chap .t{font-family:var(--font-mono);color:var(--fg2)}
+.vA .right{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.vA .right .hd{display:flex;align-items:center;justify-content:space-between;padding:var(--pad);border-bottom:1px solid var(--line)}
+.vA .right .lyr{padding:calc(var(--pad) * 1.5);overflow:auto}
+.vA .status{font-family:var(--font-mono);font-size:.85em;color:var(--fg3);margin-left:auto}
+
+/* ================= B — Wall ================= */
+.vB{display:grid;grid-template-rows:48px 1fr;height:100%}
+.vB .top{display:flex;align-items:center;gap:18px;padding:0 20px;border-bottom:1px solid var(--line)}
+.vB .top .brand{width:28px;height:28px;border-radius:7px;display:block}
+.vB .tabs{display:flex;gap:2px}.vB .tabs button{padding:14px 12px;color:var(--fg2);border-bottom:2px solid transparent}.vB .tabs button.on{color:var(--fg);border-color:var(--accent)}
+.vB .top .search{width:300px;margin-left:auto}
+.vB .wall{padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px 14px;align-content:start}
+.vB .card{cursor:pointer}
+.vB .card .thumb{border-radius:var(--r);box-shadow:0 0 0 1px var(--line)}
+.vB .card.sel .thumb{box-shadow:0 0 0 2px var(--accent)}
+.vB .card .thumb .ov{position:absolute;left:6px;bottom:6px;z-index:1}
+.vB .card .thumb .av{position:absolute;left:0;top:0;bottom:0;width:4px;z-index:1}
+.vB .card .av.local{background:var(--ok)}.vB .card .av.external{background:var(--ext)}.vB .card .av.none{background:var(--fg3)}
+.vB .card .ttl{margin-top:6px;font-weight:600;font-size:1.02em;line-height:1.25}
+.vB .card .meta{display:flex;gap:7px;align-items:center;margin-top:5px;padding-left:7px;color:var(--fg2);font-size:.9em}
+.vB .card .meta>span+span::before{content:"·";margin-right:7px;color:var(--fg3)}
+.vB .card .meta>.avail+span::before{content:none}
+.vB .now{display:grid;grid-template-columns:1fr 400px;height:100%;min-height:0}
+.vB .now>*{min-width:0}
+.vB .stage .video{width:100%;max-width:calc(62vh * 16 / 9);margin:0 auto}
+.vB .stage>*{flex:none}
+.vB .now.nolyr{grid-template-columns:1fr}
+.vB .stage{padding:16px 20px;display:flex;flex-direction:column;min-height:0;overflow:auto}
+.vB .stage h1{font-size:1.4em;font-weight:700;letter-spacing:-.02em;margin-top:10px}
+.vB .film{display:flex;gap:8px;overflow-x:auto;padding:10px 0 6px;scrollbar-width:thin;flex:none}
+.vB .film .ch{flex:none;width:168px;cursor:pointer;border:1px solid var(--line);border-radius:var(--r);padding:8px 10px 9px;background:var(--bg2);display:flex;flex-direction:column;gap:5px}
+.vB .film .ch .strip{border-radius:calc(var(--r) * .4);overflow:hidden}
+.vB .film .ch.cur{border-color:var(--accent);background:var(--bg3)}
+.vB .film .ch .t{font-family:var(--font-mono);font-size:.8em;color:var(--fg2);display:flex;justify-content:space-between}
+.vB .film .ch .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+.vB .drawer{border-left:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column;min-height:0}
+.vB .drawer .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;justify-content:space-between}
+.vB .drawer .lyr{padding:16px;overflow:auto}
+.vB .drawer .lyr .l{display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:start}
+.vB .drawer .lyr .l aside{font-size:.78em;color:var(--fg2);border-left:2px solid var(--accent);padding-left:6px;line-height:1.3}
+
+/* ================= C — Ledger ================= */
+.vC{font-family:var(--font-mono);display:grid;grid-template-rows:30px 1fr;height:100%}
+.vC .prompt{display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.vC .prompt .gt{color:var(--accent);font-weight:700}
+.vC .prompt input{background:none;border:0;outline:none;flex:1}
+.vC .prompt .st{color:var(--fg3);font-size:.85em}
+.vC .body{display:grid;grid-template-columns:1fr 480px;min-height:0}
+.vC table{border-collapse:collapse;width:100%}
+.vC th{text-align:left;font-weight:600;color:var(--fg3);text-transform:uppercase;font-size:.75em;letter-spacing:.1em;padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg)}
+.vC td{padding:calc(var(--pad) * .45) 8px;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent);white-space:nowrap;cursor:pointer;vertical-align:middle}
+.vC tr:hover td{background:var(--bg2)}.vC tr.sel td{background:var(--bg3)}.vC tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.vC td.ttl{max-width:380px;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.vC td.num{text-align:right;color:var(--fg2)}
+.vC .ttag{font-weight:600}.vC .ttag::before{content:"["}.vC .ttag::after{content:"]"}
+.vC .side{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.vC .monitor{padding:10px}
+.vC .gutter{overflow:auto;border-top:1px solid var(--line);flex:none;max-height:36%}
+.vC .gutter div{display:grid;grid-template-columns:28px 60px 1fr auto;gap:8px;padding:2px 10px;cursor:pointer}
+.vC .gutter div:hover{background:var(--bg2)}.vC .gutter div.cur{background:var(--bg3);color:var(--accent)}
+.vC .gutter .ln{color:var(--fg3);text-align:right}.vC .gutter .t{color:var(--fg2)}
+.vC .lyrics{border-top:1px solid var(--line);flex:1;min-height:0;display:flex;flex-direction:column}
+.vC .lyrics .hd{display:flex;gap:6px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);font-size:.9em}
+.vC .lyrics .hd label{display:inline-flex;gap:4px;align-items:center;color:var(--fg2);cursor:pointer}
+.vC .cols{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:14px;padding:10px;overflow:auto;flex:1}
+.vC .cols .lyr p{font-size:var(--fs);line-height:1.5}
+.vC .cols h4{font-family:var(--font-mono)}
+.vC .fnlist{margin:0;padding:8px 10px;font-size:.85em}
+
+/* ================= prototype chrome (not part of the design) ================= */
+#switcher{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#111;color:#fff;border:2px solid #ff2d95;border-radius:999px;padding:4px 6px;font:600 13px/1 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.6);z-index:50}
+#switcher button{color:#fff;padding:6px 10px;border-radius:999px}#switcher button:hover{background:#333}
+#switcher .lbl{padding:0 6px;min-width:150px;text-align:center}#switcher .lbl small{display:block;font-weight:400;color:#aaa;margin-top:2px}
+#tweaks{position:fixed;right:12px;top:12px;width:280px;max-height:calc(100vh - 80px);background:#111;color:#eee;border:2px solid #ff2d95;border-radius:10px;font:12px/1.3 system-ui,sans-serif;z-index:50;box-shadow:0 8px 30px rgba(0,0,0,.6);display:flex;flex-direction:column}
+#tweaks.closed{width:auto}
+#tweaks .hd{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;font-weight:700;cursor:pointer}
+#tweaks .bd{overflow:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin}
+#tweaks.closed .bd{display:none}
+#tweaks label{display:flex;flex-direction:column;gap:3px;color:#aaa;font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+#tweaks select,#tweaks input[type=color],#tweaks input[type=range]{background:#222;border:1px solid #444;color:#fff;border-radius:5px;padding:4px;font-size:12px;text-transform:none;letter-spacing:0}
+#tweaks .opts{display:flex;flex-wrap:wrap;gap:4px}
+#tweaks .opts button{background:#222;border:1px solid #444;color:#ddd;border-radius:5px;padding:3px 7px;font-size:11px;text-transform:none;letter-spacing:0}
+#tweaks .opts button.on{background:#ff2d95;border-color:#ff2d95;color:#fff}
+#tweaks .sw{display:inline-flex;gap:2px;margin-left:4px}#tweaks .sw i{width:9px;height:9px;border-radius:2px;display:inline-block}
+#tweaks pre{background:#000;border:1px solid #333;border-radius:5px;padding:6px;font:10px/1.35 ui-monospace,monospace;color:#9f9;white-space:pre-wrap;user-select:all;max-height:160px;overflow:auto}
+#tweaks .row2{display:flex;gap:6px;align-items:center}
+#tweaks .row2 button{background:#333;border:1px solid #555;color:#fff;border-radius:5px;padding:4px 8px;font-size:11px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="tweaks">
+  <div class="hd" onclick="document.getElementById('tweaks').classList.toggle('closed')"><span>⚙ Tweaks</span><span>⇕</span></div>
+  <div class="bd" id="tweaksBody"></div>
+</div>
+<div id="switcher">
+  <button onclick="cycle(-1)" title="← previous">◀</button>
+  <div class="lbl" id="swLbl"></div>
+  <button onclick="cycle(1)" title="→ next">▶</button>
+</div>
+
+<script>
+/* ---------------- sample data (fictional titles/lyrics, real-world-shaped) ---------------- */
+const ARTISTS=['Huun-Huur-Tu','Alash','Yat-Kha','Chirgilchin','Tyva Kyzy','Kongar-ool Ondar','Хартыга','Khöömei Beat','Radik Tyulyush','Ayan-ool Sam','Sainkho Namtchylak','Albert Kuvezin','Андрей Монгуш','Ensemble Tyva'];
+const VIDEOS=[
+ {id:'v01',title:'Huun-Huur-Tu — Live at Philadelphia Folk Festival (full concert)',type:'concert',artists:['Huun-Huur-Tu'],dur:'1:18:42',avail:'external',ch:14,fav:true,res:'1080p'},
+ {id:'v02',title:'Alash — Karangailyg Kara Hovaa',type:'song',artists:['Alash'],dur:'4:12',avail:'local',ch:0,fav:true,res:'720p'},
+ {id:'v03',title:'Чиргилчин — Эки аът (official video)',type:'song',artists:['Chirgilchin'],dur:'3:48',avail:'local',ch:0,fav:false,res:'1080p'},
+ {id:'v04',title:'Yat-Kha — Kaa-Khem (Berlin 2004)',type:'song',artists:['Yat-Kha','Albert Kuvezin'],dur:'5:30',avail:'external',ch:0,fav:false,res:'480p'},
+ {id:'v05',title:'Kongar-ool Ondar on Late Night — interview + performance',type:'interview',artists:['Kongar-ool Ondar'],dur:'9:04',avail:'none',ch:2,fav:false,res:'480p'},
+ {id:'v06',title:'Тыва Кызы — Концерт в Кызыле, 2019',type:'concert',artists:['Tyva Kyzy'],dur:'52:17',avail:'external',ch:9,fav:false,res:'1080p'},
+ {id:'v07',title:'Хартыга — Ак-көк дээр',type:'song',artists:['Хартыга'],dur:'4:55',avail:'local',ch:0,fav:true,res:'2160p'},
+ {id:'v08',title:'Khöömei Beat — Shyngyr-Shyngyr (lyric video)',type:'song',artists:['Khöömei Beat'],dur:'3:21',avail:'external',ch:0,fav:false,res:'1080p'},
+ {id:'v09',title:'Radik Tyulyush — Sygyt solo, Ustuu-Khuree 2012',type:'song',artists:['Radik Tyulyush'],dur:'6:40',avail:'none',ch:0,fav:false,res:'720p'},
+ {id:'v10',title:'Ayan-ool Sam masterclass: kargyraa breathing',type:'interview',artists:['Ayan-ool Sam'],dur:'27:03',avail:'external',ch:5,fav:false,res:'1080p'},
+ {id:'v11',title:'Sainkho Namtchylak — Lost Rivers excerpt',type:'other',artists:['Sainkho Namtchylak'],dur:'7:12',avail:'external',ch:0,fav:false,res:'360p'},
+ {id:'v12',title:'Андрей Монгуш — Хөөмей, сыгыт, каргыраа (demo)',type:'other',artists:['Андрей Монгуш'],dur:'2:58',avail:'local',ch:0,fav:true,res:'720p'},
+ {id:'v13',title:'Ensemble Tyva — Naadym 2017 gala',type:'concert',artists:['Ensemble Tyva','Radik Tyulyush'],dur:'1:41:09',avail:'external',ch:22,fav:false,res:'1080p'},
+ {id:'v14',title:'Alash & Chirgilchin — joint set, Chadaana',type:'concert',artists:['Alash','Chirgilchin'],dur:'38:50',avail:'none',ch:7,fav:false,res:'720p'},
+ {id:'v15',title:'Huun-Huur-Tu — Orphan\'s Lament (studio session)',type:'song',artists:['Huun-Huur-Tu'],dur:'5:02',avail:'local',ch:0,fav:true,res:'1080p'},
+ {id:'v16',title:'Albert Kuvezin interview, Russian with subs',type:'interview',artists:['Albert Kuvezin'],dur:'14:30',avail:'external',ch:0,fav:false,res:'480p'},
+ {id:'v17',title:'Хөөмей Бит — Live Session #3',type:'song',artists:['Khöömei Beat'],dur:'4:40',avail:'external',ch:0,fav:false,res:'1080p'},
+ {id:'v18',title:'Tyva Kyzy — Ösküs-ool (rehearsal)',type:'song',artists:['Tyva Kyzy'],dur:'3:15',avail:'local',ch:0,fav:false,res:'720p'},
+];
+const CHAPTERS=[
+ {t:'00:00',title:'Intro / tuning',song:null,sug:false},
+ {t:'02:14',title:'Эки аът',song:'Eki Attar',sug:false},
+ {t:'07:50',title:'Kongurei',song:'Kongurei',sug:false},
+ {t:'13:02',title:'Chiraa-Khoor',song:'Chiraa-Khoor',sug:true},
+ {t:'18:41',title:'Ак-көк дээр',song:'Ak-kök deer',sug:false},
+ {t:'24:30',title:'Sygyt solo (Kaigal-ool)',song:null,sug:true},
+ {t:'29:12',title:'Prayer',song:'Prayer',sug:false},
+ {t:'35:55',title:'Orphan\'s Lament',song:'Orphan\'s Lament',sug:false},
+ {t:'42:10',title:'Kargyraa solo',song:null,sug:true},
+ {t:'46:33',title:'Dyngyldai',song:'Dyngyldai',sug:false},
+ {t:'52:08',title:'Ancestors',song:'Ancestors',sug:false},
+ {t:'58:40',title:'Encore: Chiraa-Khoor reprise',song:'Chiraa-Khoor',sug:true},
+];
+const LYRICS={
+ title:'Ак-көк дээр',song:'Ak-kök deer',
+ versions:{
+  cyr:{label:'Тыва',lines:['Ак-көк дээрниң адаанда','Арат чонум чурттап чор,','Хөөмейимни[1] ырлап тур мен','Хемчиктиң[2] уну-биле.','','Кара суглуг тайгамда','Каргыраамны ырлап тур мен,','Аргамчылыг аъдымны','Ак хемниң эриинде мунуп чор мен.']},
+  lat:{label:'Latin',lines:['Ak-kök deerniñ adaanda','Arat chonum churttap chor,','Khöömeiimni[1] yrlap tur men','Khemchiktiñ[2] unu-bile.','','Kara sugluk taigamda','Kargyraamny yrlap tur men,','Argamchylyg a\'dymny','Ak khemniñ eriinde munup chor men.']},
+  eng:{label:'English',lines:['Under the pale blue sky','my herding people live,','I sing my khöömei[1]','along the Khemchik[2] valley.','','In my taiga of black water','I sing my kargyraa,','my lassoed horse','I ride along the white river\'s bank.']},
+ },
+ footnotes:[{n:1,text:'Khöömei here names the style family, not the specific mid-register technique.'},{n:2,text:'The Khemchik is the largest left tributary of the Yenisei in western Tuva.'}]
+};
+
+/* ---------------- settings ---------------- */
+const VARIANTS={A:'Console — three panes, dense list',B:'Wall — poster grid, focused player',C:'Ledger — monospace table, split screen'};
+const BGS={claude:{bg:'#1f1e1d',bg2:'#262624',bg3:'#30302e',line:'#3d3c3a',fg:'#faf9f5',fg2:'#a8a59f',fg3:'#75726c'},
+ black:{bg:'#000000',bg2:'#0e0e0e',bg3:'#1a1a1a',line:'#2c2c2c',fg:'#ffffff',fg2:'#a0a0a0',fg3:'#6a6a6a'},
+ graphite:{bg:'#0f1115',bg2:'#161a21',bg3:'#1f242d',line:'#2b313c',fg:'#f2f4f7',fg2:'#9aa3b2',fg3:'#66707f'},
+ navy:{bg:'#0a0f1e',bg2:'#101733',bg3:'#182043',line:'#243055',fg:'#eef2ff',fg2:'#94a0c4',fg3:'#5d6a92'},
+ plum:{bg:'#15101a',bg2:'#1d1623',bg3:'#281f30',line:'#3a2e44',fg:'#f8f2fb',fg2:'#b3a4bd',fg3:'#7c6c87'}};
+const ACCENTS={terracotta:'#d97757',amber:'#f5b342',azure:'#4ea1ff',lime:'#a3e635',magenta:'#f05ac8',mint:'#34d399',white:'#ffffff'};
+const PALETTES={claude:['#e8845f','#8fcf7a','#6cb8ff','#c59bff','#ffcc4d','#ff7eb6','#5fe0d0','#d6c7a1'],
+ neon:['#ff5f5f','#ffb000','#c8ff00','#00e5ff','#7c4dff','#ff00c8','#00ff95','#ff8a00'],
+ pastel:['#f4a7a7','#f7cfa0','#f5f0a3','#b5e8b0','#a8dcf0','#c6b8f5','#f0b8e8','#d9d9d9'],
+ solarized:['#dc322f','#cb4b16','#b58900','#859900','#2aa198','#268bd2','#6c71c4','#d33682'],
+ gruvbox:['#fb4934','#fe8019','#fabd2f','#b8bb26','#8ec07c','#83a598','#d3869b','#ebdbb2'],
+ catppuccin:['#f38ba8','#fab387','#f9e2af','#a6e3a1','#94e2d5','#89b4fa','#cba6f7','#f5c2e7']};
+const UIFONTS={auto:'Variant default',inter:"'Inter',system-ui,sans-serif",plex:"'IBM Plex Sans',sans-serif",pt:"'PT Sans',sans-serif",system:'system-ui,-apple-system,sans-serif',jb:"'JetBrains Mono',monospace",plexmono:"'IBM Plex Mono',monospace",fira:"'Fira Code',monospace"};
+const LYRFONTS={sourceserif:"'Source Serif 4',Georgia,serif",literata:"'Literata',Georgia,serif",inter:"'Inter',sans-serif",plex:"'IBM Plex Sans',sans-serif",jb:"'JetBrains Mono',monospace",plexmono:"'IBM Plex Mono',monospace"};
+const DEFAULTS={variant:'B',bg:'claude',accent:'terracotta',accentHex:'',palette:'gruvbox',tagstyle:'tint',uifont:'plex',lyrfont:'inter',fs:'14',radius:'10',density:'normal',contrast:'normal',screen:'library',lyr:'1',sel:'v01',ver:'cyr'};
+const S={...DEFAULTS};
+const qs=new URLSearchParams(location.search);for(const k in DEFAULTS){if(qs.has(k))S[k]=qs.get(k)}
+function set(k,v){S[k]=v;const u=new URL(location);Object.keys(S).forEach(k2=>{if(S[k2]!==DEFAULTS[k2])u.searchParams.set(k2,S[k2]);else u.searchParams.delete(k2)});history.replaceState(null,'',u);render()}
+
+function applyTokens(){
+ const r=document.documentElement.style,b=BGS[S.bg];
+ for(const k in b)r.setProperty('--'+k,b[k]);
+ if(S.contrast==='normal'){r.setProperty('--fg',mix(b.fg,b.bg,.85));r.setProperty('--fg2',mix(b.fg2,b.bg,.85))}
+ const acc=S.accentHex||ACCENTS[S.accent];r.setProperty('--accent',acc);r.setProperty('--accent-fg',lum(acc)>.5?'#111':'#fff');
+ PALETTES[S.palette].forEach((c,i)=>r.setProperty('--t'+(i+1),c));
+ r.setProperty('--ok',PALETTES[S.palette][S.palette==='pastel'?3:1]);r.setProperty('--ext',PALETTES[S.palette][S.palette==='solarized'?5:S.palette==='pastel'?4:2]);
+ const vdef=S.variant==='C'?UIFONTS.jb:UIFONTS.inter;
+ r.setProperty('--font-ui',S.uifont==='auto'?vdef:UIFONTS[S.uifont]);
+ r.setProperty('--font-lyrics',LYRFONTS[S.lyrfont]);
+ r.setProperty('--fs',S.fs+'px');r.setProperty('--r',S.radius+'px');
+ r.setProperty('--pad',S.density==='compact'?'5px':S.density==='comfy'?'12px':'8px');
+ document.body.dataset.tagstyle=S.tagstyle;
+}
+function mix(a,b,t){const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const A=p(a),B=p(b);return '#'+A.map((x,i)=>Math.round(x*t+B[i]*(1-t)).toString(16).padStart(2,'0')).join('')}
+function lum(h){const [r,g,b]=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);return .2126*r+.7152*g+.0722*b}
+function hash(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))|0;return Math.abs(h)}
+const TYPECOL={song:1,concert:3,interview:5,other:8};
+function artistCol(a){return 1+(hash(a)%8)}
+function thumbStyle(id){const h=hash(id)%360;return `--th:linear-gradient(135deg,hsl(${h} 35% 22%),hsl(${(h+60)%360} 40% 12%))`}
+const tagType=t=>`<span class="tag" style="--c:var(--t${TYPECOL[t]})">${t}</span>`;
+const tagArtist=(a,sug)=>`<span class="tag${sug?' sug':''}" style="--c:var(--t${artistCol(a)})">${a}</span>`;
+const ICON_STAR='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z"/></svg>';
+const ICON_LAPTOP='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M1 20h22"/></svg>';
+const ICON_DRIVE='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 15h18"/><circle cx="17.5" cy="17.5" r="0.9" fill="currentColor" stroke="none"/></svg>';
+const avail=a=>`<span class="avail ${a}" title="${a==='local'?'Local copy':a==='external'?'External drive':'No copy mounted'}">${a==='local'?ICON_LAPTOP:ICON_DRIVE}</span>`;
+const esc=s=>s.replace(/</g,'&lt;');
+const fnify=s=>esc(s).replace(/\[(\d)\]/g,'<sup class="fn">$1</sup>');
+const sel=()=>VIDEOS.find(v=>v.id===S.sel)||VIDEOS[0];
+const KEYS=`<div class="keys"><span><kbd>space</kbd> pause</span><span><kbd>←</kbd><kbd>→</kbd> 5s</span><span><kbd>J</kbd><kbd>L</kbd> 10s</span><span><kbd>[</kbd><kbd>]</kbd> speed</span><span><kbd>P</kbd><kbd>N</kbd> chapter</span><span><kbd>F</kbd> fav</span><span><kbd>S</kbd> studio</span><span><kbd>/</kbd> search</span></div>`;
+
+function lyricsBlock(ver,opts={}){
+ const v=LYRICS.versions[ver];
+ let n=0;return `<div class="lyr${opts.numbers?' numbered':''}">${v.lines.map((l,i)=>l===''?'<p>&nbsp;</p>':`<p class="${i===2?'cur':''}">${opts.numbers?`<span class="ln">${++n}</span><span>${fnify(l)}</span>`:fnify(l)}</p>`).join('')}</div>`;
+}
+const fnList=()=>`<ul class="fnlist">${LYRICS.footnotes.map(f=>`<li><b>${f.n}</b><span>${f.text}</span></li>`).join('')}</ul>`;
+const verSeg=()=>`<span class="seg">${Object.entries(LYRICS.versions).map(([k,v])=>`<button class="${S.ver===k?'on':''}" onclick="set('ver','${k}')">${v.label}</button>`).join('')}</span>`;
+const playerBox=(v)=>`<div class="video" style="${thumbStyle(v.id)}"><div class="osd">${v.res} · ${v.avail==='local'?'local copy':v.avail==='external'?'/Volumes/General':'no copy mounted'} · 1.0×</div><div class="play">▶</div></div>
+ <div class="timeline"><div class="done"></div>${CHAPTERS.map((c,i)=>`<i class="tick${c.sug?' sug':''}" style="left:${(i/CHAPTERS.length)*100}%"></i>`).join('')}</div>
+ <div class="controls"><span class="t">24:31</span><span>/</span><span>${v.dur}</span><span style="margin-left:auto">resume 24:31</span></div>`;
+
+/* ---------------- A ---------------- */
+function VariantA(){
+ const v=sel();
+ return `<div class="vA">
+  <div class="top"><span class="brand">Tuva<b>Videos</b></span><input class="search" placeholder="Search titles, artists, lyrics…  /"><span class="chip on">All</span><span class="chip">★ Favorites</span><span class="chip">Available only</span><span class="status">${VIDEOS.length} videos · 2 roots · ext mounted</span></div>
+  <div class="body">
+   <div class="lib">
+    <div class="filters">${['song','concert','interview','other'].map(t=>tagType(t)).join('')}<span class="chip">+ artist</span></div>
+    <div class="scroll">${VIDEOS.map(x=>`<div class="row ${x.id===S.sel?'sel':''}" onclick="set('sel','${x.id}')"><div class="thumb ${x.avail==='none'?'unavail':''}" style="${thumbStyle(x.id)}"></div><div><div class="ttl">${x.fav?'<span class="star">☆ </span>':''}${esc(x.title)}</div><div class="sub">${tagType(x.type)}${x.artists.map(a=>tagArtist(a)).join('')}${x.ch?`<span class="dim mono">${x.ch} ch</span>`:''}</div></div><div style="text-align:right">${avail(x.avail)}<div class="dim mono" style="font-size:.8em;margin-top:3px">${x.dur}</div></div></div>`).join('')}</div>
+   </div>
+   <div class="center">
+    ${playerBox(v)}
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px"><strong style="font-size:1.1em">${esc(v.title)}</strong><span class="tags">${tagType(v.type)}${v.artists.map(a=>tagArtist(a)).join('')}</span><span style="margin-left:auto" class="dim mono">Chapters ${CHAPTERS.length} · 4 suggested</span></div>
+    <div class="chap">${CHAPTERS.map((c,i)=>`<div class="${i===4?'cur':''}"><span class="t">${c.t}</span><span>${esc(c.title)}${c.song?` <span class="dim">→ ${c.song}</span>`:''}</span>${c.sug?'<span class="tag sug" style="--c:var(--t8)">suggested</span>':c.song?'<span class="tag" style="--c:var(--t7)">♪ link</span>':''}</div>`).join('')}</div>
+    <div style="margin-top:auto;padding-top:8px">${KEYS}</div>
+   </div>
+   <div class="right">
+    <div class="hd"><strong>${LYRICS.title} <span class="muted">· ${LYRICS.song}</span></strong>${verSeg()}</div>
+    <div class="lyr">${lyricsBlock(S.ver)}${fnList()}</div>
+   </div>
+  </div></div>`;
+}
+
+/* ---------------- B ---------------- */
+function VariantB(){
+ const v=sel();
+ const lib=`<div class="wall scroll" style="overflow:auto;height:100%">${VIDEOS.map(x=>`<div class="card ${x.id===S.sel?'sel':''}" onclick="set('sel','${x.id}')"><div class="thumb ${x.avail==='none'?'unavail':''}" style="${thumbStyle(x.id)}"><i class="av ${x.avail}"></i><span class="dur">${x.dur}</span></div><div class="ttl">${x.fav?`<span class="fav">${ICON_STAR}</span>`:''}${esc(x.title)}</div><div class="tags" style="margin-top:5px">${tagType(x.type)}${x.artists.map(a=>tagArtist(a)).join('')}</div><div class="meta">${avail(x.avail)}${x.ch?`<span>${x.ch} chapters</span>`:''}<span>${x.res}</span></div></div>`).join('')}</div>`;
+ const lyr=LYRICS.versions[S.ver];
+ const now=`<div class="now ${S.lyr==='1'?'':'nolyr'}">
+  <div class="stage">
+   ${playerBox(v)}
+   <h1>${esc(v.title)}</h1>
+   <div class="tags" style="margin-top:6px;align-items:center">${avail(v.avail)}${v.fav?`<span class="fav">${ICON_STAR}</span>`:''}${tagType(v.type)}${v.artists.map(a=>tagArtist(a)).join('')}</div>
+   <div class="film">${CHAPTERS.map((c,i)=>`<div class="ch ${i===4?'cur':''}" style="${thumbStyle(v.id+c.t)}"><div class="strip">${'<i></i>'.repeat(6)}</div><div class="t"><span>${c.t}</span>${c.sug?'<span class="dim">suggested</span>':c.song?'<span>♪</span>':''}</div><div class="n">${esc(c.title)}</div></div>`).join('')}</div>
+   <div style="margin-top:auto">${KEYS}</div>
+  </div>
+  ${S.lyr==='1'?`<div class="drawer"><div class="hd"><strong>${LYRICS.title}</strong>${verSeg()}<button class="chip" onclick="set('lyr','0')">×</button></div>
+   <div class="lyr">${lyricsBlock(S.ver,{numbers:true})}<h4>Footnotes</h4>${fnList()}</div></div>`:''}
+ </div>`;
+ return `<div class="vB">
+  <div class="top"><img class="brand" src="olchey.svg" alt="" width="28" height="28"><div class="tabs"><button class="${S.screen==='library'?'on':''}" onclick="set('screen','library')">Library</button><button class="${S.screen==='now'?'on':''}" onclick="set('screen','now')">Now playing</button><button>Favorites</button><button>Artists</button></div>
+  ${S.screen==='now'&&S.lyr!=='1'?`<button class="chip" onclick="set('lyr','1')">Lyrics</button>`:''}<input class="search" placeholder="Search  /"></div>
+  ${S.screen==='library'?lib:now}</div>`;
+}
+
+/* ---------------- C ---------------- */
+function VariantC(){
+ const v=sel();
+ const vers=(S.ver||'cyr').split('+');
+ const vtog=k=>`<label><input type="checkbox" ${vers.includes(k)?'checked':''} onchange="toggleVer('${k}')">${LYRICS.versions[k].label}</label>`;
+ return `<div class="vC">
+  <div class="prompt"><span class="gt">&gt;</span><input placeholder="type to filter · :fav · :type=concert · :artist=alash · :lyrics=хемчик"><span class="st">${VIDEOS.length} rows · ext mounted · 140 GB</span></div>
+  <div class="body">
+   <div class="scroll"><table>
+    <tr><th></th><th>AV</th><th>Title</th><th>Type</th><th>Artists</th><th style="text-align:right">Dur</th><th style="text-align:right">Ch</th><th>Res</th></tr>
+    ${VIDEOS.map(x=>`<tr class="${x.id===S.sel?'sel':''}" onclick="set('sel','${x.id}')"><td class="dim">${x.fav?'<span class="star">☆</span>':'·'}</td><td>${avail(x.avail)}</td><td class="ttl">${esc(x.title)}</td><td><span class="ttag" style="color:var(--t${TYPECOL[x.type]})">${x.type}</span></td><td>${x.artists.map(a=>`<span class="ttag" style="color:var(--t${artistCol(a)})">${a}</span>`).join(' ')}</td><td class="num">${x.dur}</td><td class="num">${x.ch||'—'}</td><td class="dim">${x.res}</td></tr>`).join('')}
+   </table></div>
+   <div class="side">
+    <div class="monitor">${playerBox(v)}<div style="margin-top:6px;font-weight:700">${esc(v.title)}</div></div>
+    <div class="gutter">${CHAPTERS.map((c,i)=>`<div class="${i===4?'cur':''}"><span class="ln">${String(i+1).padStart(2,'0')}</span><span class="t">${c.t}</span><span>${esc(c.title)}</span><span class="dim">${c.sug?'?':c.song?'♪':''}</span></div>`).join('')}</div>
+    <div class="lyrics">
+     <div class="hd"><strong>${LYRICS.title}</strong><span class="dim">versions:</span>${vtog('cyr')}${vtog('lat')}${vtog('eng')}</div>
+     <div class="cols">${vers.map(k=>`<div><h4 class="muted" style="font-size:.75em;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">${LYRICS.versions[k].label}</h4>${lyricsBlock(k)}</div>`).join('')}</div>
+     ${fnList()}
+    </div>
+   </div>
+  </div></div>`;
+}
+function toggleVer(k){let v=(S.ver||'cyr').split('+').filter(Boolean);v=v.includes(k)?v.filter(x=>x!==k):[...v,k];if(!v.length)v=[k];set('ver',['cyr','lat','eng'].filter(x=>v.includes(x)).join('+'))}
+
+/* ---------------- render / chrome ---------------- */
+function render(){
+ applyTokens();
+ if(S.variant!=='C'&&S.ver.includes('+'))S.ver=S.ver.split('+')[0];
+ document.getElementById('app').innerHTML=({A:VariantA,B:VariantB,C:VariantC})[S.variant]();
+ document.getElementById('swLbl').innerHTML=`${S.variant} — ${VARIANTS[S.variant].split(' — ')[0]}<small>${VARIANTS[S.variant].split(' — ')[1]}</small>`;
+ renderTweaks();
+}
+function cycle(d){const ks=Object.keys(VARIANTS);set('variant',ks[(ks.indexOf(S.variant)+d+ks.length)%ks.length])}
+document.addEventListener('keydown',e=>{const t=e.target;if(t.matches('input,textarea,select,[contenteditable]'))return;if(e.key==='ArrowLeft')cycle(-1);if(e.key==='ArrowRight')cycle(1)});
+
+function opts(key,map,sw){return `<div class="opts">${Object.keys(map).map(k=>`<button class="${S[key]===k?'on':''}" onclick="set('${key}','${k}')">${k}${sw?`<span class="sw">${sw(k)}</span>`:''}</button>`).join('')}</div>`}
+function renderTweaks(){
+ const b=document.getElementById('tweaksBody');
+ b.innerHTML=`
+  <label>Background ${opts('bg',BGS,k=>`<i style="background:${BGS[k].bg2};border:1px solid #555"></i>`)}</label>
+  <label>Accent ${opts('accent',ACCENTS,k=>`<i style="background:${ACCENTS[k]}"></i>`)}<div class="row2">custom <input type="color" value="${S.accentHex||ACCENTS[S.accent]}" oninput="set('accentHex',this.value)">${S.accentHex?`<button onclick="set('accentHex','')">reset</button>`:''}</div></label>
+  <label>Tag palette ${opts('palette',PALETTES,k=>PALETTES[k].map(c=>`<i style="background:${c}"></i>`).join(''))}</label>
+  <label>Tag style ${opts('tagstyle',{filled:1,tint:1,outline:1,text:1,dot:1})}</label>
+  <label>UI font <select onchange="set('uifont',this.value)">${Object.keys(UIFONTS).map(k=>`<option value="${k}" ${S.uifont===k?'selected':''}>${k==='auto'?'auto (A/B Inter, C JetBrains Mono)':UIFONTS[k].split(',')[0].replace(/'/g,'')}</option>`).join('')}</select></label>
+  <label>Lyrics font <select onchange="set('lyrfont',this.value)">${Object.keys(LYRFONTS).map(k=>`<option value="${k}" ${S.lyrfont===k?'selected':''}>${LYRFONTS[k].split(',')[0].replace(/'/g,'')}</option>`).join('')}</select></label>
+  <label>Base size ${S.fs}px <input type="range" min="11" max="17" value="${S.fs}" oninput="set('fs',this.value)"></label>
+  <label>Radius ${opts('radius',{0:1,3:1,6:1,10:1})}</label>
+  <label>Density ${opts('density',{compact:1,normal:1,comfy:1})}</label>
+  <label>Text contrast ${opts('contrast',{high:1,normal:1})}</label>
+  <label>Tokens in effect<pre>${tokenDump()}</pre></label>
+  <div class="row2"><button onclick="navigator.clipboard.writeText(location.href)">Copy URL</button><button onclick="const u=new URL(location);u.search='';location=u">Reset</button></div>`;
+}
+function tokenDump(){const cs=getComputedStyle(document.documentElement);return ['bg','bg2','bg3','line','fg','fg2','fg3','accent','t1','t2','t3','t4','t5','t6','t7','t8','font-ui','font-lyrics','fs','r','pad'].map(k=>`--${k}: ${cs.getPropertyValue('--'+k).trim()};`).join('\n')+`\ntag-style: ${S.tagstyle}`}
+render();
+</script>
+</body>
+</html>

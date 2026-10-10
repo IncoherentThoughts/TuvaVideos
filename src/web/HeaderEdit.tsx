@@ -162,8 +162,8 @@ function TitleField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promi
         {v.title}
       </h1>
     );
-  const save = async () => {
-    const t = text.trim();
+  const save = async (value: string) => {
+    const t = value.trim();
     if (t && t !== v.title) await patch({ title: t });
     setEditing(false);
   };
@@ -177,7 +177,7 @@ function TitleField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promi
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          void save();
+          void save((e.target as HTMLInputElement).value);
         } else if (e.key === "Escape") {
           e.preventDefault();
           e.stopPropagation();

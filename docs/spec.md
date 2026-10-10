@@ -76,7 +76,7 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 - Imported: songs (not hidden), song_lyrics, artists, albums, album_artists, album_tracks, album_track_artists, song_performances. Dropped: hidden songs and their rows, composers, bands, tags, history, profiles, staff/personal tables, and the columns listed in the research doc.
 - **Re-import is one transaction**: delete every `mirror_*` row, insert the new set, upsert `artist` by `mirror_id`, write a `mirror_import` row. Local tables untouched; a dangling uuid stays and renders as "unknown song" / "unknown artist" (ADR-0001).
 - After every import: rebuild the search index, run the Studio matcher (§7.3), run the Latin-title fill for rows whose source is `archive`.
-- Trigger: CLI only, `bun run import <backup-dir>`. No import UI.
+- Trigger: CLI only, `bun run import <backup-dir>`. No import UI. A pre-migration-126 backup is refused. Song alternate titles and spellings are kept on `mirror_song`, indexed as their own search rows, shown dimmed under the Song title in the drawer, and read by the Song matcher through the shared `songNames` helper. The Various Artists sentinel gets no `artist` row; a Track whose Song is hidden stays on its Album with the Song link cleared. Performance defaults count distinct Songs, not Performance rows (#25).
 
 ### 2.5 Latin titles
 
@@ -216,7 +216,7 @@ Its own screen. Big Player (§4) with chapter ticks; title; row of availability 
 
 Closable right drawer, variant "Reader" (#12). Header: Song title with English title dimmed; a Script segmented control (Cyrillic / Latin / English) showing one Script at a time, disabled when the Version lacks it, choice clamped to a Script the Version has. When the Song has several Versions, a row of pills; the Chapter's Version badged "· this chapter"; opens on the Chapter's Version else the first in display order. Numbered lines continuous across stanzas with blank lines as spacers. No current line (no timed lyrics exist). Footnote markers are superscript accent digits; adjacent markers get a CSS comma; a marker with no entry is struck through; hover/focus shows a two-column tooltip; click jumps to the entry and flashes it; `[` `]` cycle markers while the drawer has focus (the Player's speed keys apply only while the Player has focus; focus is the dispatcher, as for `/` and Esc). A "Footnotes" section at the bottom lists the shown Script's entries.
 
-Rendering port: the archive's `scripts.ts`, `normalize.ts`, `markers.ts` regex core, `trackVersion.ts`, `highlightSnippet`, with its sanitizer profiles (`LINE`: `p br b strong i em u s sub sup span`; `FOOTNOTE`: `b strong i em u br sub sup`). One `<p>` is one line; `<p class="ln-blank">` is a stanza break.
+Rendering port: the archive's `scripts.ts`, `normalize.ts`, `markers.ts` regex core, `trackVersion.ts`, `highlightSnippet`, with its sanitizer allowlists (`LINE`: `p br b strong i em u s sub sup span`; `FOOTNOTE`: `b strong i em u br sub sup`) applied by a dependency-free server-side tokenizer, not DOMPurify (#25). A Song no Video performs opens at `/lyrics/:songId`. One `<p>` is one line; `<p class="ln-blank">` is a stanza break.
 
 Which Song the drawer shows: the current Chapter's Song (the Chapter the playhead is in), else the Video's Song, else the drawer is empty with "no lyrics".
 

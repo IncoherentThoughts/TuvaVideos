@@ -9,7 +9,7 @@ import { decidePlayback } from "./playback";
 import { probeFile } from "./probe";
 import { isIoError, sleep } from "./proc";
 import type { RootRow, Roots } from "./roots";
-import { rebuildVideoSearch } from "./search";
+import { rebuildSearchIndex } from "./search";
 
 const SKIP_DIRS = new Set(["$RECYCLE.BIN", "System Volume Information", "node_modules"]);
 const PROBE_CONCURRENCY = 4;
@@ -242,7 +242,7 @@ export class Scanner {
 
     this.prog.phase = "finishing";
     await this.markMissing(root, existing, seen, failedDirs, summary);
-    rebuildVideoSearch(this.db);
+    rebuildSearchIndex(this.db);
     summary.durationMs = Date.now() - t0;
     return summary;
   }

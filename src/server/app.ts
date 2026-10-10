@@ -5,7 +5,9 @@ import { FallbackQueue } from "./fallback";
 import { initLog, log } from "./log";
 import { Roots } from "./roots";
 import { Scanner } from "./scan";
+import { rebuildSearchIndex } from "./search";
 import { Thumbnails } from "./thumbs";
+import { WebBundle } from "./web";
 
 export interface App extends Services {
   server: ReturnType<typeof Bun.serve>;
@@ -33,7 +35,12 @@ export async function startApp(cfg: Config): Promise<App> {
   });
   roots.onBecameAvailable((r) => scanner.request(r.id)); // startup, remount
 
-  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, startedAt: Date.now() };
+  const web = new WebBundle(cfg);
+  await web.build();
+  const idx = rebuildSearchIndex(db); // the index is also rebuilt after every scan
+  log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
+
+  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, web, startedAt: Date.now() };
   const handler = createHandler(services);
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);

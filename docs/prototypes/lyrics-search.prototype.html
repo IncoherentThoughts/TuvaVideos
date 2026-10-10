@@ -62,6 +62,7 @@ mark{background:color-mix(in srgb,var(--t3) 35%,transparent);color:var(--t3);bor
 
 /* frame */
 #app{position:absolute;inset:0;display:grid;grid-template-rows:48px 1fr;overflow:hidden}
+#main{min-height:0;overflow:hidden}
 .top{display:flex;align-items:center;gap:18px;padding:0 20px;border-bottom:1px solid var(--line);position:relative;z-index:5}
 .top .brand{width:28px;height:28px;border-radius:7px;display:block}
 .tabs{display:flex;gap:2px}.tabs button{padding:14px 12px;color:var(--fg2);border-bottom:2px solid transparent}.tabs button.on{color:var(--fg);border-color:var(--accent)}
@@ -73,10 +74,10 @@ mark{background:color-mix(in srgb,var(--t3) 35%,transparent);color:var(--t3);bor
 .now>*{min-width:0}
 .stage{padding:16px 20px;display:flex;flex-direction:column;min-height:0;overflow:auto;scrollbar-width:thin}
 .stage>*{flex:none}
-.video{position:relative;width:100%;max-width:calc(58vh * 16 / 9);margin:0 auto;aspect-ratio:16/9;border-radius:var(--r);background:var(--th);overflow:hidden}
-.video::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,rgba(255,255,255,.08),transparent 40%),repeating-linear-gradient(90deg,transparent 0 23%,rgba(0,0,0,.25) 23% 25%)}
-.video .osd{position:absolute;left:10px;top:8px;font-family:var(--font-mono);font-size:.8em;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:5px;z-index:1}
-.video .play{position:absolute;inset:0;display:grid;place-items:center;font-size:40px;color:#fff;opacity:.7;z-index:1}
+.vbox{position:relative;width:100%;max-width:calc(58vh * 16 / 9);margin:0 auto;aspect-ratio:16/9;border-radius:var(--r);background:var(--th);overflow:hidden}
+.vbox::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,rgba(255,255,255,.08),transparent 40%),repeating-linear-gradient(90deg,transparent 0 23%,rgba(0,0,0,.25) 23% 25%)}
+.vbox .osd{position:absolute;left:10px;top:8px;font-family:var(--font-mono);font-size:.8em;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:5px;z-index:1}
+.vbox .play{position:absolute;inset:0;display:grid;place-items:center;font-size:40px;color:#fff;opacity:.7;z-index:1}
 .timeline{height:6px;background:var(--bg3);border-radius:3px;position:relative;margin:12px auto 6px;max-width:calc(58vh * 16 / 9)}
 .timeline .done{position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--accent);border-radius:3px}
 .timeline i{position:absolute;top:-3px;width:2px;height:12px;background:var(--fg2)}
@@ -126,6 +127,7 @@ sup.fn[data-adj]::before{content:",";color:var(--fg3);margin:0 1px 0 -1px}
 /* A — Reader: one Script at a time, Version pills, grouped dropdown */
 .vA .pills{display:flex;flex-wrap:wrap;gap:5px}
 .dd{position:absolute;top:calc(100% + 6px);right:0;width:560px;max-height:70vh;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 16px 40px rgba(0,0,0,.5);z-index:20;scrollbar-width:thin}
+.ddhint{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:.85em}
 .dd h5{font-size:.72em;text-transform:uppercase;letter-spacing:.12em;color:var(--fg3);padding:10px 12px 4px;position:sticky;top:0;background:var(--bg2);display:flex;justify-content:space-between}
 .dd .r{padding:6px 12px;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:baseline}
 .dd .r:hover,.dd .r.sel{background:var(--bg3)}
@@ -226,7 +228,9 @@ function lineHtml(html,fnMap,script){ // rewrite markers: adjacent comma, orphan
 
 /* ---------------- search: folding with index map (Cyrillic→Latin so a Latin query hits Cyrillic rows) ---------------- */
 const TR={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',ң:'ng',ҥ:'ng',о:'o',ө:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ү:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya',ŋ:'ng',ñ:'ng',x:'kh',ɨ:'y'};
-function fold(s){const chars=[],map=[];let i=0;for(const ch of String(s)){const lc=ch.toLowerCase();let r=TR[lc];if(r===undefined)r=lc.normalize('NFKD').replace(/\p{M}/gu,'');if(r in TR&&r!==lc)r=TR[r];for(const c of r){chars.push(c);map.push(i)}i+=ch.length}return{f:chars.join(''),map,len:i}}
+const FOLDS=new Map();
+function fold(s){s=String(s);const hit=FOLDS.get(s);if(hit)return hit;const r=fold1(s);FOLDS.set(s,r);return r}
+function fold1(s){const chars=[],map=[];let i=0;for(const ch of String(s)){const lc=ch.toLowerCase();let r=TR[lc];if(r===undefined)r=lc.normalize('NFKD').replace(/\p{M}/gu,'');if(r in TR&&r!==lc)r=TR[r];for(const c of r){chars.push(c);map.push(i)}i+=ch.length}return{f:chars.join(''),map,len:i}}
 function matches(text,needle){ // returns [[start,end]] in original text
   const{f,map,len}=fold(text);const out=[];let from=0;
   while(needle.f&&(from=f.indexOf(needle.f,from))>=0){const s=map[from],e=(from+needle.f.length<map.length?map[from+needle.f.length]:len);out.push([s,e]);from+=needle.f.length}
@@ -237,31 +241,49 @@ function score(text,needle){const{f}=fold(text);if(!needle.f)return null;if(f===
 const alts=x=>Array.isArray(x)?x:String(x||'').split(',').map(t=>t.trim()).filter(Boolean); // the backup stores alternates as comma-separated strings
 const LYRIC_LINES={}; // version id → [{script,n,text}]
 for(const v of D.versions)LYRIC_LINES[v.id]=SCRIPTS.flatMap(s=>numbered(v[s.k]).filter(l=>!l.blank).map(l=>({script:s.k,n:l.n,text:stripHtml(l.html)})));
+const TYPES=['song','video','artist','track','album']; // group order
+const FILTER_WORDS={song:'song',songs:'song',video:'video',videos:'video',artist:'artist',artists:'artist',track:'track',tracks:'track',album:'album',albums:'album',lyrics:'lyrics',lyric:'lyrics'};
+function parseQuery(q){ // "#videos alash" → {text:'alash', types:Set{'video'}, lyricsOnly:false}; unknown #words stay in the text
+  const types=new Set();let lyricsOnly=false;const words=[];
+  for(const w of q.split(/\s+/)){const m=/^#(\w+)$/.exec(w);const t=m&&FILTER_WORDS[m[1].toLowerCase()];if(t==='lyrics')lyricsOnly=true;else if(t)types.add(t);else if(w)words.push(w)}
+  return{text:words.join(' '),types,lyricsOnly};
+}
 function search(q){
-  const needle=fold(q.trim());const res={video:[],song:[],artist:[],track:[],album:[]};if(needle.f.length<1)return res;
+  const Q=parseQuery(q);const needle=fold(Q.text.trim());const res={video:[],song:[],artist:[],track:[],album:[],needle,filter:Q};
+  const want=t=>!Q.types.size||Q.types.has(t);
+  if(needle.f.length<1){ // a bare filter lists everything of that type
+    if(Q.types.has('video'))res.video=D.videos.map(v=>({type:'video',id:v.id,score:2,v}));
+    if(Q.types.has('song'))res.song=D.songs.map(s=>({type:'song',id:s.id,score:2,by:'name',hits:[],s}));
+    if(Q.types.has('artist'))res.artist=D.artists.map(a=>({type:'artist',id:a.id,score:2,a}));
+    if(Q.types.has('track'))res.track=D.tracks.map(t=>({type:'track',id:t.id,score:2,t}));
+    if(Q.types.has('album'))res.album=D.albums.map(a=>({type:'album',id:a.id,score:2,a}));
+    for(const k of TYPES)res[k].sort((x,y)=>(x.v?.title||x.s?.name||x.a?.name||x.t?.name||'').localeCompare(y.v?.title||y.s?.name||y.a?.name||y.t?.name||''));
+    return res;
+  }
   const lyricsOk=needle.f.length>=3;
-  for(const v of D.videos){const sc=score(v.title,needle);if(sc!==null)res.video.push({type:'video',id:v.id,score:sc,v})}
-  for(const s of D.songs){
+  if(want('video')&&!Q.lyricsOnly)for(const v of D.videos){const sc=score(v.title,needle);if(sc!==null)res.video.push({type:'video',id:v.id,score:sc,v})}
+  if(want('song'))for(const s of D.songs){
     let sc=null,by=null;const names=[['name',s.name],['english',s.english_name],...alts(s.alternate_titles).map(t=>['alt',t]),...alts(s.alternate_spellings).map(t=>['alt',t])];
-    for(const[k,t]of names){if(!t)continue;const x=score(t,needle);if(x!==null){const adj=x+(k==='name'?0:k==='english'?3:4);if(sc===null||adj<sc){sc=adj;by=k}}}
+    if(!Q.lyricsOnly)for(const[k,t]of names){if(!t)continue;const x=score(t,needle);if(x!==null){const adj=x+(k==='name'?0:k==='english'?3:4);if(sc===null||adj<sc){sc=adj;by=k}}}
     const hits=[];
     if(lyricsOk)for(const ver of VERS[s.id]||[])for(const l of LYRIC_LINES[ver.id]){if(matches(l.text,needle).length)hits.push({ver,...l})}
     if(sc!==null||hits.length)res.song.push({type:'song',id:s.id,score:sc??5,by:sc===null?'lyrics':by,hits,s});
   }
-  for(const a of D.artists){const sc=score(a.name,needle);if(sc!==null)res.artist.push({type:'artist',id:a.id,score:sc,a})}
-  for(const t of D.tracks){const sc=score(t.name,needle);if(sc!==null)res.track.push({type:'track',id:t.id,score:sc,t})}
-  for(const a of D.albums){const sc=score(a.name,needle);if(sc!==null)res.album.push({type:'album',id:a.id,score:sc,a})}
+  if(want('artist')&&!Q.lyricsOnly)for(const a of D.artists){const sc=score(a.name,needle);if(sc!==null)res.artist.push({type:'artist',id:a.id,score:sc,a})}
+  if(want('track')&&!Q.lyricsOnly)for(const t of D.tracks){const sc=score(t.name,needle);if(sc!==null)res.track.push({type:'track',id:t.id,score:sc,t})}
+  if(want('album')&&!Q.lyricsOnly)for(const a of D.albums){const sc=score(a.name,needle);if(sc!==null)res.album.push({type:'album',id:a.id,score:sc,a})}
   const nm=r=>(r.v?.title||r.s?.name||r.a?.name||r.t?.name||'');
-  for(const k in res)res[k].sort((x,y)=>x.score-y.score||nm(x).localeCompare(nm(y)));
-  res.needle=needle;return res;
+  for(const k of TYPES)res[k].sort((x,y)=>x.score-y.score||nm(x).localeCompare(nm(y)));
+  return res;
 }
 
 const tip=document.getElementById('tip');
 /* ---------------- state ---------------- */
 const DEFAULT_SONG=D.songs.find(s=>s.name==='Saryglarlar')?.id||D.songs[0].id;
 const DEFAULTS={variant:'A',song:DEFAULT_SONG.slice(0,8),ver:'0',sc:'cyr',scs:'cyr,eng',q:'',cur:'0',res:'0'};
-const S={...DEFAULTS};const qs=new URLSearchParams(location.search);for(const k in DEFAULTS)if(qs.has(k))S[k]=qs.get(k);
-function set(k,v,{rerender=true}={}){S[k]=String(v);const u=new URL(location);for(const k2 in S){if(S[k2]!==DEFAULTS[k2])u.searchParams.set(k2,S[k2]);else u.searchParams.delete(k2)}history.replaceState(null,'',u);if(rerender)render()}
+const S={...DEFAULTS};const qs=new URLSearchParams(location.search);for(const k in DEFAULTS)if(qs.has(k)&&!['q','res'].includes(k))S[k]=qs.get(k);
+const MEM_ONLY=new Set(['q','res']);
+function set(k,v,{rerender=true}={}){S[k]=String(v);const u=new URL(location);for(const k2 in S){if(MEM_ONLY.has(k2))continue;if(S[k2]!==DEFAULTS[k2])u.searchParams.set(k2,S[k2]);else u.searchParams.delete(k2)}history.replaceState(null,'',u);if(rerender)render()}
 const song=()=>D.songs.find(s=>s.id.startsWith(S.song))||SONG[DEFAULT_SONG];
 const versions=()=>VERS[song().id]||[];
 const verIdx=()=>Math.min(Math.max(+S.ver||0,0),Math.max(versions().length-1,0));
@@ -287,7 +309,7 @@ function stage(){
   const title=v.title;
   const chapters=CHAPTER_SONGS.map((cs,i)=>{const tv=D.tracks.find(t=>t.song_id===cs.id&&t.version_id);return{s:cs,t:i*412+37,ver:tv?.version_id}});
   return `<div class="stage">
-    <div class="video" style="${thumb(v?v.id:s.id)}"><div class="osd">${v.h}p · ${v.root==='local'?'local copy':'/Volumes/General'} · ${fmt(v.dur)} · 1.0×</div><div class="play">▶</div></div>
+    <div class="vbox" style="${thumb(v?v.id:s.id)}"><div class="osd">${v.h}p · ${v.root==='local'?'local copy':'/Volumes/General'} · ${fmt(v.dur)} · 1.0×</div><div class="play">▶</div></div>
     <div class="timeline"><div class="done"></div>${chapters.map((c,i)=>`<i style="left:${(i/chapters.length)*100}%"></i>`).join('')}</div>
     <h1>${esc(title)}</h1>
     <div class="tags" style="margin-top:6px">${avail(v.root)}<span class="tag" style="--c:var(--t3)">concert</span>${[...(SONG_ARTISTS[s.id]||[])].slice(0,3).map(a=>tagArtist(ART[a].name)).join('')}<span class="dim" style="margin-left:6px">${vids.length} other Video${vids.length===1?'':'s'} of “${esc(s.name)}” in the library</span></div>
@@ -324,9 +346,12 @@ function hlHtml(html,fm,sc){ // highlight query inside a line while keeping mark
   const txt=stripHtml(html);const ids=markersOf(html);return hl(txt,fold(S.q))+ids.map(id=>`<sup class="fn${fm.get(id)?'':' orphan'}" data-fn="${id}" data-sc="${sc}" tabindex="0">${id}</sup>`).join('');
 }
 function resultsA(R){
-  const groups=[['video','Videos'],['song','Songs'],['artist','Artists'],['track','Tracks'],['album','Albums']];const n=groups.reduce((a,[k])=>a+R[k].length,0);
-  if(!n)return `<div class="dd"><div class="empty" style="padding:12px">No results for “${esc(S.q)}”</div></div>`;
-  return `<div class="dd">${groups.map(([k,lab])=>R[k].length?`<h5><span>${lab}</span><span>${R[k].length}</span></h5>${R[k].slice(0,8).map(r=>rowA(r,R.needle)).join('')}${R[k].length>8?`<div class="r dim">… ${R[k].length-8} more</div>`:''}`:'').join('')}</div>`;
+  const groups=[['song','Songs'],['video','Videos'],['artist','Artists'],['track','Tracks'],['album','Albums']].filter(([k])=>!R.filter.types.size||R.filter.types.has(k));const n=groups.reduce((a,[k])=>a+R[k].length,0);
+  const chips=[...R.filter.types].map(t=>`<span class="chip on" style="font-size:.78em;padding:1px 7px">#${t}s</span>`).concat(R.filter.lyricsOnly?['<span class="chip on" style="font-size:.78em;padding:1px 7px">#lyrics</span>']:[]).join(' ');
+  const head=`<div class="ddhint">${chips||'<span class="dim">narrow with #songs #videos #artists #tracks #albums #lyrics</span>'}<span class="dim">${n} result${n===1?'':'s'}</span></div>`;
+  const CAP=R.filter.types.size?40:8; // a #filter means the user wants that type, so show more of it
+  if(!n)return `<div class="dd">${head}<div class="empty" style="padding:12px">No results for “${esc(R.filter.text||S.q)}”</div></div>`;
+  return `<div class="dd">${head}${groups.map(([k,lab])=>R[k].length?`<h5><span>${lab}</span><span>${R[k].length}</span></h5>${R[k].slice(0,CAP).map(r=>rowA(r,R.needle)).join('')}${R[k].length>CAP?`<div class="r dim">… ${R[k].length-CAP} more</div>`:''}`:'').join('')}</div>`;
 }
 function rowA(r,nd){
   if(r.type==='video'){const songs=[...(VID_SONGS[r.id]||[])].map(x=>SONG[x].name);return `<div class="r" onclick="openVideo('${r.id}')"><span class="nm">${hl(r.v.title,nd)}</span><span class="typ video">video · ${fmt(r.v.dur)}</span>${songs.length?`<span class="by">♪ ${esc(songs.join(', '))}</span>`:''}</div>`}
@@ -358,8 +383,8 @@ function drawerB(){
 }
 function toggleScript(k){const v=version();const pres=present(v);let on=S.scs.split(',').filter(x=>pres.includes(x));if(on.includes(k)){if(on.length>1)on=on.filter(x=>x!==k)}else on=SCRIPTS.map(x=>x.k).filter(x=>on.includes(x)||x===k);set('scs',on.join(','))}
 function resultsB(R){
-  const all=[...R.video,...R.song,...R.artist,...R.track,...R.album].sort((x,y)=>x.score-y.score||(x.type>y.type?1:-1));
-  const counts=['video','song','artist','track','album'].map(k=>`<span><b>${R[k].length}</b> ${k}${R[k].length===1?'':'s'}</span>`).join('');
+  const all=TYPES.flatMap(k=>R[k]).sort((x,y)=>x.score-y.score||TYPES.indexOf(x.type)-TYPES.indexOf(y.type));
+  const counts=TYPES.map(k=>`<span><b>${R[k].length}</b> ${k}${R[k].length===1?'':'s'}</span>`).join('');
   return `<div class="res"><div class="sum"><span>“${esc(S.q)}”</span>${counts}<span class="dim">ranked: exact 0 · prefix 1 · word 1.5 · contains 2 · english +3 · alternate +4 · lyrics-only 5</span></div>
    ${all.length?all.slice(0,80).map(r=>rowB(r,R.needle)).join(''):`<div class="empty">No results</div>`}${all.length>80?`<div class="empty">… ${all.length-80} more</div>`:''}</div>`;
 }
@@ -395,7 +420,7 @@ function drawerC(){
   </div>`;
 }
 function resultsC(R){
-  const nd=R.needle;const n=['video','song','artist','track','album'].reduce((a,k)=>a+R[k].length,0);if(!n)return `<div class="empty">No results for “${esc(S.q)}”</div>`;
+  const nd=R.needle;const n=TYPES.reduce((a,k)=>a+R[k].length,0);if(!n)return `<div class="empty">No results for “${esc(S.q)}”</div>`;
   // song-centric: a card per Song with its hit lines (by Version) and its Videos/Tracks nested; Videos/Tracks with no Song fall through to a plain list
   const vidsUsed=new Set(),tracksUsed=new Set();
   const cards=R.song.map(r=>{
@@ -419,18 +444,18 @@ function advance(d){const v=version();if(!v)return;const k=S.variant==='A'?clamp
 function render(){
   tip.style.display='none';
   const R=S.q?search(S.q):null;
-  const top=`<div class="top"><img class="brand" src="olchey.svg" alt="" width="28" height="28"><div class="tabs"><button>Library</button><button class="on">Now playing</button><button>Favorites</button><button>Artists</button></div>
-    <div class="sbox"><input class="search" id="q" placeholder="Search titles, artists, lyrics…" value="${esc(S.q)}" autocomplete="off" oninput="onQ(this.value)" onfocus="if(S.q)set('res','1')"><span class="k"><kbd>/</kbd></span>${S.variant==='A'&&S.res==='1'&&R?resultsA(R):''}</div></div>`;
+  if(!document.getElementById('q'))document.getElementById('app').innerHTML=`<div class="top"><img class="brand" src="olchey.svg" alt="" width="28" height="28"><div class="tabs"><button>Library</button><button class="on">Now playing</button><button>Favorites</button><button>Artists</button></div>
+    <div class="sbox"><input class="search" id="q" placeholder="Search titles, artists, lyrics…  #videos narrows" autocomplete="off" oninput="onQ(this.value)" onfocus="if(S.q)set('res','1')"><span class="k"><kbd>/</kbd></span><div id="ddwrap"></div></div></div><div id="main"></div>`;
+  document.getElementById('ddwrap').innerHTML=S.variant==='A'&&S.res==='1'&&R?resultsA(R):'';
   const drawer={A:drawerA,B:drawerB,C:drawerC}[S.variant]();
   const dw=S.variant==='C'?`${Math.max(400,(S.scs.split(',').length)*300)}px`:'420px';
-  document.getElementById('app').innerHTML=top+`<div class="now v${S.variant}" style="--dw:${dw}">${stage()}${drawer}${S.variant==='B'&&S.res==='1'&&R?resultsB(R):''}</div>`;
+  document.getElementById('main').innerHTML=`<div class="now v${S.variant}" style="--dw:${dw}">${stage()}${drawer}${S.variant==='B'&&S.res==='1'&&R?resultsB(R):''}</div>`;
   document.getElementById('barlab').textContent=`${S.variant} — ${VARIANTS[S.variant].split(' — ')[1]}`;
-  const v=version();document.getElementById('barst').textContent=`song=${song().name} · ver ${verIdx()+1}/${versions().length}${v?' "'+v.label+'"':''} · scripts=${S.variant==='A'?clampScript(S.sc,present(v)):S.scs} · present=${present(v).join('+')||'none'} · cur=${S.cur}${R?` · q="${S.q}" → ${['video','song','artist','track','album'].map(k=>k[0]+R[k].length).join(' ')}`:''}`;
-  const q=document.getElementById('q');if(document.activeElement?.id==='q'||QFOCUS){q.focus();q.setSelectionRange(q.value.length,q.value.length)}
+  const v=version();document.getElementById('barst').textContent=`song=${song().name} · ver ${verIdx()+1}/${versions().length}${v?' "'+v.label+'"':''} · scripts=${S.variant==='A'?clampScript(S.sc,present(v)):S.scs} · present=${present(v).join('+')||'none'} · cur=${S.cur}${R?` · q="${S.q}" → ${TYPES.map(k=>k[0]+R[k].length).join(' ')}`:''}`;
   const cur=document.querySelector('#lyrbody .l.cur');if(cur&&SYNC)cur.scrollIntoView({block:'center',behavior:'smooth'});
 }
-let QFOCUS=false,QT=null;
-function onQ(val){QFOCUS=true;clearTimeout(QT);QT=setTimeout(()=>{set('q',val,{rerender:false});set('res',val?'1':'0');QFOCUS=false},120)}
+let QT=null;
+function onQ(val){clearTimeout(QT);QT=setTimeout(()=>{set('q',val,{rerender:false});set('res',val.trim()?'1':'0')},60)}
 
 /* footnote tooltip + jump, keys */
 document.addEventListener('mouseover',e=>{const s=e.target.closest('sup.fn');if(!s)return;const v=version();if(!v)return;const e2=fnMapFor(v,s.dataset.sc).get(+s.dataset.fn);tip.innerHTML=e2?`<b>${e2.id}</b><span>${e2.text||'<i class="dim">(empty)</i>'}</span>`:`<b>${s.dataset.fn}</b><i class="dim" style="font-style:italic">no footnote with this number (orphan marker)</i>`;tip.style.display='grid';const r=s.getBoundingClientRect();tip.style.left=Math.min(r.left,innerWidth-340)+'px';tip.style.top=(r.bottom+6)+'px'});

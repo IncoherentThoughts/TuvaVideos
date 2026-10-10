@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4412);
 const CACHE = path.join(HERE, 'player-cache.PROTOTYPE-WIPE-ME');
-fs.mkdirSync(path.join(CACHE, 'shots'), { recursive: true });
+// Screenshot folder: SHOTS_DIR env overrides; defaults into the throwaway cache. The app would make this a setting.
+const SHOTS = process.env.SHOTS_DIR ? path.resolve(process.env.SHOTS_DIR) : path.join(CACHE, 'shots');
+fs.mkdirSync(SHOTS, { recursive: true });
 
 const ROOTS = {
   local: { kind: 'local', dir: '/Users/evanwilliams/Desktop/Khoomei/Videos' },
@@ -115,7 +117,7 @@ http.createServer(async (req, res) => {
   try {
     if (u.pathname === '/') return serveFile(req, res, path.join(HERE, 'player.prototype.html'), MIME['.html']);
     if (u.pathname === '/olchey.svg') return serveFile(req, res, path.join(HERE, 'olchey.svg'), MIME['.svg']);
-    if (u.pathname === '/api/files') return json(res, 200, { roots: ROOTS, files: u.searchParams.has('refresh') || probing ? await probeAll() : FILES });
+    if (u.pathname === '/api/files') return json(res, 200, { roots: ROOTS, shotsDir: SHOTS, files: u.searchParams.has('refresh') || probing ? await probeAll() : FILES });
     if (seg[0] === 'media' && seg[1]) {
       const s = SAMPLES.find(x => x.id === seg[1]); if (!s) return json(res, 404, { error: 'no such sample' });
       const abs = u.searchParams.has('cached') ? cachePath(s) : s.abs;
@@ -128,9 +130,11 @@ http.createServer(async (req, res) => {
       return json(res, 200, r);
     }
     if (u.pathname === '/api/shot' && req.method === 'POST') {
-      const name = `${u.searchParams.get('id')}-${u.searchParams.get('t')}.png`;
-      await fsp.writeFile(path.join(CACHE, 'shots', name), await body(req));
-      return json(res, 200, { saved: `player-cache.PROTOTYPE-WIPE-ME/shots/${name}` });
+      const s = SAMPLES.find(x => x.id === u.searchParams.get('id'));
+      const base = (s ? path.basename(s.rel).replace(/\.(mkv|mp4|webm)$/i, '').replace(/\.f\d+$/, '').replace(/\s*\[[A-Za-z0-9_-]{11}\]\s*$/, '') : 'shot').trim();
+      const name = `${base} @ ${u.searchParams.get('t')}s.png`;
+      await fsp.writeFile(path.join(SHOTS, name), await body(req));
+      return json(res, 200, { saved: path.join(SHOTS, name).replace(process.env.HOME, '~') });
     }
     if (u.pathname === '/api/keylog' && req.method === 'POST') { console.log('  key', (await body(req)).toString()); return json(res, 200, {}); }
     res.writeHead(404); res.end('not found');

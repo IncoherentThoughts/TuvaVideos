@@ -129,13 +129,17 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     ? { songId: lyrics, versionId: lyricsVersion, fromChapter: false }
     : v ? lyricsTarget(curChapter, v) : null;
 
+  // `t` (spec 7.4): the Chapter the playhead is in, then the Video's own Song
+  const studioSongs = useRef<string[]>([]);
+  studioSongs.current = [...new Set([curChapter?.songId, v?.songId].filter((x): x is string => !!x))];
+
   if (v === undefined) return <div class="np"><p class="muted">Loading…</p></div>;
   if (v === null || v.id !== videoId) return <div class="empty-state">No such Video.</div>;
 
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} />
+        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} />
         <div class="np-head">
           <div class="np-titlerow">
             <HeaderTitle video={v} onChange={setV} />

@@ -6,6 +6,7 @@ import type { FallbackQueue } from "./fallback";
 import { frameRateValue, type Playback } from "./playback";
 import { rankCopies } from "./ranking";
 import type { Roots } from "./roots";
+import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import { serveFile } from "./stream";
 import type { Thumbnails } from "./thumbs";
@@ -26,6 +27,7 @@ export interface Services {
   scanner: Scanner;
   fallback: FallbackQueue;
   thumbs: Thumbnails;
+  studio: Studio;
   web: WebBundle;
   startedAt: number;
 }
@@ -275,6 +277,44 @@ export function createHandler(s: Services) {
     }
   };
 
+  type R<T> = { ok: true; value: T } | { ok: false; status: number; error: string; refused?: boolean };
+  const reply = <T>(r: R<T>) => (r.ok ? json(r.value) : json({ error: r.error, ...(r.refused ? { refused: true } : {}) }, r.status));
+
+  /** The Studio endpoints that write or drive Music.app (spec 7). Null: not one of ours. */
+  async function studioPost(req: Request, p: string): Promise<Response | null> {
+    let m: RegExpMatchArray | null;
+    if ((m = p.match(/^\/api\/tracks\/([0-9a-fA-F-]{8,64})\/match$/))) {
+      const b = await readJson(req);
+      if (!b || typeof b.persistentId !== "string" || !b.persistentId) return json({ error: "persistentId is required" }, 400);
+      return reply(await s.studio.matchMirrorTrack(m[1]!, b.persistentId));
+    }
+    if ((m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})\/studio$/))) {
+      const b = await readJson(req);
+      if (!b || typeof b.persistentId !== "string" || !b.persistentId) return json({ error: "persistentId is required" }, 400);
+      const r = await s.studio.addLocal(m[1]!, b.persistentId);
+      return r.ok ? json(r.value, 201) : reply(r);
+    }
+    if ((m = p.match(/^\/api\/studio-tracks\/(\d+)\/confirm$/))) return reply(s.studio.confirm(Number(m[1])));
+    if (p === "/api/studio/play") {
+      const b = await readJson(req);
+      if (!b || typeof b.studioTrackId !== "number") return json({ error: "studioTrackId is required" }, 400);
+      return reply(await s.studio.play(b.studioTrackId));
+    }
+    if (p === "/api/studio/pause") return reply(await s.studio.pause());
+    if (p === "/api/studio/resume") return reply(await s.studio.resume());
+    if (p === "/api/studio/stop") return reply(await s.studio.stop());
+    if (p === "/api/studio/seek") {
+      const b = await readJson(req);
+      if (!b || typeof b.position !== "number") return json({ error: "position (seconds) is required" }, 400);
+      return reply(await s.studio.seek(b.position));
+    }
+    if (p === "/api/studio/loop") {
+      const b = await readJson(req);
+      return json(s.studio.setLoop(!!b?.active));
+    }
+    return null;
+  }
+
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const p = url.pathname;
@@ -295,6 +335,9 @@ export function createHandler(s: Services) {
           return list ? json(list) : json({ error: "no such video" }, 404);
         }
         if (p === "/api/artists") return json(listArtists(s.db));
+        if (p === "/api/studio/state") return json(s.studio.state());
+        if (p === "/api/studio/search") return json({ results: await s.studio.search(url.searchParams.get("q") ?? "") });
+        if ((m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})\/studio$/))) return json(await s.studio.songStudio(m[1]!));
         if ((m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
           const song = songDto(s.db, m[1]!);
           if (!song) return json({ error: "no such song" }, 404);
@@ -376,6 +419,10 @@ export function createHandler(s: Services) {
           const r = rejectChapter(s.db, Number(m[1]));
           return r.ok ? json(r.value) : json({ error: r.error }, r.status);
         }
+        if (p.startsWith("/api/studio/") || p.startsWith("/api/studio-tracks/") || /^\/api\/(tracks|songs)\//.test(p)) {
+          const r = await studioPost(req, p);
+          if (r) return r;
+        }
         if ((m = p.match(/^\/api\/videos\/(\d+)\/resume$/))) {
           let body: { resumeS?: unknown; copyId?: unknown } = {};
           try {
@@ -416,6 +463,10 @@ export function createHandler(s: Services) {
         const body = await readJson(req);
         if (!body) return json({ error: "body must be a JSON object" }, 400);
         const r = patchChapter(s.db, Number(m[1]), body);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/studio-tracks\/(\d+)$/))) {
+        const r = s.studio.remove(Number(m[1]));
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/chapters\/(\d+)$/))) {

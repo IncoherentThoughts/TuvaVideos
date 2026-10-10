@@ -26,6 +26,7 @@ export async function launch(cfg: Config) {
   }
   initLog(cfg.logPath);
   const app = await startApp(cfg);
+  void app.studio.probe(); // spec 9: after the scan kicked off, before the tab opens, so the Automation prompt is predictable
   if (cfg.openTab) openTab(cfg.port);
 
   let stopping = false;

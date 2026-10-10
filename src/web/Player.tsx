@@ -9,9 +9,12 @@ import {
 } from "../shared/playerMath";
 import { RESUME_INTERVAL_MS, ResumeClock, startPosition } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
+import { studioRoute, type SongStudioDto } from "../shared/studio";
 import type { CopyDto, VideoDto } from "../shared/types";
 import { CopyPicker, copyLabel } from "./CopyPicker";
 import { Timeline, type ChapterMark } from "./Timeline";
+import { StudioBar, type StudioCtl } from "./Studio";
+import { api, apiError } from "./data";
 
 export type { ChapterMark } from "./Timeline";
 
@@ -36,6 +39,8 @@ interface Props {
   onTime?(t: number): void;
   /** Filled with a handle on the Player so the Chapter cards can read the playhead, seek, flash the OSD and take focus back. */
   ctl?: { current: PlayerCtl | null };
+  /** `t`: the Songs whose Studio tracks to use, best first (the Chapter the playhead is in, then the Video's). */
+  studioSongs?(): string[];
   /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
   onStep(dir: 1 | -1): string | null;
 }
@@ -82,7 +87,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -102,6 +107,11 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const [osd, setOsd] = useState<{ text: string; n: number } | null>(null);
   const [osdFlash, setOsdFlash] = useState(false);
   const [osdAlways, setOsdAlways] = useState(false);
+  const [studio, setStudio] = useState<{ songId: string; data: SongStudioDto } | null>(null);
+  const studioOn = useRef(false);
+  studioOn.current = !!studio;
+  const studioCtl = useRef<StudioCtl | null>(null);
+  const studioBusy = useRef(false);
 
   // ---- mutable state that handlers read ----
   const V = useRef(video);
@@ -479,9 +489,41 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     else void box.current?.requestFullscreen().catch(() => {});
   };
 
+  /** `t` (spec 7.4): the Video pauses on its frame and the Studio bar opens on the first Song that has Studio tracks. */
+  const openStudio = async () => {
+    if (studioBusy.current) return;
+    studioBusy.current = true;
+    try {
+      const songs = studioSongs?.() ?? [];
+      if (!songs.length) return say("no studio tracks", 2000);
+      const found: SongStudioDto[] = [];
+      for (const id of songs) found.push(await api.studio(id));
+      const pick = found.find((d) => d.tracks.some((t) => t.state !== "missing")) ?? found.find((d) => d.tracks.length || d.missing.length);
+      if (!pick) return say("no studio tracks", 2000);
+      vid.current?.pause();
+      setStudio({ songId: pick.songId, data: pick });
+    } catch (e) {
+      say(apiError(e), 2600);
+    } finally {
+      studioBusy.current = false;
+    }
+  };
+  /** `t` again, Esc or ×: Music.app stops, the Video is still paused at the same timestamp. */
+  const closeStudio = async () => {
+    await studioCtl.current?.stop();
+    setStudio(null);
+    refocus();
+  };
+
   const perform = (a: PlayerAction) => {
     const v = vid.current;
     if (!v) return;
+    if (studioOn.current) {
+      const route = studioRoute(a); // while the bar is active most keys belong to Music.app (spec 7.4)
+      if (route.to === "music") return void studioCtl.current?.key(route.op);
+      if (route.to === "exit") return void closeStudio();
+      if (route.to === "noop") return say(route.notice, 1400);
+    }
     const dur = Number.isFinite(v.duration) ? v.duration : null;
     switch (a.type) {
       case "togglePause":
@@ -563,12 +605,17 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         } else flash();
         break;
       case "studio":
-        say("studio playback not built yet", 2000);
+        void openStudio();
         break;
     }
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && studioOn.current && document.activeElement === box.current) {
+      e.preventDefault();
+      void closeStudio();
+      return;
+    }
     const { action, handled } = dispatchKey(e, { containerFocused: document.activeElement === box.current });
     if (!handled) return;
     e.preventDefault();
@@ -584,7 +631,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
 
   return (
     <div
-      class={`player${fs ? " fs" : ""}`}
+      class={`player${fs ? " fs" : ""}${studio ? " studio-on" : ""}`}
       ref={box}
       tabIndex={0}
       data-player=""
@@ -665,6 +712,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
           </span>
         )}
         <span class="grow" />
+        <button class={`cbtn studiobtn${studio ? " on" : ""}`} tabIndex={-1} aria-pressed={!!studio} title="Studio playback in Music.app (t)" onClick={() => (studio ? void closeStudio() : void openStudio(), refocus())}>
+          Studio
+        </button>
         <CopyPicker copies={copies} playingId={copyId} onPick={pickCopy} refocus={refocus} />
         <button
           class="ib"
@@ -681,6 +731,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
           {FS_ICON}
         </button>
       </div>
+      {studio && <StudioBar key={studio.songId} songId={studio.songId} initial={studio.data} say={(t, ms) => say(t, ms)} onClose={() => (setStudio(null), refocus())} ctl={studioCtl} />}
     </div>
   );
 }

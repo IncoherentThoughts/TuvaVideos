@@ -4,6 +4,7 @@ import { checkpoint, openDb } from "./db";
 import { FallbackQueue } from "./fallback";
 import { initLog, log } from "./log";
 import { Roots } from "./roots";
+import { Studio, type StudioOptions } from "./studio/service";
 import { Scanner } from "./scan";
 import { rebuildSearchIndex } from "./search";
 import { Thumbnails } from "./thumbs";
@@ -16,9 +17,9 @@ export interface App extends Services {
 
 /**
  * Startup order (spec 9): migrations -> Root availability -> scan of mounted Roots (background) ->
- * [Music.app playerState() read: ticket #27, skipped] -> caller opens the tab.
+ * Music.app playerState() read (launch.ts, via `app.studio.probe()`) -> caller opens the tab.
  */
-export async function startApp(cfg: Config): Promise<App> {
+export async function startApp(cfg: Config, opts: { studio?: StudioOptions } = {}): Promise<App> {
   initLog(cfg.logPath);
   log(`TuvaVideos starting, data dir ${cfg.dataDir}`);
   const db = openDb(cfg.dbPath, cfg.migrationsDir);
@@ -40,7 +41,8 @@ export async function startApp(cfg: Config): Promise<App> {
   const idx = rebuildSearchIndex(db); // the index is also rebuilt after every scan
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
-  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, web, startedAt: Date.now() };
+  const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
+  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, studio, web, startedAt: Date.now() };
   const handler = createHandler(services);
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);
@@ -56,6 +58,7 @@ export async function startApp(cfg: Config): Promise<App> {
     async stop() {
       log("shutting down: letting the in-flight ffmpeg job finish");
       roots.stop();
+      studio.shutdown(); // kills the osascript child
       void server.stop();
       await Promise.all([fallback.shutdown(), thumbs.shutdown()]);
       checkpoint(db);

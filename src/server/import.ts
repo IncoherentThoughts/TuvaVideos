@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // `bun run import <backup-dir>`: Mirror import (spec 2.4). Wipe-and-replace the Mirror in one transaction, then the
 // follow-ups: Performance defaults for existing Videos (spec 2.3), the Latin-title fill (2.5), the search rebuild (6.1)
-// and the Studio matcher hook (a no-op until ticket #27). Honours TUVA_DATA_DIR. Never writes to the backup.
+// and the Studio matcher (re-dumps Music.app, then matches every Mirror Track). Honours TUVA_DATA_DIR. Never writes to the backup.
 import { loadConfig } from "./config";
 import { checkpoint, openDb, type Db } from "./db";
 import { applyPerformanceDefaults, type DefaultsStats } from "./defaults";
@@ -9,25 +9,27 @@ import { fillLatinTitles, type LatinFillStats } from "./latin";
 import { initLog, log } from "./log";
 import { BackupError, importMirror, type MirrorImportResult } from "./mirror";
 import { rebuildSearchIndex, type IndexStats } from "./search";
-import { runStudioMatcher } from "./studio";
+import { runStudioMatcher, type MatcherDeps, type MatchStats } from "./studio/match";
 
 export interface ImportRun {
   mirror: MirrorImportResult;
   defaults: DefaultsStats;
   latin: LatinFillStats;
   index: IndexStats;
+  /** null when the matcher was skipped (no Music.app dump). */
+  studio: MatchStats | null;
   totalMs: number;
 }
 
 /** Import plus every follow-up, in the order that lets each see the previous one's rows. */
-export async function runImport(db: Db, backupDir: string): Promise<ImportRun> {
+export async function runImport(db: Db, backupDir: string, studio?: MatcherDeps): Promise<ImportRun> {
   const t0 = performance.now();
   const mirror = importMirror(db, backupDir);
   const defaults = applyPerformanceDefaults(db);
   const latin = fillLatinTitles(db); // after the defaults: a Video that just got a Song may now have an archive spelling
   const index = rebuildSearchIndex(db); // after the Latin titles: they are part of the indexed text
-  await runStudioMatcher(db);
-  return { mirror, defaults, latin, index, totalMs: Math.round(performance.now() - t0) };
+  const studioStats = await runStudioMatcher(db, studio); // after the Mirror rows exist: it matches every Mirror Track
+  return { mirror, defaults, latin, index, studio: studioStats, totalMs: Math.round(performance.now() - t0) };
 }
 
 export function printRun(r: ImportRun) {
@@ -39,6 +41,7 @@ export function printRun(r: ImportRun) {
   log("performance defaults:", r.defaults);
   log("latin titles:", r.latin);
   log(`search index: ${r.index.total} rows`, r.index, `${r.index.ms} ms`);
+  log("studio matcher:", r.studio ?? "skipped");
   log(`total ${r.totalMs} ms`);
 }
 

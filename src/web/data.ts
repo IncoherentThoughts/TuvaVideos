@@ -1,5 +1,6 @@
 // Client-side data: the whole library (~1100 Videos) is fetched once and filtered in memory (ticket #23).
 import { useEffect, useRef, useState } from "preact/hooks";
+import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, ScanDto, SearchResponse, SongDto, VideoDto, VideoPatch } from "../shared/types";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -53,6 +54,20 @@ export const api = {
   confirmChapter: (id: number) => post<ChapterDto>(`/api/chapters/${id}/confirm`),
   rejectChapter: (id: number) => post<{ rejected: true }>(`/api/chapters/${id}/reject`),
   confirmAllChapters: (videoId: number) => post<{ confirmed: number; chapters: ChapterDto[] }>(`/api/videos/${videoId}/chapters/confirm-all`),
+  // Studio playback (spec 7). Transport calls answer with the new StudioStateDto.
+  studio: (songId: string) => get<SongStudioDto>(`/api/songs/${encodeURIComponent(songId)}/studio`),
+  studioSearch: (q: string) => get<{ results: DumpHitDto[] }>(`/api/studio/search?q=${encodeURIComponent(q)}`),
+  studioState: () => get<StudioStateDto>("/api/studio/state"),
+  studioPlay: (studioTrackId: number) => post<StudioStateDto>("/api/studio/play", { studioTrackId }),
+  studioPause: () => post<StudioStateDto>("/api/studio/pause"),
+  studioResume: () => post<StudioStateDto>("/api/studio/resume"),
+  studioStop: () => post<StudioStateDto>("/api/studio/stop"),
+  studioSeek: (position: number) => post<StudioStateDto>("/api/studio/seek", { position }),
+  studioLoop: (active: boolean) => post<StudioStateDto>("/api/studio/loop", { active }),
+  matchTrack: (mirrorTrackId: string, persistentId: string) => post<{ id: number }>(`/api/tracks/${mirrorTrackId}/match`, { persistentId }),
+  addLocal: (songId: string, persistentId: string) => post<{ id: number }>(`/api/songs/${songId}/studio`, { persistentId }),
+  confirmStudio: (id: number) => post<{ id: number }>(`/api/studio-tracks/${id}/confirm`),
+  removeStudio: (id: number) => send<{ removed: true; tombstoned: boolean }>("DELETE", `/api/studio-tracks/${id}`),
   videos: () => get<VideoDto[]>("/api/videos"),
   video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
   artists: () => get<ArtistDto[]>("/api/artists"),

@@ -343,3 +343,45 @@ select.chip { background: var(--bg2); cursor: pointer; padding-right: 6px; }
 .lyrics-page .drawer { height: calc(100vh - var(--bar-h) - 140px); }
 .song-videos { margin-top: 16px; padding-left: 18px; color: var(--fg2); }
 .song-videos a:hover { color: var(--fg); text-decoration: underline; }
+
+/* ---- Studio bar (spec 7.4) ---- */
+.cbtn.studiobtn.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.player.studio-on .ctl { border-radius: 0; }
+.studio { background: var(--bg2); border-top: 1px solid var(--line); border-radius: 0 0 var(--r) var(--r); font-size: .92em; }
+.st-head { display: flex; align-items: center; gap: 10px; padding: 6px 8px 0 10px; min-height: 32px; }
+.st-head .grow { flex: 1; }
+.st-tag { color: var(--accent); font-size: .82em; letter-spacing: .04em; text-transform: uppercase; }
+.st-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.st-album { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.st-err { color: var(--t1); }
+.studio .ablbl { color: var(--t6); font-size: .85em; }
+.studio .clock { font-size: .9em; white-space: nowrap; }
+.studio .btn.on { background: var(--bg3); border-color: var(--fg3); }
+.st-scrub { background: transparent; }
+.st-list { border-top: 1px solid var(--line); padding: 6px 8px 8px; display: grid; gap: 2px; max-height: 300px; overflow-y: auto; }
+.st-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 4px; border-radius: 6px; border: 1px solid transparent; }
+.st-row.cur { background: var(--bg3); }
+.st-row.suggested { border: 1px dashed var(--fg3); }
+.st-row.confirmed .st-mark { color: var(--t4); }
+.st-row.missing { color: var(--fg2); }
+.st-main { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; text-align: left; padding: 3px 4px; border-radius: 5px; }
+button.st-main:hover { background: var(--bg3); }
+.st-main.static { cursor: default; }
+.st-mark { width: 1.2em; text-align: center; color: var(--fg3); }
+.st-tn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.st-ta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.st-badge { font-size: .75em; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; color: var(--fg3); }
+.st-state { font-size: .8em; color: var(--fg3); white-space: nowrap; }
+.st-state.suggested { color: var(--t3); }
+.st-state.confirmed { color: var(--t4); }
+.st-state.missing { color: var(--fg3); }
+.st-offers { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 4px 2px 26px; font-size: .88em; }
+.st-offer { padding: 1px 8px; border: 1px dashed var(--line); border-radius: 8px; color: var(--fg); }
+.st-offer:hover { border-color: var(--fg3); background: var(--bg3); }
+.st-empty { padding: 4px; }
+.st-find { display: grid; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.st-find input { width: 100%; padding: 5px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: calc(var(--r) * .6); }
+.st-results { display: grid; gap: 2px; max-height: 190px; overflow-y: auto; }
+.st-res { display: flex; align-items: baseline; gap: 10px; padding: 2px 4px; border-radius: 5px; }
+.st-res:hover { background: var(--bg3); }
+.player:fullscreen .studio { border-radius: 0; }

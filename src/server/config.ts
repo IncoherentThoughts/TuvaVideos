@@ -11,6 +11,8 @@ export interface Config {
   ytCacheDir: string;
   screenshotDir: string;
   logPath: string;
+  /** Cached Music.app library dump (spec 7.2). */
+  studioDumpPath: string;
   port: number;
   localRoot: string;
   externalRoot: string;
@@ -39,6 +41,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ytCacheDir: env.TUVA_YT_CACHE ?? join(dataDir, "youtube-info"),
     screenshotDir: env.TUVA_SCREENSHOT_DIR ?? join(homedir(), "Desktop"),
     logPath: join(dataDir, "log.txt"),
+    studioDumpPath: join(dataDir, "studio-dump.json"),
     port: Number(env.TUVA_PORT ?? 4400),
     localRoot: env.TUVA_LOCAL_ROOT ?? "/Users/evanwilliams/Desktop/Khoomei/Videos",
     externalRoot: env.TUVA_EXTERNAL_ROOT ?? "/Volumes/General/хөөмей/Хөөмей",

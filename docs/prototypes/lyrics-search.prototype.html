@@ -118,8 +118,8 @@ sup.fn[data-adj]::before{content:",";color:var(--fg3);margin:0 1px 0 -1px}
 .fnlist li.unref{color:var(--t1)}
 .fnlist b{font-family:var(--font-mono);color:var(--accent);font-weight:600;min-width:1.2em}
 .fnlist .sc{font-family:var(--font-mono);font-size:.75em;color:var(--fg3);margin-left:auto;align-self:center}
-#tip{position:fixed;z-index:50;max-width:320px;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.9em;color:var(--fg);box-shadow:0 8px 24px rgba(0,0,0,.45);pointer-events:none;display:none;font-family:var(--font-ui)}
-#tip b{font-family:var(--font-mono);color:var(--accent);margin-right:6px}
+#tip{position:fixed;z-index:50;max-width:320px;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.9em;line-height:1.4;color:var(--fg);box-shadow:0 8px 24px rgba(0,0,0,.45);pointer-events:none;display:none;font-family:var(--font-ui);grid-template-columns:auto 1fr;column-gap:8px;align-items:baseline}
+#tip b{font-family:var(--font-mono);color:var(--accent);font-weight:600}
 .empty{color:var(--fg3);font-style:italic;padding:8px 0}
 .note{color:var(--fg3);font-size:.85em;margin-top:10px}
 
@@ -190,7 +190,7 @@ sup.fn[data-adj]::before{content:",";color:var(--fg3);margin:0 1px 0 -1px}
 <script>
 /* ---------------- data index ---------------- */
 const D=window.DATA;
-const SCRIPTS=[{k:'cyr',label:'Тыва',lang:'tyv',fn:'fn_cyr'},{k:'lat',label:'Latin',lang:'tyv-Latn',fn:'fn_lat'},{k:'eng',label:'English',lang:'en',fn:'fn_eng'}];
+const SCRIPTS=[{k:'cyr',label:'Cyrillic',lang:'tyv',fn:'fn_cyr'},{k:'lat',label:'Latin',lang:'tyv-Latn',fn:'fn_lat'},{k:'eng',label:'English',lang:'en',fn:'fn_eng'}];
 const SONG=Object.fromEntries(D.songs.map(s=>[s.id,s]));
 const ART=Object.fromEntries(D.artists.map(a=>[a.id,a]));
 const ALB=Object.fromEntries(D.albums.map(a=>[a.id,a]));
@@ -259,7 +259,7 @@ function search(q){
 const tip=document.getElementById('tip');
 /* ---------------- state ---------------- */
 const DEFAULT_SONG=D.songs.find(s=>s.name==='Saryglarlar')?.id||D.songs[0].id;
-const DEFAULTS={variant:'A',song:DEFAULT_SONG.slice(0,8),ver:'0',sc:'cyr',scs:'cyr,eng',q:'',cur:'3',res:'0'};
+const DEFAULTS={variant:'A',song:DEFAULT_SONG.slice(0,8),ver:'0',sc:'cyr',scs:'cyr,eng',q:'',cur:'0',res:'0'};
 const S={...DEFAULTS};const qs=new URLSearchParams(location.search);for(const k in DEFAULTS)if(qs.has(k))S[k]=qs.get(k);
 function set(k,v,{rerender=true}={}){S[k]=String(v);const u=new URL(location);for(const k2 in S){if(S[k2]!==DEFAULTS[k2])u.searchParams.set(k2,S[k2]);else u.searchParams.delete(k2)}history.replaceState(null,'',u);if(rerender)render()}
 const song=()=>D.songs.find(s=>s.id.startsWith(S.song))||SONG[DEFAULT_SONG];
@@ -268,7 +268,7 @@ const verIdx=()=>Math.min(Math.max(+S.ver||0,0),Math.max(versions().length-1,0))
 const version=()=>versions()[verIdx()];
 const VARIANTS={A:'Reader — one Script, Version pills, grouped dropdown',B:'Stack — interlinear Scripts, Version select, flat ranked page',C:'Columns — parallel Scripts, Version stepper, Song-centric results'};
 function cycle(d){const ks=Object.keys(VARIANTS);set('variant',ks[(ks.indexOf(S.variant)+d+ks.length)%ks.length])}
-function pickSong(id,verId){set('song',id.slice(0,8),{rerender:false});const vs=VERS[id]||[];let i=verId?vs.findIndex(v=>v.id===verId):0;if(i<0)i=0;set('ver',i,{rerender:false});set('cur',3,{rerender:false});set('res','0')}
+function pickSong(id,verId){set('song',id.slice(0,8),{rerender:false});const vs=VERS[id]||[];let i=verId?vs.findIndex(v=>v.id===verId):0;if(i<0)i=0;set('ver',i,{rerender:false});set('cur',0,{rerender:false});set('res','0')}
 function openingVersionIndex(s){const vs=VERS[s.id]||[];const t=D.tracks.find(t=>t.song_id===s.id&&t.version_id);const i=t?vs.findIndex(v=>v.id===t.version_id):-1;return i<0?0:i}
 
 /* ---------------- shared pieces ---------------- */
@@ -433,7 +433,7 @@ let QFOCUS=false,QT=null;
 function onQ(val){QFOCUS=true;clearTimeout(QT);QT=setTimeout(()=>{set('q',val,{rerender:false});set('res',val?'1':'0');QFOCUS=false},120)}
 
 /* footnote tooltip + jump, keys */
-document.addEventListener('mouseover',e=>{const s=e.target.closest('sup.fn');if(!s)return;const v=version();if(!v)return;const e2=fnMapFor(v,s.dataset.sc).get(+s.dataset.fn);tip.innerHTML=e2?`<b>${e2.id}</b>${e2.text||'<i class="dim">(empty)</i>'}`:`<b>${s.dataset.fn}</b><i class="dim">no footnote with this number (orphan marker)</i>`;tip.style.display='block';const r=s.getBoundingClientRect();tip.style.left=Math.min(r.left,innerWidth-340)+'px';tip.style.top=(r.bottom+6)+'px'});
+document.addEventListener('mouseover',e=>{const s=e.target.closest('sup.fn');if(!s)return;const v=version();if(!v)return;const e2=fnMapFor(v,s.dataset.sc).get(+s.dataset.fn);tip.innerHTML=e2?`<b>${e2.id}</b><span>${e2.text||'<i class="dim">(empty)</i>'}</span>`:`<b>${s.dataset.fn}</b><i class="dim" style="font-style:italic">no footnote with this number (orphan marker)</i>`;tip.style.display='grid';const r=s.getBoundingClientRect();tip.style.left=Math.min(r.left,innerWidth-340)+'px';tip.style.top=(r.bottom+6)+'px'});
 document.addEventListener('mouseout',e=>{if(e.target.closest?.('sup.fn'))tip.style.display='none'});
 document.addEventListener('click',e=>{const s=e.target.closest('sup.fn');if(s){e.stopPropagation();const el=document.getElementById(`fn-${s.dataset.sc}-${s.dataset.fn}`);if(el){el.scrollIntoView({block:'center',behavior:'smooth'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600)}return}
   if(S.variant==='A'&&S.res==='1'&&!e.target.closest('.sbox'))set('res','0')});

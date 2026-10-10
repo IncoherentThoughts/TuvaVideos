@@ -6,7 +6,7 @@ import { chapterAt, lyricsTarget } from "../shared/lyrics/target";
 import { positionIn, resolvePlayingFrom, SOURCE_LABEL, stepFrom } from "../shared/playingFrom";
 import type { ChapterDto, VideoDto } from "../shared/types";
 import { Player, type PlayerCtl } from "./Player";
-import { ChapterStrip } from "./Chapters";
+import { ChapterStrip, catchTyping } from "./Chapters";
 import { api, apiError, replaceVideo, setLastPlayed, toggleFavorite, useStore } from "./data";
 import { loadPlayingFrom, onPlayingFromChange, savePlayingFrom } from "./playingFrom";
 import { navigate, playHref } from "./router";
@@ -97,12 +97,14 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   }, []);
   const addChapter = async (t?: number) => {
     const at = t ?? ctl.current?.time() ?? playhead.current;
+    catchTyping(); // keys typed before the new card opens must not reach the Player
     try {
       const c = await api.addChapter(videoId, { startS: at });
       setNewId(c.id);
       acceptChapters(await api.chapters(videoId));
     } catch (e) {
       ctl.current?.say(apiError(e));
+      ctl.current?.focus();
     }
   };
   const marks = useMemo(() => chapters.map((c) => ({ startS: c.startS, title: c.title || "untitled", suggested: c.suggested })), [chapters]);

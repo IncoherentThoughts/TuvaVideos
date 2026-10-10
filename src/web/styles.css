@@ -169,6 +169,7 @@ select.chip { background: var(--bg2); cursor: pointer; padding-right: 6px; }
 .chs-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .chs-head h2 { font-size: 1em; font-weight: 600; margin-right: auto; }
 .chs-wrap { position: relative; }
+.chs-sink { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none; }
 .chs-scroll { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 10px; scrollbar-width: thin; min-height: 60px; align-items: flex-start; }
 .chs-empty { align-self: center; padding: 14px; border: 1px dashed var(--line); border-radius: var(--r); }
 .chcard { flex: none; width: 188px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2); padding: 6px; display: flex; flex-direction: column; gap: 6px; outline: none; }

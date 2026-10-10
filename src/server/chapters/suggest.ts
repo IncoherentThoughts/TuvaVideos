@@ -132,10 +132,16 @@ export function suggestChapters(db: Db, opts: SuggestOptions): SuggestReport {
     const block: TextBlock | null = info ? selectBlock(info, duration) : null;
     const cands = mergePerformances(block, perfs);
 
-    // Song matcher on the text Chapters that no Performance supplied a Song for
+    const existing = db.query("SELECT id, start_s, suggested, source, favorited_at FROM chapter WHERE video_id = ?").all(v.id) as { id: number; start_s: number; suggested: number; source: string; favorited_at: string | null }[];
+    const kept = existing.filter((c) => !c.suggested).map((c) => c.start_s);
+    const replaceable = existing.filter((c) => c.suggested && (AUTO_SOURCES as string[]).includes(c.source));
+    const tombs = db.query("SELECT source, start_s AS startS FROM chapter_rejection WHERE video_id = ?").all(v.id) as { source: string; startS: number }[];
+    const rules = applyRerunRules(cands, kept, tombs);
+
+    // Song matcher on the text Chapters that survived the rules and that no Performance supplied a Song for
     const linked = [...(linkedByYt.get(v.youtube_id) ?? [])].map((id) => songs.byId.get(id)).filter((s): s is PreparedSong => !!s);
     const match: MatchReportRow[] = [];
-    for (const c of cands) {
+    for (const c of rules.keep) {
       if (c.source === "performance" || c.songId) continue;
       const m = matchSong(c.title, linked, songs.all, th);
       if (m.songId) {
@@ -152,12 +158,6 @@ export function suggestChapters(db: Db, opts: SuggestOptions): SuggestReport {
         songName: m.songId ? (songs.names.get(m.songId) ?? null) : null,
       });
     }
-
-    const existing = db.query("SELECT id, start_s, suggested, source, favorited_at FROM chapter WHERE video_id = ?").all(v.id) as { id: number; start_s: number; suggested: number; source: string; favorited_at: string | null }[];
-    const kept = existing.filter((c) => !c.suggested).map((c) => c.start_s);
-    const replaceable = existing.filter((c) => c.suggested && (AUTO_SOURCES as string[]).includes(c.source));
-    const tombs = db.query("SELECT source, start_s AS startS FROM chapter_rejection WHERE video_id = ?").all(v.id) as { source: string; startS: number }[];
-    const rules = applyRerunRules(cands, kept, tombs);
 
     const written: Record<ChapterSource, number> = { description: 0, comment: 0, performance: 0 };
     for (const c of rules.keep) written[c.source]++;

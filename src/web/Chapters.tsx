@@ -27,6 +27,25 @@ interface StripProps {
 
 type Mode = "view" | "title" | "time" | "delete";
 
+/** The id of the catch-all field that takes focus the moment `c` is pressed, so typing right after it is not read as Player keys. */
+export const SINK_ID = "chs-sink";
+
+/** Takes the text typed into the catch-all field (and empties it). */
+function takeSink(): string {
+  const el = document.getElementById(SINK_ID) as HTMLInputElement | null;
+  const v = el?.value ?? "";
+  if (el) el.value = "";
+  return v;
+}
+
+/** Called by the page the instant `c` is pressed: move focus off the Player at once. */
+export function catchTyping() {
+  const el = document.getElementById(SINK_ID) as HTMLInputElement | null;
+  if (!el) return;
+  el.value = "";
+  el.focus({ preventScroll: true });
+}
+
 export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd, onNewDone }: StripProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const wantFocus = useRef<number | null>(null);
@@ -60,10 +79,11 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
     const id = wantFocus.current;
     if (id == null) return;
     const el = scroller.current?.querySelector<HTMLElement>(`[data-chapter="${id}"]`);
-    if (el) {
-      el.focus({ preventScroll: true });
-      wantFocus.current = null;
-    }
+    if (!el) return;
+    wantFocus.current = null;
+    // only when focus is lost or still on a card: a picker or the Player that took focus meanwhile keeps it
+    const a = document.activeElement;
+    if (!a || a === document.body || a.closest(".chcard")) el.focus({ preventScroll: true });
   });
 
   // the current Chapter stays in view while the Video plays
@@ -101,6 +121,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
         {note && <span class="edit-err" role="alert">{note}</span>}
       </div>
       <div class="chs-wrap">
+        <input id={SINK_ID} class="chs-sink" tabIndex={-1} aria-hidden="true" autocomplete="off" />
         <div class="chs-scroll" ref={scroller}>
           {chapters.length === 0 && <span class="dim chs-empty">No Chapters yet. Press <kbd>c</kbd> while the Player has focus to add one at the playhead.</span>}
           {chapters.map((c) => (
@@ -170,6 +191,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
   const [err, setErr] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const fresh = useRef(autoEdit); // opened by `c`: Esc removes it, and focus returns to the Player afterwards
+  const typedAhead = useRef(autoEdit ? takeSink() : ""); // what was typed between pressing `c` and the card appearing
 
   // an edit that the server refuses (a taken start, say) shows its message on the card, next to the field
   const tryPatch = async (p: ChapterPatch): Promise<boolean> => {
@@ -330,7 +352,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
           </button>
         </div>
         {mode === "title" ? (
-          <InlineInput class="chtitle-in" label="Chapter title" initial={c.title} placeholder="Title…" onSave={saveTitle} onCancel={cancelTitle} />
+          <InlineInput class="chtitle-in" label="Chapter title" initial={typedAhead.current || c.title} caretEnd={!!typedAhead.current} placeholder="Title…" onSave={saveTitle} onCancel={cancelTitle} />
         ) : (
           <div class={`chtitle${c.title ? "" : " dim"}`} title={c.title || "Untitled: press Enter to name it"} onDblClick={() => setMode("title")}>
             {c.title || "untitled"}
@@ -401,11 +423,16 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
 }
 
 /** A one-line field: Enter saves (reading the field's own value), Esc cancels, blur saves. */
-function InlineInput(props: { initial: string; label: string; class: string; placeholder?: string; onSave(text: string): void; onCancel(): void }) {
+function InlineInput(props: { initial: string; label: string; class: string; placeholder?: string; caretEnd?: boolean; onSave(text: string): void; onCancel(): void }) {
   const done = useRef(false);
   const input = useRef<HTMLInputElement>(null);
   // `autofocus` is honoured once per document by the browser, so a field that appears later takes focus itself
-  useEffect(() => input.current?.focus({ preventScroll: false }), []);
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.focus({ preventScroll: false });
+    if (props.caretEnd) el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
   return (
     <input
       ref={input}
@@ -415,7 +442,7 @@ function InlineInput(props: { initial: string; label: string; class: string; pla
       defaultValue={props.initial}
       spellcheck={false}
       autocomplete="off"
-      onFocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+      onFocus={(e) => !props.caretEnd && (e.currentTarget as HTMLInputElement).select()}
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === "Enter") {

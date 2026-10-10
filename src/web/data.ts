@@ -1,6 +1,6 @@
 // Client-side data: the whole library (~1100 Videos) is fetched once and filtered in memory (ticket #23).
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { ArtistDto, FavoriteItem, ScanDto, SearchResponse, VideoDto } from "../shared/types";
+import type { ArtistDto, FavoriteItem, ScanDto, SearchResponse, SongDto, VideoDto, VideoPatch } from "../shared/types";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { signal });
@@ -14,7 +14,28 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
+async function send<T>(method: "PATCH" | "PUT", url: string, body: unknown): Promise<T> {
+  const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`${url}: ${r.status} ${await r.text().catch(() => "")}`);
+  return (await r.json()) as T;
+}
+
+const songCache = new Map<string, Promise<SongDto>>();
+
 export const api = {
+  /** A Song with its Versions. Cached for the page's life: the Mirror only changes through the CLI import. */
+  song: (id: string): Promise<SongDto> => {
+    let p = songCache.get(id);
+    if (!p) {
+      p = get<SongDto>(`/api/songs/${encodeURIComponent(id)}`);
+      p.catch(() => songCache.delete(id));
+      songCache.set(id, p);
+    }
+    return p;
+  },
+  patchVideo: (id: number, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
+  setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
+  createArtist: (name: string) => post<{ id: number; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
   videos: () => get<VideoDto[]>("/api/videos"),
   video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
   artists: () => get<ArtistDto[]>("/api/artists"),
@@ -67,6 +88,11 @@ export async function loadVideos() {
   }
 }
 
+/** Puts an edited Video (the server's answer) into the in-memory library so grids and tags agree. */
+export function replaceVideo(v: VideoDto) {
+  if (state.videos) set({ videos: state.videos.map((x) => (x.id === v.id ? v : x)) });
+}
+
 export async function loadArtists() {
   try {
     set({ artists: await api.artists() });
@@ -106,3 +132,6 @@ export function setLastPlayed(id: number) {
   } catch {}
   set({});
 }
+
+/** The in-memory library, for code outside components. */
+export const currentVideos = () => state.videos;

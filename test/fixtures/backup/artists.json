@@ -1,0 +1,38 @@
+[
+ {
+  "id": "00000000-0000-4000-8000-000000000201",
+  "name": "Alash Ensemble",
+  "profile_picture_url": "https://x/y.jpg",
+  "bio": "bio",
+  "band_id": "00000000-0000-4000-8000-000000000901",
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00",
+  "is_hidden": false,
+  "country": "tuvan",
+  "editors_notes": null
+ },
+ {
+  "id": "00000000-0000-4000-8000-000000000202",
+  "name": "Группа Аян",
+  "profile_picture_url": null,
+  "bio": null,
+  "band_id": "00000000-0000-4000-8000-000000000902",
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00",
+  "is_hidden": true,
+  "country": "tuvan",
+  "editors_notes": null
+ },
+ {
+  "id": "b33e4b80-8951-4600-8d1e-031e7fe84ee9",
+  "name": "Various Artists",
+  "profile_picture_url": null,
+  "bio": "pasted last.fm warning",
+  "band_id": "00000000-0000-4000-8000-000000000903",
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00",
+  "is_hidden": true,
+  "country": null,
+  "editors_notes": null
+ }
+]

@@ -1,6 +1,6 @@
 // Songs for the lyrics drawer and the Song row (spec 5.3, 5.4). SQL and shaping only; availability is api.ts's.
 import type { Db } from "./db";
-import { splitAlternates } from "./search";
+import { allSongNames, splitAlternates } from "../shared/songNames";
 import { SCRIPTS, parseFootnotes } from "../shared/lyrics/scripts";
 import { sanitizeFootnoteHtml, sanitizeLine } from "../shared/lyrics/sanitize";
 import type { ScriptKey, VersionDto } from "../shared/lyrics/types";
@@ -11,10 +11,11 @@ export interface SongRow {
   name: string;
   english_name: string | null;
   alternate_titles: string | null;
+  alternate_spellings: string | null;
 }
 
 export function getSongRow(db: Db, id: string): SongRow | null {
-  return db.query("SELECT id, name, english_name, alternate_titles FROM mirror_song WHERE id = ?").get(id) as SongRow | null;
+  return db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM mirror_song WHERE id = ?").get(id) as SongRow | null;
 }
 
 /** A Version with its three Scripts as sanitized HTML (LINE profile) and sanitized Footnote bodies (FOOTNOTE profile). */
@@ -35,7 +36,7 @@ export function versionsOf(db: Db, songId: string): VersionDto[] {
 export function songDto(db: Db, id: string) {
   const s = getSongRow(db, id);
   if (!s) return null;
-  return { id: s.id, name: s.name, englishName: s.english_name, alternateTitles: splitAlternates(s.alternate_titles), versions: versionsOf(db, id) };
+  return { id: s.id, name: s.name, englishName: s.english_name, alternateTitles: splitAlternates(s.alternate_titles), alternateSpellings: splitAlternates(s.alternate_spellings), names: allSongNames(s), versions: versionsOf(db, id) };
 }
 
 /** What the header needs of a Song: its name and Version labels. A uuid with no row is returned with `name: null` (dangling). */

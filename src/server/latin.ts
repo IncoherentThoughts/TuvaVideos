@@ -3,7 +3,8 @@
 // Latin name field (never `english_name`, which is a translation). Otherwise `table`. A title with no Cyrillic stays
 // NULL. `manual` is never touched.
 import type { Db } from "./db";
-import { hasTable, splitAlternates } from "./search";
+import { hasTable } from "./search";
+import { allSongNames, latinSpelling, type SongNameSource } from "../shared/songNames";
 import { foldText } from "../shared/fold";
 import { hasCyrillic, transliterate } from "../shared/translit";
 
@@ -17,25 +18,22 @@ export interface Latin {
 export const looseKey = (s: string) => foldText(s).replace(/[^a-z0-9]/g, "");
 
 export interface SongNames {
-  /** The Song's Latin name field. */
-  name: string;
-  /** looseKey of the name and of every alternate title and spelling that is Cyrillic. */
+  /** The archive Latin spelling to store (Latin name, else first Latin alternate spelling). */
+  latin: string | null;
+  /** looseKey of the name and of every Cyrillic alternate title and spelling. */
   cyrillicKeys: Set<string>;
 }
 
-export function songNames(row: { name: string; alternate_titles?: string | null; alternate_spellings?: string | null }): SongNames {
-  const keys = new Set<string>();
-  for (const s of [row.name, ...splitAlternates(row.alternate_titles), ...splitAlternates(row.alternate_spellings)]) {
-    if (hasCyrillic(s) || s === row.name) keys.add(looseKey(s));
-  }
+export function songNames(row: SongNameSource): SongNames {
+  const keys = new Set(allSongNames(row).filter((n) => n.kind !== "english" && (hasCyrillic(n.text) || n.kind === "name")).map((n) => looseKey(n.text)));
   keys.delete("");
-  return { name: row.name, cyrillicKeys: keys };
+  return { latin: latinSpelling(row), cyrillicKeys: keys };
 }
 
 /** The pure choice. `song` is the Mirror Song the row is tied to, when there is one. */
 export function latinFor(title: string, song: SongNames | null | undefined): Latin {
   if (!hasCyrillic(title)) return { latin: null, source: null };
-  if (song && !hasCyrillic(song.name) && song.cyrillicKeys.has(looseKey(title))) return { latin: song.name, source: "archive" };
+  if (song?.latin && song.cyrillicKeys.has(looseKey(title))) return { latin: song.latin, source: "archive" };
   return { latin: transliterate(title), source: "table" };
 }
 
@@ -51,7 +49,7 @@ export interface LatinFillStats {
 function loadSongs(db: Db): Map<string, SongNames> {
   const out = new Map<string, SongNames>();
   if (!hasTable(db, "mirror_song")) return out;
-  for (const s of db.query("SELECT id, name, alternate_titles, alternate_spellings FROM mirror_song").all() as any[]) out.set(s.id, songNames(s));
+  for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM mirror_song").all() as any[]) out.set(s.id, songNames(s));
   return out;
 }
 

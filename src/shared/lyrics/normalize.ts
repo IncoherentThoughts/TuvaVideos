@@ -81,10 +81,14 @@ export interface NumberedLine {
 }
 
 export function numberedLines(html: string): NumberedLine[] {
+  return numberLines(parseHtmlToLines(html));
+}
+
+export function numberLines(lines: readonly LyricLine[]): NumberedLine[] {
   const out: NumberedLine[] = [];
   let n = 0;
   let lastBlank = true; // leading blanks are dropped
-  for (const l of parseHtmlToLines(html)) {
+  for (const l of lines) {
     if (l.isBlank) {
       if (!lastBlank) out.push({ blank: true, html: "", n: 0 });
       lastBlank = true;

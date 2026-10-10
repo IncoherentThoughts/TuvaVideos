@@ -99,7 +99,9 @@ export function createLocalArtist(db: Db, nameRaw: unknown): EditResult<CreatedA
   const name = typeof nameRaw === "string" ? nameRaw.trim().replace(/\s+/g, " ") : "";
   if (!name) return bad("name must be a non-empty string");
   if (name.length > 200) return bad("name is too long");
-  const same = db.query("SELECT id, name FROM artist WHERE lower(name) = lower(?) ORDER BY mirror_id IS NULL, id LIMIT 1").get(name) as { id: number; name: string } | null;
+  // SQLite's lower() is ASCII-only, so the case-insensitive compare happens here (a few hundred Artists).
+  const want = name.toLowerCase();
+  const same = (db.query("SELECT id, name FROM artist ORDER BY mirror_id IS NULL, id").all() as { id: number; name: string }[]).find((a) => a.name.toLowerCase() === want) ?? null;
   if (same) return { ok: true, value: { id: same.id, name: same.name, created: false } };
   const { latin, source } = latinFor(name, null);
   const id = Number(db.prepare("INSERT INTO artist (mirror_id, name, name_latin, name_latin_source) VALUES (NULL, ?, ?, ?)").run(name, latin, source).lastInsertRowid);

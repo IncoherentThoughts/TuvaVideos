@@ -2,6 +2,7 @@ import { render } from "preact";
 import { Artists } from "./Artists";
 import { Favorites } from "./Favorites";
 import { Library } from "./Library";
+import { LyricsPage } from "./LyricsPage";
 import { Play } from "./Play";
 import { TopBar } from "./TopBar";
 import { loadArtists, loadVideos, useStore } from "./data";
@@ -20,7 +21,8 @@ function App() {
         {route.name === "library" && <Library search={loc.search} />}
         {route.name === "favorites" && <Favorites search={loc.search} />}
         {route.name === "artists" && <Artists />}
-        {route.name === "play" && <Play videoId={route.videoId} t={route.t} />}
+        {route.name === "play" && <Play videoId={route.videoId} t={route.t} lyrics={route.lyrics} lyricsVersion={route.lyricsVersion} />}
+        {route.name === "lyrics" && <LyricsPage songId={route.songId} />}
         {route.name === "notfound" && <div class="empty-state">No such page.</div>}
       </main>
     </>

@@ -1,0 +1,54 @@
+[
+ {
+  "id": "00000000-0000-4000-8000-000000000501",
+  "album_id": "00000000-0000-4000-8000-000000000301",
+  "song_id": "00000000-0000-4000-8000-000000000001",
+  "track_number": 1,
+  "duration": 100,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "name": "Dekei-oo ",
+  "artist_id": null,
+  "country": "tuvan",
+  "notes": null,
+  "track_version_id": "00000000-0000-4000-8000-000000000102"
+ },
+ {
+  "id": "00000000-0000-4000-8000-000000000502",
+  "album_id": "00000000-0000-4000-8000-000000000301",
+  "song_id": "00000000-0000-4000-8000-000000000003",
+  "track_number": 2,
+  "duration": 100,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "name": "Hidden track",
+  "artist_id": null,
+  "country": "tuvan",
+  "notes": null,
+  "track_version_id": null
+ },
+ {
+  "id": "00000000-0000-4000-8000-000000000503",
+  "album_id": "00000000-0000-4000-8000-000000000301",
+  "song_id": null,
+  "track_number": 3,
+  "duration": 100,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "name": "Instrumental ",
+  "artist_id": null,
+  "country": "tuvan",
+  "notes": null,
+  "track_version_id": null
+ },
+ {
+  "id": "00000000-0000-4000-8000-000000000504",
+  "album_id": "00000000-0000-4000-8000-000000000302",
+  "song_id": "00000000-0000-4000-8000-000000000004",
+  "track_number": 1,
+  "duration": 100,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "name": "Bai-Taiga (Various)",
+  "artist_id": null,
+  "country": "tuvan",
+  "notes": null,
+  "track_version_id": null
+ }
+]

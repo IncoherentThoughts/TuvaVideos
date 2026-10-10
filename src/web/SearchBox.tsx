@@ -7,6 +7,7 @@ import type { SearchResponse, SearchRow } from "../shared/types";
 import { api } from "./data";
 import { SEARCH_ID, releaseSearch } from "./keys";
 import { savePlayingFrom } from "./playingFrom";
+import { openLyrics } from "./lyricsNav";
 import { navigate, playHref } from "./router";
 import { fmtDuration } from "./ui";
 
@@ -132,11 +133,11 @@ export function SearchBox() {
     if (row.kind === "video") (snapshotResults(), navigate(playHref(row.id)));
     else if (row.kind === "chapter") (snapshotResults(), navigate(playHref(row.videoId, row.startS)));
     else if (row.kind === "artist") navigate(`/${libraryQuery({ ...defaultLibraryState(), artist: row.name })}`);
-    else {
-      // Songs, Tracks and Albums open lyrics in the Now playing drawer, which ticket #24/#25 build.
-      setNote("Opening lyrics arrives with the Now playing screen and the archive import (tickets #24, #25).");
-      return;
-    }
+    else if (row.kind === "song") void openLyrics(row.id);
+    else if (row.kind === "track") {
+      if (!row.songId) return setNote("This Track has no Song in the archive, so there are no lyrics to open.");
+      void openLyrics(row.songId, row.versionId);
+    } else return setNote("Albums have no lyrics; search for one of its Tracks.");
     close();
     (document.activeElement as HTMLElement | null)?.blur();
   };

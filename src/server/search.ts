@@ -1,5 +1,6 @@
 import type { Db } from "./db";
 import { log } from "./log";
+import { splitAlternates } from "../shared/songNames";
 import { foldQuery, foldSegments, foldText } from "../shared/fold";
 import {
   effectiveGroups, hasVideoFilters, parseQuery, rowCap, type Group, type ParsedQuery,
@@ -38,18 +39,7 @@ export function htmlToLines(html: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Comma-separated alternates (the archive stores them so) or a JSON array. */
-export function splitAlternates(v: string | null | undefined): string[] {
-  if (!v) return [];
-  const t = v.trim();
-  if (t.startsWith("[")) {
-    try {
-      const arr = JSON.parse(t);
-      if (Array.isArray(arr)) return arr.map(String).map((s) => s.trim()).filter(Boolean);
-    } catch {}
-  }
-  return t.split(",").map((s) => s.trim()).filter(Boolean);
-}
+export { splitAlternates };
 
 export interface IndexStats {
   video: number; chapter: number; artist: number; song: number; lyric: number; track: number; album: number;
@@ -87,7 +77,9 @@ export function rebuildSearchIndex(db: Db): IndexStats {
     };
     section("mirror_song", () => {
       for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM mirror_song").all() as any[])
-        add("song", s.id, [s.name, s.english_name, ...splitAlternates(s.alternate_titles), ...splitAlternates(s.alternate_spellings)]);
+        // Positional segments for songPenalty: 0 name, 1 English (the name again when absent, so alternates stay at 2+), then
+      // one folded segment per alternate title and per alternate spelling.
+      add("song", s.id, [s.name, s.english_name ?? s.name, ...splitAlternates(s.alternate_titles), ...splitAlternates(s.alternate_spellings)]);
     });
     section("mirror_version", () => {
       for (const v of db.query("SELECT id, cyrillic, transliteration, translation FROM mirror_version").all() as any[]) {

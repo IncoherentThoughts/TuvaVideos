@@ -1,0 +1,32 @@
+[
+ {
+  "id": "00000000-0000-4000-8000-000000000301",
+  "name": "Alash",
+  "cover_image_url": "https://x/c.jpg",
+  "band_id": "00000000-0000-4000-8000-000000000901",
+  "release_year": 2010,
+  "lastfm_id": null,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00",
+  "notes": null,
+  "editors_notes": null,
+  "country": "tuvan",
+  "artist_id": "00000000-0000-4000-8000-000000000201",
+  "is_various_artists": false
+ },
+ {
+  "id": "00000000-0000-4000-8000-000000000302",
+  "name": "Tuva Compilation",
+  "cover_image_url": null,
+  "band_id": "00000000-0000-4000-8000-000000000903",
+  "release_year": 2001,
+  "lastfm_id": null,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00",
+  "notes": null,
+  "editors_notes": null,
+  "country": "tuvan",
+  "artist_id": "b33e4b80-8951-4600-8d1e-031e7fe84ee9",
+  "is_various_artists": true
+ }
+]

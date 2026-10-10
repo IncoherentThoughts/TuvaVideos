@@ -35,7 +35,8 @@ export function useLocation(): Loc {
 
 export type Route =
   | { name: "library" }
-  | { name: "play"; videoId: number; t: number | null }
+  | { name: "play"; videoId: number; t: number | null; lyrics: string | null; lyricsVersion: string | null }
+  | { name: "lyrics"; songId: string }
   | { name: "favorites" }
   | { name: "artists" }
   | { name: "notfound" };
@@ -47,15 +48,22 @@ export function matchRoute(loc: Loc): Route {
   if (p === "/artists") return { name: "artists" };
   const m = p.match(/^\/play\/(\d+)$/);
   if (m) {
-    const t = new URLSearchParams(loc.search).get("t");
+    const q = new URLSearchParams(loc.search);
+    const t = q.get("t");
     const n = t == null ? NaN : Number(t);
-    return { name: "play", videoId: Number(m[1]), t: Number.isFinite(n) && n >= 0 ? n : null };
+    return { name: "play", videoId: Number(m[1]), t: Number.isFinite(n) && n >= 0 ? n : null, lyrics: q.get("lyrics") || null, lyricsVersion: q.get("lv") || null };
   }
+  const l = p.match(/^\/lyrics\/([0-9a-fA-F-]+)$/);
+  if (l) return { name: "lyrics", songId: l[1]! };
   return { name: "notfound" };
 }
 
-export const playHref = (videoId: number, t?: number | null) =>
-  `/play/${videoId}${t != null && t > 0 ? `?t=${+t.toFixed(2)}` : ""}`;
+export const playHref = (videoId: number, t?: number | null, lyrics?: { songId: string; versionId?: string | null } | null) => {
+  const q: string[] = [];
+  if (t != null && t > 0) q.push(`t=${+t.toFixed(2)}`);
+  if (lyrics) q.push(`lyrics=${lyrics.songId}`, ...(lyrics.versionId ? [`lv=${lyrics.versionId}`] : []));
+  return `/play/${videoId}${q.length ? `?${q.join("&")}` : ""}`;
+};
 
 /** An anchor that navigates in-page on a plain left click and stays a real link otherwise. */
 export function Link(props: { href: string; class?: string; children?: ComponentChildren; [k: string]: unknown }) {

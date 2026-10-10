@@ -352,7 +352,9 @@ export class Thumbnails {
       let frameH: number | null = null;
       if (g && dur) {
         const single = src.video_codec === "h264" && dur < SINGLE_PASS_MAX_S;
-        const s = single ? await this.stripSingle(abs, dur, g, stripTmp, src.root_id) : await this.stripSeek(abs, dur, g, stripTmp, work, src.root_id);
+        let s: Outcome = single ? await this.stripSingle(abs, dur, g, stripTmp, src.root_id) : { ok: false, error: "seek", io: false };
+        // -skip_frame nokey yields nothing for a clip with too few keyframes: fall back to seek-per-frame
+        if (!s.ok && !s.io) s = await this.stripSeek(abs, dur, g, stripTmp, work, src.root_id);
         if (!s.ok) return fail("strip", s);
         const dims = await webpSize(stripTmp);
         frameH = dims ? Math.round(dims.h / g.rows) : null;

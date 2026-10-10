@@ -241,7 +241,7 @@ export class Scanner {
     });
 
     this.prog.phase = "finishing";
-    await this.markMissing(root, existing, seen, failedDirs, entries.length, summary);
+    await this.markMissing(root, existing, seen, failedDirs, summary);
     rebuildVideoSearch(this.db);
     summary.durationMs = Date.now() - t0;
     return summary;
@@ -317,13 +317,9 @@ export class Scanner {
   }
 
   /** Spec 2.3 / CONTEXT.md "Missing": only for a Root that is still mounted, only when the file is provably gone. */
-  private async markMissing(root: RootRow, existing: Map<string, CopyRow>, seen: Set<string>, failedDirs: string[], listed: number, summary: RootScanSummary) {
+  private async markMissing(root: RootRow, existing: Map<string, CopyRow>, seen: Set<string>, failedDirs: string[], summary: RootScanSummary) {
     const candidates = [...existing.values()].filter((c) => !seen.has(c.rel_path) && !c.missing_since);
     if (!candidates.length) return;
-    if (listed === 0) {
-      log(`scan: ${root.path} listed no files but ${existing.size} Copies are known; not marking anything missing`);
-      return;
-    }
     if (!(await this.roots.check(root.id))) {
       log(`scan: ${root.path} went away during the scan; not marking anything missing`);
       return;

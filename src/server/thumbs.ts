@@ -187,6 +187,7 @@ export class Thumbnails {
         const job = jobs[i++]!;
         await this.gate();
         if (this.stopping) return;
+        if (!this.roots.isAvailable(job.src.root_id)) continue; // drive dropped meanwhile: waits for the remount scan
         try {
           await this.generate(job.videoId, job.src);
         } catch (e) {
@@ -257,7 +258,8 @@ export class Thumbnails {
     for (let a = 1; a <= RETRIES; a++) {
       last = await fn();
       if (last.ok || !last.io) return last;
-      if (!this.roots.isAvailable(rootId)) return last; // drive gone: next scan retries
+      // Re-check the drive now (1-byte read); if it is gone, stop hammering it. A remount scan retries.
+      if (!(await this.roots.check(rootId))) return last;
       if (a < RETRIES) {
         log(`thumbs: I/O error, retry ${a}/${RETRIES - 1}: ${label}`);
         await sleep(5000 * a);
@@ -339,7 +341,7 @@ export class Thumbnails {
     const posterTmp = join(work, "poster.webp");
     const stripTmp = join(work, "strip.webp");
     const fail = (stage: string, r: Outcome) => {
-      this.failedThisRun.add(videoId);
+      if (!(!r.ok && r.io)) this.failedThisRun.add(videoId); // I/O trouble is retryable, never final
       this.stats.failed++;
       log(`thumbs: video ${videoId} ${stage} failed${!r.ok && r.io ? " (I/O, retryable)" : ""}: ${!r.ok ? r.error.slice(-200) : ""}`);
     };

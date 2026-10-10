@@ -29,6 +29,9 @@ beforeAll(async () => {
   await ff(...src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", join(extDir, "Song One [aaaaaaaaaaa].mp4"));
   // id-less file -> SHA-256 identity; E-AC3 audio -> transcode
   await ff(...src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "eac3", join(localDir, "No Id Concert.mkv"));
+  // piped (non-seekable) webm: no duration, no Cues -> remux, made lazily on first play
+  const p = Bun.spawn(["/usr/local/bin/ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=4", "-c:v", "libvpx-vp9", "-f", "webm", "pipe:1"], { stdout: Bun.file(join(localDir, "Live [bbbbbbbbbbb].webm")), stderr: "ignore" });
+  await p.exited;
   writeFileSync(join(localDir, "Song One [aaaaaaaaaaa].f251.webm"), "partial");
   writeFileSync(join(localDir, "._Song One [aaaaaaaaaaa].mp4"), "appledouble");
   writeFileSync(join(localDir, "notes.txt"), "x");
@@ -60,7 +63,7 @@ async function waitFor(cond: () => boolean | Promise<boolean>, ms = 30_000) {
 describe("scan and API", () => {
   test("identity, skip rules, Copies", async () => {
     const videos = await api("/api/videos");
-    expect(videos.length).toBe(2);
+    expect(videos.length).toBe(3);
     const song = videos.find((v: any) => v.youtubeId === "aaaaaaaaaaa");
     expect(song.title).toBe("Song One");
     expect(song.copies.length).toBe(2);
@@ -69,6 +72,9 @@ describe("scan and API", () => {
     expect(song.copies[0].rFrameRate).toBe("25/1");
     expect(song.available).toBe(true);
     const noId = videos.find((v: any) => v.youtubeId === null);
+    const live = videos.find((v: any) => v.youtubeId === "bbbbbbbbbbb");
+    expect(live.copies[0].playback).toBe("remux");
+    expect(live.copies[0].fallback.state).toBe("none"); // lazy: not made until played
     expect(noId.title).toBe("No Id Concert");
     expect(noId.copies[0].playback).toBe("transcode");
     const db = app.db.query("SELECT content_hash FROM video WHERE youtube_id IS NULL").get() as { content_hash: string };
@@ -78,7 +84,7 @@ describe("scan and API", () => {
   test("migrations ran and the search table holds Video titles", () => {
     expect((app.db.query("PRAGMA user_version").get() as any).user_version).toBeGreaterThanOrEqual(2);
     const n = (app.db.query("SELECT COUNT(*) n FROM search WHERE kind = 'video'").get() as any).n;
-    expect(n).toBe(2);
+    expect(n).toBe(3);
     expect(app.db.query("SELECT ref_id FROM search WHERE search MATCH 'concert'").all().length).toBe(1);
   });
 
@@ -127,10 +133,28 @@ describe("fallback queue", () => {
   });
 });
 
+describe("lazy remux", () => {
+  test("first play triggers the job, answers preparing, then serves the Fallback", async () => {
+    const live = (await api("/api/videos")).find((v: any) => v.youtubeId === "bbbbbbbbbbb");
+    const url = base_url + live.copies[0].url;
+    const first = await fetch(url);
+    expect(first.status).toBe(503);
+    const body: any = await first.json();
+    expect(["queued", "preparing", "ready"]).toContain(body.state);
+    await waitFor(async () => (await fetch(base_url + "/api/copies/" + live.copies[0].id).then((r) => r.json()) as any).fallback.state === "ready");
+    const res = await fetch(url, { headers: { range: "bytes=0-99" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-type")).toBe("video/webm");
+    await res.arrayBuffer();
+    const probe = Bun.spawnSync(["/usr/local/bin/ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dataDir, "remux", live.copies[0].id + ".webm")]);
+    expect(parseFloat(probe.stdout.toString())).toBeGreaterThan(3);
+  });
+});
+
 describe("thumbnails", () => {
   test("poster and strip are generated with geometry", async () => {
     await waitFor(async () => (await api("/api/videos")).every((v: any) => v.thumbnail));
-    const [v] = await api("/api/videos");
+    const v = (await api("/api/videos")).find((x: any) => x.youtubeId === "aaaaaaaaaaa");
     expect(v.thumbnail.strip).toMatchObject({ frames: 6, columns: 6, rows: 1, frameWidth: 160 });
     const poster = await fetch(base_url + v.thumbnail.poster);
     expect(poster.status).toBe(200);

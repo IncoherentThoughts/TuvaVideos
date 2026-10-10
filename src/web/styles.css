@@ -38,7 +38,7 @@ kbd { font-family: var(--font-mono); font-size: .85em; background: var(--bg3); b
 .brand { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; flex: none; }
 .brand svg { display: block; }
 .tabs { display: flex; gap: 2px; align-self: stretch; }
-.tab { display: flex; align-items: center; padding: 0 12px; color: var(--fg2); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab { white-space: nowrap; display: flex; align-items: center; padding: 0 12px; color: var(--fg2); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .tab:hover { color: var(--fg); }
 .tab.on { color: var(--fg); border-bottom-color: var(--accent); }
 .tab.off { opacity: .45; pointer-events: none; }

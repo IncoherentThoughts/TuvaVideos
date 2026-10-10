@@ -9,10 +9,14 @@ import { SEARCH_ID, releaseSearch } from "./keys";
 import { navigate, playHref } from "./router";
 import { fmtDuration } from "./ui";
 
+// Chrome fires synthetic mousemoves when rows re-render under a resting pointer; only a real move may change the
+// highlighted row, or Enter would open whatever the pointer happens to rest on.
+const realMove = (e: MouseEvent) => e.movementX !== 0 || e.movementY !== 0;
+
 const H = (text: string, needle: string) => ({ dangerouslySetInnerHTML: { __html: highlightHtml(text, needle) } });
 
 function RowView({ row, needle, on, idx, pick, hover }: { row: SearchRow; needle: string; on: boolean; idx: number; pick: () => void; hover: () => void }) {
-  const common = { class: `r${on ? " on" : ""}`, "data-idx": idx, role: "option" as const, "aria-selected": on, onMouseDown: (e: MouseEvent) => e.preventDefault(), onClick: pick, onMouseMove: hover };
+  const common = { class: `r${on ? " on" : ""}`, "data-idx": idx, role: "option" as const, "aria-selected": on, onMouseDown: (e: MouseEvent) => e.preventDefault(), onClick: pick, onMouseMove: (e: MouseEvent) => realMove(e) && hover() };
   switch (row.kind) {
     case "video":
       return (

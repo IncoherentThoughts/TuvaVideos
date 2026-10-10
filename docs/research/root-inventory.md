@@ -482,7 +482,6 @@ One new: `KVtwuJTl5NE`, local 480x360 (192859871 B) versus Batch 6 640x480 (3598
 - U+2028, trailing spaces, U+00A0 or control characters: 0 in Batch 6.
 - All 205 paths contain non-ASCII characters (Cyrillic, `ö`, en dashes), so non-ASCII paths total 1,280.
 - Duplicate basenames: 47 names now appear more than once (was 45). The 2 new are `The Alash Ensemble, Ayan-ool Sam khoomei solo ... [vEKSAQjmK04].mp4` (Batch 4 and 6, different sizes) and the `Samagaldai ... [PWdJ4vVnqkI].mkv` (local and Batch 6, same size).
-- Two long Batch 6 names exceed typical display width, and the names of the 4 partials end in `.fNNN.<ext>` or `.f136.mp4.part`; these are the only unusual shapes.
 
 ### Updated totals
 

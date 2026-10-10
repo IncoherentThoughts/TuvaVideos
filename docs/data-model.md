@@ -73,6 +73,12 @@ CREATE TABLE chapter (
   UNIQUE (video_id, start_s)
 );
 
+CREATE TABLE chapter_rejection (           -- tombstones so a rejected suggestion never returns (#16)
+  video_id INTEGER NOT NULL REFERENCES video(id),
+  source TEXT NOT NULL, start_s REAL NOT NULL,
+  PRIMARY KEY (video_id, source, start_s)
+);
+
 CREATE TABLE studio_track (                -- Studio tracks of a Song (#15)
   id INTEGER PRIMARY KEY,
   song_id TEXT NOT NULL,                  -- Mirror song uuid, no FK (ADR-0001)
@@ -99,6 +105,7 @@ Rules:
 - **Scan**: new file → new Copy, and a new Video unless identity matches. Type and Song default from the Mirror (id on exactly one Performance → `song` with that Song Suggested; id on 2+ Performances → `concert`), else `other`. Partials (`.fNNN`, `.temp`), `._*` and non-video files are skipped. A rescan never overwrites an edited title, Type, Song or Artists. A file gone from a mounted Root sets `missing_since`; an unmounted Root changes nothing.
 - **Copy to play**: local Root first; then `playback = native`, then larger resolution, then smaller size. No per-Video pin.
 - **Song pointers are columns**: one Song/Version per Video or Chapter. Every Suggested value records its source. There is no per-Video track link: a Video's Studio tracks are derived from its Song (#15 superseded #13's `track_id` columns).
+- **Suggested Chapters** come from the pipeline in `docs/chapter-pipeline.md`; `chapter_rejection` holds the tombstones its re-runs honour.
 - **Studio tracks** live in `studio_track`, keyed by Song uuid; the Studio matcher fills it after every Mirror import, a stale persistent id triggers a re-dump and re-match (a changed confirmed match drops to Suggested). Rules in `docs/studio-playback.md`.
 - **Favorites** are `favorited_at` on Video and Chapter; the Favorites view orders by it. **Resume** is `resume_s` + `last_played_at` on Video. No play count.
 - **Artists**: one table. A Local Artist has `mirror_id` NULL. Merging a Local Artist into a Mirror one is an update of `video_artist`. Chapters carry no Artists in v1.

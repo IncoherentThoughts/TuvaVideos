@@ -57,8 +57,16 @@ A start time and a title inside a Video, optionally pointing at a Song and a Ver
 _Avoid_: marker, segment, timestamp, cue
 
 **Suggested (a chapter, song, type or Studio track)**:
-Created by an automatic source (a YouTube comment or description, an archive Performance, the Studio matcher) rather than the user, and not yet confirmed. Behaves like a confirmed one until rejected. Every Suggested thing remembers its source.
+Created by an automatic source (a YouTube comment or description, an archive Performance, the Song matcher, the Studio matcher) rather than the user, and not yet confirmed. Behaves like a confirmed one until rejected. Every Suggested thing remembers its source.
 _Avoid_: auto, pending, unverified, draft
+
+**YouTube info**:
+The description, top comments and metadata fetched once for a Video's YouTube id by the offline-breaking script and kept as a file, so Chapters can be suggested and re-suggested without the network.
+_Avoid_: info json, metadata dump, scrape
+
+**Song matcher**:
+The step that attaches a Mirror Song to a Chapter or Video from its title, preferring the Songs the Video's id already links to through Performances, and tolerating spelling and script differences. Its result is always Suggested.
+_Avoid_: title matcher, fuzzy match, auto-link
 
 **Mirror**:
 The read-only copy of the Tuvan Lyrics Archive's entities (Song, Artist, Album, Track, Version, Footnote, Performance) imported from a backup. Edited only on the archive and re-imported; never edited here.

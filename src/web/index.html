@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TuvaVideos</title>
+<style>
+  body { margin: 0; background: #0b0b0c; color: #eee; font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 10vh auto; padding: 0 16px; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  dl { display: grid; grid-template-columns: 11em 1fr; gap: 4px 12px; margin: 0; }
+  dt { color: #999; }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  button { margin-top: 20px; padding: 6px 14px; background: #eee; color: #111; border: 0; font: inherit; cursor: pointer; }
+  p { color: #999; }
+</style>
+</head>
+<body>
+<main>
+  <h1>TuvaVideos</h1>
+  <dl id="stats"><dt>Loading</dt><dd>…</dd></dl>
+  <button id="rescan">Rescan</button>
+  <p>Placeholder page. The library UI is ticket #23.</p>
+</main>
+<script>
+  async function refresh() {
+    try {
+      const h = await (await fetch('/api/health')).json();
+      const rows = [
+        ['Videos', h.videos], ['Available', h.availableVideos], ['Copies', h.copies], ['Missing copies', h.missingCopies],
+        ['Thumbnails', `${h.thumbnails} / ${h.videos}`],
+        ...h.roots.map((r) => [`Root (${r.kind})`, r.available ? 'available' : 'unavailable']),
+        ['Scan', h.scan.running ? `${h.scan.phase}: seen ${h.scan.filesSeen}, probed ${h.scan.filesProbed} / ${h.scan.filesToProbe}` : 'idle'],
+      ];
+      document.getElementById('stats').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+    } catch (e) {
+      document.getElementById('stats').innerHTML = '<dt>Server</dt><dd>not answering</dd>';
+    }
+  }
+  document.getElementById('rescan').onclick = async () => { await fetch('/api/rescan', { method: 'POST' }); refresh(); };
+  refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "tuvavideos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/server/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "bin": { "tuva": "src/server/index.ts" },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

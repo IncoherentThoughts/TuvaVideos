@@ -178,7 +178,8 @@ export class Scanner {
       }
       try {
         const st = await stat(full);
-        out.push({ rel: relative(rootPath, full), name: e.name, size: st.size, mtimeMs: st.mtimeMs });
+        // NFC: exFAT (the old drive) listed decomposed names, APFS lists whatever was written; one spelling in the DB.
+        out.push({ rel: relative(rootPath, full).normalize("NFC"), name: e.name, size: st.size, mtimeMs: st.mtimeMs });
         this.prog.filesSeen++;
       } catch (err) {
         // can't stat: not seen, but the dir is "uncertain" so nothing under it is marked missing
@@ -206,16 +207,22 @@ export class Scanner {
     await this.walk(root.path, root.path, entries, failedDirs, summary);
     summary.filesSeen = entries.length;
 
+    // Keyed by the NFC spelling so a Copy recorded from a decomposed listing still matches its file.
     const existing = new Map(
-      (this.db.query("SELECT id, video_id, rel_path, size, mtime, missing_since, fallback_file, playback FROM copy WHERE root_id = ?").all(root.id) as CopyRow[]).map((c) => [c.rel_path, c]),
+      (this.db.query("SELECT id, video_id, rel_path, size, mtime, missing_since, fallback_file, playback FROM copy WHERE root_id = ?").all(root.id) as CopyRow[]).map((c) => [c.rel_path.normalize("NFC"), c]),
     );
     const seen = new Set<string>();
     const todo: { entry: Entry; row: CopyRow | undefined }[] = [];
     const revive = this.db.prepare("UPDATE copy SET missing_since = NULL WHERE id = ?");
+    const respell = this.db.prepare("UPDATE copy SET rel_path = ? WHERE id = ?");
     for (const entry of entries) {
       seen.add(entry.rel);
       const row = existing.get(entry.rel);
       const mtime = new Date(entry.mtimeMs).toISOString();
+      if (row && row.rel_path !== entry.rel) {
+        respell.run(entry.rel, row.id);
+        row.rel_path = entry.rel;
+      }
       if (row && row.size === entry.size && row.mtime === mtime) {
         if (row.missing_since) {
           revive.run(row.id);
@@ -325,7 +332,7 @@ export class Scanner {
 
   /** Spec 2.3 / CONTEXT.md "Missing": only for a Root that is still mounted, only when the file is provably gone. */
   private async markMissing(root: RootRow, existing: Map<string, CopyRow>, seen: Set<string>, failedDirs: string[], summary: RootScanSummary) {
-    const candidates = [...existing.values()].filter((c) => !seen.has(c.rel_path) && !c.missing_since);
+    const candidates = [...existing.values()].filter((c) => !seen.has(c.rel_path.normalize("NFC")) && !c.missing_since);
     if (!candidates.length) return;
     if (!(await this.roots.check(root.id))) {
       log(`scan: ${root.path} went away during the scan; not marking anything missing`);

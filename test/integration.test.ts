@@ -181,6 +181,25 @@ describe("Missing and unmounted Roots", () => {
     expect(extCopy().missing_since).toBeNull();
   });
 
+  test("a Copy recorded with a decomposed (NFD) path matches its NFC-listed file instead of duplicating", async () => {
+    // The old exFAT drive listed "Khöömei" decomposed; the same files on APFS list precomposed.
+    const nfc = "Khöömei Batch 9/Song Nine [ccccccccccc].mp4".normalize("NFC");
+    mkdirSync(join(extDir, "Khöömei Batch 9".normalize("NFC")), { recursive: true });
+    await ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", join(extDir, nfc));
+    await app.scanner.requestAll();
+    await app.scanner.whenIdle();
+    const row = app.db.query("SELECT id, size, mtime FROM copy WHERE root_id = 2 AND rel_path = ?").get(nfc) as { id: number; size: number; mtime: string };
+    expect(row).toBeTruthy();
+    app.db.query("UPDATE copy SET rel_path = ? WHERE id = ?").run(nfc.normalize("NFD"), row.id);
+    await app.scanner.requestAll();
+    await app.scanner.whenIdle();
+    const rows = app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE root_id = 2 AND video_id = (SELECT id FROM video WHERE youtube_id = 'ccccccccccc')").all() as any[];
+    expect(rows.length).toBe(1);
+    expect(rows[0].id).toBe(row.id);
+    expect(rows[0].rel_path).toBe(nfc);
+    expect(rows[0].missing_since).toBeNull();
+  });
+
   test("an unmounted Root changes nothing", async () => {
     renameSync(extDir, extDir + ".unmounted");
     try {

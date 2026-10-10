@@ -401,3 +401,99 @@ Duplicate basenames: 45 names appear more than once (8 across both Roots, 37 wit
 - mkv vp9+opus: 3
 - mkv vp9+eac3: 1
 - jpg mjpeg+none: 1
+
+---
+
+## Batch 6 addendum (2026-10-10)
+
+Resolves #20 (part of map #1). `Khöömei Batch 6` was added to the external Root after #8. Probed by a second throwaway script (not in the repo) with the same method and columns; its 205 rows are appended to [root-inventory.csv](root-inventory.csv) (now 1,347 rows). `.DS_Store` and `._*` skipped, no media file modified, 0 ffprobe failures. Same-Video rule is id + size + duration, not fingerprint.
+
+### Batch 6 files by extension and size
+
+38.0 GB in 205 files, all directly in `Khöömei Batch 6/` (no subfolders).
+
+| ext | files | size |
+|---|---|---|
+| mkv | 151 | 28.46 GB |
+| webm | 36 | 8.92 GB |
+| mp4 | 16 | 0.56 GB |
+| part | 1 | 0.07 GB |
+| m4a | 1 | 0.00 GB |
+| **total** | **205** | **38.01 GB** |
+
+New extensions versus #8: `.m4a` and `.part` (both are yt-dlp leftovers, see Partials).
+
+### Codecs seen
+
+- mkv h264+opus: 151
+- webm vp9+opus: 18
+- webm av1+opus: 16 (AV1 is new: #8 had none)
+- mp4 h264+aac: 16
+- partials without a video stream: 3 (opus, opus, aac); the `.part` file is h264 video only
+- Resolutions: 1920x1080 x101, 1280x720 x26, 640x480 x21, 854x480 x6, 3840x2160 x4, 2560x1440 x3, plus 7 portrait 1080x1920 and 2 square 1080x1080/1440x1440; the rest are small or odd sizes (e.g. 320x240, 1920x800, 3840x1608).
+
+### Partials
+
+4 yt-dlp leftovers (`.fNNN`), all in Batch 6:
+
+- `Lowell Festival Tuvan throat singers [fNbyuMPu9Fc].f140.m4a` (2449383 B, aac only); no other Copy of the id.
+- `Medley of Tuvan major songs – Echoes of the Steppe 2025 [nVn6fnM6Ypo].f251.webm` (20306484 B, opus only); no other Copy of the id.
+- `Домашний концерт тувинских горловиков. Часть 1 [5yAphfd7X14].f251.webm` (10692675 B, opus only) and `... [5yAphfd7X14].f136.mp4.part` (65005008 B, h264 only, an unfinished download): the video and audio halves of one download that never merged. No merged file with the final name exists.
+
+So none of the 4 is a playable Video on its own. The `.part` suffix is new; a scanner that only matches `.fNNN.<ext>` will miss it.
+
+### Files with no id
+
+0 of 205. All 201 non-partial files carry a trailing `[id]`, and the 4 partials carry one too (the id is parsed through `.fNNN` and `.part`). No fingerprint (first+last 1 MB) match between any Batch 6 file and any other file in either Root.
+
+### Batch 6 ids already present elsewhere
+
+6 of the 201 Batch 6 ids exist in another folder or in the local Root; the other 195 are new. No id repeats inside Batch 6.
+
+- `7NIVTqUI5OE` [same resolution, different container/codec]:
+  - local `Igor Köshkendei & Ensemble Daia (Full concert) – Echoes of the steppe 2025 [7NIVTqUI5OE].mp4` 775649201 B 1920x1080 h264/aac mov 3104s
+  - external `Khöömei Batch 6/Igor Köshkendei & Ensemble Daia (Full concert) – Echoes of the steppe 2025 [7NIVTqUI5OE].mkv` 776273459 B 1920x1080 h264/opus matroska 3104s
+- `KVtwuJTl5NE` [resolution differs; the names also differ, local has `2 часть 2`, Batch 6 has `2 часть`]:
+  - local `2006 Улустун ырызы 2 часть 2 [KVtwuJTl5NE].mp4` 192859871 B 480x360 h264/aac mov 3396s
+  - external `Khöömei Batch 6/2006 Улустун ырызы 2 часть [KVtwuJTl5NE].mkv` 359899983 B 640x480 h264/opus matroska 3395s
+- `PWdJ4vVnqkI` [same size, byte-identical size and duration; fingerprints differ]:
+  - local `Samagaldai by Igor & friends – Echoes of the Steppe 2025 [PWdJ4vVnqkI].mkv` 50205011 B 1920x1080 h264/opus matroska 186s
+  - external `Khöömei Batch 6/Samagaldai by Igor & friends – Echoes of the Steppe 2025 [PWdJ4vVnqkI].mkv` 50205011 B 1920x1080 h264/opus matroska 186s
+- `dwL_kms2eYE` [same resolution, different container/codec; external only]:
+  - external `Khöömei Batch 4/Эзир-кара. Тувинское горловое пение. Монгун-оол Монгуш.  #tuva#хоомей#горловоепение#монгун-оол [dwL_kms2eYE].mp4` 63802861 B 1920x1080 vp9/aac mov 207s
+  - external `Khöömei Batch 6/Эзир-кара. Тувинское горловое пение. Монгун-оол Монгуш.  #tuva#хоомей#горловоепение#монгун-оол [dwL_kms2eYE].webm` 46907454 B 1920x1080 av1/opus matroska 207s
+- `vEKSAQjmK04` [same resolution, different container/codec; external only]:
+  - external `Khöömei Batch 3/The Alash Ensemble, Ayan-ool Sam khoomei solo Алаш Тува - Throat Singing [vEKSAQjmK04].webm` 17669926 B 640x480 vp9/opus matroska 147s
+  - external `Khöömei Batch 4/The Alash Ensemble, Ayan-ool Sam khoomei solo Алаш Тува - Throat Singing [vEKSAQjmK04].mp4` 15494987 B 640x480 h264/aac mov 147s
+  - external `Khöömei Batch 6/The Alash Ensemble, Ayan-ool Sam khoomei solo Алаш Тува - Throat Singing [vEKSAQjmK04].mp4` 18019920 B 640x480 h264/aac mov 147s
+- `z5xwPSWqUw0` [same resolution, different container/codec; external only]:
+  - external `Khöömei Batch 2/Amazing Grace by Tuvan Throat Singers [z5xwPSWqUw0].webm` 45666009 B 640x480 vp9/opus matroska 583s
+  - external `Khöömei Batch 4/Amazing Grace by Tuvan Throat Singers [z5xwPSWqUw0].mp4` 53712185 B 640x480 h264/aac mov 583s
+  - external `Khöömei Batch 6/Amazing Grace by Tuvan Throat Singers [z5xwPSWqUw0].mkv` 67287682 B 640x480 h264/opus matroska 583s
+
+Three of the six span both Roots (`7NIVTqUI5OE`, `KVtwuJTl5NE`, `PWdJ4vVnqkI`), so ids present in both Roots go from 9 to 12.
+
+### Same-id pairs that differ in resolution
+
+One new: `KVtwuJTl5NE`, local 480x360 (192859871 B) versus Batch 6 640x480 (359899983 B); durations 3396s vs 3395s. It is the first resolution difference that spans both Roots. Together with `a1HQeFMJUh0` (Batch 3 vs 4) there are now 2 ids that differ in resolution.
+
+### Filename oddities
+
+- U+2028, trailing spaces, U+00A0 or control characters: 0 in Batch 6.
+- All 205 paths contain non-ASCII characters (Cyrillic, `ö`, en dashes), so non-ASCII paths total 1,280.
+- Duplicate basenames: 47 names now appear more than once (was 45). The 2 new are `The Alash Ensemble, Ayan-ool Sam khoomei solo ... [vEKSAQjmK04].mp4` (Batch 4 and 6, different sizes) and the `Samagaldai ... [PWdJ4vVnqkI].mkv` (local and Batch 6, same size).
+
+### Updated totals
+
+| | before (#8) | after Batch 6 |
+|---|---|---|
+| files, external Root | 1,053 | 1,258 |
+| files, local Root | 89 | 89 |
+| files, total | 1,142 | 1,347 |
+| size, external | 150.2 GB | 188.2 GB |
+| distinct ids (non-partial) | 829 | 1,024 |
+| ids with 2+ Copies | 216 | 220 |
+| ids present in both Roots | 9 | 12 |
+| redundant GB (every Copy except the largest of each id) | 24.5 GB | 25.7 GB |
+
+"Redundant GB" counts, for each id with 2+ Copies, the sizes of all Copies except the largest one. It is an upper bound on what a dedupe could reclaim, since it ignores that Copies of one Video can differ in quality or container. Batch 6 adds 4 ids with 2+ Copies (the other 2 of the 6 overlaps already had 2 Copies) and 1.1 GB.

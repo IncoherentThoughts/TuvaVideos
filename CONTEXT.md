@@ -39,8 +39,16 @@ A Copy whose Root is mounted but whose file is no longer there. Kept, not delete
 _Avoid_: deleted, gone, orphaned, stale
 
 **Resume position**:
-The timestamp the user last left a Video at; playback reopens there.
+The timestamp the user last left a Video at; playback reopens there without asking. A position within the last 30 seconds counts as finished and reopens at the start.
 _Avoid_: progress, watch position, bookmark
+
+**Preferred Copy**:
+The Copy the selection rule picks when a Video is played: local Root first, then one that plays as-is, then larger resolution, then smaller size. The user may switch Copies for one play; the choice is never remembered.
+_Avoid_: best copy, default copy, pinned copy, copy to play
+
+**Fallback (of a Copy)**:
+The one-time cached remux or audio transcode played instead of the Copy's own file when the browser cannot play it as-is. Made at scan time when possible, otherwise on first play while the Player shows it preparing.
+_Avoid_: remux (the act), transcode (the act), converted file, pipe
 
 ### Enrichment
 
@@ -73,6 +81,10 @@ _Avoid_: custom artist, unknown artist, extra artist
 **Player**:
 The in-browser video surface and its mpv-style keyboard bindings. Captures keys only while focused.
 _Avoid_: viewer, video element, mpv (which is the reference, not the thing)
+
+**Playing from**:
+The ordered list of Videos the Player steps through with previous/next: the list the Video was opened from (grid as filtered and sorted, Favorites, search results), or library order when opened by URL.
+_Avoid_: queue, playlist, context
 
 **Studio playback**:
 Playing a Linked Track in Music.app, driven from the browser, with the Video paused meanwhile.

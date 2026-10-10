@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
@@ -10,6 +10,7 @@ const base = mkdtempSync(join(tmpdir(), "tuva-it-"));
 const dataDir = join(base, "data");
 const localDir = join(base, "local");
 const extDir = join(base, "ext");
+const shotsDir = join(base, "shots");
 mkdirSync(localDir, { recursive: true });
 mkdirSync(extDir, { recursive: true });
 
@@ -37,7 +38,7 @@ beforeAll(async () => {
   writeFileSync(join(localDir, "notes.txt"), "x");
 
   const cfg = loadConfig({
-    TUVA_DATA_DIR: dataDir, TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir, TUVA_EXTERNAL_ROOT: extDir,
+    TUVA_DATA_DIR: dataDir, TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir, TUVA_EXTERNAL_ROOT: extDir, TUVA_SCREENSHOT_DIR: shotsDir,
   });
   app = await startApp(cfg);
   base_url = `http://localhost:${app.server.port}`;
@@ -200,5 +201,103 @@ describe("Missing and unmounted Roots", () => {
     await app.scanner.requestAll();
     await app.scanner.whenIdle();
     expect((app.db.query("SELECT title FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as any).title).toBe("Edited");
+  });
+});
+
+describe("resume endpoint", () => {
+  const post = (id: number, body: unknown, raw = false) =>
+    fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", headers: { "content-type": raw ? "text/plain" : "application/json" }, body: JSON.stringify(body) });
+  const row = (id: number) => app.db.query("SELECT resume_s, last_played_at FROM video WHERE id = ?").get(id) as { resume_s: number | null; last_played_at: string | null };
+  const songId = () => (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+
+  test("stores resume_s and last_played_at and the API reports them", async () => {
+    const id = songId();
+    expect(row(id).last_played_at).toBeNull();
+    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = ${id}`); // the 6 s fixture would count as finished at once
+    const r = await post(id, { resumeS: 2.5 });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ id, resumeS: 2.5, finished: false });
+    expect(row(id).resume_s).toBe(2.5);
+    expect(Date.now() - Date.parse(row(id).last_played_at!)).toBeLessThan(10_000);
+    const v = await api(`/api/videos/${id}`);
+    expect(v.resumeS).toBe(2.5);
+    expect(v.lastPlayedAt).not.toBeNull();
+  });
+
+  test("a position within 30 s of the end is stored as finished (this fixture is 6 s long: always)", async () => {
+    const id = songId();
+    app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = ${id}`);
+    const r = await (await post(id, { resumeS: 5.9 })).json();
+    expect(r).toMatchObject({ resumeS: 0, finished: true });
+    expect(row(id).resume_s).toBe(0);
+  });
+
+  test("the 30 s rule on a long Video, with the Copy's own duration", async () => {
+    const id = songId();
+    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = ${id}`);
+    try {
+      expect(await (await post(id, { resumeS: 569 })).json()).toMatchObject({ resumeS: 569, finished: false });
+      expect(await (await post(id, { resumeS: 570 })).json()).toMatchObject({ resumeS: 0, finished: true });
+      const copyId = (app.db.query(`SELECT id FROM copy WHERE video_id = ${id} ORDER BY id LIMIT 1`).get() as { id: number }).id;
+      app.db.exec(`UPDATE copy SET duration_s = 100 WHERE id = ${copyId}`);
+      expect(await (await post(id, { resumeS: 80, copyId })).json()).toMatchObject({ resumeS: 0, finished: true });
+      expect(await (await post(id, { resumeS: 80 })).json()).toMatchObject({ resumeS: 80 }); // longest Copy decides without copyId
+    } finally {
+      app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = ${id}`);
+    }
+  });
+
+  test("a sendBeacon style body (any content type) works; bad input and unknown Videos are refused", async () => {
+    const id = songId();
+    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = ${id}`);
+    expect((await post(id, { resumeS: 33 }, true)).status).toBe(200);
+    expect(row(id).resume_s).toBe(33);
+    expect((await post(id, { resumeS: -1 })).status).toBe(400);
+    expect((await post(id, { resumeS: "12" })).status).toBe(400);
+    expect((await post(id, {})).status).toBe(400);
+    expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", body: "not json" })).status).toBe(400);
+    expect((await post(999999, { resumeS: 1 })).status).toBe(404);
+    expect(row(id).resume_s).toBe(33);
+    app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = ${id}`);
+  });
+});
+
+describe("screenshot endpoint", () => {
+  const png = async () => {
+    const out = join(base, "frame.png");
+    await ff("-f", "lavfi", "-i", "testsrc=size=64x48:rate=1:duration=1", "-frames:v", "1", out);
+    return new Uint8Array(await Bun.file(out).arrayBuffer());
+  };
+  const shot = (id: number, t: string | null, body: BodyInit) =>
+    fetch(`${base_url}/api/videos/${id}/screenshot${t == null ? "" : `?t=${t}`}`, { method: "POST", headers: { "content-type": "image/png" }, body });
+
+  test("writes <title> @ <seconds>s.png into the screenshot folder", async () => {
+    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+    app.db.exec(`UPDATE video SET title = 'Edited' WHERE id = ${id}`);
+    const bytes = await png();
+    const r = await shot(id, "12.3", bytes);
+    expect(r.status).toBe(200);
+    const j: any = await r.json();
+    expect(j.saved).toBe(join(shotsDir, "Edited @ 12.3s.png"));
+    expect(new Uint8Array(await Bun.file(j.saved).arrayBuffer())).toEqual(bytes);
+  });
+
+  test("a hostile title cannot leave the folder", async () => {
+    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+    app.db.exec(`UPDATE video SET title = '../../evil/../x' WHERE id = ${id}`);
+    const j: any = await (await shot(id, "1", await png())).json();
+    expect(j.saved.startsWith(shotsDir + "/")).toBe(true);
+    expect(readdirSync(shotsDir).some((f) => f.includes("evil"))).toBe(true);
+    expect(existsSync(join(base, "evil"))).toBe(false);
+    app.db.exec(`UPDATE video SET title = 'Edited' WHERE id = ${id}`);
+  });
+
+  test("refuses a non-PNG body, a bad t, and an unknown Video", async () => {
+    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+    expect((await shot(id, "5", new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))).status).toBe(415);
+    expect((await shot(id, null, await png())).status).toBe(400);
+    expect((await shot(id, "-3", await png())).status).toBe(400);
+    expect((await shot(id, "abc", await png())).status).toBe(400);
+    expect((await shot(999999, "5", await png())).status).toBe(404);
   });
 });

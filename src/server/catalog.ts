@@ -1,5 +1,6 @@
 // Artists, Favorites and the writes behind them (spec 5.1, 5.5, 2.3). SQL only; JSON shaping stays in api.ts.
 import type { Db } from "./db";
+import { storedResume } from "../shared/resume";
 import type { ArtistDto } from "../shared/types";
 
 /** Artists with at least one Video: count, and the Video whose poster stands for them (the newest by Copy mtime). */
@@ -81,4 +82,22 @@ export function mergeArtist(db: Db, sourceId: number, targetId: number): MergeRe
     db.query("DELETE FROM artist WHERE id = ?").run(sourceId);
   })();
   return { ok: true, moved };
+}
+
+/**
+ * Resume position (spec 4.3). A position within 30 s of the end is stored as finished (0). `copyId` picks whose
+ * duration decides "the end"; otherwise the longest known Copy does. Returns what was stored, or undefined for no such Video.
+ */
+export function recordResume(db: Db, videoId: number, positionS: number, copyId?: number | null): { resumeS: number; finished: boolean } | undefined {
+  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return undefined;
+  let duration: number | null = null;
+  if (copyId != null) {
+    duration = (db.query("SELECT duration_s d FROM copy WHERE id = ? AND video_id = ?").get(copyId, videoId) as { d: number | null } | null)?.d ?? null;
+  }
+  if (duration == null) {
+    duration = (db.query("SELECT MAX(duration_s) d FROM copy WHERE video_id = ?").get(videoId) as { d: number | null }).d;
+  }
+  const resumeS = storedResume(positionS, duration);
+  db.prepare("UPDATE video SET resume_s = ?, last_played_at = ? WHERE id = ?").run(resumeS, new Date().toISOString(), videoId);
+  return { resumeS, finished: resumeS === 0 && positionS > 0 };
 }

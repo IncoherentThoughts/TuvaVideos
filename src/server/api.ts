@@ -10,7 +10,8 @@ import type { Scanner } from "./scan";
 import { serveFile } from "./stream";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
-import { listArtists, listFavoriteRows, mergeArtist, setFavorite } from "./catalog";
+import { listArtists, listFavoriteRows, mergeArtist, recordResume, setFavorite } from "./catalog";
+import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
 import { rebuildSearchIndex, runSearch } from "./search";
 import type { VideoType } from "../shared/filters";
 import type { ArtistRef, ChapterDto, FavoriteItem } from "../shared/types";
@@ -311,6 +312,28 @@ export function createHandler(s: Services) {
           const at = setFavorite(s.db, table, Number(m[2]), want);
           if (at === undefined) return json({ error: `no such ${table}` }, 404);
           return json({ id: Number(m[2]), favorite: at !== null, favoritedAt: at });
+        }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/resume$/))) {
+          let body: { resumeS?: unknown; copyId?: unknown } = {};
+          try {
+            body = (await req.json()) as typeof body; // sendBeacon posts a Blob; the content type does not matter here
+          } catch {}
+          if (typeof body.resumeS !== "number" || !Number.isFinite(body.resumeS) || body.resumeS < 0) return json({ error: "resumeS must be a number >= 0" }, 400);
+          const r = recordResume(s.db, Number(m[1]), body.resumeS, typeof body.copyId === "number" ? body.copyId : null);
+          if (!r) return json({ error: "no such video" }, 404);
+          return json({ id: Number(m[1]), ...r });
+        }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/screenshot$/))) {
+          const v = s.db.query("SELECT title FROM video WHERE id = ?").get(Number(m[1])) as { title: string } | null;
+          if (!v) return json({ error: "no such video" }, 404);
+          const t = Number(url.searchParams.get("t"));
+          if (!url.searchParams.has("t") || !Number.isFinite(t) || t < 0) return json({ error: "t must be a number of seconds >= 0" }, 400);
+          if (Number(req.headers.get("content-length") ?? 0) > MAX_SCREENSHOT_BYTES) return json({ error: "too large" }, 413);
+          const png = new Uint8Array(await req.arrayBuffer());
+          if (png.length > MAX_SCREENSHOT_BYTES) return json({ error: "too large" }, 413);
+          if (!isPng(png)) return json({ error: "body is not a PNG" }, 415);
+          const path = await saveScreenshot(s.cfg.screenshotDir, v.title, t, png);
+          return json({ saved: path, bytes: png.length });
         }
         if ((m = p.match(/^\/api\/artists\/(\d+)\/merge-into\/(\d+)$/))) {
           const r = mergeArtist(s.db, Number(m[1]), Number(m[2]));

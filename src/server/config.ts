@@ -7,6 +7,7 @@ export interface Config {
   dbPath: string;
   thumbsDir: string;
   remuxDir: string;
+  screenshotDir: string;
   logPath: string;
   port: number;
   localRoot: string;
@@ -33,6 +34,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     dbPath: join(dataDir, "library.db"),
     thumbsDir: join(dataDir, "thumbs"),
     remuxDir: join(dataDir, "remux"),
+    screenshotDir: env.TUVA_SCREENSHOT_DIR ?? join(homedir(), "Desktop"),
     logPath: join(dataDir, "log.txt"),
     port: Number(env.TUVA_PORT ?? 4400),
     localRoot: env.TUVA_LOCAL_ROOT ?? "/Users/evanwilliams/Desktop/Khoomei/Videos",

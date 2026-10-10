@@ -27,3 +27,11 @@ Decided in [issue #15](https://github.com/IncoherentThoughts/TuvaVideos/issues/1
 - **Keys while the bar is active**: space, ← → ±5 s, ↑ ↓ ±60 s and `l` A-B loop retarget to Music.app; 9/0 volume and m stay on the browser; every other binding is a no-op with an OSD notice.
 - **Scrub**: click seeks; drag is throttled like the video (one seek in flight, latest wins); both set `playerPosition`.
 - **External changes**: if polling sees another persistent id in `currentTrack`, or `stopped` after the `once` play ends, Studio playback ends silently and the Video stays paused.
+
+## Decided in #27 (implementation)
+
+- **Bridge**: `src/server/studio/bridge.ts`. Commands carry an id; every failure, script error or 10 s silence is `refused` and the child is killed and restarted on the next use. The launch-time `playerState()` is a separate one-off `osascript` (killed after 10 s) started from `launch.ts`, so tests that call `startApp` never touch Music.app.
+- **Dump**: a one-off `osascript` (not the resident child, so a dump never blocks the transport), columns not rows, cached as `studio-dump.json`. `no longer available` tracks are never match candidates or search hits; `removed` ones are kept (they may still be local files). A refresh within 5 s of the last is reused unless forced.
+- **Matcher**: only Mirror Tracks that have a Song can hold a row. A confirmed match is left alone while its id is in the dump; once the id is gone and a fresh match resolves differently it drops to Suggested. Rejecting or removing a Mirror match writes a tombstone in `studio_rejection` (migration 0004) so the next import does not suggest the same pair again.
+- **Ending**: after the 2.5 s grace that follows a play, `stopped` ends Studio playback as `stopped`, a different persistent id as `external` (Music.app is then left alone). A pause from outside is shown as paused; it does not end Studio playback.
+- **Music.app quirk**: after roughly 7 to 10 backward `playerPosition` writes Music.app pauses itself (reproduced with a bare JXA loop on both a stream and an uploaded file). An A-B loop therefore resumes a pause that lands within 2 s of its own jump and next to A.

@@ -111,7 +111,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<DumpHitDto[] | null>(null);
 
-  const S = useRef({ st: null as StudioStateDto | null, rx: 0, ab: AB_OFF as AbLoop, seq: 0, seeking: false, error: null as string | null });
+  const S = useRef({ st: null as StudioStateDto | null, rx: 0, ab: AB_OFF as AbLoop, seq: 0, seeking: false, error: null as string | null, loopSeekAt: 0, userPaused: false, resuming: false });
   S.current.ab = ab;
   const close = useRef(onClose);
   close.current = onClose;
@@ -123,6 +123,16 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
     S.current.st = s;
     S.current.rx = performance.now();
     setSt(s);
+    // Music.app quirk (smoke run): after a handful of backward seeks it pauses itself, loop or not. A pause that follows
+    // our own loop seek (and still next to A), which nobody asked for, is undone here so the A-B loop keeps looping.
+    if (s.active && s.state === "paused" && S.current.ab.b != null && !S.current.userPaused && !S.current.resuming && performance.now() - S.current.loopSeekAt < 2000 && (s.position ?? 0) <= (S.current.ab.a ?? 0) + 2) {
+      S.current.resuming = true;
+      api
+        .studioResume()
+        .then((r) => apply(r))
+        .catch(fail)
+        .finally(() => (S.current.resuming = false));
+    }
     if (s.refused) {
       S.current.error = s.refused;
       setError(s.refused);
@@ -155,6 +165,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
   const play = async (id: number) => {
     setError(null);
     S.current.error = null;
+    S.current.userPaused = false;
     const seq = ++S.current.seq;
     try {
       apply(await api.studioPlay(id), seq);
@@ -229,7 +240,10 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
       const s = S.current;
       if (s.st?.state === "playing" && !throttle.current.busy) {
         const back = abLoopTarget(s.ab, position());
-        if (back != null) seekTo(back);
+        if (back != null) {
+          s.loopSeekAt = performance.now();
+          seekTo(back);
+        }
       }
     }, 100);
     return () => clearInterval(t);
@@ -242,6 +256,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
       if (!s?.active) return sayRef.current("nothing playing: pick a track", 1800);
       if (op === "toggle") {
         const seq = ++S.current.seq;
+        S.current.userPaused = s.state === "playing";
         (s.state === "playing" ? api.studioPause() : api.studioResume()).then((r) => apply(r, seq)).catch(fail);
       } else if (op === "loop") {
         const r = abToggle(S.current.ab, position());

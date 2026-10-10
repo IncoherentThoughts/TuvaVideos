@@ -48,7 +48,7 @@ select.search{max-width:460px;appearance:none;padding-right:28px;background-imag
 .top>*{min-width:0;flex:none}.top select{flex:1 1 200px}.top #search{flex:0 1 220px}.top .roots{flex:none}
 .top .brand{width:28px;height:28px;border-radius:7px;display:block}
 .tabs{display:flex;gap:2px}.tabs button{padding:14px 12px;color:var(--fg2);border-bottom:2px solid transparent}.tabs button.on{color:var(--fg);border-color:var(--accent)}
-.top .roots{margin-left:auto;display:flex;gap:10px;font-family:var(--font-mono);font-size:.85em;color:var(--fg2)}
+.top .roots{margin-left:auto;display:flex;gap:12px;align-items:center;font-family:var(--font-mono);font-size:.85em;color:var(--fg2)}.top .roots>span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.top .roots svg{display:block;flex:none}
 .now{display:grid;grid-template-columns:minmax(0,1fr) 400px;height:100%;min-height:0;width:100%;overflow:hidden}
 .now>*{min-width:0}
 .stage{padding:16px 20px;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:auto;scrollbar-width:thin}
@@ -159,14 +159,14 @@ h1{font-size:1.4em;font-weight:700;letter-spacing:-.02em;margin-top:14px;line-he
       <section><h4>mpv bindings</h4><div class="binds">
         <span><kbd>space</kbd><kbd>p</kbd> pause</span><span><kbd>←</kbd><kbd>→</kbd> ±5 s</span>
         <span><kbd>↓</kbd><kbd>↑</kbd> ±60 s</span><span><kbd>⇧←</kbd><kbd>⇧→</kbd> ±1 s exact</span>
-        <span><kbd>,</kbd><kbd>.</kbd> frame step</span><span><kbd>[</kbd><kbd>]</kbd> speed step</span>
+        <span><kbd>,</kbd><kbd>.</kbd> frame step</span><span><kbd>[</kbd><kbd>]</kbd> speed ∓0.1</span>
         <span><kbd>{</kbd><kbd>}</kbd> speed ½ / ×2</span><span><kbd>⌫</kbd> speed 1.0</span>
         <span><kbd>9</kbd><kbd>0</kbd> volume ±2</span><span><kbd>m</kbd> mute</span>
         <span><kbd>f</kbd> fullscreen</span><span><kbd>l</kbd> A-B loop (A, B, off)</span>
         <span><kbd>!</kbd><kbd>@</kbd> chapter prev/next</span><span><kbd>PgUp</kbd><kbd>PgDn</kbd> chapter prev/next</span>
         <span><kbd>&lt;</kbd><kbd>&gt;</kbd> prev/next file</span><span><kbd>s</kbd> screenshot</span>
         <span><kbd>o</kbd> OSD flash</span><span><kbd>O</kbd> OSD always</span>
-        <span><kbd>c</kbd> add chapter here</span><span><kbd>i</kbd> toggle live state</span>
+        <span><kbd>c</kbd> add chapter here</span><span></span>
         <span><kbd>/</kbd> focus search</span><span><kbd>Esc</kbd> back to stage</span>
       </div></section>
       <section><p class="note"><b>Throttle scrub:</b> while dragging the bar, only one seek is in flight; the latest pointer position wins when it lands. Off, every pointer move queues its own seek and the picture lags behind the pointer.</p><p class="note" style="margin-top:8px"><b>Capture rule under test:</b> keys are handled only while the video box has focus (click it, Tab to it, or Esc from the search field). Native <code>&lt;video controls&gt;</code> is off by default because the element then eats space/arrows/m/f itself; toggle it to compare.</p></section>
@@ -179,7 +179,6 @@ const $=id=>document.getElementById(id);
 const v=$('v'),stage=$('stage');
 let FILES=[],ROOTS={},cur=null,chapters=[],ab={a:null,b:null},osdAlways=false,osdTimer=null,msgTimer=null;
 const seeks=[];let seekT0=null,seekPending=false,seekQueued=null;let strip=[];const STRIP_N=48;const pv=document.createElement('video');pv.muted=true;pv.preload='auto';
-const SPEEDS=[0.25,0.5,0.75,1,1.25,1.5,1.75,2,2.5,3,4];
 const title=f=>f.rel.split('/').pop().replace(/\.(mkv|mp4|webm)$/i,'').replace(/\.f\d+$/,'').replace(/\s*\[[A-Za-z0-9_-]{11}\]\s*$/,'').trim();
 const LYRICS={title:'Ак-көк дээр',versions:{cyr:{label:'Тыва',lines:['Ак-көк дээрниң адаанда','Арат чонум чурттап чор,','Хөөмейимни[1] ырлап тур мен','Хемчиктиң[2] уну-биле.','','Кара суглуг тайгамда','Каргыраамны ырлап тур мен,','Аргамчылыг аъдымны','Ак хемниң эриинде мунуп чор мен.']},lat:{label:'Latin',lines:['Ak-kök deerniñ adaanda','Arat chonum churttap chor,','Khöömeiimni[1] yrlap tur men','Khemchiktiñ[2] unu-bile.','','Kara sugluk taigamda','Kargyraamny yrlap tur men,','Argamchylyg a\'dymny','Ak khemniñ eriinde munup chor men.']},eng:{label:'English',lines:['Under the pale blue sky','my herding people live,','I sing my khöömei[1]','along the Khemchik[2] valley.','','In my taiga of black water','I sing my kargyraa,','my lassoed horse','I ride along the white river\'s bank.']}},footnotes:[{n:1,text:'Khöömei here names the style family, not the specific mid-register technique.'},{n:2,text:'The Khemchik is the largest left tributary of the Yenisei in western Tuva.'}]};let VER='cyr';
 function dtab(k){document.querySelectorAll('.dtabs button').forEach((b,i)=>b.classList.toggle('on',['state','lyrics'][i]===k));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='pane-'+k));if(k==='lyrics')renderLyrics()}
@@ -246,7 +245,8 @@ tl.addEventListener('pointerup',()=>scrubbing=false);
 
 /* ---- mpv keys, captured only while the stage is focused ---- */
 function rel(d,exact){seekTo(v.currentTime+d,(exact?'exact ':'')+(d>0?'+':'')+d+'s')}
-function speed(d,abs){if(abs!=null)v.playbackRate=abs;else{let i=SPEEDS.findIndex(x=>x>=v.playbackRate-1e-6);if(i<0)i=SPEEDS.length-1;v.playbackRate=SPEEDS[Math.max(0,Math.min(SPEEDS.length-1,i+d))]}msg(`Speed: ${v.playbackRate.toFixed(2)}×`)}
+// mpv multiplies by 0.9/1.1, which never lands back on 1.0 (1×1.1×0.9=0.99). Additive 0.1 steps keep the same feel and are reversible.
+function speed(d,abs){v.playbackRate=abs!=null?abs:Math.min(8,Math.max(.1,Math.round((v.playbackRate+d*.1)*10)/10));msg(`Speed: ${v.playbackRate.toFixed(2)}×`)}
 const frameNo=()=>Math.round(v.currentTime*(cur?.fps||30));
 function frame(d){v.pause();const fps=cur?.fps||30;const target=(frameNo()+d)/fps+1e-4;seekTo(target,'frame '+(d>0?'+':'-'));v.addEventListener('seeked',()=>msg(`Frame ${frameNo()} (${fps.toFixed(2)} fps)`),{once:true})}
 function chapter(d){if(!chapters.length)return;let i=curChapter();if(d<0&&v.currentTime-chapters[Math.max(i,0)].t<2)i--;i=Math.max(0,Math.min(chapters.length-1,i+d));seekTo(chapters[i].t,'chapter');msg(`Chapter: ${chapters[i].title}`)}
@@ -266,7 +266,6 @@ const KEYS={
  l:abLoop,'!':()=>chapter(-1),'@':()=>chapter(1),PageUp:()=>chapter(-1),PageDown:()=>chapter(1),'<':()=>nextFile(-1),'>':()=>nextFile(1),
  s:shot,o:()=>osd(true),O:()=>{osdAlways=!osdAlways;osd();msg('OSD: '+(osdAlways?'always':'auto'))},
  c:()=>{chapters.push({t:v.currentTime,title:`Mark ${fmt(v.currentTime)}`,sug:false});chapters.sort((a,b)=>a.t-b.t);renderFilm();msg('Chapter added')},
- i:()=>{$('live').checked=!$('live').checked},
  '/':()=>$('search').focus(),
 };
 const klog=[];

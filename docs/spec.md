@@ -26,10 +26,10 @@ A single-user, offline, macOS-only local player for a personal library of Tuvan 
 
 | Root | Path | Files | Size |
 |---|---|---|---|
-| external | `/Volumes/General/хөөмей/Хөөмей` | ~1290 | ~178 GB |
+| external | `/Users/evanwilliams/Desktop/Хөөмей` (moved off the drive 2026-10-10; was `/Volumes/General/хөөмей/Хөөмей`) | ~1930 | ~229 GB |
 | local | `/Users/evanwilliams/Desktop/Khoomei/Videos` | 90 | 15 GB |
 
-~1347 files total, 220 YouTube ids with 2+ Copies, 12 ids present in both Roots, ~26 GB redundant (cleanup is #18, deferred). Containers: webm, mp4, mkv; codecs H.264 / VP9 / AV1 (16 files, Batch 6) with Opus / AAC / Vorbis; one E-AC3 file; ~13 unmerged yt-dlp partials. The external drive was returning I/O errors on 2026-10-10 (#21); v1 must work with it absent.
+~2000 files total (Batch 7 added 2026-10-10: 636 mkv downloads of Performance ids missing from the library, all new ids, plus one `.info.json` per file), 220 YouTube ids with 2+ Copies, 12 ids present in both Roots, ~26 GB redundant (cleanup is #18, deferred). Containers: webm, mp4, mkv; codecs H.264 / VP9 / AV1 (16 files, Batch 6) with Opus / AAC / Vorbis; one E-AC3 file; ~13 unmerged yt-dlp partials. The external drive was returning I/O errors on 2026-10-10 (#21); v1 must work with it absent.
 
 ---
 

@@ -44,7 +44,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     studioDumpPath: join(dataDir, "studio-dump.json"),
     port: Number(env.TUVA_PORT ?? 4400),
     localRoot: env.TUVA_LOCAL_ROOT ?? "/Users/evanwilliams/Desktop/Khoomei/Videos",
-    externalRoot: env.TUVA_EXTERNAL_ROOT ?? "/Volumes/General/хөөмей/Хөөмей",
+    externalRoot: env.TUVA_EXTERNAL_ROOT ?? "/Users/evanwilliams/Desktop/Хөөмей",
     ffmpeg: findBin("ffmpeg"),
     ffprobe: findBin("ffprobe"),
     cwebp: findBin("cwebp"),

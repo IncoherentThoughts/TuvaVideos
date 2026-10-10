@@ -108,6 +108,24 @@ export function rebuildSearchIndex(db: Db): IndexStats {
   return stats;
 }
 
+/** One Video's index row, replaced in place (a title edit does not need a rebuild of the lyrics). */
+export function reindexVideo(db: Db, id: number) {
+  db.query("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(String(id));
+  const r = db.query("SELECT id, title, title_latin FROM video WHERE id = ?").get(id) as { id: number; title: string; title_latin: string | null } | null;
+  if (!r) return;
+  const p = [r.title, r.title_latin].filter((x): x is string => !!x && x.trim() !== "");
+  db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('video', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
+}
+
+/** One Artist's index row (a Local Artist created from the chip editor). */
+export function indexArtist(db: Db, id: number) {
+  db.query("DELETE FROM search WHERE kind = 'artist' AND ref_id = ?").run(String(id));
+  const r = db.query("SELECT id, name, name_latin FROM artist WHERE id = ?").get(id) as { id: number; name: string; name_latin: string | null } | null;
+  if (!r) return;
+  const p = [r.name, r.name_latin].filter((x): x is string => !!x && x.trim() !== "");
+  db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('artist', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
+}
+
 /** Kept for ticket #22's callers. */
 export const rebuildVideoSearch = rebuildSearchIndex;
 
@@ -308,13 +326,13 @@ export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
       return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null };
     }
     if (g === "tracks") {
-      const t = one<{ id: string; name: string; album_id: string; song_id: string | null }>("SELECT id, name, album_id, song_id FROM mirror_track WHERE id = ?", c.ref);
+      const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM mirror_track WHERE id = ?", c.ref);
       if (!t) return null;
       const album = one<{ name: string; artist_id: string }>("SELECT name, artist_id FROM mirror_album WHERE id = ?", t.album_id);
       let by = many<{ name: string }>(
         "SELECT ar.name FROM mirror_track_artist ta JOIN mirror_artist ar ON ar.id = ta.artist_id WHERE ta.track_id = ? ORDER BY ta.position", t.id).map((x) => x.name);
       if (!by.length && album) by = many<{ name: string }>("SELECT name FROM mirror_artist WHERE id = ?", album.artist_id).map((x) => x.name);
-      return { kind: "track", id: t.id, name: t.name, album: album?.name ?? null, by, songId: t.song_id };
+      return { kind: "track", id: t.id, name: t.name, album: album?.name ?? null, by, songId: t.song_id, versionId: t.version_id };
     }
     const a = one<{ id: string; name: string; release_year: number | null; artist_id: string }>("SELECT id, name, release_year, artist_id FROM mirror_album WHERE id = ?", c.ref);
     if (!a) return null;

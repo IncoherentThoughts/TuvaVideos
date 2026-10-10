@@ -23,14 +23,6 @@ const post = (path: string, body?: unknown) => api(path, { method: "POST", body:
 const search = async (q: string) => (await api(`/api/search?q=${encodeURIComponent(q)}`)).body as { needle: string; groups: { key: string; total: number; rows: any[] }[] };
 const group = (r: Awaited<ReturnType<typeof search>>, key: string) => r.groups.find((g) => g.key === key);
 
-const MIRROR_DDL = `
-CREATE TABLE mirror_artist (id TEXT PRIMARY KEY, name TEXT NOT NULL);
-CREATE TABLE mirror_album (id TEXT PRIMARY KEY, name TEXT NOT NULL, artist_id TEXT NOT NULL, release_year INTEGER);
-CREATE TABLE mirror_song (id TEXT PRIMARY KEY, name TEXT NOT NULL, english_name TEXT, alternate_titles TEXT, alternate_spellings TEXT);
-CREATE TABLE mirror_version (id TEXT PRIMARY KEY, song_id TEXT NOT NULL, cyrillic TEXT, transliteration TEXT, translation TEXT);
-CREATE TABLE mirror_track (id TEXT PRIMARY KEY, album_id TEXT NOT NULL, name TEXT NOT NULL, song_id TEXT);
-CREATE TABLE mirror_track_artist (track_id TEXT, artist_id TEXT, position INTEGER);
-`;
 
 beforeAll(async () => {
   const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir, TUVA_EXTERNAL_ROOT: extDir });
@@ -68,12 +60,11 @@ beforeAll(async () => {
   ch.run(1, 2, 120, "Алаш — Сарыглар", "Alash - Saryglar", "manual", "2026-04-01T00:00:00Z");
   ch.run(2, 2, 600, "Interlude", null, "manual", null);
 
-  db.exec(MIRROR_DDL);
-  db.exec(`INSERT INTO mirror_artist VALUES ('ma1', 'Alash'), ('ma2', 'Various Artists');
-    INSERT INTO mirror_album VALUES ('al1', 'Tuva: Voices', 'ma1', 2016);
-    INSERT INTO mirror_song VALUES ('s1', 'Сарыглар', 'Saryglar (Girls)', 'Sarygler', 'Sarig-lar'), ('s2', 'Хомей', 'Throat singing', NULL, NULL);
-    INSERT INTO mirror_version VALUES ('ver1', 's1', '<p>Хайыракан тыва</p><p class="ln-blank"></p><p>Улуг-Хем<sup data-fn="1">1</sup> чурту</p>', '<p>Khairakan tyva</p><p>Uluk-Khem churtu</p>', '<p>The land of the Great Yenisei</p>');
-    INSERT INTO mirror_track VALUES ('t1', 'al1', 'Saryglar', 's1');
+  db.exec(`INSERT INTO mirror_artist (id, name, is_hidden, is_various_artists) VALUES ('ma1', 'Alash', 0, 0), ('ma2', 'Various Artists', 1, 1);
+    INSERT INTO mirror_album (id, name, artist_id, release_year) VALUES ('al1', 'Tuva: Voices', 'ma1', 2016);
+    INSERT INTO mirror_song (id, name, slug, english_name, alternate_titles, alternate_spellings) VALUES ('s1', 'Сарыглар', 'saryglar', 'Saryglar (Girls)', 'Sarygler', 'Sarig-lar'), ('s2', 'Хомей', 'khomei', 'Throat singing', NULL, NULL);
+    INSERT INTO mirror_version (id, song_id, label, display_order, cyrillic, transliteration, translation) VALUES ('ver1', 's1', 'Complete', 0, '<p>Хайыракан тыва</p><p class="ln-blank"></p><p>Улуг-Хем<sup data-fn="1">1</sup> чурту</p>', '<p>Khairakan tyva</p><p>Uluk-Khem churtu</p>', '<p>The land of the Great Yenisei</p>');
+    INSERT INTO mirror_track (id, album_id, track_number, name, song_id) VALUES ('t1', 'al1', 1, 'Saryglar', 's1');
     INSERT INTO mirror_track_artist VALUES ('t1', 'ma1', 0);`);
   db.query("UPDATE video SET song_id = 's1' WHERE id = 1").run();
   rebuildSearchIndex(db);

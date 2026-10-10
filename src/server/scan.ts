@@ -5,6 +5,8 @@ import type { Db } from "./db";
 import { containerFor, parseFilename } from "./filename";
 import { loadSeedHashes, seedKey, sha256File } from "./hash";
 import { log } from "./log";
+import { applyPerformanceDefaults } from "./defaults";
+import { fillLatinTitles } from "./latin";
 import { decidePlayback } from "./playback";
 import { probeFile } from "./probe";
 import { isIoError, sleep } from "./proc";
@@ -242,6 +244,7 @@ export class Scanner {
 
     this.prog.phase = "finishing";
     await this.markMissing(root, existing, seen, failedDirs, summary);
+    applyPerformanceDefaults(this.db); // Videos still at `other` with no Song (spec 2.3); edited ones are skipped
     rebuildSearchIndex(this.db);
     summary.durationMs = Date.now() - t0;
     return summary;
@@ -298,7 +301,7 @@ export class Scanner {
       const found = parsed.youtubeId
         ? (this.db.query("SELECT id FROM video WHERE youtube_id = ?").get(parsed.youtubeId) as { id: number } | null)
         : (this.db.query("SELECT id FROM video WHERE content_hash = ?").get(contentHash) as { id: number } | null);
-      // Defaults from the Mirror (spec 2.3) wait for the Mirror import (ticket #26): everything is `other` until then.
+      // Defaults from the Mirror (spec 2.3): a new Video gets its Type/Song from the Performances of its id, if any.
       const videoId =
         found?.id ??
         Number(
@@ -306,6 +309,10 @@ export class Scanner {
             .prepare("INSERT INTO video (youtube_id, content_hash, title, created_at) VALUES (?, ?, ?, ?)")
             .run(parsed.youtubeId, parsed.youtubeId ? null : contentHash, parsed.title, now).lastInsertRowid,
         );
+      if (!found) {
+        applyPerformanceDefaults(this.db, { videoId });
+        fillLatinTitles(this.db, { videoId });
+      }
       this.db
         .prepare(
           `INSERT INTO copy (video_id, root_id, rel_path, size, mtime, duration_s, container, video_codec, audio_codec, width, height,

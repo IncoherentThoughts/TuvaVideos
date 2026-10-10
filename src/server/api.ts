@@ -12,9 +12,11 @@ import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
 import { listArtists, listFavoriteRows, mergeArtist, recordResume, setFavorite } from "./catalog";
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
-import { rebuildSearchIndex, runSearch } from "./search";
+import { createLocalArtist, patchVideo, setVideoArtists } from "./edit";
+import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
+import { songDto, songRef, videosPerforming } from "./songs";
 import type { VideoType } from "../shared/filters";
-import type { ArtistRef, ChapterDto, FavoriteItem } from "../shared/types";
+import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
 
 export interface Services {
   cfg: Config;
@@ -55,7 +57,13 @@ interface VideoDbRow {
   youtube_id: string | null;
   title: string;
   title_latin: string | null;
+  title_latin_source: "archive" | "table" | "manual" | null;
   type: string;
+  type_suggested: number;
+  song_id: string | null;
+  version_id: string | null;
+  song_suggested: number;
+  suggestion_source: "manual" | "comment" | "description" | "performance" | null;
   favorited_at: string | null;
   resume_s: number | null;
   last_played_at: string | null;
@@ -114,7 +122,14 @@ export function createHandler(s: Services) {
       youtubeId: v.youtube_id,
       title: v.title,
       titleLatin: v.title_latin,
+      titleLatinSource: v.title_latin_source,
       type: v.type as VideoType,
+      typeSuggested: !!v.type_suggested,
+      songId: v.song_id,
+      versionId: v.version_id,
+      song: songRef(s.db, v.song_id),
+      songSuggested: !!v.song_suggested,
+      suggestionSource: v.suggestion_source,
       favoritedAt: v.favorited_at,
       resumeS: v.resume_s,
       lastPlayedAt: v.last_played_at,
@@ -247,6 +262,21 @@ export function createHandler(s: Services) {
     return res;
   }
 
+  const videoResponse = (id: number): Response => {
+    const v = s.db.query("SELECT * FROM video WHERE id = ?").get(id) as VideoDbRow | null;
+    if (!v) return json({ error: "no such video" }, 404);
+    return json(videoJson(v, s.db.query(`${COPY_SQL} WHERE c.video_id = ?`).all(v.id) as CopyDbRow[], extrasFor([v.id]).get(v.id)));
+  };
+
+  const readJson = async (req: Request): Promise<Record<string, unknown> | null> => {
+    try {
+      const b = await req.json();
+      return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  };
+
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const p = url.pathname;
@@ -263,6 +293,19 @@ export function createHandler(s: Services) {
           return json(videoJson(v, s.db.query(`${COPY_SQL} WHERE c.video_id = ?`).all(v.id) as CopyDbRow[], extrasFor([v.id]).get(v.id)));
         }
         if (p === "/api/artists") return json(listArtists(s.db));
+        if ((m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
+          const song = songDto(s.db, m[1]!);
+          if (!song) return json({ error: "no such song" }, 404);
+          const perf = videosPerforming(s.db, song.id);
+          const vids = videosByIds(perf.map((x) => x.videoId));
+          const videos: SongDto["videos"] = perf.flatMap((x) => {
+            const v = vids.get(x.videoId);
+            return v ? [{ id: v.id, title: v.title, available: v.available, pointed: x.pointed, startS: x.startS }] : [];
+          });
+          // playable first, then the Videos that point at the Song, then oldest id (stable)
+          videos.sort((a, b) => Number(b.available) - Number(a.available) || Number(b.pointed) - Number(a.pointed) || a.id - b.id);
+          return json({ ...song, videos } satisfies SongDto);
+        }
         if (p === "/api/favorites") {
           const rows = listFavoriteRows(s.db);
           const vids = videosByIds(rows.map((r) => r.video_id));
@@ -298,7 +341,7 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/scan") return json(s.scanner.progress());
         // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
-        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/artists" || /^\/play\/\d+$/.test(p))
+        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/artists" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {
@@ -341,6 +384,28 @@ export function createHandler(s: Services) {
           rebuildSearchIndex(s.db);
           return json({ merged: true, moved: r.moved });
         }
+      }
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/videos\/(\d+)$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = patchVideo(s.db, Number(m[1]), body);
+        if (!r.ok) return json({ error: r.error }, r.status);
+        return videoResponse(Number(m[1]));
+      }
+      if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/(\d+)\/artists$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = setVideoArtists(s.db, Number(m[1]), body.artistIds);
+        if (!r.ok) return json({ error: r.error }, r.status);
+        return videoResponse(Number(m[1]));
+      }
+      if (req.method === "POST" && p === "/api/artists") {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = createLocalArtist(s.db, body.name);
+        if (!r.ok) return json({ error: r.error }, r.status);
+        if (r.value.created) indexArtist(s.db, r.value.id);
+        return json({ id: r.value.id, name: r.value.name, local: true, created: r.value.created }, r.value.created ? 201 : 200);
       }
       if (req.method === "POST" && p === "/api/rescan") {
         const queued = await s.scanner.requestAll();

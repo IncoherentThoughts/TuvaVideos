@@ -9,6 +9,14 @@ export interface ArtistRef {
   local: boolean;
 }
 
+/** What the header shows of a Video's Song. `name: null` is a dangling uuid ("unknown song", ADR-0001). */
+export interface SongRef {
+  id: string;
+  name: string | null;
+  englishName: string | null;
+  versions: { id: string; label: string }[];
+}
+
 export interface StripDto {
   url: string;
   frames: number;
@@ -44,7 +52,15 @@ export interface VideoDto {
   youtubeId: string | null;
   title: string;
   titleLatin: string | null;
+  titleLatinSource: "archive" | "table" | "manual" | null;
   type: VideoType;
+  /** The Type came from an automatic source and is not yet confirmed (dashed tag). */
+  typeSuggested: boolean;
+  songId: string | null;
+  versionId: string | null;
+  song: SongRef | null;
+  songSuggested: boolean;
+  suggestionSource: "manual" | "comment" | "description" | "performance" | null;
   favoritedAt: string | null;
   resumeS: number | null;
   lastPlayedAt: string | null;
@@ -111,7 +127,7 @@ export type SearchRow =
   | { kind: "chapter"; id: number; videoId: number; videoTitle: string; title: string; startS: number; available: boolean }
   | { kind: "artist"; id: number; name: string; local: boolean; videoCount: number }
   | { kind: "song"; id: string; name: string; englishName: string | null; viaLyrics: boolean; lyric: string | null }
-  | { kind: "track"; id: string; name: string; album: string | null; by: string[]; songId: string | null }
+  | { kind: "track"; id: string; name: string; album: string | null; by: string[]; songId: string | null; versionId: string | null }
   | { kind: "album"; id: string; name: string; year: number | null; by: string | null };
 
 export interface SearchGroup {
@@ -126,4 +142,28 @@ export interface SearchResponse {
   needle: string;
   groups: SearchGroup[];
   ms: number;
+}
+
+// ---- lyrics and editing ----
+
+import type { VersionDto } from "./lyrics/types";
+
+export interface SongDto {
+  id: string;
+  name: string;
+  englishName: string | null;
+  alternateTitles: string[];
+  versions: VersionDto[];
+  /** Videos performing the Song (its Song pointer or a Performance with the Video YouTube id): playable ones first. */
+  videos: { id: number; title: string; available: boolean; pointed: boolean; startS: number | null }[];
+}
+
+/** PATCH /api/videos/:id. Any key may be left out; songId null clears the Song. */
+export interface VideoPatch {
+  title?: string;
+  /** Typing a Latin title sets its source to manual; null or an empty string hands it back to the generator. */
+  titleLatin?: string | null;
+  type?: VideoType;
+  songId?: string | null;
+  versionId?: string | null;
 }

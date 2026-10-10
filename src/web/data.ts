@@ -1,5 +1,5 @@
 // Client-side data: the whole library (~1100 Videos) is fetched once and filtered in memory (ticket #23).
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ArtistDto, FavoriteItem, ScanDto, SearchResponse, VideoDto } from "../shared/types";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -46,9 +46,14 @@ const set = (patch: Partial<State>) => {
 
 export function useStore(): State {
   const [, force] = useState(0);
+  const seen = useRef(state);
+  seen.current = state;
   useEffect(() => {
     const f = () => force((n) => n + 1);
     subs.add(f);
+    // A set() that landed between this render and the effect (the first fetch resolves in ~15 ms,
+    // before Preact runs effects) would otherwise never be rendered.
+    if (seen.current !== state) f();
     return () => void subs.delete(f);
   }, []);
   return state;

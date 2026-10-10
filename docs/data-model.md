@@ -163,5 +163,5 @@ CREATE VIRTUAL TABLE search USING fts5(
 ```
 
 - Rows: Video titles, Chapter titles, Artist names, Song names (plus alternate titles and spellings), and lyric text **one row per lyric line** per Script per Version, HTML stripped, so a hit returns the whole line for highlighting as the archive does.
-- `text` holds the original and the Latin title together; `text_folded` holds a derived ASCII form of both: ŋ → ng, ö/ü → o/u, and `x` additionally indexed as `kh`, so `khoomei`, `xoomei` and `хөөмей` all match. No Cyrillic ↔ Latin folding beyond that: the transliteration Script and the Latin titles already cover Latin queries.
+- `text` holds the original and the Latin title together; `text_folded` holds one uniform fold of both, applied at index time and to the query: Cyrillic → Latin through the transliteration table, ŋ → ng, ö/ü → o/u, `x` ≈ `kh`, so `khoomei`, `xoomei` and `хөөмей` all match (#23 superseded the earlier "no Cyrillic folding" line, since spec §6.2 requires both-ways folding). `kind` also takes `track` and `album`.
 - Ranking and result grouping are left to #17.

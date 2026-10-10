@@ -497,3 +497,32 @@ One new: `KVtwuJTl5NE`, local 480x360 (192859871 B) versus Batch 6 640x480 (3598
 | redundant GB (every Copy except the largest of each id) | 24.5 GB | 25.7 GB |
 
 "Redundant GB" counts, for each id with 2+ Copies, the sizes of all Copies except the largest one. It is an upper bound on what a dedupe could reclaim, since it ignores that Copies of one Video can differ in quality or container. Batch 6 adds 4 ids with 2+ Copies (the other 2 of the 6 overlaps already had 2 Copies) and 1.1 GB.
+
+## Batch 7 addendum (2026-10-10)
+
+`Khöömei Batch 7` is the output of `scripts/download-missing-youtube.sh`: the 665 Performance YouTube ids the archive links that no Root had a Copy of, downloaded as `bv*+ba` merged to mkv with an `.info.json` sidecar each. 636 downloaded; 29 failed (unavailable, private or removed — listed in `download.log`). The 636 ids are all new to the library (none in Batches 1–6 or the local Root), so Batch 7 adds no duplicates. Figures come from the app's own scan (ffprobe at scan time), not a throwaway probe; 636 rows appended to [root-inventory.csv](root-inventory.csv) (now 1,983 rows) with the fingerprint column empty.
+
+Same day, the whole external Root moved off the drive: it is now `/Users/evanwilliams/Desktop/Хөөмей/` with the seven batch folders inside, same relative paths. The drive's exFAT listing was decomposed Unicode (NFD) and APFS lists precomposed (NFC); the scanner now stores one NFC spelling per Copy.
+
+### Batch 7 files
+
+54.3 GB in 636 Videos, 73.5 hours; all playable natively (every Copy `playback = native`).
+
+| container / codecs | files |
+|---|---|
+| mkv h264+opus | 304 |
+| mkv av1+opus | 172 |
+| mkv vp9+opus | 137 |
+| mkv h264+aac | 21 |
+| mkv vp9+aac | 1 |
+| mp4 h264+aac | 1 |
+
+AV1 is now a sixth of the library's newest batch (16 files in Batch 6, 172 here). Resolutions: 1080x1080 x238 (YouTube Shorts-style squares), 1920x1080 x177, 1280x720 x69, 640x480 x38, portrait 1080x1920 x13 and 720x1280 x5, 3840x2160 x7, the rest small. Longest: 137 min (Отчетный концерт ККИ 2023), 134 min (Тыва Кызы), 127 min (День хоомея 2025).
+
+Scan defaults from the Mirror: 395 Videos typed `song` with a Suggested Song, 9 `concert`, 232 left `other`.
+
+### Leftovers in the folder
+
+- `Uskash keliyyin (#1) [afXpcD5OU80].f251.webm` — audio-only partial of a failed download (skipped by the scanner).
+- 637 `.info.json` sidecars (10 carry YouTube chapters). The app's `youtube-info/` cache is separate and fetched by `bun run fetch-youtube-info` (which also pulls comments), so these were not copied in.
+- `download.log`, `.downloaded.txt` (yt-dlp archive, 636 ids).

@@ -206,7 +206,7 @@ async function loadFiles(refresh){const r=await fetch('/api/files'+(refresh?'?re
 $('pick').onchange=e=>{select(e.target.value);stage.focus()};
 
 function select(id){cur=FILES.find(f=>f.id===id);if(!cur)return;$('pick').value=id;history.replaceState(null,'',`?f=${id}`);
- ab={a:null,b:null};seeks.length=0;chapters=[];$('shots').innerHTML='';strip=[];
+ ab={a:null,b:null};seeks.length=0;chapters=[];$('shots').innerHTML='';strip=[];v.removeAttribute('poster');
  const useCache=cur.fallback&&cur.cached;v.src=`/media/${id}${useCache?'?cached=1':''}`;v.load();
  $('title').textContent=title(cur);
  $('meta').innerHTML=`${avail(cur)}<span class="tags"><span class="tag" style="--c:var(--t3)">concert</span><span class="tag" style="--c:var(--t5)">${esc(cur.vcodec||'?')}</span><span class="tag ${cur.fallback?'sug':''}" style="--c:var(--${cur.fallback?'t1':'t5'})">${esc(cur.acodec||'no audio')}</span><span class="tag" style="--c:var(--t8)">${esc(cur.res||'')}</span>${useCache?'<span class="tag" style="--c:var(--t2)">cached fallback</span>':''}</span><span class="dim mono" style="margin-left:auto">${(cur.size/1e6).toFixed(0)} MB</span>`;
@@ -218,7 +218,10 @@ async function prepare(){const b=$('prep').querySelector('button');b.disabled=tr
  if(!r.error){cur.cached=true;const t=v.currentTime;select(cur.id);v.addEventListener('loadedmetadata',()=>{v.currentTime=t},{once:true});$('prep').style.display='flex';$('prep').innerHTML=`<span class="tag" style="--c:var(--t2)">cached</span><span class="muted mono">${esc(r.cmd||'already cached')} · ${r.ms} ms</span>`}else b.disabled=false}
 
 /* ---- scrub strip: frames captured by a hidden second <video> (the app would cache these server-side as the Thumbnail) ---- */
-async function buildStrip(id){const d=v.duration;if(!isFinite(d))return;pv.src=v.currentSrc;await new Promise(r=>pv.addEventListener('loadedmetadata',r,{once:true}));for(let i=0;i<STRIP_N;i++){if(cur?.id!==id)return;const t=d*(i+.5)/STRIP_N;pv.currentTime=t;await new Promise(r=>pv.addEventListener('seeked',r,{once:true}));const c=document.createElement('canvas');c.width=160;c.height=90;try{c.getContext('2d').drawImage(pv,0,0,160,90)}catch{}strip[i]=c;if(i%6===0)paintChapters()}paintChapters()}
+async function buildStrip(id){const d=v.duration;if(!isFinite(d))return;pv.src=v.currentSrc;await new Promise(r=>pv.addEventListener('loadedmetadata',r,{once:true}));
+ // poster: a full-res frame from 10% in (frame 0 is usually black), shown until first play — the app's cached Thumbnail poster
+ pv.currentTime=d*.1;await new Promise(r=>pv.addEventListener('seeked',r,{once:true}));if(cur?.id!==id)return;try{const pc=document.createElement('canvas');pc.width=pv.videoWidth;pc.height=pv.videoHeight;pc.getContext('2d').drawImage(pv,0,0);v.poster=pc.toDataURL('image/jpeg',.85)}catch{}
+ for(let i=0;i<STRIP_N;i++){if(cur?.id!==id)return;const t=d*(i+.5)/STRIP_N;pv.currentTime=t;await new Promise(r=>pv.addEventListener('seeked',r,{once:true}));const c=document.createElement('canvas');c.width=160;c.height=90;try{c.getContext('2d').drawImage(pv,0,0,160,90)}catch{}strip[i]=c;if(i%6===0)paintChapters()}paintChapters()}
 function stripAt(t){if(!strip.length||!isFinite(v.duration))return null;return strip[Math.min(STRIP_N-1,Math.floor(t/v.duration*STRIP_N))]||null}
 function paintChapters(){document.querySelectorAll('#film canvas').forEach(c=>{const s=stripAt(chapters[+c.dataset.i]?.t||0);if(s)c.getContext('2d').drawImage(s,0,0,c.width,c.height)})}
 /* ---- chapters (synthetic) ---- */

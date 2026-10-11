@@ -98,6 +98,14 @@ _Avoid_: match, Music.app link, linked track, studio recording
 A Studio track attached to a Song directly, without a Mirror Track behind it, because the archive lists no such Track. Never exported; absorbed into a match if a later import brings a Mirror Track with the same recording.
 _Avoid_: custom track, manual track, extra track
 
+**Audio settings**:
+What the Player does to a Video's sound: channel routing, balance, per-channel volume, equalizer, preamp and leveler. Per Video, persisted, applied whenever the Video plays. Edited in the Audio panel.
+_Avoid_: audio fix, effects, filters, mix (the recording's own mix is what these correct)
+
+**Audio preset**:
+A named set of the seven equalizer band gains, shared across Videos. Built-in ones ship with the app; custom ones are the user's and can be overwritten or deleted.
+_Avoid_: EQ profile, curve, setting
+
 **Studio playback**:
 Playing a Studio track in Music.app, driven from the browser (play, pause, seek, loop), with the Video paused meanwhile.
 _Avoid_: Apple Music mode, audio mode, track preview

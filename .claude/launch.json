@@ -5,8 +5,8 @@
       "name": "tuva",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "start"],
-      "env": { "TUVA_NO_OPEN": "1", "TUVA_PORT": "4401" },
-      "port": 4401
+      "env": { "TUVA_NO_OPEN": "1", "TUVA_PORT": "4411" },
+      "port": 4411
     }
   ]
 }

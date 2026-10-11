@@ -17,7 +17,8 @@ export type PlayerAction =
   | { type: "osd"; always: boolean }
   | { type: "studio" }
   | { type: "state" }
-  | { type: "lyrics" };
+  | { type: "lyrics" }
+  | { type: "audio" };
 
 export interface KeyLike {
   key: string;
@@ -98,6 +99,8 @@ export function keyAction(e: KeyLike): PlayerAction | null {
       return { type: "state" };
     case "y":
       return { type: "lyrics" };
+    case "a":
+      return { type: "audio" };
     default:
       return null;
   }

@@ -13,6 +13,8 @@ import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
+import { AudioPanel } from "./AudioPanel";
+import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
 
@@ -116,6 +118,47 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   const [, bump] = useState(0);
   useEffect(() => bump((n) => n + 1), [stateOpen]); // the host div mounts in this render; the Player portals into it on the next
 
+  // The Audio panel (`a`, spec 4.7) takes the drawer slot; opening it closes State and Lyrics, and vice versa.
+  // The Video's settings load with it and every change is written back (debounced); the defaults clear the row.
+  const [audioOpen, setAudioOpen] = useState(false);
+  const toggleAudio = () => {
+    setAudioOpen((on) => {
+      if (!on) (setStateOpen(false), setDrawer(false));
+      return !on;
+    });
+  };
+  const [audio, setAudio] = useState<AudioState | undefined>(undefined);
+  const audioWrite = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    setAudio(undefined);
+    let alive = true;
+    api.audio(videoId).then((r) => alive && setAudio(r.state ?? DEFAULT_AUDIO)).catch(() => alive && setAudio(DEFAULT_AUDIO));
+    return () => {
+      alive = false;
+      clearTimeout(audioWrite.current);
+    };
+  }, [videoId]);
+  const changeAudio = (patch: Partial<AudioState>) =>
+    setAudio((prev) => {
+      // functional: two changes in one tick (a click and a slider, say) must both land
+      const next = { ...(prev ?? DEFAULT_AUDIO), ...patch };
+      clearTimeout(audioWrite.current);
+      audioWrite.current = setTimeout(() => void api.setAudio(videoId, isDefaultAudio(next) ? null : next).catch((e) => ctl.current?.say(apiError(e))), 400);
+      return next;
+    });
+  const [presets, setPresets] = useState<AudioPreset[]>([]);
+  useEffect(() => {
+    if (audioOpen) api.audioPresets().then(setPresets).catch(() => {});
+  }, [audioOpen]);
+  const savePreset = async (name: string, eq: number[]) => {
+    await api.savePreset(name, eq);
+    setPresets(await api.audioPresets());
+  };
+  const deletePreset = async (name: string) => {
+    await api.deletePreset(name).catch((e) => ctl.current?.say(apiError(e)));
+    setPresets(await api.audioPresets());
+  };
+
   // The drawer: closed by default; opened by its button or by choosing a Song in the search box (`?lyrics=<song>`).
   const [drawer, setDrawer] = useState(!!lyrics);
   const [focusDrawer, setFocusDrawer] = useState(!!lyrics);
@@ -124,6 +167,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     if (lyrics && (lyrics !== seenParam.current || !drawer)) (setDrawer(true), setFocusDrawer(true));
     seenParam.current = lyrics;
   }, [lyrics, lyricsVersion]);
+  useEffect(() => { if (drawer) setAudioOpen(false); }, [drawer]);
   const closeDrawer = () => {
     setDrawer(false);
     setFocusDrawer(false);
@@ -153,7 +197,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onStateToggle={() => setStateOpen((on) => !on)} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} />
+        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
         <div class="np-head">
           <div class="np-titlerow">
             <HeaderTitle video={v} onChange={setV} />
@@ -195,6 +239,20 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
           </div>
         )}
       </div>
+      {audioOpen && !drawer && audio && (
+        <div class="drawer-wrap">
+          <AudioPanel
+            vid={{ get current() { return ctl.current?.video() ?? null; } }}
+            state={audio}
+            onChange={changeAudio}
+            onReset={() => changeAudio(DEFAULT_AUDIO)}
+            presets={presets}
+            onSavePreset={savePreset}
+            onDeletePreset={deletePreset}
+            onClose={() => (setAudioOpen(false), ctl.current?.focus())}
+          />
+        </div>
+      )}
       {!drawer && stateOpen && (
         <div class="drawer-wrap">
           <div class="drawer statehost" ref={stateHost} />

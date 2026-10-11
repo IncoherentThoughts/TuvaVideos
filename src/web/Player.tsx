@@ -16,6 +16,8 @@ import { CopyPicker, copyLabel } from "./CopyPicker";
 import { Timeline, type ChapterMark } from "./Timeline";
 import { StudioBar, type StudioCtl } from "./Studio";
 import { StatePanel, type KeyLog, type SeekLog } from "./StatePanel";
+import { AudioEngine } from "./audioEngine";
+import { isDefaultAudio, type AudioState } from "../shared/audio";
 import { api, apiError } from "./data";
 
 export type { ChapterMark } from "./Timeline";
@@ -25,6 +27,8 @@ export interface PlayerCtl {
   seekTo(t: number): void;
   say(text: string): void;
   focus(): void;
+  /** The <video> element, for the Audio panel's meters. */
+  video(): HTMLVideoElement | null;
 }
 
 type Phase = "loading" | "preparing" | "ready" | "unavailable" | "failed";
@@ -48,6 +52,11 @@ interface Props {
   onStateToggle?(): void;
   /** `y`: open or close the lyrics drawer; returns an OSD notice when there is nothing to show. */
   onLyricsToggle?(): string | null;
+  /** `a`: the Audio panel (spec 4.7); the page owns the flag and the settings. */
+  audioOpen?: boolean;
+  onAudioToggle?(): void;
+  /** The Video's Audio settings, applied to the sound as they change; the chain is built only once they differ from the defaults or the panel opens. */
+  audioSettings?: AudioState;
   /** Where the State panel renders when the page has a free drawer slot; inline under the Player otherwise. */
   stateHost?: { current: HTMLElement | null };
   /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
@@ -96,7 +105,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, onLyricsToggle, stateHost }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -341,7 +350,18 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   };
 
   useEffect(() => onTime?.(time), [time]);
-  if (ctl) ctl.current = { time: () => vid.current?.currentTime ?? time, seekTo: (t) => seekTo(t), say: (text) => say(text, 2200), focus: refocus };
+  if (ctl) ctl.current = { time: () => vid.current?.currentTime ?? time, seekTo: (t) => seekTo(t), say: (text) => say(text, 2200), focus: refocus, video: () => vid.current };
+
+  // ---- Audio settings (spec 4.7) ----
+  useEffect(() => {
+    const v = vid.current;
+    if (!v || !audioSettings) return;
+    if (AudioEngine.has(v) || audioOpen || !isDefaultAudio(audioSettings)) AudioEngine.for(v).set(audioSettings);
+  }, [audioSettings, audioOpen]);
+  useEffect(() => () => {
+    const v = vid.current;
+    if (v && AudioEngine.has(v)) AudioEngine.for(v).dispose();
+  }, []);
 
   // ---- media events ----
   useEffect(() => {
@@ -637,6 +657,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         if (notice) say(notice, 2000);
         break;
       }
+      case "audio":
+        onAudioToggle?.();
+        break;
     }
   };
 
@@ -772,6 +795,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         </button>
         <button class="ib" tabIndex={-1} title="Fullscreen (f)" onClick={() => (toggleFullscreen(), refocus())}>
           {FS_ICON}
+        </button>
+        <button class={`cbtn statebtn${audioOpen ? " on" : ""}`} tabIndex={-1} aria-pressed={!!audioOpen} title="Audio: channels, equalizer, level (a while the Player has focus)" onClick={() => (onAudioToggle?.(), refocus())}>
+          Audio <kbd>a</kbd>
         </button>
         <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="Player state, seeks, key log and bindings (i while the Player has focus)" onClick={() => (onStateToggle?.(), refocus())}>
           State <kbd>i</kbd>

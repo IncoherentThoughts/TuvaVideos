@@ -1,5 +1,6 @@
 // Client-side data: the whole library (~1100 Videos) is fetched once and filtered in memory (ticket #23).
 import { useEffect, useRef, useState } from "preact/hooks";
+import type { AudioPreset, AudioState } from "../shared/audio";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 
@@ -48,6 +49,12 @@ export const api = {
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
   createArtist: (name: string) => post<{ id: number; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
   chapters: (videoId: number) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),
+  // Audio settings (spec 4.7): per Video; `state: null` clears them. Presets: built-in and custom EQ curves.
+  audio: (videoId: number) => get<{ state: AudioState | null }>(`/api/videos/${videoId}/audio`),
+  setAudio: (videoId: number, state: AudioState | null) => send<{ state: AudioState | null }>("PUT", `/api/videos/${videoId}/audio`, { state }),
+  audioPresets: () => get<AudioPreset[]>("/api/audio-presets"),
+  savePreset: (name: string, eq: number[]) => send<AudioPreset>("PUT", `/api/audio-presets/${encodeURIComponent(name)}`, { eq }),
+  deletePreset: (name: string) => send<{ deleted: true }>("DELETE", `/api/audio-presets/${encodeURIComponent(name)}`),
   addChapter: (videoId: number, body: ChapterCreate) => post<ChapterDto>(`/api/videos/${videoId}/chapters`, body),
   patchChapter: (id: number, patch: ChapterPatch) => send<ChapterDto>("PATCH", `/api/chapters/${id}`, patch),
   deleteChapter: (id: number) => send<{ deleted: true; tombstoned: boolean }>("DELETE", `/api/chapters/${id}`),

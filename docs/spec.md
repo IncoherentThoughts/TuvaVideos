@@ -181,11 +181,22 @@ Keys are handled only while the Player container has focus. No native `<video co
 | o / O | OSD flash / always on |
 | t | Studio playback (§7.4) |
 | y | open / close the lyrics drawer (OSD "no lyrics" when neither the Chapter nor the Video has a Song) |
+| a | Audio panel (also an "Audio" button, §4.7): the Video's Audio settings in the drawer slot; opening it closes the State panel and the lyrics drawer, and either of those closes it |
 | i | State panel (also a "State" button): in the drawer slot while no lyrics are shown, under the Player when they are; `<video>` state, the last seeks with their latency, a key log (handled / passed, with the focused element) and this key table. Kept from the player prototype; stays on during Studio playback |
 
 ### 4.6 Visuals
 
 The video box takes the Copy's own aspect ratio. A poster frame shows before first play. Hovering the bar shows the scrub-strip frame and timestamp above the pointer. Chapter ticks on the timeline; chapter cards use the same strip frames. Volume is an icon; the frame number sits beside the time while paused.
+
+### 4.7 Audio settings
+
+Many Copies are badly mixed, quiet, or carry sound on one channel only. The Audio panel (`a`, or the Audio button beside State) fixes that per Video, in the drawer slot, with live in/out level meters per channel at the top:
+
+- **Channels**: routing (Stereo as recorded, Mono, Left or Right in both ears, Swap), balance, and a volume per output channel.
+- **Equalizer**: seven bands (60 Hz low shelf to 12 kHz high shelf, ±12 dB). Built-in presets (Flat, Voice, Instruments, Old recording, Bright, Warm) and custom ones: "+ Save…" stores the current seven bands under a name; a custom preset can be overwritten by saving its name again or deleted from its chip. Built-in names are reserved.
+- **Level**: a preamp (−12…+18 dB) and a leveler (a compressor with make-up gain; one amount slider).
+
+The chain runs in the browser (Web Audio on the `<video>` element) and is built only when the Video has non-default settings or the panel is open, so untouched Videos play straight. Settings are per Video and persist across sessions (`video_audio`, written 400 ms after the last change; the defaults delete the row). Presets are shared across Videos (`audio_preset`). A double-click on any slider returns it to its neutral value; Reset in the header clears the Video's settings.
 
 ---
 

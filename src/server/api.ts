@@ -17,6 +17,7 @@ import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, 
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
 import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
 import { listSongs, songDto, songRef, videosPerforming } from "./songs";
+import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } from "./audio";
 import type { VideoType } from "../shared/filters";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
 
@@ -336,6 +337,11 @@ export function createHandler(s: Services) {
           const list = listChapters(s.db, Number(m[1]));
           return list ? json(list) : json({ error: "no such video" }, 404);
         }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/audio$/))) {
+          const a = getVideoAudio(s.db, Number(m[1]));
+          return a === undefined ? json({ error: "no such video" }, 404) : json({ state: a });
+        }
+        if (p === "/api/audio-presets") return json(listPresets(s.db));
         if (p === "/api/artists") return json(listArtists(s.db));
         if (p === "/api/songs") return json(listSongs(s.db));
         if (p === "/api/studio/state") return json(s.studio.state());
@@ -455,6 +461,20 @@ export function createHandler(s: Services) {
           rebuildSearchIndex(s.db);
           return json({ merged: true, moved: r.moved });
         }
+      }
+      if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/(\d+)\/audio$/))) {
+        const body = (await req.json().catch(() => ({}))) as { state?: unknown };
+        const r = setVideoAudio(s.db, Number(m[1]), body.state ?? null);
+        return r.ok ? json({ state: r.value }) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "PUT" && (m = p.match(/^\/api\/audio-presets\/([^/]+)$/))) {
+        const body = (await req.json().catch(() => ({}))) as { eq?: unknown };
+        const r = savePreset(s.db, decodeURIComponent(m[1]!), body.eq);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/audio-presets\/([^/]+)$/))) {
+        const r = deletePreset(s.db, decodeURIComponent(m[1]!));
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
       if (req.method === "PATCH" && (m = p.match(/^\/api\/artists\/(\d+)$/))) {
         const body = await readJson(req);

@@ -120,6 +120,36 @@ describe("scan and API", () => {
   });
 });
 
+describe("audio settings and presets", () => {
+  test("per-Video settings persist, the defaults clear them, bad input is refused", async () => {
+    const videos = await api("/api/videos");
+    const id = videos.find((v: any) => v.youtubeId === "aaaaaaaaaaa").id;
+    expect(await api(`/api/videos/${id}/audio`)).toEqual({ state: null });
+    const state = { routing: "left", balance: 0.2, volL: 1, volR: 1.5, preamp: 6, eq: [0, 0, 0, 3, 5, 3, 0], compress: true, compressAmount: 0.5 };
+    const put = (body: unknown) => api(`/api/videos/${id}/audio`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect(await put({ state })).toEqual({ state });
+    expect(await api(`/api/videos/${id}/audio`)).toEqual({ state });
+    expect((await put({ state: { eq: [1, 2] } })).error).toMatch(/eq/);
+    expect(await put({ state: { ...state, routing: "stereo", balance: 0, volR: 1, preamp: 0, eq: [0, 0, 0, 0, 0, 0, 0], compress: false } })).toEqual({ state: null });
+    expect(await api(`/api/videos/${id}/audio`)).toEqual({ state: null });
+    expect((await api(`/api/videos/999999/audio`)).error).toBe("no such video");
+  });
+  test("custom presets: save, overwrite, list after the built-ins, delete; built-in names reserved", async () => {
+    const builtIns = await api("/api/audio-presets");
+    expect(builtIns.map((p: any) => p.name)).toContain("Voice");
+    const put = (name: string, eq: unknown) => api(`/api/audio-presets/${encodeURIComponent(name)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ eq }) });
+    expect(await put(" Хоомей ", [1, 2, 3, 4, 5, 6, 7])).toEqual({ name: "Хоомей", eq: [1, 2, 3, 4, 5, 6, 7], builtIn: false });
+    expect(await put("Хоомей", [0, 0, 0, 0, 0, 0, 20])).toEqual({ name: "Хоомей", eq: [0, 0, 0, 0, 0, 0, 12], builtIn: false });
+    expect((await put("Voice", [0, 0, 0, 0, 0, 0, 0])).error).toMatch(/built-in/);
+    expect((await put("Short", [0])).error).toMatch(/seven/);
+    const all = await api("/api/audio-presets");
+    expect(all.length).toBe(builtIns.length + 1);
+    expect(all[all.length - 1]).toMatchObject({ name: "Хоомей", builtIn: false });
+    expect(await api(`/api/audio-presets/${encodeURIComponent("Хоомей")}`, { method: "DELETE" })).toEqual({ deleted: true });
+    expect((await api(`/api/audio-presets/${encodeURIComponent("Хоомей")}`, { method: "DELETE" })).error).toBe("no such preset");
+  });
+});
+
 describe("streaming", () => {
   test("Range requests give 206 with Content-Range", async () => {
     const [song] = (await api("/api/videos")).filter((v: any) => v.youtubeId === "aaaaaaaaaaa");

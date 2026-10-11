@@ -296,6 +296,8 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
     if (await apply(() => api.setVideoArtists(v.id, ids))) void loadArtists();
   };
   const ids = v.artists.map((a) => a.id);
+  const confirmed = v.artists.filter((a) => !a.suggested).map((a) => a.id);
+  const anySuggested = v.artists.some((a) => a.suggested);
   return (
     <span class="field artistrow">
       <span class="lbl">Artists:</span>
@@ -304,11 +306,16 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
           <Link href={`/${libraryQuery({ ...defaultLibraryState(), artist: a.name })}`} class="taglink" title={`Every Video by ${a.name}`}>
             <ArtistTag artist={a} />
           </Link>
-          <button class="x" aria-label={`Remove ${a.name}`} title="Remove" onClick={() => void save(ids.filter((i) => i !== a.id))}>
+          <button class="x" aria-label={a.suggested ? `Reject ${a.name}` : `Remove ${a.name}`} title={a.suggested ? "Reject this suggestion" : "Remove"} onClick={() => void apply(() => api.removeArtist(v.id, a.id)).then((ok) => ok && void loadArtists())}>
             ×
           </button>
         </span>
       ))}
+      {anySuggested && (
+        <button class="confirm" title="Confirm the Suggested Artists" aria-label="Confirm Artists" onClick={() => void apply(() => api.confirmArtists(v.id)).then((ok) => ok && void loadArtists())}>
+          ✓
+        </button>
+      )}
       {!adding && (
         <button class="linkbtn" onClick={() => setAdding(true)}>
           {v.artists.length ? "+ add" : "add Artist…"}
@@ -324,7 +331,7 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
               <span class="dim"> · {r.local ? "local" : "archive"}</span>
             </>
           )}
-          onPick={(r) => (setAdding(false), void save([...ids, r.id]))}
+          onPick={(r) => (setAdding(false), void save([...confirmed, ...ids.filter((i) => !confirmed.includes(i)), r.id]))}
           create={(q) => ({
             label: `add '${q}' as local artist`,
             run: async () => {

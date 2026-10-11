@@ -128,7 +128,7 @@ describe("library view state", () => {
     expect(out.map((v) => v.id)).toEqual([3, 2, 1]);
   });
   test("filters: type, availability, favorites, artist (folded names)", () => {
-    const radik = { id: 1, name: "Radik Tyulyush", nameLatin: null, local: true };
+    const radik = { id: 1, name: "Radik Tyulyush", nameLatin: null, local: true, suggested: false };
     const vs = [
       vid(1, { type: "song", available: true, artists: [radik] }),
       vid(2, { type: "concert", available: true, favoritedAt: "2026-02-01" }),

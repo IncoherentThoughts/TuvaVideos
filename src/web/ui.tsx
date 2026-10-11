@@ -30,9 +30,11 @@ export function TypeTag({ type, suggested }: { type: string; suggested?: boolean
 }
 
 export function ArtistTag({ artist }: { artist: ArtistRef }) {
+  const title = artist.suggested ? "Suggested Artist (from the title): confirm it on Now playing" : artist.local ? "Local Artist" : undefined;
   return (
-    <span class="tag" style={{ "--c": `var(--t${artistSlot(artist.name)})` }} title={artist.local ? "Local Artist" : undefined}>
+    <span class={`tag${artist.suggested ? " sug" : ""}`} style={{ "--c": `var(--t${artistSlot(artist.name)})` }} title={title}>
       {artist.name}
+      {artist.suggested && <i class="sugmark">suggested</i>}
     </span>
   );
 }

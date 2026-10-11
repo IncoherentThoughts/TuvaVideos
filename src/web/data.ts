@@ -77,6 +77,8 @@ export const api = {
   rescan: () => post<{ queued: number[] }>("/api/rescan"),
   setFavorite: (kind: "video" | "chapter", id: number, favorite?: boolean) =>
     post<{ favorite: boolean; favoritedAt: string | null }>(`/api/${kind === "video" ? "videos" : "chapters"}/${id}/favorite`, favorite === undefined ? {} : { favorite }),
+  confirmArtists: (videoId: number) => post<VideoDto>(`/api/videos/${videoId}/artists/confirm`),
+  removeArtist: (videoId: number, artistId: number) => send<VideoDto>("DELETE", `/api/videos/${videoId}/artists/${artistId}`),
   renameArtist: (id: number, name: string) => send<{ id: number; name: string }>("PATCH", `/api/artists/${id}`, { name }),
   merge: (sourceId: number, targetId: number) => post<{ merged: boolean; moved: number }>(`/api/artists/${sourceId}/merge-into/${targetId}`),
 };

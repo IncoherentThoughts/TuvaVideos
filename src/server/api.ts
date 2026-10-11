@@ -13,7 +13,7 @@ import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
 import { listArtists, listFavoriteRows, mergeArtist, recordResume, setFavorite } from "./catalog";
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
-import { createLocalArtist, patchVideo, renameLocalArtist, setVideoArtists } from "./edit";
+import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, renameLocalArtist, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
 import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
 import { songDto, songRef, videosPerforming } from "./songs";
@@ -177,10 +177,10 @@ export function createHandler(s: Services) {
     };
     const only = videoIds ? new Set(videoIds) : null;
     for (const r of s.db
-      .query("SELECT va.video_id, a.id, a.name, a.name_latin, a.mirror_id FROM video_artist va JOIN artist a ON a.id = va.artist_id ORDER BY va.video_id, va.position")
-      .all() as { video_id: number; id: number; name: string; name_latin: string | null; mirror_id: string | null }[]) {
+      .query("SELECT va.video_id, va.suggested, a.id, a.name, a.name_latin, a.mirror_id FROM video_artist va JOIN artist a ON a.id = va.artist_id ORDER BY va.video_id, va.suggested, va.position")
+      .all() as { video_id: number; suggested: number; id: number; name: string; name_latin: string | null; mirror_id: string | null }[]) {
       if (only && !only.has(r.video_id)) continue;
-      get(r.video_id).artists.push({ id: r.id, name: r.name, nameLatin: r.name_latin, local: r.mirror_id == null });
+      get(r.video_id).artists.push({ id: r.id, name: r.name, nameLatin: r.name_latin, local: r.mirror_id == null, suggested: !!r.suggested });
     }
     for (const r of s.db.query("SELECT video_id, COUNT(*) n FROM chapter GROUP BY video_id").all() as { video_id: number; n: number }[]) {
       if (only && !only.has(r.video_id)) continue;
@@ -481,6 +481,16 @@ export function createHandler(s: Services) {
       if (req.method === "DELETE" && (m = p.match(/^\/api\/chapters\/(\d+)$/))) {
         const r = deleteChapter(s.db, Number(m[1]));
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "POST" && (m = p.match(/^\/api\/videos\/(\d+)\/artists\/confirm$/))) {
+        const r = confirmVideoArtists(s.db, Number(m[1]));
+        if (!r.ok) return json({ error: r.error }, r.status);
+        return videoResponse(Number(m[1]));
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)\/artists\/(\d+)$/))) {
+        const r = rejectVideoArtist(s.db, Number(m[1]), Number(m[2]));
+        if (!r.ok) return json({ error: r.error }, r.status);
+        return videoResponse(Number(m[1]));
       }
       if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/(\d+)\/artists$/))) {
         const body = await readJson(req);

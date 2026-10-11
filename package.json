@@ -11,6 +11,7 @@
     "latin-titles": "bun src/server/latinTitles.ts",
     "studio-match": "bun src/server/studio/cli.ts",
     "suggest-chapters": "bun src/server/chapters/cli.ts",
+    "suggest-artists": "bun src/server/artistSuggestCli.ts",
     "fetch-youtube-info": "bun scripts/fetch-youtube-info.ts"
   },
   "bin": {

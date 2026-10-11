@@ -74,16 +74,42 @@ export function patchVideo(db: Db, id: number, body: VideoPatch & Record<string,
   return { ok: true };
 }
 
-/** Replaces a Video's Artists with `ids`, in order. Unknown ids are refused; duplicates collapse to the first. */
+/**
+ * Replaces a Video's Artists with `ids`, in order, all confirmed. Unknown ids are refused; duplicates collapse to the
+ * first. A Suggested Artist left out of `ids` is a rejection (tombstoned so the matcher does not offer it again).
+ */
 export function setVideoArtists(db: Db, videoId: number, ids: unknown): EditResult {
   if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return bad("no such video", 404);
   if (!Array.isArray(ids) || !ids.every((x) => Number.isInteger(x))) return bad("artistIds must be an array of artist ids");
   const order = [...new Set(ids as number[])];
   for (const a of order) if (!db.query("SELECT 1 FROM artist WHERE id = ?").get(a)) return bad(`no such artist: ${a}`, 404);
   db.transaction(() => {
+    const dropped = (db.query("SELECT artist_id FROM video_artist WHERE video_id = ? AND suggested = 1").all(videoId) as { artist_id: number }[])
+      .map((r) => r.artist_id)
+      .filter((a) => !order.includes(a));
+    const tomb = db.prepare("INSERT OR IGNORE INTO artist_rejection (video_id, artist_id, rejected_at) VALUES (?, ?, ?)");
+    for (const a of dropped) tomb.run(videoId, a, new Date().toISOString());
     db.prepare("DELETE FROM video_artist WHERE video_id = ?").run(videoId);
-    const ins = db.prepare("INSERT INTO video_artist (video_id, artist_id, position) VALUES (?, ?, ?)");
+    const ins = db.prepare("INSERT INTO video_artist (video_id, artist_id, position, suggested) VALUES (?, ?, ?, 0)");
     order.forEach((a, i) => ins.run(videoId, a, i));
+  })();
+  return { ok: true };
+}
+
+/** Confirms every Suggested Artist of a Video (they keep their order after the confirmed ones). */
+export function confirmVideoArtists(db: Db, videoId: number): EditResult {
+  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return bad("no such video", 404);
+  db.prepare("UPDATE video_artist SET suggested = 0 WHERE video_id = ?").run(videoId);
+  return { ok: true };
+}
+
+/** Removes one Artist from a Video; a Suggested one is tombstoned so the matcher does not offer it again. */
+export function rejectVideoArtist(db: Db, videoId: number, artistId: number): EditResult {
+  const row = db.query("SELECT suggested FROM video_artist WHERE video_id = ? AND artist_id = ?").get(videoId, artistId) as { suggested: number } | null;
+  if (!row) return bad("that Artist is not on this Video", 404);
+  db.transaction(() => {
+    if (row.suggested) db.prepare("INSERT OR IGNORE INTO artist_rejection (video_id, artist_id, rejected_at) VALUES (?, ?, ?)").run(videoId, artistId, new Date().toISOString());
+    db.prepare("DELETE FROM video_artist WHERE video_id = ? AND artist_id = ?").run(videoId, artistId);
   })();
   return { ok: true };
 }

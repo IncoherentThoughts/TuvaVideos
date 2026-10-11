@@ -5,6 +5,7 @@
 import { loadConfig } from "./config";
 import { checkpoint, openDb, type Db } from "./db";
 import { applyPerformanceDefaults, type DefaultsStats } from "./defaults";
+import { suggestArtists, type ArtistSuggestStats } from "./artistSuggest";
 import { fillLatinTitles, type LatinFillStats } from "./latin";
 import { initLog, log } from "./log";
 import { BackupError, importMirror, type MirrorImportResult } from "./mirror";
@@ -16,20 +17,22 @@ export interface ImportRun {
   defaults: DefaultsStats;
   latin: LatinFillStats;
   index: IndexStats;
+  artists: ArtistSuggestStats;
   /** null when the matcher was skipped (no Music.app dump). */
   studio: MatchStats | null;
   totalMs: number;
 }
 
 /** Import plus every follow-up, in the order that lets each see the previous one's rows. */
-export async function runImport(db: Db, backupDir: string, studio?: MatcherDeps): Promise<ImportRun> {
+export async function runImport(db: Db, backupDir: string, studio?: MatcherDeps, cacheDir?: string): Promise<ImportRun> {
   const t0 = performance.now();
   const mirror = importMirror(db, backupDir);
   const defaults = applyPerformanceDefaults(db);
   const latin = fillLatinTitles(db); // after the defaults: a Video that just got a Song may now have an archive spelling
+  const artists = suggestArtists(db, { cacheDir }); // the Mirror's Artists just changed: offer them again
   const index = rebuildSearchIndex(db); // after the Latin titles: they are part of the indexed text
   const studioStats = await runStudioMatcher(db, studio); // after the Mirror rows exist: it matches every Mirror Track
-  return { mirror, defaults, latin, index, studio: studioStats, totalMs: Math.round(performance.now() - t0) };
+  return { mirror, defaults, latin, artists, index, studio: studioStats, totalMs: Math.round(performance.now() - t0) };
 }
 
 export function printRun(r: ImportRun) {
@@ -40,6 +43,7 @@ export function printRun(r: ImportRun) {
   log(`dangling refs: ${r.mirror.dangling.total}`, r.mirror.dangling);
   log("performance defaults:", r.defaults);
   log("latin titles:", r.latin);
+  log("artist matcher:", r.artists);
   log(`search index: ${r.index.total} rows`, r.index, `${r.index.ms} ms`);
   log("studio matcher:", r.studio ?? "skipped");
   log(`total ${r.totalMs} ms`);
@@ -55,7 +59,7 @@ if (import.meta.main) {
   initLog(cfg.logPath);
   const db = openDb(cfg.dbPath, cfg.migrationsDir);
   try {
-    printRun(await runImport(db, dir));
+    printRun(await runImport(db, dir, undefined, cfg.ytCacheDir));
   } catch (e) {
     console.error(e instanceof BackupError ? `import refused: ${e.message}` : `import failed (nothing was changed): ${e}`);
     process.exitCode = 1;

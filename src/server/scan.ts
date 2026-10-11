@@ -6,6 +6,7 @@ import { containerFor, parseFilename } from "./filename";
 import { loadSeedHashes, seedKey, sha256File } from "./hash";
 import { log } from "./log";
 import { applyPerformanceDefaults } from "./defaults";
+import { suggestArtists } from "./artistSuggest";
 import { fillLatinTitles } from "./latin";
 import { decidePlayback } from "./playback";
 import { probeFile } from "./probe";
@@ -82,7 +83,7 @@ export class Scanner {
 
   constructor(
     private db: Db,
-    private cfg: Pick<Config, "ffprobe" | "thumbsDir" | "remuxDir">,
+    private cfg: Pick<Config, "ffprobe" | "thumbsDir" | "remuxDir" | "ytCacheDir">,
     private roots: Roots,
     private afterScan: (rootId: number) => void,
   ) {
@@ -252,6 +253,7 @@ export class Scanner {
     this.prog.phase = "finishing";
     await this.markMissing(root, existing, seen, failedDirs, summary);
     applyPerformanceDefaults(this.db); // Videos still at `other` with no Song (spec 2.3); edited ones are skipped
+    suggestArtists(this.db, { cacheDir: this.cfg.ytCacheDir }); // Suggested Artists from titles; curated Videos are skipped
     rebuildSearchIndex(this.db);
     summary.durationMs = Date.now() - t0;
     return summary;
@@ -318,6 +320,7 @@ export class Scanner {
         );
       if (!found) {
         applyPerformanceDefaults(this.db, { videoId });
+        suggestArtists(this.db, { videoId, cacheDir: this.cfg.ytCacheDir });
         fillLatinTitles(this.db, { videoId });
       }
       this.db

@@ -7,6 +7,8 @@ export interface ArtistRef {
   nameLatin: string | null;
   /** A Local Artist (no Mirror row). */
   local: boolean;
+  /** Offered by the Artist matcher and not yet confirmed (dashed tag). */
+  suggested: boolean;
 }
 
 /** What the header shows of a Video's Song. `name: null` is a dangling uuid ("unknown song", ADR-0001). */

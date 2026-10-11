@@ -50,7 +50,8 @@ const BINDINGS: [string[], string][] = [
   [["<", ">"], "prev / next Video"], [["s"], "screenshot"],
   [["o"], "OSD flash"], [["O"], "OSD always"],
   [["c"], "add Chapter here"], [["t"], "Studio playback"],
-  [["i"], "this panel"], [["/"], "focus search"],
+  [["i"], "this panel"], [["y"], "lyrics drawer"],
+  [["/"], "focus search"],
   [["Esc"], "back to the Player"], [[], ""],
 ];
 

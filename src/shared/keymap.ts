@@ -16,7 +16,8 @@ export type PlayerAction =
   | { type: "screenshot" }
   | { type: "osd"; always: boolean }
   | { type: "studio" }
-  | { type: "state" };
+  | { type: "state" }
+  | { type: "lyrics" };
 
 export interface KeyLike {
   key: string;
@@ -95,6 +96,8 @@ export function keyAction(e: KeyLike): PlayerAction | null {
       return { type: "studio" };
     case "i":
       return { type: "state" };
+    case "y":
+      return { type: "lyrics" };
     default:
       return null;
   }

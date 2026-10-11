@@ -46,6 +46,8 @@ interface Props {
   /** The State panel (`i`): shown when true; the page owns the flag so it can place the panel in the drawer slot. */
   stateOpen?: boolean;
   onStateToggle?(): void;
+  /** `y`: open or close the lyrics drawer; returns an OSD notice when there is nothing to show. */
+  onLyricsToggle?(): string | null;
   /** Where the State panel renders when the page has a free drawer slot; inline under the Player otherwise. */
   stateHost?: { current: HTMLElement | null };
   /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
@@ -94,7 +96,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, stateHost }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, onLyricsToggle, stateHost }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -631,6 +633,11 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       case "state":
         onStateToggle?.();
         break;
+      case "lyrics": {
+        const notice = onLyricsToggle?.();
+        if (notice) say(notice, 2000);
+        break;
+      }
     }
   };
 

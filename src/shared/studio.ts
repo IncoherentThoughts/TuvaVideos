@@ -99,6 +99,7 @@ export function studioRoute(a: PlayerAction): StudioKeyRoute {
     case "volumeBy":
     case "mute":
     case "state":
+    case "lyrics":
       return { to: "browser" };
     case "studio":
       return { to: "exit" };

@@ -130,6 +130,14 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     if (lyrics) navigate(playHref(videoId, t), { replace: true });
     document.querySelector<HTMLElement>("[data-player]")?.focus({ preventScroll: true });
   };
+  // `y`: the drawer, when there is a Song to show (the Chapter's or the Video's)
+  const toggleLyrics = (): string | null => {
+    if (drawer) return (closeDrawer(), null);
+    if (!lyrics && !(v && lyricsTarget(curChapter, v))) return "no lyrics: this Video has no Song";
+    setDrawer(true);
+    setFocusDrawer(true);
+    return null;
+  };
   // The Chapter the playhead is in, if it has a Song; else the Video's own Song (spec 5.4).
   const target = lyrics
     ? { songId: lyrics, versionId: lyricsVersion, fromChapter: false }
@@ -145,7 +153,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onStateToggle={() => setStateOpen((on) => !on)} stateHost={drawer ? undefined : stateHost} />
+        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onStateToggle={() => setStateOpen((on) => !on)} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} />
         <div class="np-head">
           <div class="np-titlerow">
             <HeaderTitle video={v} onChange={setV} />
@@ -170,7 +178,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
               <FavoriteBadge off={!v.favoritedAt} />
             </button>
             <span class="mono dim">{fmtDuration(v.durationS)}</span>
-            <button class={`btn small lyricsbtn${drawer ? " on" : ""}`} aria-pressed={drawer} aria-controls="lyrbody" onClick={() => (drawer ? closeDrawer() : (setDrawer(true), setFocusDrawer(true)))}>
+            <button class={`btn small lyricsbtn${drawer ? " on" : ""}`} aria-pressed={drawer} aria-controls="lyrbody" title="Lyrics drawer (y while the Player has focus)" onClick={() => (drawer ? closeDrawer() : (setDrawer(true), setFocusDrawer(true)))}>
               Lyrics
             </button>
           </div>

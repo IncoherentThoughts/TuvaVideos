@@ -179,6 +179,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 | s | screenshot: the current frame drawn to a canvas and posted to the server, which writes `<title> @ <seconds>s.png` to `~/Desktop` (`TUVA_SCREENSHOT_DIR` only for tests) |
 | o / O | OSD flash / always on |
 | t | Studio playback (§7.4) |
+| y | open / close the lyrics drawer (OSD "no lyrics" when neither the Chapter nor the Video has a Song) |
 | i | State panel (also a "State" button): in the drawer slot while no lyrics are shown, under the Player when they are; `<video>` state, the last seeks with their latency, a key log (handled / passed, with the focused element) and this key table. Kept from the player prototype; stays on during Studio playback |
 
 ### 4.6 Visuals

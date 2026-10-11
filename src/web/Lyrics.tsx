@@ -154,7 +154,6 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
           <span class="ttl">
             {song ? song.name : song === null ? "Unknown song" : "Lyrics"}
             {song?.englishName && <span class="en">· {song.englishName}</span>}
-            {song?.hidden && <span class="hiddenmark" title="Hidden in the archive (un-reviewed)">hidden</span>}
           </span>
           <span class="seg" role="group" aria-label="Script">
             {SCRIPTS.map((x) => (

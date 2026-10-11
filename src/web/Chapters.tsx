@@ -151,7 +151,6 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
                 <>
                   <span>{r.name}</span>
                   {r.englishName && <span class="dim"> · {r.englishName}</span>}
-                  {r.hidden && <span class="hiddenmark">hidden</span>}
                 </>
               )}
               onPick={(r) => {

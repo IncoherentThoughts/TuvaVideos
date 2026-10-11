@@ -114,7 +114,7 @@ Rules:
 
 ## Mirror tables
 
-Imported from a post-migration-129 backup only (the 2026-10-07 one or newer); the band mapping of older backups is not supported. Tables: `mirror_song`, `mirror_version`, `mirror_artist`, `mirror_album`, `mirror_album_credit`, `mirror_track`, `mirror_track_artist`, `mirror_performance`, with the DDL in the research doc; `mirror_song.is_hidden` added by migration 0005 (hidden Songs are imported and badged).
+Imported from a post-migration-129 backup only (the 2026-10-07 one or newer); the band mapping of older backups is not supported. Tables: `mirror_song`, `mirror_version`, `mirror_artist`, `mirror_album`, `mirror_album_credit`, `mirror_track`, `mirror_track_artist`, `mirror_performance`, with the DDL in the research doc; `mirror_song.is_hidden` added by migration 0005 (hidden Songs are imported; the flag is kept but not shown).
 
 Dropped from the import: the archive's `zz_` test song and every row that belongs to it, composers, bands, tags, history, profiles and every staff or personal table, plus the columns the research doc lists (`editors_notes`, timestamps, `lastfm_id`, `label`, `source`, `sources`, `transcription_note`, `song_type`).
 

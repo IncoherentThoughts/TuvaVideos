@@ -429,7 +429,6 @@ button.st-main:hover { background: var(--bg3); }
 .stpanel .binds kbd { margin-right: 3px; }
 @media (max-width: 1000px) { .stp-cols { grid-template-columns: 1fr; } }
 
-/* ---- hidden Songs (archive flag) and Artist chip links ---- */
-.hiddenmark { font-family: var(--font-mono); font-size: .72em; letter-spacing: .06em; text-transform: uppercase; color: var(--fg3); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: middle; font-weight: 500; }
+/* ---- Artist chip links ---- */
 .taglink { display: inline-flex; border-radius: calc(var(--r) * .5); }
 .taglink:hover .tag { filter: brightness(1.2); }

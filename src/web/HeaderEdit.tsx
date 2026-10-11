@@ -243,7 +243,6 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
           <button class={`songchip${v.songSuggested ? " sug" : ""}`} title={v.songSuggested ? "Suggested Song (from the archive's Performances) · click to change" : "Click to change the Song"} onClick={() => setPicking(true)}>
             {s.name ?? <span class="dim">unknown song</span>}
             {s.englishName && <span class="en"> · {s.englishName}</span>}
-            {s.hidden && <span class="hiddenmark" title="Hidden in the archive (un-reviewed)">hidden</span>}
           </button>
           <button class="x" title="Clear the Song" aria-label="Clear the Song" onClick={() => void patch({ songId: null })}>
             ×
@@ -281,7 +280,6 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
             <>
               <span>{r.name}</span>
               {r.englishName && <span class="dim"> · {r.englishName}</span>}
-              {r.hidden && <span class="hiddenmark">hidden</span>}
             </>
           )}
           onPick={(r) => (setPicking(false), void patch({ songId: r.id }).then((ok) => ok && setChoosing(true)))}

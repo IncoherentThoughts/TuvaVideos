@@ -1,7 +1,9 @@
 // Client-side data: the whole library (~1100 Videos) is fetched once and filtered in memory (ticket #23).
 import { useEffect, useRef, useState } from "preact/hooks";
+import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
+import { navigate, playHref } from "./router";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { signal });
@@ -172,3 +174,14 @@ export function setLastPlayed(id: number) {
 
 /** The in-memory library, for code outside components. */
 export const currentVideos = () => state.videos;
+
+/**
+ * Plays a random Available Video (the top-bar button and `r`), skipping the one on screen so a repeat always moves.
+ * Returns the chosen id, or null when the library has no other Available Video.
+ */
+export function playRandom(): number | null {
+  const cur = location.pathname.match(/^\/play\/(\d+)$/);
+  const id = pickRandomVideo(state.videos ?? [], cur ? Number(cur[1]) : null);
+  if (id != null) navigate(playHref(id));
+  return id;
+}

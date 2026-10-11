@@ -138,6 +138,39 @@ export function HeaderTitle({ video: v, onChange }: { video: VideoDto; onChange:
 }
 
 /** Type tag, "Song:" row and Artist row. */
+/** True when the Type, the Song or any Artist is still a suggestion (dashed): what "Accept all" would confirm. */
+export const hasSuggestions = (v: VideoDto) => v.typeSuggested || (!!v.songId && v.songSuggested) || v.artists.some((a) => a.suggested);
+
+/** "Accept all": confirms the Suggested Type, Song and Artists in one go. Hidden once nothing is left to confirm. */
+export function AcceptAll({ video: v, onChange }: { video: VideoDto; onChange: Change }) {
+  const [busy, setBusy] = useState(false);
+  if (!hasSuggestions(v)) return null;
+  const run = async () => {
+    setBusy(true);
+    try {
+      let cur = v;
+      const patch: VideoPatch = {};
+      if (cur.typeSuggested) patch.type = cur.type;
+      if (cur.songId && cur.songSuggested) patch.songId = cur.songId;
+      if (Object.keys(patch).length) cur = await api.patchVideo(cur.id, patch);
+      if (cur.artists.some((a) => a.suggested)) {
+        cur = await api.confirmArtists(cur.id);
+        void loadArtists();
+      }
+      replaceVideo(cur);
+      onChange(cur);
+    } catch (e) {
+      alert(`Could not accept the suggestions: ${String((e as Error).message ?? e).replace(/^\/api\/\S+: /, "")}`);
+    }
+    setBusy(false);
+  };
+  return (
+    <button class="btn small acceptall" disabled={busy} title="Confirm the Suggested Type, Song and Artists" onClick={() => void run()}>
+      ✓ Accept all
+    </button>
+  );
+}
+
 export function HeaderFields({ video: v, onChange }: { video: VideoDto; onChange: Change }) {
   const { patch, apply, err } = useEdit(v, onChange);
   return (
@@ -262,7 +295,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
             {s.englishName && <span class="en"> · {s.englishName}</span>}
           </button>
           <button class="x" title="Clear the Song" aria-label="Clear the Song" onClick={() => void patch({ songId: null })}>
-            ×
+            <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
           </button>
         </span>
       )}
@@ -286,7 +319,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
       )}
       {!s && !picking && (
         <button class="linkbtn" onClick={() => setPicking(true)}>
-          set Song…
+          + add
         </button>
       )}
       {picking && (
@@ -325,7 +358,7 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
             {a.suggested && <i class="sugmark">suggested</i>}
           </Link>
           <button class="x" aria-label={a.suggested ? `Reject ${a.name}` : `Remove ${a.name}`} title={a.suggested ? "Reject this suggestion" : "Remove"} onClick={() => void apply(() => api.removeArtist(v.id, a.id)).then((ok) => ok && void loadArtists())}>
-            ×
+            <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
           </button>
         </span>
       ))}

@@ -159,7 +159,7 @@ Plain `<video src>` over the Range server. No MediaSource, no mpv IPC, no transc
 
 ### 4.5 Keyboard
 
-Keys are handled only while the Player container has focus. No native `<video controls>`. Bare keys only, never ⌘/⌃/⌥ chords, `preventDefault` on every handled key. `/` moves focus to search, `Esc` moves it back to the Player.
+Keys are handled only while the Player container has focus. No native `<video controls>`. Bare keys only, never ⌘/⌃/⌥ chords, `preventDefault` on every handled key. `/` moves focus to search, `Esc` moves it back to the Player. `r` is global (any screen, outside a text field): it plays a random Available Video, never the one on screen, so pressing it from the Player keeps shuffling.
 
 | Key | Action |
 |---|---|
@@ -177,6 +177,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 | l | A-B loop: set A, set B, off |
 | ! @, PgUp PgDn | previous / next Chapter (no-op with OSD "no chapters" when the Video has none) |
 | < > | previous / next Video in Playing from |
+| r | random Available Video (also the top-bar **Random** button; global, not Player-only) |
 | s | screenshot: the current frame drawn to a canvas and posted to the server, which writes `<title> @ <seconds>s.png` to `~/Desktop` (`TUVA_SCREENSHOT_DIR` only for tests) |
 | o / O | OSD flash / always on |
 | t | Studio playback (§7.4) |
@@ -195,7 +196,7 @@ Decided in #11 and #12 ([design-direction.md](design-direction.md)). Direction "
 
 ### 5.1 Navigation
 
-Top tabs: **Library**, **Now playing**, **Favorites**, **Artists**; a search box and the Rescan button in the top bar.
+Top tabs: **Library**, **Now playing**, **Favorites**, **Artists**; a search box, a **Random** button (a random Available Video, `r`) and the Rescan button in the top bar.
 
 **Artists tab**: every Artist with at least one Video (Mirror and Local), with Video count and the poster of their most recent Video; clicking opens the Library grid filtered to that Artist. Filter by name (folded, Latin or Cyrillic), by kind (all / archive / local); sort by name, Video count or latest Video; state in the query string (`/artists?q=&kind=&sort=&dir=`). Local Artists are marked and carry the "merge into…" action (§2.3). A Local Artist's name is edited in place (click it; `PATCH /api/artists/:id`); a Mirror Artist's name belongs to the archive and is not editable. The list fills the width as a multi-column grid. Mirror Artists with no Video are not listed.
 
@@ -246,7 +247,7 @@ Laptop icon (green `--t4`) for a local Copy, external-drive icon (blue `--t6`) f
 
 | Component | Used by |
 |---|---|
-| TopBar (tabs, SearchBox, Rescan, scan indicator) | all screens |
+| TopBar (tabs, SearchBox, Random, Rescan, scan indicator) | all screens |
 | SearchBox + ResultsDropdown (groups, rows, filter chips) | TopBar |
 | Tag (tint / dashed Suggested), AvailabilityIcon, FavoriteBadge, Thumbnail (poster / strip-frame) | everywhere |
 | FilterChips, SortMenu | Library, Favorites |

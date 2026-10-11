@@ -47,7 +47,7 @@ const BINDINGS: [string[], string][] = [
   [["9", "0"], "volume ±5"], [["m"], "mute"],
   [["f"], "fullscreen"], [["l"], "A-B loop (A, B, off)"],
   [["!", "@"], "chapter prev / next"], [["PgUp", "PgDn"], "chapter prev / next"],
-  [["<", ">"], "prev / next Video"], [["s"], "screenshot"],
+  [["<", ">"], "prev / next Video"], [["r"], "random Video (works anywhere)"], [["s"], "screenshot"],
   [["o"], "OSD flash"], [["O"], "OSD always"],
   [["c"], "add Chapter here"], [["t"], "Studio playback"],
   [["i"], "this panel"], [["y"], "lyrics drawer"],

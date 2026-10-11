@@ -12,7 +12,14 @@ function MergeInto({ artist, onClose }: { artist: ArtistDto; onClose: () => void
   const [busy, setBusy] = useState<string | null>(null);
   const [pick, setPick] = useState<Extract<SearchRow, { kind: "artist" }> | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => input.current?.focus(), []);
+  // a click anywhere outside the popover closes it, like the header pickers
+  useEffect(() => {
+    const on = (e: MouseEvent) => !box.current?.contains(e.target as Node) && onClose();
+    document.addEventListener("mousedown", on);
+    return () => document.removeEventListener("mousedown", on);
+  }, []);
   useEffect(() => {
     if (!q.trim()) return setRows(null);
     const ac = new AbortController();
@@ -44,7 +51,7 @@ function MergeInto({ artist, onClose }: { artist: ArtistDto; onClose: () => void
   };
 
   return (
-    <div class="merge" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") onClose(); }}>
+    <div class="merge" ref={box} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") onClose(); }}>
       {pick ? (
         <div>
           <div style={{ marginBottom: "8px" }}>

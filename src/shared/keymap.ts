@@ -15,7 +15,8 @@ export type PlayerAction =
   | { type: "video"; dir: 1 | -1 }
   | { type: "screenshot" }
   | { type: "osd"; always: boolean }
-  | { type: "studio" };
+  | { type: "studio" }
+  | { type: "state" };
 
 export interface KeyLike {
   key: string;
@@ -92,6 +93,8 @@ export function keyAction(e: KeyLike): PlayerAction | null {
       return { type: "osd", always: true };
     case "t":
       return { type: "studio" };
+    case "i":
+      return { type: "state" };
     default:
       return null;
   }

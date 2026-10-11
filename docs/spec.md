@@ -179,6 +179,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 | s | screenshot: the current frame drawn to a canvas and posted to the server, which writes `<title> @ <seconds>s.png` to `~/Desktop` (`TUVA_SCREENSHOT_DIR` only for tests) |
 | o / O | OSD flash / always on |
 | t | Studio playback (§7.4) |
+| i | State panel under the Player (also a "State" button): `<video>` state, the last seeks with their latency, a key log (handled / passed, with the focused element) and this key table. Kept from the player prototype; stays on during Studio playback |
 
 ### 4.6 Visuals
 
@@ -231,7 +232,7 @@ One dense list (not grid cards) of Videos and Chapters ordered by `favorited_at`
 
 ### 5.6 Availability and brand
 
-Laptop icon (green `--t4`) for a local Copy, external-drive icon (blue `--t6`) for an external one, dashed grey drive when unavailable; icons only, text on hover. Favorite: outline star in a tinted rounded square (`--t3`). Brand: the olchey favicon, no wordmark.
+Laptop icon (green `--t4`) for a local Copy, external-drive icon (blue `--t6`) for an external one, dashed grey drive when unavailable; icons only, text on hover. Favorite: outline star in a tinted rounded square (`--t3`). Brand: the olchey favicon, no wordmark. Base type size 16 px; the Now playing metadata rows a notch larger than body text. Dashed borders mark Suggested items only (Type tag, Song chip, Chapter card, Studio row); the confirm tick, the empty Favorite star and the "add as local" row are solid. A Video with a `youtube_id` shows a dim "YouTube: youtube.com/watch?v=…" line under the Chapter strip that opens the page in the browser (the app itself stays offline).
 
 ### 5.7 Component inventory
 

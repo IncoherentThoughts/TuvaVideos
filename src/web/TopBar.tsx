@@ -73,9 +73,7 @@ export function TopBar({ route }: { route: Route }) {
   return (
     <header class="topbar">
       <Link href="/" class="brand" aria-label="TuvaVideos">
-        <svg viewBox="0 0 32 32" width="18" height="18" aria-hidden="true">
-          <path d="M16 5 L26 16 L16 27 L6 16 Z" fill="none" stroke="#1a0f0a" stroke-width="3.2" stroke-linejoin="round" />
-        </svg>
+        <img src="/olchey.svg" alt="" width="28" height="28" />
       </Link>
       <nav class="tabs">
         {tab("library", "/", "Library")}

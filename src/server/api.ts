@@ -370,6 +370,7 @@ export function createHandler(s: Services) {
           return json({ needle: r.needle, groups: r.groups, ms: r.ms });
         }
         if (p === "/app.js" || p === "/app.css") return s.web.serve(p);
+        if (p === "/olchey.svg") return new Response(Bun.file(join(s.cfg.webDir, "olchey.svg")), { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=86400" } });
         if ((m = p.match(/^\/api\/copies\/(\d+)$/))) {
           const c = s.db.query(`${COPY_SQL} WHERE c.id = ?`).get(Number(m[1])) as CopyDbRow | null;
           return c ? json(copyJson(c)) : json({ error: "no such copy" }, 404);

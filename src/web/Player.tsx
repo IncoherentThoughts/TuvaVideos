@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
 import { awaitCopy } from "../shared/prepare";
-import { dispatchKey, type PlayerAction } from "../shared/keymap";
+import { dispatchKey, keyAction, type PlayerAction } from "../shared/keymap";
 import {
   AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, speedBy, volumeBy, type AbLoop,
 } from "../shared/playerMath";
@@ -14,6 +14,7 @@ import type { CopyDto, VideoDto } from "../shared/types";
 import { CopyPicker, copyLabel } from "./CopyPicker";
 import { Timeline, type ChapterMark } from "./Timeline";
 import { StudioBar, type StudioCtl } from "./Studio";
+import { StatePanel, type KeyLog, type SeekLog } from "./StatePanel";
 import { api, apiError } from "./data";
 
 export type { ChapterMark } from "./Timeline";
@@ -108,6 +109,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const [osdFlash, setOsdFlash] = useState(false);
   const [osdAlways, setOsdAlways] = useState(false);
   const [studio, setStudio] = useState<{ songId: string; data: SongStudioDto } | null>(null);
+  const [showState, setShowState] = useState(false);
+  const [seeks, setSeeks] = useState<SeekLog[]>([]);
+  const [keyLog, setKeyLog] = useState<KeyLog[]>([]);
   const studioOn = useRef(false);
   studioOn.current = !!studio;
   const studioCtl = useRef<StudioCtl | null>(null);
@@ -133,6 +137,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     osdTimer: 0 as unknown as ReturnType<typeof setTimeout>,
     flashTimer: 0 as unknown as ReturnType<typeof setTimeout>,
     seekWrite: 0 as unknown as ReturnType<typeof setTimeout>,
+    seekWhy: "seek",
+    seekT0: 0,
+    seekFrom: 0,
     firstT: true,
   });
   const rateRef = useRef(1);
@@ -320,6 +327,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     const v = vid.current;
     if (!v || v.readyState === 0) return;
     const c = clampTime(t, Number.isFinite(v.duration) ? v.duration : null);
+    R.current.seekWhy = throttled ? "scrub" : "seek";
     throttle.current.request(c, throttled);
     setTime(c);
   };
@@ -368,8 +376,15 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     });
     on("waiting", () => r.started && setBuffering(true));
     on("canplay", () => setBuffering(false));
+    on("seeking", () => {
+      r.seekT0 = performance.now();
+      r.seekFrom = r.lastPos;
+    });
     on("seeked", () => {
       throttle.current.landed();
+      if (r.seekT0) setSeeks((l) => [...l.slice(-39), { why: r.seekWhy, from: r.seekFrom, to: v.currentTime, ms: Math.round(performance.now() - r.seekT0) }]);
+      r.seekT0 = 0;
+      r.seekWhy = "seek";
       setTime(v.currentTime);
       r.lastPos = v.currentTime;
       clearTimeout(r.seekWrite);
@@ -607,8 +622,24 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       case "studio":
         void openStudio();
         break;
+      case "state":
+        setShowState((on) => !on);
+        break;
     }
   };
+
+  // The State panel's key log: every keydown on the document while the panel is shown, after the handlers ran.
+  useEffect(() => {
+    if (!showState) return;
+    const on = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      const target = el === box.current ? "player" : el?.id || el?.tagName?.toLowerCase() || "body";
+      const handled = el === box.current && keyAction(e) !== null;
+      setKeyLog((l) => [...l.slice(-11), { key: e.key, handled, prevented: e.defaultPrevented, target }]);
+    };
+    document.addEventListener("keydown", on);
+    return () => document.removeEventListener("keydown", on);
+  }, [showState]);
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Escape" && studioOn.current && document.activeElement === box.current) {
@@ -730,8 +761,14 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         <button class="ib" tabIndex={-1} title="Fullscreen (f)" onClick={() => (toggleFullscreen(), refocus())}>
           {FS_ICON}
         </button>
+        <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="Player state, seeks, key log and bindings (i)" onClick={() => (setShowState(!showState), refocus())}>
+          State
+        </button>
       </div>
       {studio && <StudioBar key={studio.songId} songId={studio.songId} initial={studio.data} say={(t, ms) => say(t, ms)} onClose={() => (setStudio(null), refocus())} ctl={studioCtl} />}
+      {showState && (
+        <StatePanel vid={vid} box={box} copyLabel={copy ? copyLabel(copy) : "—"} fps={fps} ab={ab} chapters={chapters} seeks={seeks} keys={keyLog} onClose={() => (setShowState(false), refocus())} />
+      )}
     </div>
   );
 }

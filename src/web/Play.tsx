@@ -171,6 +171,14 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
           <HeaderFields video={v} onChange={setV} />
         </div>
         <ChapterStrip video={v} chapters={chapters} curId={curId} ctl={ctl} newId={newId} onList={acceptChapters} onAdd={() => void addChapter()} onNewDone={() => setNewId(null)} />
+        {v.youtubeId && (
+          <div class="np-source dim">
+            YouTube:{" "}
+            <a href={`https://www.youtube.com/watch?v=${v.youtubeId}`} target="_blank" rel="noopener noreferrer" title="Open the YouTube page in your browser">
+              youtube.com/watch?v={v.youtubeId}
+            </a>
+          </div>
+        )}
       </div>
       {drawer && (
         <div class="drawer-wrap">

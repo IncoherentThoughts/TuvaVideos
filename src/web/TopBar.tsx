@@ -89,7 +89,7 @@ export function TopBar({ route }: { route: Route }) {
   return (
     <header class="topbar">
       <Link href="/" class="brand" aria-label="TuvaVideos">
-        <img src="/olchey.svg" alt="" width="28" height="28" />
+        <img src="/olchey.svg?v=2" alt="" width="28" height="28" />
       </Link>
       <nav class="tabs">
         {tab("library", "/", "Library")}
@@ -112,7 +112,7 @@ export function TopBar({ route }: { route: Route }) {
       </div>
       {off && (
         <div class="off-page" role="status">
-          <img src="/olchey.svg" alt="" width="64" height="64" />
+          <img src="/olchey.svg?v=2" alt="" width="64" height="64" />
           <p>TuvaVideos is off. You can close this tab.</p>
         </div>
       )}

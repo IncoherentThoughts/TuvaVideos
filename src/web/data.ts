@@ -75,6 +75,7 @@ export const api = {
   scan: () => get<ScanDto>("/api/scan"),
   search: (q: string, signal?: AbortSignal) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`, signal),
   rescan: () => post<{ queued: number[] }>("/api/rescan"),
+  quit: () => post<{ quitting: true }>("/api/quit"),
   setFavorite: (kind: "video" | "chapter", id: number, favorite?: boolean) =>
     post<{ favorite: boolean; favoritedAt: string | null }>(`/api/${kind === "video" ? "videos" : "chapters"}/${id}/favorite`, favorite === undefined ? {} : { favorite }),
   confirmArtists: (videoId: number) => post<VideoDto>(`/api/videos/${videoId}/artists/confirm`),

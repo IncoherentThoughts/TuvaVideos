@@ -7,7 +7,8 @@ Spec: `docs/spec.md`. Vocabulary: `CONTEXT.md`. Decisions: `docs/adr/`.
 
 ```bash
 bun install
-bun run start        # port 4400, opens a browser tab; Ctrl-C stops it
+bun run start        # port 4400, opens a browser tab; Ctrl-C or the ⏻ button top right stops it
+bun run app          # builds ~/Applications/TuvaVideos.app: a double-click launcher for the line above (needs ImageMagick)
 ```
 
 Data lives under `~/Library/Application Support/TuvaVideos/` (`library.db`, `thumbs/`, `remux/`, `youtube-info/`, `studio-dump.json`, `log.txt`). `TUVA_PORT`, `TUVA_DATA_DIR` and `TUVA_NO_OPEN=1` override the port, the data dir and the tab for tests.

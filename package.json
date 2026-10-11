@@ -12,7 +12,8 @@
     "studio-match": "bun src/server/studio/cli.ts",
     "suggest-chapters": "bun src/server/chapters/cli.ts",
     "suggest-artists": "bun src/server/artistSuggestCli.ts",
-    "fetch-youtube-info": "bun scripts/fetch-youtube-info.ts"
+    "fetch-youtube-info": "bun scripts/fetch-youtube-info.ts",
+    "app": "bun scripts/make-app.ts"
   },
   "bin": {
     "tuva": "src/server/index.ts"

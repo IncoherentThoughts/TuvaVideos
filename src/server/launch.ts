@@ -25,10 +25,6 @@ export async function launch(cfg: Config) {
     return;
   }
   initLog(cfg.logPath);
-  const app = await startApp(cfg);
-  void app.studio.probe(); // spec 9: after the scan kicked off, before the tab opens, so the Automation prompt is predictable
-  if (cfg.openTab) openTab(cfg.port);
-
   let stopping = false;
   const shutdown = async (sig: string) => {
     if (stopping) return;
@@ -37,6 +33,10 @@ export async function launch(cfg: Config) {
     await app.stop();
     process.exit(0);
   };
+  const app = await startApp(cfg, { quit: () => void shutdown("quit (power button)") });
+  void app.studio.probe(); // spec 9: after the scan kicked off, before the tab opens, so the Automation prompt is predictable
+  if (cfg.openTab) openTab(cfg.port);
+
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }

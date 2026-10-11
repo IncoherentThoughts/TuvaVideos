@@ -52,6 +52,10 @@ kbd { font-family: var(--font-mono); font-size: .85em; background: var(--bg3); b
 .btn:hover:not(:disabled) { background: var(--bg3); }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.small { padding: 2px 9px; font-size: .92em; }
+.btn.power { display: grid; place-items: center; width: 32px; height: 30px; padding: 0; color: var(--fg2); }
+.btn.power:hover:not(:disabled) { color: var(--t1); border-color: color-mix(in srgb, var(--t1) 50%, var(--line)); }
+.off-page { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: var(--bg); color: var(--fg2); font-size: 1.1em; }
+.off-page img { border-radius: 14px; }
 
 /* ---- search ---- */
 .sbox { position: relative; width: 340px; }

@@ -89,6 +89,27 @@ describe("scan and API", () => {
     expect(app.db.query("SELECT ref_id FROM search WHERE search MATCH 'concert'").all().length).toBe(1);
   });
 
+  test("POST /api/quit is refused when no launcher wired a quit hook", async () => {
+    const r = await fetch(base_url + "/api/quit", { method: "POST" });
+    expect(r.status).toBe(409);
+    // and still answers: the server did not stop
+    expect((await api("/api/health")).ok).toBe(true);
+  });
+
+  test("POST /api/quit calls the launcher's quit hook after replying", async () => {
+    let calls = 0;
+    app.quit = () => void calls++;
+    try {
+      const r = await fetch(base_url + "/api/quit", { method: "POST" });
+      expect(r.status).toBe(202);
+      expect(await r.json()).toEqual({ quitting: true });
+      expect(calls).toBe(0);
+      await waitFor(() => calls === 1, 2000);
+    } finally {
+      app.quit = undefined;
+    }
+  });
+
   test("scan progress and roots endpoints", async () => {
     const scan = await api("/api/scan");
     expect(scan.running).toBe(false);

@@ -30,6 +30,8 @@ export interface Services {
   studio: Studio;
   web: WebBundle;
   startedAt: number;
+  /** Set by the launcher: stops the server (the power button). Absent under tests and the smoke runs. */
+  quit?: () => void;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -510,6 +512,11 @@ export function createHandler(s: Services) {
       if (req.method === "POST" && p === "/api/rescan") {
         const queued = await s.scanner.requestAll();
         return json({ queued }, 202);
+      }
+      if (req.method === "POST" && p === "/api/quit") {
+        if (!s.quit) return json({ error: "this server cannot quit itself" }, 409);
+        setTimeout(s.quit, 200); // after the reply has left
+        return json({ quitting: true }, 202);
       }
       return json({ error: "not found" }, 404);
     } catch (e) {

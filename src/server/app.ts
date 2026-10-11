@@ -19,7 +19,7 @@ export interface App extends Services {
  * Startup order (spec 9): migrations -> Root availability -> scan of mounted Roots (background) ->
  * Music.app playerState() read (launch.ts, via `app.studio.probe()`) -> caller opens the tab.
  */
-export async function startApp(cfg: Config, opts: { studio?: StudioOptions } = {}): Promise<App> {
+export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit?: () => void } = {}): Promise<App> {
   initLog(cfg.logPath);
   log(`TuvaVideos starting, data dir ${cfg.dataDir}`);
   const db = openDb(cfg.dbPath, cfg.migrationsDir);
@@ -42,7 +42,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions } = {
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
   const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
-  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, studio, web, startedAt: Date.now() };
+  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, studio, web, startedAt: Date.now(), quit: opts.quit };
   const handler = createHandler(services);
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);
@@ -52,8 +52,8 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions } = {
   await roots.pollAll(); // fires the startup scans through onBecameAvailable
   roots.start(10_000);
 
-  return {
-    ...services,
+  // The same object the handler reads (`quit` may be set later, e.g. by tests), not a copy.
+  return Object.assign(services, {
     server,
     async stop() {
       log("shutting down: letting the in-flight ffmpeg job finish");
@@ -65,5 +65,5 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions } = {
       db.close();
       log("bye");
     },
-  };
+  });
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ScanDto } from "../shared/types";
 import { SearchBox } from "./SearchBox";
-import { api, getLastPlayed, reloadAll, useStore } from "./data";
+import { api, apiError, getLastPlayed, reloadAll, useStore } from "./data";
 import { Link, type Route } from "./router";
 
 function ScanIndicator({ scan }: { scan: ScanDto }) {
@@ -63,6 +63,22 @@ export function TopBar({ route }: { route: Route }) {
     setBusy(false);
   };
 
+  // Power button: stop the server, then close the tab. Chrome only lets a page close itself when it has a short history,
+  // so when the tab stays open the shell is replaced by a plain "off" page instead of a dead app.
+  const [off, setOff] = useState(false);
+  const powerOff = async () => {
+    setBusy(true);
+    try {
+      await api.quit();
+    } catch (e) {
+      setBusy(false);
+      alert(`Could not stop the server: ${apiError(e)}`);
+      return;
+    }
+    setOff(true);
+    window.close();
+  };
+
   const last = route.name === "play" ? route.videoId : getLastPlayed();
   const tab = (name: Route["name"], href: string | null, label: string) => (
     <Link href={href ?? "/"} class={`tab${route.name === name ? " on" : ""}${href === null ? " off" : ""}`} aria-current={route.name === name ? "page" : undefined} tabIndex={href === null ? -1 : undefined}>
@@ -87,7 +103,19 @@ export function TopBar({ route }: { route: Route }) {
         <button class="btn" onClick={rescan} disabled={busy || !!scan?.running} title="Scan the Roots for new files">
           Rescan
         </button>
+        <button class="btn power" onClick={powerOff} disabled={busy} title="Stop TuvaVideos and close this tab" aria-label="Stop TuvaVideos and close this tab">
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+            <path d="M8 1.5v6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            <path d="M4.9 3.9a5.2 5.2 0 1 0 6.2 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+        </button>
       </div>
+      {off && (
+        <div class="off-page" role="status">
+          <img src="/olchey.svg" alt="" width="64" height="64" />
+          <p>TuvaVideos is off. You can close this tab.</p>
+        </div>
+      )}
     </header>
   );
 }

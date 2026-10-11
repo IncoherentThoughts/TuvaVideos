@@ -33,13 +33,15 @@ export interface LyricsReaderProps {
   fromChapter?: boolean;
   /** Present on Now playing: shows a close button and makes Esc close. */
   onClose?: () => void;
+  /** A Version pill was clicked: the page writes it to the Video (absent when the pointer is a Chapter's, or on the Lyrics page). */
+  onPickVersion?: (versionId: string) => void;
   /** Take focus once the Song has loaded (opened from the button or the search box). */
   autoFocus?: boolean;
   /** Called once the drawer has taken that focus, so the page can stop asking (a Chapter change must not steal focus from the Player). */
   onFocused?: () => void;
 }
 
-export function LyricsReader({ songId, versionId, fromChapter = false, onClose, autoFocus = false, onFocused }: LyricsReaderProps) {
+export function LyricsReader({ songId, versionId, fromChapter = false, onClose, onPickVersion, autoFocus = false, onFocused }: LyricsReaderProps) {
   const [song, setSong] = useState<SongDto | null | undefined>(undefined);
   const [pick, setPick] = useState<string | null>(null);
   const [script, setScript] = useState<ScriptKey>(scriptPref);
@@ -152,6 +154,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
           <span class="ttl">
             {song ? song.name : song === null ? "Unknown song" : "Lyrics"}
             {song?.englishName && <span class="en">· {song.englishName}</span>}
+            {song?.hidden && <span class="hiddenmark" title="Hidden in the archive (un-reviewed)">hidden</span>}
           </span>
           <span class="seg" role="group" aria-label="Script">
             {SCRIPTS.map((x) => (
@@ -174,7 +177,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
         {versions.length > 1 && (
           <div class="pills" role="group" aria-label="Version">
             {versions.map((x, i) => (
-              <button key={x.id} class={`pill${i === idx ? " on" : ""}`} aria-pressed={i === idx} onClick={() => setPick(x.id)}>
+              <button key={x.id} class={`pill${i === idx ? " on" : ""}`} aria-pressed={i === idx} title={onPickVersion ? "Sets this Video's Version" : undefined} onClick={() => (setPick(x.id), onPickVersion?.(x.id))}>
                 {x.label}
                 {fromChapter && isPointedVersionAt(versions, versionId, i) && <span class="b"> · this chapter</span>}
               </button>

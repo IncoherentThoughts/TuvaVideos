@@ -14,6 +14,8 @@ export interface SongRef {
   id: string;
   name: string | null;
   englishName: string | null;
+  /** Hidden in the archive (un-reviewed); shown with a badge. */
+  hidden: boolean;
   versions: { id: string; label: string }[];
 }
 
@@ -148,7 +150,7 @@ export type SearchRow =
   | { kind: "video"; id: number; title: string; type: VideoType; durationS: number | null; available: boolean; songs: string[] }
   | { kind: "chapter"; id: number; videoId: number; videoTitle: string; title: string; startS: number; available: boolean }
   | { kind: "artist"; id: number; name: string; local: boolean; videoCount: number }
-  | { kind: "song"; id: string; name: string; englishName: string | null; viaLyrics: boolean; lyric: string | null }
+  | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; viaLyrics: boolean; lyric: string | null }
   | { kind: "track"; id: string; name: string; album: string | null; by: string[]; songId: string | null; versionId: string | null }
   | { kind: "album"; id: string; name: string; year: number | null; by: string | null };
 
@@ -174,6 +176,7 @@ export interface SongDto {
   id: string;
   name: string;
   englishName: string | null;
+  hidden: boolean;
   alternateTitles: string[];
   alternateSpellings: string[];
   /** Every name with its kind (name, english, alternate_title, alternate_spelling). */

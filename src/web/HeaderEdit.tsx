@@ -7,6 +7,8 @@ import { TYPES, type VideoType } from "../shared/filters";
 import type { ArtistRef, SearchRow, VideoDto, VideoPatch } from "../shared/types";
 import { api, loadArtists, replaceVideo } from "./data";
 import { ArtistTag, TypeTag } from "./ui";
+import { Link } from "./router";
+import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
 
 type Change = (v: VideoDto) => void;
 export type SongRow = Extract<SearchRow, { kind: "song" }>;
@@ -227,6 +229,10 @@ function TypeField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
 
 function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promise<boolean> }) {
   const [picking, setPicking] = useState(false);
+  // Version pills show only while linking: after a Song with several Versions was just chosen, until one is picked.
+  // Otherwise the Version is handled in the lyrics drawer (its pills write the Video's Version).
+  const [choosing, setChoosing] = useState(false);
+  useEffect(() => setChoosing(false), [v.id]);
   const s = v.song;
   const versions = s?.versions ?? [];
   return (
@@ -237,6 +243,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
           <button class={`songchip${v.songSuggested ? " sug" : ""}`} title={v.songSuggested ? "Suggested Song (from the archive's Performances) · click to change" : "Click to change the Song"} onClick={() => setPicking(true)}>
             {s.name ?? <span class="dim">unknown song</span>}
             {s.englishName && <span class="en"> · {s.englishName}</span>}
+            {s.hidden && <span class="hiddenmark" title="Hidden in the archive (un-reviewed)">hidden</span>}
           </button>
           <button class="x" title="Clear the Song" aria-label="Clear the Song" onClick={() => void patch({ songId: null })}>
             ×
@@ -248,12 +255,13 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
           ✓
         </button>
       )}
-      {s && versions.length > 1 && (
+      {s && choosing && versions.length > 1 && (
         <span class="pills" role="group" aria-label="Version">
+          <span class="lbl">Version:</span>
           {versions.map((x, i) => {
             const on = v.versionId ? v.versionId === x.id : i === 0;
             return (
-              <button key={x.id} class={`pill${on ? " on" : ""}`} aria-pressed={on} onClick={() => void patch({ versionId: x.id })}>
+              <button key={x.id} class={`pill${on ? " on" : ""}`} aria-pressed={on} onClick={() => (setChoosing(false), void patch({ versionId: x.id }))}>
                 {x.label}
               </button>
             );
@@ -273,9 +281,10 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
             <>
               <span>{r.name}</span>
               {r.englishName && <span class="dim"> · {r.englishName}</span>}
+              {r.hidden && <span class="hiddenmark">hidden</span>}
             </>
           )}
-          onPick={(r) => (setPicking(false), void patch({ songId: r.id }))}
+          onPick={(r) => (setPicking(false), void patch({ songId: r.id }).then((ok) => ok && setChoosing(true)))}
           onClose={() => setPicking(false)}
         />
       )}
@@ -294,7 +303,9 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
       <span class="lbl">Artists:</span>
       {v.artists.map((a: ArtistRef) => (
         <span class="achip" key={a.id}>
-          <ArtistTag artist={a} />
+          <Link href={`/${libraryQuery({ ...defaultLibraryState(), artist: a.name })}`} class="taglink" title={`Every Video by ${a.name}`}>
+            <ArtistTag artist={a} />
+          </Link>
           <button class="x" aria-label={`Remove ${a.name}`} title="Remove" onClick={() => void save(ids.filter((i) => i !== a.id))}>
             ×
           </button>

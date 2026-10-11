@@ -12,10 +12,11 @@ export interface SongRow {
   english_name: string | null;
   alternate_titles: string | null;
   alternate_spellings: string | null;
+  is_hidden: number;
 }
 
 export function getSongRow(db: Db, id: string): SongRow | null {
-  return db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM mirror_song WHERE id = ?").get(id) as SongRow | null;
+  return db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings, is_hidden FROM mirror_song WHERE id = ?").get(id) as SongRow | null;
 }
 
 /** A Version with its three Scripts as sanitized HTML (LINE profile) and sanitized Footnote bodies (FOOTNOTE profile). */
@@ -36,7 +37,7 @@ export function versionsOf(db: Db, songId: string): VersionDto[] {
 export function songDto(db: Db, id: string) {
   const s = getSongRow(db, id);
   if (!s) return null;
-  return { id: s.id, name: s.name, englishName: s.english_name, alternateTitles: splitAlternates(s.alternate_titles), alternateSpellings: splitAlternates(s.alternate_spellings), names: allSongNames(s), versions: versionsOf(db, id) };
+  return { id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, alternateTitles: splitAlternates(s.alternate_titles), alternateSpellings: splitAlternates(s.alternate_spellings), names: allSongNames(s), versions: versionsOf(db, id) };
 }
 
 /** What the header needs of a Song: its name and Version labels. A uuid with no row is returned with `name: null` (dangling). */
@@ -44,7 +45,7 @@ export function songRef(db: Db, id: string | null): SongRef | null {
   if (!id) return null;
   const s = getSongRow(db, id);
   const versions = s ? (db.query("SELECT id, label FROM mirror_version WHERE song_id = ? ORDER BY display_order, label").all(id) as { id: string; label: string }[]) : [];
-  return { id, name: s?.name ?? null, englishName: s?.english_name ?? null, versions };
+  return { id, name: s?.name ?? null, englishName: s?.english_name ?? null, hidden: !!s?.is_hidden, versions };
 }
 
 /** Video ids that perform a Song: the Video's Song pointer, or a Performance of the Song carrying the Video's YouTube id. */

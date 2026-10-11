@@ -202,7 +202,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
       {drawer && (
         <div class="drawer-wrap">
           {target ? (
-            <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
+            <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={!target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void api.patchVideo(v.id, { versionId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
           ) : (
             <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
               <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>

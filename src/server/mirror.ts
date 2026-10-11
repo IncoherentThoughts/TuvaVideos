@@ -31,7 +31,8 @@ export interface MappedBackup {
   mirror_track_artist: Row[];
   mirror_performance: Row[];
   /** What was dropped and why, for the import log. */
-  skipped: { hiddenSongs: number; versionsOfHidden: number; performancesOfHidden: number; tracksUnlinked: number; plainTextScripts: number };
+  skipped: { testSongs: number; versionsOfSkipped: number; performancesOfSkipped: number; tracksUnlinked: number; plainTextScripts: number };
+  hiddenSongs: number;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -70,19 +71,23 @@ const byCreated = (a: Row, b: Row) => String(a.created_at ?? "").localeCompare(S
 
 export function mapBackup(raw: RawBackup): MappedBackup {
   const rows = (t: string) => raw[t] ?? [];
-  const skipped = { hiddenSongs: 0, versionsOfHidden: 0, performancesOfHidden: 0, tracksUnlinked: 0, plainTextScripts: 0 };
+  const skipped = { testSongs: 0, versionsOfSkipped: 0, performancesOfSkipped: 0, tracksUnlinked: 0, plainTextScripts: 0 };
 
+  // Hidden Songs are kept with `is_hidden` (they hold a third of the Performance ids); only the archive's test rows
+  // (slug `zz_…`, hidden) are dropped with everything that belongs to them.
   const hidden = new Set<string>();
+  let hiddenSongs = 0;
   const mirror_song: Row[] = [];
   for (const s of rows("songs")) {
-    if (s.is_hidden) {
+    if (s.is_hidden && (/^zz_/i.test(String(s.slug ?? "")) || /^zz_/i.test(String(s.name ?? "")))) {
       hidden.add(s.id);
-      skipped.hiddenSongs++;
+      skipped.testSongs++;
       continue;
     }
+    if (s.is_hidden) hiddenSongs++;
     mirror_song.push({
       id: s.id, name: clean(s.name) ?? s.slug, slug: s.slug, english_name: clean(s.english_name), alternate_titles: clean(s.alternate_titles),
-      alternate_spellings: clean(s.alternate_spellings), country: clean(s.country), notes: clean(s.notes),
+      alternate_spellings: clean(s.alternate_spellings), country: clean(s.country), notes: clean(s.notes), is_hidden: bool(s.is_hidden),
     });
   }
   const songIds = new Set(mirror_song.map((s) => s.id));
@@ -90,7 +95,7 @@ export function mapBackup(raw: RawBackup): MappedBackup {
   const mirror_version: Row[] = [];
   for (const v of [...rows("song_lyrics")].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))) {
     if (hidden.has(v.song_id) || !songIds.has(v.song_id)) {
-      skipped.versionsOfHidden++;
+      skipped.versionsOfSkipped++;
       continue;
     }
     const text = (x: unknown) => {
@@ -132,7 +137,7 @@ export function mapBackup(raw: RawBackup): MappedBackup {
     .filter((t) => albumIds.has(t.album_id))
     .map((t) => {
       const linked = t.song_id && songIds.has(t.song_id);
-      if (t.song_id && !linked) skipped.tracksUnlinked++; // a hidden Song's Track stays on its Album, unlinked
+      if (t.song_id && !linked) skipped.tracksUnlinked++; // a dropped Song's Track stays on its Album, unlinked
       return {
         id: t.id, album_id: t.album_id, track_number: t.track_number, name: clean(t.name) ?? "(untitled)", duration_s: t.duration ?? null,
         song_id: linked ? t.song_id : null, version_id: linked && t.track_version_id && versionIds.has(t.track_version_id) ? t.track_version_id : null,
@@ -156,7 +161,7 @@ export function mapBackup(raw: RawBackup): MappedBackup {
   const mirror_performance: Row[] = [];
   for (const p of [...rows("song_performances")].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))) {
     if (!songIds.has(p.song_id)) {
-      skipped.performancesOfHidden++;
+      skipped.performancesOfSkipped++;
       continue;
     }
     const url = clean(p.url);
@@ -167,7 +172,7 @@ export function mapBackup(raw: RawBackup): MappedBackup {
     });
   }
 
-  return { mirror_artist, mirror_album, mirror_album_credit, mirror_song, mirror_version, mirror_track, mirror_track_artist, mirror_performance, skipped };
+  return { mirror_artist, mirror_album, mirror_album_credit, mirror_song, mirror_version, mirror_track, mirror_track_artist, mirror_performance, skipped, hiddenSongs };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -245,7 +250,7 @@ export interface MirrorImportResult {
 }
 
 const COLS: Record<(typeof MIRROR_TABLES)[number], string[]> = {
-  mirror_song: ["id", "name", "slug", "english_name", "alternate_titles", "alternate_spellings", "country", "notes"],
+  mirror_song: ["id", "name", "slug", "english_name", "alternate_titles", "alternate_spellings", "country", "notes", "is_hidden"],
   mirror_version: ["id", "song_id", "label", "display_order", "cyrillic", "transliteration", "translation", "footnotes_cyrillic", "footnotes_transliteration", "footnotes_translation"],
   mirror_artist: ["id", "name", "is_hidden", "is_various_artists", "country", "bio", "picture_url", "picture_file"],
   mirror_album: ["id", "name", "artist_id", "release_year", "cover_url", "cover_file", "notes"],

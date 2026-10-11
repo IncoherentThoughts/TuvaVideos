@@ -36,15 +36,17 @@ describe("performance URLs", () => {
 
 describe("mapBackup on the fixture", () => {
   const m = mapBackup(readBackup(FIXTURE));
-  test("hidden songs and everything that belongs to them are dropped", () => {
-    expect(m.mirror_song.map((s) => s.name)).toEqual(["Aa-shuu, dekei-oo", "Chaŋgys baglaash", "Bai-Taiga"]);
-    expect(m.mirror_version.map((v) => v.id)).toEqual([S(101), S(103), S(102)]);
-    expect(m.mirror_performance.map((p) => p.id)).not.toContain(S(604));
-    expect(m.skipped).toMatchObject({ hiddenSongs: 1, versionsOfHidden: 1, performancesOfHidden: 1, tracksUnlinked: 1 });
+  test("hidden songs are kept with is_hidden and everything that belongs to them", () => {
+    expect(m.mirror_song.map((s) => s.name)).toEqual(["Aa-shuu, dekei-oo", "Chaŋgys baglaash", "Hidden song", "Bai-Taiga"]);
+    expect(m.mirror_song.map((s) => s.is_hidden)).toEqual([0, 0, 1, 0]);
+    expect(m.mirror_version.map((v) => v.id)).toContain(S(104));
+    expect(m.mirror_performance.map((p) => p.id)).toContain(S(604));
+    expect(m.hiddenSongs).toBe(1);
+    expect(m.skipped).toMatchObject({ testSongs: 0, versionsOfSkipped: 0, performancesOfSkipped: 0, tracksUnlinked: 0 });
   });
   test("dropped columns are gone, kept ones carry through", () => {
     const song = m.mirror_song[0]!;
-    expect(Object.keys(song).sort()).toEqual(["alternate_spellings", "alternate_titles", "country", "english_name", "id", "name", "notes", "slug"]);
+    expect(Object.keys(song).sort()).toEqual(["alternate_spellings", "alternate_titles", "country", "english_name", "id", "is_hidden", "name", "notes", "slug"]);
     expect(song.alternate_titles).toBe("Dekei-oo");
     expect(song.alternate_spellings).toContain("Аа-шуу декей-оо");
     expect(Object.keys(m.mirror_version[0]!)).not.toContain("source");
@@ -64,11 +66,11 @@ describe("mapBackup on the fixture", () => {
     expect(Object.keys(m.mirror_artist[0]!)).not.toContain("band_id");
     expect(m.mirror_album.map((a) => a.artist_id)).toEqual([S(201), VARIOUS_ARTISTS_ID]);
   });
-  test("Tracks: names trimmed (U+2028 too), hidden-song Track unlinked, Track Version kept when it exists", () => {
+  test("Tracks: names trimmed (U+2028 too), hidden-song Track linked, Track Version kept when it exists", () => {
     const t = Object.fromEntries(m.mirror_track.map((x) => [x.id, x]));
     expect(t[S(503)].name).toBe("Instrumental");
     expect(t[S(501)]).toMatchObject({ name: "Dekei-oo", song_id: S(1), version_id: S(102) });
-    expect(t[S(502)]).toMatchObject({ song_id: null, version_id: null });
+    expect(t[S(502)]).toMatchObject({ song_id: S(3) });
   });
   test("Track artists renumber to 0..n-1; album credits keep created order", () => {
     expect(m.mirror_track_artist.map((r) => [r.artist_id, r.position])).toEqual([[S(201), 0], [S(202), 1]]);
@@ -116,13 +118,13 @@ describe("import transaction", () => {
   test("first import: counts, Artist upsert without the sentinel, mirror_import row", () => {
     const r = importMirror(db, FIXTURE, () => new Date("2026-10-10T00:00:00Z"));
     expect(r.counts).toEqual({
-      mirror_song: 3, mirror_version: 3, mirror_artist: 3, mirror_album: 2, mirror_album_credit: 1, mirror_track: 4, mirror_track_artist: 2, mirror_performance: 7, artist_upserted: 2,
+      mirror_song: 4, mirror_version: 4, mirror_artist: 3, mirror_album: 2, mirror_album_credit: 1, mirror_track: 4, mirror_track_artist: 2, mirror_performance: 8, artist_upserted: 2,
     });
     expect(n(db, "SELECT COUNT(*) n FROM artist WHERE mirror_id IS NOT NULL")).toBe(2);
     expect(n(db, "SELECT COUNT(*) n FROM artist WHERE mirror_id = ?", VARIOUS_ARTISTS_ID)).toBe(0);
     const row = db.query("SELECT * FROM mirror_import").get() as any;
     expect(row).toMatchObject({ backup_name: "backup", imported_at: "2026-10-10T00:00:00.000Z", dangling_refs: 0 });
-    expect(JSON.parse(row.row_counts).mirror_song).toBe(3);
+    expect(JSON.parse(row.row_counts).mirror_song).toBe(4);
   });
 
   test("re-import wipes and replaces Mirror rows, leaves local rows, counts dangling refs", () => {
@@ -143,7 +145,7 @@ describe("import transaction", () => {
     const r = importMirror(db, dir2);
     rmSync(dir2, { recursive: true, force: true });
 
-    expect(r.counts.mirror_song).toBe(2);
+    expect(r.counts.mirror_song).toBe(3);
     expect(n(db, "SELECT COUNT(*) n FROM mirror_song WHERE id = ?", S(2))).toBe(0);
     expect(n(db, "SELECT COUNT(*) n FROM video")).toBe(2); // local rows untouched
     expect(n(db, "SELECT COUNT(*) n FROM chapter")).toBe(1);
@@ -252,15 +254,16 @@ describe("Latin titles (spec 2.5)", () => {
 describe("real 2026-10-07 backup", () => {
   test.skipIf(!existsSync(REAL))("maps to the counts the research found", () => {
     const m = mapBackup(readBackup(REAL));
-    expect(m.mirror_song).toHaveLength(58);
-    expect(m.mirror_version).toHaveLength(69);
+    expect(m.mirror_song).toHaveLength(145); // 146 minus the zz_ test song
+    expect(m.hiddenSongs).toBe(87);
+    expect(m.mirror_version).toHaveLength(159);
     expect(m.mirror_artist).toHaveLength(109);
     expect(m.mirror_album).toHaveLength(96);
     expect(m.mirror_album_credit).toHaveLength(15);
     expect(m.mirror_track).toHaveLength(1176);
     expect(m.mirror_track_artist).toHaveLength(143);
-    expect(m.mirror_performance).toHaveLength(680);
-    expect(m.skipped.hiddenSongs).toBe(88);
+    expect(m.mirror_performance).toHaveLength(1080);
+    expect(m.skipped.testSongs).toBe(1);
     expect(m.mirror_performance.filter((p) => p.youtube_id).length).toBeGreaterThan(400);
     expect(m.mirror_song.some((s) => /^zz_/.test(s.slug))).toBe(false);
   });

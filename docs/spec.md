@@ -59,7 +59,7 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 - **chapter_rejection** — tombstones `(video_id, source, start_s)`.
 - **studio_track** / **studio_last** — see §7.
 - **mirror_import** — one row per import with counts and dangling-ref count.
-- **mirror_*** — song, version, artist, album, album_credit, track, track_artist, performance; DDL in `research/mirror-import-mapping.md`, minus `is_hidden`.
+- **mirror_*** — song, version, artist, album, album_credit, track, track_artist, performance; DDL in `research/mirror-import-mapping.md`. `mirror_song.is_hidden` is kept (migration 0005).
 - **search** — one FTS5 table (§6).
 
 ### 2.3 Rules
@@ -73,7 +73,7 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 ### 2.4 Mirror import
 
 - Source: a post-migration-129 backup of the archive (2026-10-07 or newer). Older band-shaped backups are unsupported.
-- Imported: songs (not hidden), song_lyrics, artists, albums, album_artists, album_tracks, album_track_artists, song_performances. Dropped: hidden songs and their rows, composers, bands, tags, history, profiles, staff/personal tables, and the columns listed in the research doc.
+- Imported: songs (hidden ones too, flagged `is_hidden` and badged "hidden" wherever a Song is named: they carry a third of the Performance ids), song_lyrics, artists, albums, album_artists, album_tracks, album_track_artists, song_performances. Dropped: the archive's `zz_` test song and its rows, composers, bands, tags, history, profiles, staff/personal tables, and the columns listed in the research doc.
 - **Re-import is one transaction**: delete every `mirror_*` row, insert the new set, upsert `artist` by `mirror_id`, write a `mirror_import` row. Local tables untouched; a dangling uuid stays and renders as "unknown song" / "unknown artist" (ADR-0001).
 - After every import: rebuild the search index, run the Studio matcher (§7.3), run the Latin-title fill for rows whose source is `archive`.
 - Trigger: CLI only, `bun run import <backup-dir>`. No import UI. A pre-migration-126 backup is refused. Song alternate titles and spellings are kept on `mirror_song`, indexed as their own search rows, shown dimmed under the Song title in the drawer, and read by the Song matcher through the shared `songNames` helper. The Various Artists sentinel gets no `artist` row; a Track whose Song is hidden stays on its Album with the Song link cleared. Performance defaults count distinct Songs, not Performance rows (#25).
@@ -233,7 +233,7 @@ One dense list (not grid cards) of Videos and Chapters ordered by `favorited_at`
 
 ### 5.6 Availability and brand
 
-Laptop icon (green `--t4`) for a local Copy, external-drive icon (blue `--t6`) for an external one, dashed grey drive when unavailable; icons only, text on hover. Favorite: outline star in a tinted rounded square (`--t3`). Brand: the olchey favicon, no wordmark. Base type size 16 px; the Song chip is clicked to change the Song, with one × beside it to clear; "Add at playhead" sits by the Chapters heading; the playing Copy in the picker is a tinted row, no edge bar; the Now playing metadata rows a notch larger than body text. Dashed borders mark Suggested items only (Type tag, Song chip, Chapter card, Studio row); the confirm tick, the empty Favorite star and the "add as local" row are solid. A Video with a `youtube_id` shows a dim "YouTube: youtube.com/watch?v=…" line under the Chapter strip that opens the page in the browser (the app itself stays offline).
+Laptop icon (green `--t4`) for a local Copy, external-drive icon (blue `--t6`) for an external one, dashed grey drive when unavailable; icons only, text on hover. Favorite: outline star in a tinted rounded square (`--t3`). Brand: the olchey favicon, no wordmark. Base type size 16 px; the Song chip is clicked to change the Song, with one × beside it to clear; Version pills appear in the header only right after a Song with several Versions is chosen (until one is picked); otherwise the drawer's Version pills set the Video's Version; "Add at playhead" sits by the Chapters heading; the playing Copy in the picker is a tinted row, no edge bar; the Now playing metadata rows a notch larger than body text. Dashed borders mark Suggested items only (Type tag, Song chip, Chapter card, Studio row); the confirm tick, the empty Favorite star and the "add as local" row are solid. A Video with a `youtube_id` shows a dim "YouTube: youtube.com/watch?v=…" line under the Chapter strip that opens the page in the browser (the app itself stays offline).
 
 ### 5.7 Component inventory
 

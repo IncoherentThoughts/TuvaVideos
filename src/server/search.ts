@@ -323,9 +323,9 @@ export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
       return a ? { kind: "artist", id: a.id, name: a.name, local: a.mirror_id == null, videoCount: a.n } : null;
     }
     if (g === "songs") {
-      const s = one<{ id: string; name: string; english_name: string | null }>("SELECT id, name, english_name FROM mirror_song WHERE id = ?", c.ref);
+      const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number }>("SELECT id, name, english_name, is_hidden FROM mirror_song WHERE id = ?", c.ref);
       if (!s) return null;
-      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null };
+      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null };
     }
     if (g === "tracks") {
       const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM mirror_track WHERE id = ?", c.ref);

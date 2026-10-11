@@ -8,6 +8,7 @@ import { useStore } from "./data";
 import { savePlayingFrom } from "./playingFrom";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, Tags, resolutionLabel } from "./ui";
+import { useWindowed } from "./windowed";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played" };
 
@@ -34,6 +35,8 @@ export function Library({ search }: { search: string }) {
   const { videos } = useStore();
   const st = useMemo(() => parseLibrarySearch(search), [search]);
   const shown = useMemo(() => (videos ? viewVideos(videos, st) : []), [videos, st]);
+  // Only a window of the grid is in the DOM (see windowed.ts); `shown` stays the whole list for the count and Playing from.
+  const { limit, sentinel } = useWindowed(search, shown.length);
 
   const go = (patch: Partial<LibraryState>) => navigate(`/${libraryQuery({ ...st, ...patch })}`, { replace: true });
   const toggleType = (t: (typeof TYPES)[number]) => go({ types: st.types.includes(t) ? st.types.filter((x) => x !== t) : [...st.types, t] });
@@ -90,7 +93,14 @@ export function Library({ search }: { search: string }) {
           </Link>
         </div>
       ) : (
-        <div class="wall">{shown.map((v) => <Card key={v.id} v={v} onOpen={() => savePlayingFrom("library", shown.map((x) => x.id))} />)}</div>
+        <>
+          <div class="wall">
+            {shown.slice(0, limit).map((v) => (
+              <Card key={v.id} v={v} onOpen={() => savePlayingFrom("library", shown.map((x) => x.id))} />
+            ))}
+          </div>
+          <div ref={sentinel} class="wall-more" aria-hidden="true" />
+        </>
       )}
     </div>
   );

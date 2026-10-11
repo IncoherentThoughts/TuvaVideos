@@ -13,6 +13,10 @@ import { navigate, playHref } from "./router";
 import { HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
+// PROTOTYPE (prototype/audio): three Audio panel variants in the drawer slot, `?variant=A|B|C`.
+import { AudioPanelPrototype, VARIANTS } from "./prototype/audio/AudioPanelPrototype";
+import { PrototypeSwitcher, readVariant } from "./prototype/PrototypeSwitcher";
+import { useLocation } from "./router";
 
 const POLL_MS = 3000;
 
@@ -116,6 +120,17 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   const [, bump] = useState(0);
   useEffect(() => bump((n) => n + 1), [stateOpen]); // the host div mounts in this render; the Player portals into it on the next
 
+  // PROTOTYPE: the Audio panel (`a`) takes the drawer slot; opening it closes State and Lyrics, and vice versa.
+  useLocation();
+  const variant = readVariant(VARIANTS.map((v) => v.key));
+  const [audioOpen, setAudioOpen] = useState(false);
+  const toggleAudio = () => {
+    setAudioOpen((on) => {
+      if (!on) (setStateOpen(false), setDrawer(false));
+      return !on;
+    });
+  };
+
   // The drawer: closed by default; opened by its button or by choosing a Song in the search box (`?lyrics=<song>`).
   const [drawer, setDrawer] = useState(!!lyrics);
   const [focusDrawer, setFocusDrawer] = useState(!!lyrics);
@@ -124,6 +139,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     if (lyrics && (lyrics !== seenParam.current || !drawer)) (setDrawer(true), setFocusDrawer(true));
     seenParam.current = lyrics;
   }, [lyrics, lyricsVersion]);
+  useEffect(() => { if (drawer) setAudioOpen(false); }, [drawer]);
   const closeDrawer = () => {
     setDrawer(false);
     setFocusDrawer(false);
@@ -153,7 +169,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onStateToggle={() => setStateOpen((on) => !on)} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} />
+        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} />
         <div class="np-head">
           <div class="np-titlerow">
             <HeaderTitle video={v} onChange={setV} />
@@ -194,6 +210,12 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
           </div>
         )}
       </div>
+      {audioOpen && !drawer && (
+        <div class="drawer-wrap">
+          <AudioPanelPrototype key={variant} variant={variant} onClose={() => (setAudioOpen(false), document.querySelector<HTMLElement>("[data-player]")?.focus({ preventScroll: true }))} />
+          <PrototypeSwitcher variants={VARIANTS} current={variant} />
+        </div>
+      )}
       {!drawer && stateOpen && (
         <div class="drawer-wrap">
           <div class="drawer statehost" ref={stateHost} />

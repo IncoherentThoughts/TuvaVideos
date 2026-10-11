@@ -48,6 +48,9 @@ interface Props {
   onStateToggle?(): void;
   /** `y`: open or close the lyrics drawer; returns an OSD notice when there is nothing to show. */
   onLyricsToggle?(): string | null;
+  /** `a`: the Audio panel (PROTOTYPE, prototype/audio). */
+  audioOpen?: boolean;
+  onAudioToggle?(): void;
   /** Where the State panel renders when the page has a free drawer slot; inline under the Player otherwise. */
   stateHost?: { current: HTMLElement | null };
   /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
@@ -96,7 +99,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, onLyricsToggle, stateHost }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -637,6 +640,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         if (notice) say(notice, 2000);
         break;
       }
+      case "audio":
+        onAudioToggle?.();
+        break;
     }
   };
 
@@ -772,6 +778,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         </button>
         <button class="ib" tabIndex={-1} title="Fullscreen (f)" onClick={() => (toggleFullscreen(), refocus())}>
           {FS_ICON}
+        </button>
+        <button class={`cbtn statebtn${audioOpen ? " on" : ""}`} tabIndex={-1} aria-pressed={!!audioOpen} title="Audio: channels, equalizer, level (a while the Player has focus)" onClick={() => (onAudioToggle?.(), refocus())}>
+          Audio <kbd>a</kbd>
         </button>
         <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="Player state, seeks, key log and bindings (i while the Player has focus)" onClick={() => (onStateToggle?.(), refocus())}>
           State <kbd>i</kbd>

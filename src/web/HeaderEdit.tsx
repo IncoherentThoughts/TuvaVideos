@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { TYPES, type VideoType } from "../shared/filters";
 import type { ArtistRef, SearchRow, VideoDto, VideoPatch } from "../shared/types";
 import { api, loadArtists, replaceVideo } from "./data";
-import { ArtistTag, TypeTag } from "./ui";
+import { TypeTag, artistSlot, artistTitle } from "./ui";
 import { Link } from "./router";
 import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
 
@@ -195,9 +195,26 @@ function TitleField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promi
   );
 }
 
+/** Flips an absolutely positioned popup above its anchor when it would run past the bottom of the viewport. */
+function useFlipUp(open: boolean) {
+  const pop = useRef<HTMLDivElement>(null);
+  const [up, setUp] = useState(false);
+  useEffect(() => {
+    if (!open) return void setUp(false);
+    const el = pop.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const anchor = el.parentElement?.getBoundingClientRect();
+    const roomAbove = anchor ? anchor.top : 0;
+    setUp(r.bottom > window.innerHeight && roomAbove >= r.height);
+  }, [open]);
+  return { pop, up };
+}
+
 function TypeField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
+  const { pop, up } = useFlipUp(open);
   useEffect(() => {
     if (!open) return;
     const on = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
@@ -215,7 +232,7 @@ function TypeField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
         </button>
       )}
       {open && (
-        <div class="menu" role="menu" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setOpen(false))}>
+        <div class={`menu${up ? " up" : ""}`} role="menu" ref={pop} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setOpen(false))}>
           {TYPES.map((t: VideoType) => (
             <button key={t} role="menuitemradio" aria-checked={t === v.type} class={t === v.type ? "on" : ""} autoFocus={t === v.type} onClick={() => (setOpen(false), void patch({ type: t }))}>
               <TypeTag type={t} />
@@ -239,8 +256,8 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
     <span class="field songrow">
       <span class="lbl">Song:</span>
       {s && !picking && (
-        <span class="achip">
-          <button class={`songchip${v.songSuggested ? " sug" : ""}`} title={v.songSuggested ? "Suggested Song (from the archive's Performances) · click to change" : "Click to change the Song"} onClick={() => setPicking(true)}>
+        <span class={`achip songchip${v.songSuggested ? " sug" : ""}`}>
+          <button class="achip-main" title={v.songSuggested ? "Suggested Song (from the archive's Performances) · click to change" : "Click to change the Song"} onClick={() => setPicking(true)}>
             {s.name ?? <span class="dim">unknown song</span>}
             {s.englishName && <span class="en"> · {s.englishName}</span>}
           </button>
@@ -302,9 +319,10 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
     <span class="field artistrow">
       <span class="lbl">Artists:</span>
       {v.artists.map((a: ArtistRef) => (
-        <span class="achip" key={a.id}>
-          <Link href={`/${libraryQuery({ ...defaultLibraryState(), artist: a.name })}`} class="taglink" title={`Every Video by ${a.name}`}>
-            <ArtistTag artist={a} />
+        <span class={`achip tag${a.suggested ? " sug" : ""}`} key={a.id} style={{ "--c": `var(--t${artistSlot(a.name)})` }} title={artistTitle(a)}>
+          <Link href={`/${libraryQuery({ ...defaultLibraryState(), artist: a.name })}`} class="achip-main taglink" title={`Every Video by ${a.name}`}>
+            {a.name}
+            {a.suggested && <i class="sugmark">suggested</i>}
           </Link>
           <button class="x" aria-label={a.suggested ? `Reject ${a.name}` : `Remove ${a.name}`} title={a.suggested ? "Reject this suggestion" : "Remove"} onClick={() => void apply(() => api.removeArtist(v.id, a.id)).then((ok) => ok && void loadArtists())}>
             ×

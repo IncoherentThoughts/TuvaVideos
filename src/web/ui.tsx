@@ -29,10 +29,13 @@ export function TypeTag({ type, suggested }: { type: string; suggested?: boolean
   return <span class={`tag type-${type}${suggested ? " sug" : ""}`}>{type}</span>;
 }
 
+export function artistTitle(artist: ArtistRef): string | undefined {
+  return artist.suggested ? "Suggested Artist (from the title): confirm it on Now playing" : artist.local ? "Local Artist" : undefined;
+}
+
 export function ArtistTag({ artist }: { artist: ArtistRef }) {
-  const title = artist.suggested ? "Suggested Artist (from the title): confirm it on Now playing" : artist.local ? "Local Artist" : undefined;
   return (
-    <span class={`tag${artist.suggested ? " sug" : ""}`} style={{ "--c": `var(--t${artistSlot(artist.name)})` }} title={title}>
+    <span class={`tag${artist.suggested ? " sug" : ""}`} style={{ "--c": `var(--t${artistSlot(artist.name)})` }} title={artistTitle(artist)}>
       {artist.name}
       {artist.suggested && <i class="sugmark">suggested</i>}
     </span>
@@ -51,17 +54,35 @@ export function SongTag({ video }: { video: Pick<VideoDto, "song" | "songSuggest
   );
 }
 
-export function Tags({ video }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested"> }) {
+/** Type, Song and Artist tags. `maxArtists` caps the Artist tags; the rest fold into one "+n" tag (card layouts). */
+export function Tags({ video, maxArtists }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested">; maxArtists?: number }) {
+  const cap = maxArtists != null && video.artists.length > maxArtists;
+  const shown = cap ? video.artists.slice(0, maxArtists) : video.artists;
+  const rest = cap ? video.artists.slice(maxArtists) : [];
   return (
     <div class="tags">
       <TypeTag type={video.type} />
       <SongTag video={video} />
-      {video.artists.map((a) => (
+      {shown.map((a) => (
         <ArtistTag key={a.id} artist={a} />
       ))}
+      {rest.length > 0 && (
+        <span class="tag more" title={rest.map((a) => a.name).join(", ")}>
+          +{rest.length}
+        </span>
+      )}
     </div>
   );
 }
+
+export const TRASH = (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <path d="M6 6l1 14h10l1-14" />
+    <path d="M10 10v6M14 10v6" />
+  </svg>
+);
 
 const STAR = (
   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">

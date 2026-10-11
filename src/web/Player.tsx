@@ -408,11 +408,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       setVol({ volume: v.volume, muted: v.muted });
     });
     on("ended", () => {
-      const t = abLoopTarget(r.ab, v.currentTime, true);
-      if (t != null) {
-        v.currentTime = t;
-        void v.play();
-      }
+      // loop by default (as mpv's --loop-file): back to A with an A-B loop set, else to the start
+      const t = abLoopTarget(r.ab, v.currentTime, true) ?? 0;
+      v.currentTime = t;
+      void v.play().catch(() => {});
     });
     on("error", () => void onMediaError());
     const fsChange = () => setFs(document.fullscreenElement === box.current);
@@ -648,7 +647,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       const el = document.activeElement as HTMLElement | null;
       const target = el === box.current ? "player" : el?.id || el?.tagName?.toLowerCase() || "body";
       const handled = el === box.current && keyAction(e) !== null;
-      setKeyLog((l) => [...l.slice(-11), { key: e.key, handled, prevented: e.defaultPrevented, target }]);
+      setKeyLog((l) => [...l.slice(-5), { key: e.key, handled, prevented: e.defaultPrevented, target }]);
     };
     document.addEventListener("keydown", on);
     return () => document.removeEventListener("keydown", on);

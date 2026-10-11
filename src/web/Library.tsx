@@ -21,7 +21,7 @@ function Card({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
         {v.favoritedAt && <FavoriteBadge />}
         {v.title}
       </div>
-      <Tags video={v} />
+      <Tags video={v} maxArtists={3} />
       <div class="meta">
         <AvailabilityIcon availability={v.availability} />
         <span class={v.chapterCount ? "" : "dim"}>{v.chapterCount} ch</span>

@@ -1,6 +1,7 @@
 // The Player (spec 4, playback-architecture.md): a plain <video> over the Range server inside a focusable container
 // that owns the mpv-style keys. State machine of what is on screen: loading -> (preparing) -> ready, or unavailable.
 import { useEffect, useRef, useState } from "preact/hooks";
+import { createPortal } from "preact/compat";
 import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, keyAction, type PlayerAction } from "../shared/keymap";
@@ -42,6 +43,11 @@ interface Props {
   ctl?: { current: PlayerCtl | null };
   /** `t`: the Songs whose Studio tracks to use, best first (the Chapter the playhead is in, then the Video's). */
   studioSongs?(): string[];
+  /** The State panel (`i`): shown when true; the page owns the flag so it can place the panel in the drawer slot. */
+  stateOpen?: boolean;
+  onStateToggle?(): void;
+  /** Where the State panel renders when the page has a free drawer slot; inline under the Player otherwise. */
+  stateHost?: { current: HTMLElement | null };
   /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
   onStep(dir: 1 | -1): string | null;
 }
@@ -88,7 +94,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, stateHost }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -109,7 +115,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const [osdFlash, setOsdFlash] = useState(false);
   const [osdAlways, setOsdAlways] = useState(false);
   const [studio, setStudio] = useState<{ songId: string; data: SongStudioDto } | null>(null);
-  const [showState, setShowState] = useState(false);
+  const showState = !!stateOpen;
   const [seeks, setSeeks] = useState<SeekLog[]>([]);
   const [keyLog, setKeyLog] = useState<KeyLog[]>([]);
   const studioOn = useRef(false);
@@ -623,7 +629,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         void openStudio();
         break;
       case "state":
-        setShowState((on) => !on);
+        onStateToggle?.();
         break;
     }
   };
@@ -761,14 +767,15 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         <button class="ib" tabIndex={-1} title="Fullscreen (f)" onClick={() => (toggleFullscreen(), refocus())}>
           {FS_ICON}
         </button>
-        <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="Player state, seeks, key log and bindings (i)" onClick={() => (setShowState(!showState), refocus())}>
-          State
+        <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="Player state, seeks, key log and bindings (i while the Player has focus)" onClick={() => (onStateToggle?.(), refocus())}>
+          State <kbd>i</kbd>
         </button>
       </div>
       {studio && <StudioBar key={studio.songId} songId={studio.songId} initial={studio.data} say={(t, ms) => say(t, ms)} onClose={() => (setStudio(null), refocus())} ctl={studioCtl} />}
-      {showState && (
-        <StatePanel vid={vid} box={box} copyLabel={copy ? copyLabel(copy) : "—"} fps={fps} ab={ab} chapters={chapters} seeks={seeks} keys={keyLog} onClose={() => (setShowState(false), refocus())} />
-      )}
+      {showState && (() => {
+        const panel = <StatePanel vid={vid} box={box} copyLabel={copy ? copyLabel(copy) : "—"} fps={fps} ab={ab} chapters={chapters} seeks={seeks} keys={keyLog} onClose={() => (onStateToggle?.(), refocus())} />;
+        return stateHost?.current ? createPortal(panel, stateHost.current) : panel;
+      })()}
     </div>
   );
 }

@@ -94,6 +94,22 @@ export interface CreatedArtist {
   created: boolean;
 }
 
+/** Renames a Local Artist. A Mirror Artist's name belongs to the archive (the import would put it back). */
+export function renameLocalArtist(db: Db, id: number, nameRaw: unknown): EditResult<{ id: number; name: string }> {
+  const name = typeof nameRaw === "string" ? nameRaw.trim().replace(/\s+/g, " ") : "";
+  if (!name) return bad("name must be a non-empty string");
+  if (name.length > 200) return bad("name is too long");
+  const row = db.query("SELECT id, mirror_id FROM artist WHERE id = ?").get(id) as { id: number; mirror_id: string | null } | null;
+  if (!row) return bad("no such Artist", 404);
+  if (row.mirror_id) return bad("this Artist's name comes from the archive; merge a Local Artist into it instead", 409);
+  const want = name.toLowerCase();
+  const clash = (db.query("SELECT id, name FROM artist WHERE id != ?").all(id) as { id: number; name: string }[]).find((a) => a.name.toLowerCase() === want);
+  if (clash) return bad(`an Artist named ${clash.name} already exists; use merge into…`, 409);
+  const { latin, source } = latinFor(name, null);
+  db.prepare("UPDATE artist SET name = ?, name_latin = ?, name_latin_source = ? WHERE id = ?").run(name, latin, source, id);
+  return { ok: true, value: { id, name } };
+}
+
 /** Creates a Local Artist (`mirror_id` NULL). A name that already exists (case-insensitively) returns that Artist instead. */
 export function createLocalArtist(db: Db, nameRaw: unknown): EditResult<CreatedArtist> {
   const name = typeof nameRaw === "string" ? nameRaw.trim().replace(/\s+/g, " ") : "";

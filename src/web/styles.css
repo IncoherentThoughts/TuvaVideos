@@ -138,10 +138,16 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .thumbcol { min-width: 0; }
 
 /* ---- artists ---- */
-.alist { display: flex; flex-direction: column; gap: 1px; max-width: 880px; }
+.alist { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 2px 24px; }
 .arow { display: grid; grid-template-columns: 96px 1fr auto; gap: 14px; align-items: center; padding: 8px 10px; border-radius: calc(var(--r) * .7); outline-offset: -2px; position: relative; }
 .arow:hover, .arow:focus-visible { background: var(--bg2); }
-.arow .nm { font-weight: 600; font-size: 1.05em; display: flex; align-items: center; gap: 8px; }
+.arow .nm { font-weight: 600; font-size: 1.05em; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.arow .nm-text { font: inherit; color: inherit; text-align: left; }
+.arow .nm-text.editable { cursor: text; border-radius: 5px; padding: 0 4px; margin: 0 -4px; }
+.arow .nm-text.editable:hover { background: var(--bg3); }
+.arow .nm-in { font: inherit; font-weight: 600; background: var(--bg); border: 1px solid var(--accent); border-radius: 5px; padding: 0 5px; outline: none; min-width: 220px; }
+.arow .nm-edit { display: inline-flex; flex-direction: column; gap: 3px; }
+.arow > div:nth-child(2) { min-width: 0; }
 .arow .cnt { color: var(--fg2); font-family: var(--font-mono); font-size: .85em; margin-top: 3px; }
 .arow .acts { display: flex; align-items: center; gap: 8px; }
 .merge { position: absolute; right: 10px; top: calc(100% - 4px); width: 360px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 14px 40px rgba(0, 0, 0, .55); padding: 10px; z-index: 10; }
@@ -167,7 +173,8 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 /* ---- chapter filmstrip (spec 5.3) ---- */
 .chapter-strip { margin-top: 20px; }
 .chs-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-.chs-head h2 { font-size: 1em; font-weight: 600; margin-right: auto; }
+.chs-head h2 { font-size: 1em; font-weight: 600; }
+.chs-head .edit-err { margin-left: auto; }
 .chs-wrap { position: relative; }
 .chs-sink { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none; }
 .chs-scroll { display: flex; gap: 10px; overflow-x: auto; padding: 4px 4px 10px; scrollbar-width: thin; min-height: 60px; align-items: flex-start; }
@@ -252,7 +259,7 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .chead { padding: 6px 8px; font-size: .78em; color: var(--fg3); }
 .copt { display: grid; grid-template-columns: 20px auto auto auto 1fr; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 6px 8px; border-radius: 6px; font-size: .88em; }
 .copt:hover:not(:disabled), .copt:focus-visible { background: var(--bg3); }
-.copt.on { box-shadow: inset 3px 0 0 var(--accent); }
+.copt.on { background: color-mix(in srgb, var(--accent) 16%, var(--bg3)); }
 .copt.off { opacity: .55; cursor: default; }
 .copt .cnote { justify-self: end; display: flex; gap: 8px; font-size: .85em; }
 .copt .cnote b { color: var(--accent); font-weight: 600; }
@@ -396,6 +403,10 @@ button.st-main:hover { background: var(--bg3); }
 /* ---- State panel (the prototype's State pane; `i`) ---- */
 .cbtn.statebtn.on { background: var(--bg3); border-color: var(--fg3); }
 .stpanel { background: var(--bg2); border-top: 1px solid var(--line); border-radius: 0 0 var(--r) var(--r); padding: 8px 12px 12px; font-size: .88em; }
+.drawer.statehost { overflow: auto; scrollbar-width: thin; }
+.drawer.statehost .stpanel { border-top: 0; border-radius: var(--r); padding: 12px 14px; }
+.drawer.statehost .stp-cols { grid-template-columns: 1fr; }
+.cbtn kbd { font-size: .8em; padding: 0 4px; }
 .player.studio-on .studio { border-radius: 0; }
 .stp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .stp-head h4 { font-size: 1em; font-weight: 600; }

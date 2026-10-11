@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { libraryQuery, defaultLibraryState } from "../shared/libraryView";
 import type { ArtistDto, SearchRow } from "../shared/types";
-import { api, loadArtists, reloadAll, useStore } from "./data";
+import { api, apiError, loadArtists, reloadAll, useStore } from "./data";
 import { navigate } from "./router";
 import { Poster } from "./ui";
 
@@ -83,6 +83,59 @@ function MergeInto({ artist, onClose }: { artist: ArtistDto; onClose: () => void
   );
 }
 
+/** Click the name of a Local Artist to fix its spelling; Enter saves, Esc cancels. */
+function NameField({ a }: { a: ArtistDto }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(a.name);
+  const [err, setErr] = useState<string | null>(null);
+  if (!a.local) return <span class="nm-text">{a.name}</span>;
+  if (!editing)
+    return (
+      <button
+        class="nm-text editable"
+        title="Click to rename this Local Artist"
+        onClick={(e) => {
+          e.stopPropagation();
+          setText(a.name);
+          setErr(null);
+          setEditing(true);
+        }}
+      >
+        {a.name}
+      </button>
+    );
+  const save = async () => {
+    const t = text.trim();
+    if (!t || t === a.name) return setEditing(false);
+    try {
+      await api.renameArtist(a.id, t);
+      await Promise.all([loadArtists(), reloadAll()]);
+      setEditing(false);
+    } catch (e) {
+      setErr(apiError(e));
+    }
+  };
+  return (
+    <span class="nm-edit" onClick={(e) => e.stopPropagation()}>
+      <input
+        class="nm-in"
+        autoFocus
+        value={text}
+        aria-label="Artist name"
+        onInput={(e) => setText((e.target as HTMLInputElement).value)}
+        onFocus={(e) => (e.target as HTMLInputElement).select()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") (e.preventDefault(), void save());
+          else if (e.key === "Escape") (e.preventDefault(), setEditing(false));
+        }}
+        onBlur={() => void save()}
+      />
+      {err && <span class="edit-err" role="alert">{err}</span>}
+    </span>
+  );
+}
+
 function ArtistRow({ a, open, setOpen }: { a: ArtistDto; open: boolean; setOpen: (v: boolean) => void }) {
   const { videos } = useStore();
   const poster = useMemo(() => videos?.find((v) => v.id === a.posterVideoId), [videos, a.posterVideoId]);
@@ -102,7 +155,7 @@ function ArtistRow({ a, open, setOpen }: { a: ArtistDto; open: boolean; setOpen:
       {poster ? <Poster video={poster} /> : <div class="thumb ph" />}
       <div>
         <div class="nm">
-          {a.name}
+          <NameField a={a} />
           {a.local && <span class="tag local" title="Created here; the archive has no row for this Artist">local</span>}
         </div>
         <div class="cnt">

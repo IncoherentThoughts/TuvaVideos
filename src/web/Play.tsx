@@ -110,6 +110,12 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   const marks = useMemo(() => chapters.map((c) => ({ startS: c.startS, title: c.title || "untitled", suggested: c.suggested })), [chapters]);
   const curChapter = chapters.find((c) => c.id === curId) ?? null;
 
+  // The State panel (`i`): in the drawer slot while no lyrics are shown, under the Player otherwise.
+  const [stateOpen, setStateOpen] = useState(false);
+  const stateHost = useRef<HTMLDivElement>(null);
+  const [, bump] = useState(0);
+  useEffect(() => bump((n) => n + 1), [stateOpen]); // the host div mounts in this render; the Player portals into it on the next
+
   // The drawer: closed by default; opened by its button or by choosing a Song in the search box (`?lyrics=<song>`).
   const [drawer, setDrawer] = useState(!!lyrics);
   const [focusDrawer, setFocusDrawer] = useState(!!lyrics);
@@ -139,7 +145,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} />
+        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onStateToggle={() => setStateOpen((on) => !on)} stateHost={drawer ? undefined : stateHost} />
         <div class="np-head">
           <div class="np-titlerow">
             <HeaderTitle video={v} onChange={setV} />
@@ -180,6 +186,11 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
           </div>
         )}
       </div>
+      {!drawer && stateOpen && (
+        <div class="drawer-wrap">
+          <div class="drawer statehost" ref={stateHost} />
+        </div>
+      )}
       {drawer && (
         <div class="drawer-wrap">
           {target ? (

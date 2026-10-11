@@ -13,7 +13,7 @@ import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
 import { listArtists, listFavoriteRows, mergeArtist, recordResume, setFavorite } from "./catalog";
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
-import { createLocalArtist, patchVideo, setVideoArtists } from "./edit";
+import { createLocalArtist, patchVideo, renameLocalArtist, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
 import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
 import { songDto, songRef, videosPerforming } from "./songs";
@@ -452,6 +452,14 @@ export function createHandler(s: Services) {
           rebuildSearchIndex(s.db);
           return json({ merged: true, moved: r.moved });
         }
+      }
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/artists\/(\d+)$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = renameLocalArtist(s.db, Number(m[1]), body.name);
+        if (!r.ok) return json({ error: r.error }, r.status);
+        indexArtist(s.db, r.value.id);
+        return json(r.value);
       }
       if (req.method === "PATCH" && (m = p.match(/^\/api\/videos\/(\d+)$/))) {
         const body = await readJson(req);

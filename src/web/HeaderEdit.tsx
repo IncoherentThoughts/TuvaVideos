@@ -232,10 +232,15 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
   return (
     <span class="field songrow">
       <span class="lbl">Song:</span>
-      {s && (
-        <span class={`songchip${v.songSuggested ? " sug" : ""}`} title={v.songSuggested ? "Suggested Song (from the archive's Performances)" : undefined}>
-          {s.name ?? <span class="dim">unknown song</span>}
-          {s.englishName && <span class="en"> · {s.englishName}</span>}
+      {s && !picking && (
+        <span class="achip">
+          <button class={`songchip${v.songSuggested ? " sug" : ""}`} title={v.songSuggested ? "Suggested Song (from the archive's Performances) · click to change" : "Click to change the Song"} onClick={() => setPicking(true)}>
+            {s.name ?? <span class="dim">unknown song</span>}
+            {s.englishName && <span class="en"> · {s.englishName}</span>}
+          </button>
+          <button class="x" title="Clear the Song" aria-label="Clear the Song" onClick={() => void patch({ songId: null })}>
+            ×
+          </button>
         </span>
       )}
       {s && v.songSuggested && (
@@ -255,14 +260,9 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
           })}
         </span>
       )}
-      {!picking && (
+      {!s && !picking && (
         <button class="linkbtn" onClick={() => setPicking(true)}>
-          {s ? "change" : "set Song…"}
-        </button>
-      )}
-      {s && !picking && (
-        <button class="linkbtn" title="Clear the Song" aria-label="Clear the Song" onClick={() => void patch({ songId: null })}>
-          clear ×
+          set Song…
         </button>
       )}
       {picking && (

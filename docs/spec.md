@@ -179,7 +179,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 | s | screenshot: the current frame drawn to a canvas and posted to the server, which writes `<title> @ <seconds>s.png` to `~/Desktop` (`TUVA_SCREENSHOT_DIR` only for tests) |
 | o / O | OSD flash / always on |
 | t | Studio playback (§7.4) |
-| i | State panel under the Player (also a "State" button): `<video>` state, the last seeks with their latency, a key log (handled / passed, with the focused element) and this key table. Kept from the player prototype; stays on during Studio playback |
+| i | State panel (also a "State" button): in the drawer slot while no lyrics are shown, under the Player when they are; `<video>` state, the last seeks with their latency, a key log (handled / passed, with the focused element) and this key table. Kept from the player prototype; stays on during Studio playback |
 
 ### 4.6 Visuals
 
@@ -195,7 +195,7 @@ Decided in #11 and #12 ([design-direction.md](design-direction.md)). Direction "
 
 Top tabs: **Library**, **Now playing**, **Favorites**, **Artists**; a search box and the Rescan button in the top bar.
 
-**Artists tab**: every Artist with at least one Video (Mirror and Local), with Video count and the poster of their most recent Video; clicking opens the Library grid filtered to that Artist. Local Artists are marked and carry the "merge into…" action (§2.3). Mirror Artists with no Video are not listed.
+**Artists tab**: every Artist with at least one Video (Mirror and Local), with Video count and the poster of their most recent Video; clicking opens the Library grid filtered to that Artist. Local Artists are marked and carry the "merge into…" action (§2.3). A Local Artist's name is edited in place (click it; `PATCH /api/artists/:id`); a Mirror Artist's name belongs to the archive and is not editable. The list fills the width as a multi-column grid. Mirror Artists with no Video are not listed.
 
 ### 5.2 Library
 
@@ -232,7 +232,7 @@ One dense list (not grid cards) of Videos and Chapters ordered by `favorited_at`
 
 ### 5.6 Availability and brand
 
-Laptop icon (green `--t4`) for a local Copy, external-drive icon (blue `--t6`) for an external one, dashed grey drive when unavailable; icons only, text on hover. Favorite: outline star in a tinted rounded square (`--t3`). Brand: the olchey favicon, no wordmark. Base type size 16 px; the Now playing metadata rows a notch larger than body text. Dashed borders mark Suggested items only (Type tag, Song chip, Chapter card, Studio row); the confirm tick, the empty Favorite star and the "add as local" row are solid. A Video with a `youtube_id` shows a dim "YouTube: youtube.com/watch?v=…" line under the Chapter strip that opens the page in the browser (the app itself stays offline).
+Laptop icon (green `--t4`) for a local Copy, external-drive icon (blue `--t6`) for an external one, dashed grey drive when unavailable; icons only, text on hover. Favorite: outline star in a tinted rounded square (`--t3`). Brand: the olchey favicon, no wordmark. Base type size 16 px; the Song chip is clicked to change the Song, with one × beside it to clear; "Add at playhead" sits by the Chapters heading; the playing Copy in the picker is a tinted row, no edge bar; the Now playing metadata rows a notch larger than body text. Dashed borders mark Suggested items only (Type tag, Song chip, Chapter card, Studio row); the confirm tick, the empty Favorite star and the "add as local" row are solid. A Video with a `youtube_id` shows a dim "YouTube: youtube.com/watch?v=…" line under the Chapter strip that opens the page in the browser (the app itself stays offline).
 
 ### 5.7 Component inventory
 

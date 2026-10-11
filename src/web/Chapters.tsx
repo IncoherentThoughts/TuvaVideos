@@ -110,14 +110,14 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
         <h2>
           Chapters <span class="dim">{chapters.length ? `· ${chapters.length}` : ""}</span>
         </h2>
+        <button class="btn small" title="Add a Chapter at the playhead (c, with the Player focused)" onClick={onAdd}>
+          + Add at playhead
+        </button>
         {suggestedN > 0 && (
           <button class="btn small" title="Confirm every Suggested Chapter of this Video" onClick={() => void run(() => api.confirmAllChapters(video.id))}>
             Confirm all ({suggestedN})
           </button>
         )}
-        <button class="btn small" title="Add a Chapter at the playhead (c, with the Player focused)" onClick={onAdd}>
-          + Add at playhead
-        </button>
         {note && <span class="edit-err" role="alert">{note}</span>}
       </div>
       <div class="chs-wrap">

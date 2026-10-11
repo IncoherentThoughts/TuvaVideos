@@ -330,7 +330,9 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .achip.tag { padding: 0; gap: 0; }
 .achip .achip-main { display: inline-flex; align-items: center; gap: 4px; color: inherit; font: inherit; line-height: inherit; padding: 3px 4px 3px 7px; border-radius: calc(var(--r) * .5) 0 0 calc(var(--r) * .5); }
 .achip .achip-main:hover { filter: brightness(1.2); }
-.achip .x { color: var(--no); font-weight: 700; font-size: 1.05em; padding: 0 7px 0 3px; margin-left: 2px; line-height: 1; align-self: stretch; display: inline-grid; place-items: center; border-radius: 0 calc(var(--r) * .5) calc(var(--r) * .5) 0; }
+/* The × sits inside the chip's 1px border, so its own radius is the chip's minus the border or the hover fill leaves a sliver at the corners. */
+.achip .x { color: var(--no); font-weight: 700; font-size: 1.05em; padding: 0 7px; margin-left: 2px; line-height: 1; align-self: stretch; display: inline-grid; place-items: center; border-radius: 0 calc(var(--r) * .5 - 1px) calc(var(--r) * .5 - 1px) 0; }
+.achip .x svg { display: block; width: 10px; height: 10px; }
 .achip .x:hover { background: color-mix(in srgb, var(--no) 22%, transparent); }
 .pills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .pill { padding: 1px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: .85em; color: var(--fg2); }
@@ -347,6 +349,8 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .pk-none { padding: 6px 8px; }
 .edit-err { margin-top: 6px; color: var(--t1); font-size: .88em; }
 .lyricsbtn.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.acceptall { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 60%, transparent); background: color-mix(in srgb, var(--ok) 14%, transparent); font-weight: 600; }
+.acceptall:hover:not(:disabled) { background: color-mix(in srgb, var(--ok) 24%, transparent); }
 
 /* ---- lyrics drawer (spec 5.4, variant "Reader") ---- */
 .drawer-wrap { flex: none; width: min(400px, 34vw); min-width: 300px; position: sticky; top: calc(var(--bar-h) + 14px); align-self: flex-start; height: calc(100vh - var(--bar-h) - 28px); }

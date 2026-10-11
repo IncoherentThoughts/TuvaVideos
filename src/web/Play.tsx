@@ -10,7 +10,7 @@ import { ChapterStrip, catchTyping } from "./Chapters";
 import { api, apiError, replaceVideo, setLastPlayed, toggleFavorite, useStore } from "./data";
 import { loadPlayingFrom, onPlayingFromChange, savePlayingFrom } from "./playingFrom";
 import { navigate, playHref } from "./router";
-import { HeaderFields, HeaderTitle } from "./HeaderEdit";
+import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
 import { AudioPanel } from "./AudioPanel";
@@ -225,6 +225,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
             <button class={`btn small lyricsbtn${drawer ? " on" : ""}`} aria-pressed={drawer} aria-controls="lyrbody" title="Lyrics drawer (y while the Player has focus)" onClick={() => (drawer ? closeDrawer() : (setDrawer(true), setFocusDrawer(true)))}>
               Lyrics
             </button>
+            <AcceptAll video={v} onChange={setV} />
           </div>
           <HeaderFields video={v} onChange={setV} />
         </div>

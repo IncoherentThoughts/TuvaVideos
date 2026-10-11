@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ScanDto } from "../shared/types";
 import { SearchBox } from "./SearchBox";
-import { api, apiError, getLastPlayed, reloadAll, useStore } from "./data";
+import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { Link, type Route } from "./router";
 
 function ScanIndicator({ scan }: { scan: ScanDto }) {
@@ -24,7 +24,8 @@ function ScanIndicator({ scan }: { scan: ScanDto }) {
 }
 
 export function TopBar({ route }: { route: Route }) {
-  useStore(); // re-render when the last-played Video changes
+  const { videos } = useStore(); // re-render when the last-played Video changes
+  const anyAvailable = !!videos?.some((v) => v.available);
   const [scan, setScan] = useState<ScanDto | null>(null);
   const [busy, setBusy] = useState(false);
   const wasRunning = useRef(false);
@@ -101,6 +102,9 @@ export function TopBar({ route }: { route: Route }) {
       <div class="topright">
         {scan && <ScanIndicator scan={scan} />}
         <SearchBox />
+        <button class="btn" onClick={() => playRandom()} disabled={!anyAvailable} title="Play a random available Video (r)">
+          Random
+        </button>
         <button class="btn" onClick={rescan} disabled={busy || !!scan?.running} title="Scan the Roots for new files">
           Rescan
         </button>

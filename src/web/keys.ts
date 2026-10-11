@@ -1,6 +1,7 @@
-// Global keyboard: `/` focuses the search box from anywhere; arrows walk focus between grid cards / list rows
-// (`[data-item]`), Enter opens (the items are anchors), `f` toggles the Favorite of the focused item.
-import { toggleFavorite } from "./data";
+// Global keyboard: `/` focuses the search box from anywhere; `r` plays a random Available Video (again and again from the
+// Player: it never repeats the one on screen); arrows walk focus between grid cards / list rows (`[data-item]`), Enter opens
+// (the items are anchors), `f` toggles the Favorite of the focused item.
+import { playRandom, toggleFavorite } from "./data";
 
 export const SEARCH_ID = "q";
 let returnFocus: HTMLElement | null = null;
@@ -70,6 +71,11 @@ export function installKeys() {
       return;
     }
     if (isTyping(e.target)) return;
+    if (e.key === "r" && !e.repeat) {
+      e.preventDefault();
+      playRandom();
+      return;
+    }
     const all = items();
     if (!all.length) return;
     const cur = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-item]") ?? null;

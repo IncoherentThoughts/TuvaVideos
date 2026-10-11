@@ -4,6 +4,7 @@ import { decidePlayback, frameRateValue, parseProbe } from "../src/server/playba
 import { rankCopies, type Rankable } from "../src/server/ranking";
 import { stripGeometry, tileForTime, sliceCentre } from "../src/server/stripGeometry";
 import { parseRange } from "../src/server/range";
+import { pickRandomVideo } from "../src/shared/random";
 
 describe("filename identity and skip rules", () => {
   test("youtube id and title", () => {
@@ -149,5 +150,28 @@ describe("Range header parsing", () => {
     expect(parseRange("bytes=1000-", 1000)).toEqual({ kind: "unsatisfiable" });
     expect(parseRange("bytes=-0", 1000)).toEqual({ kind: "unsatisfiable" });
     expect(parseRange("bytes=0-", 0)).toEqual({ kind: "unsatisfiable" });
+  });
+});
+
+describe("random Video", () => {
+  const vids = [
+    { id: 1, available: true },
+    { id: 2, available: false },
+    { id: 3, available: true },
+  ];
+  test("only Available Videos, never the current one", () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 50; i++) seen.add(pickRandomVideo(vids, 3)!);
+    expect([...seen]).toEqual([1]);
+  });
+  test("uniform over the pool", () => {
+    expect(pickRandomVideo(vids, null, () => 0)).toBe(1);
+    expect(pickRandomVideo(vids, null, () => 0.99)).toBe(3);
+    expect(pickRandomVideo(vids, null, () => 1)).toBe(3); // a rand() of exactly 1 stays in range
+  });
+  test("null when nothing qualifies", () => {
+    expect(pickRandomVideo([], null)).toBeNull();
+    expect(pickRandomVideo([{ id: 1, available: true }], 1)).toBeNull();
+    expect(pickRandomVideo([{ id: 2, available: false }], null)).toBeNull();
   });
 });

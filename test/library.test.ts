@@ -88,8 +88,9 @@ describe("index builder", () => {
   });
   test("text keeps original + Latin, text_folded is folded once at index time", () => {
     const r = app.db.query("SELECT text, text_folded FROM search WHERE kind = 'video' AND ref_id = '1'").get() as any;
-    expect(r.text).toBe("Алаш — Хөөмей | Alash - Khoomei");
-    expect(r.text_folded).toBe("alash — khoomei | alash - khoomei");
+    // the linked Song's names follow the titles (segments 2+, scored with videoPenalty)
+    expect(r.text).toBe("Алаш — Хөөмей | Alash - Khoomei | Сарыглар | Saryglar (Girls)");
+    expect(r.text_folded).toBe("alash — khoomei | alash - khoomei | saryglar | saryglar (girls)");
     const l = app.db.query("SELECT ref_id, text, text_folded FROM search WHERE kind = 'lyric' AND ref_id = 'ver1:cyrillic:2'").get() as any;
     expect(l.text).toBe("Улуг-Хем чурту"); // marker stripped
     expect(l.text_folded).toBe("ulug-khem churtu");

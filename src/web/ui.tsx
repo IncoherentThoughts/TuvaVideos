@@ -37,10 +37,23 @@ export function ArtistTag({ artist }: { artist: ArtistRef }) {
   );
 }
 
-export function Tags({ video }: { video: Pick<VideoDto, "type" | "artists"> }) {
+/** The linked Song as a tag; dashed with a "suggested" mark while the link is only Suggested. */
+export function SongTag({ video }: { video: Pick<VideoDto, "song" | "songSuggested"> }) {
+  const s = video.song;
+  if (!s) return null;
+  return (
+    <span class={`tag song${video.songSuggested ? " sug" : ""}`} title={video.songSuggested ? `Suggested Song: ${s.name ?? "unknown"} (confirm it on Now playing)` : `Song: ${s.name ?? "unknown"}`}>
+      ♪ {s.name ?? "unknown song"}
+      {video.songSuggested && <i class="sugmark">suggested</i>}
+    </span>
+  );
+}
+
+export function Tags({ video }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested"> }) {
   return (
     <div class="tags">
       <TypeTag type={video.type} />
+      <SongTag video={video} />
       {video.artists.map((a) => (
         <ArtistTag key={a.id} artist={a} />
       ))}

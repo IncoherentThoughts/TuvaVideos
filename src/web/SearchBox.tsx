@@ -25,7 +25,7 @@ function RowView({ row, needle, on, idx, pick, hover }: { row: SearchRow; needle
         <div {...common}>
           <span class="nm" {...H(row.title, needle)} />
           <span class="typ video">video{row.durationS != null ? ` · ${fmtDuration(row.durationS)}` : ""}{row.available ? "" : " · unavailable"}</span>
-          {row.songs.length > 0 && <span class="by">♪ {row.songs.join(", ")}</span>}
+          {row.songs.length > 0 && <span class={`by${row.songSuggested ? " sug" : ""}`}>♪ {row.songs.join(", ")}{row.songSuggested && <i class="sugmark">suggested</i>}</span>}
         </div>
       );
     case "chapter":

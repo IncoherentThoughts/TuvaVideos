@@ -21,6 +21,9 @@ export function scoreFolded(text: string, needle: string): number | null {
 /** Penalty by segment position for a Song row: name 0, English name +3, alternates +4. Other kinds: 0. */
 export const songPenalty = (i: number) => (i === 0 ? 0 : i === 1 ? ENGLISH_PENALTY : ALTERNATE_PENALTY);
 export const noPenalty = () => 0;
+/** Video rows: segments 0-1 are the title and Latin title; 2+ are the linked Song's names (+3, like an English title). */
+export const VIDEO_SONG_PENALTY = 3;
+export const videoPenalty = (i: number) => (i <= 1 ? 0 : VIDEO_SONG_PENALTY);
 
 /** Best score over the ` | `-separated segments of a `text_folded` value. */
 export function scoreSegments(textFolded: string, needle: string, penalty: (segment: number) => number = noPenalty): number | null {

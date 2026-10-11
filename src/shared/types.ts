@@ -147,7 +147,7 @@ export interface ScanDto {
 // ---- search ----
 
 export type SearchRow =
-  | { kind: "video"; id: number; title: string; type: VideoType; durationS: number | null; available: boolean; songs: string[] }
+  | { kind: "video"; id: number; title: string; type: VideoType; durationS: number | null; available: boolean; songs: string[]; songSuggested: boolean }
   | { kind: "chapter"; id: number; videoId: number; videoTitle: string; title: string; startS: number; available: boolean }
   | { kind: "artist"; id: number; name: string; local: boolean; videoCount: number }
   | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; viaLyrics: boolean; lyric: string | null }

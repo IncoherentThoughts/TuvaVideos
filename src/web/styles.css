@@ -86,6 +86,9 @@ mark { background: color-mix(in srgb, var(--t3) 35%, transparent); color: var(--
 .tag.sug { border-style: dashed; opacity: .85; }
 .tag.type-song { --c: var(--t1); } .tag.type-concert { --c: var(--t3); } .tag.type-interview { --c: var(--t5); } .tag.type-other { --c: var(--t8); }
 .tag.local { --c: var(--t4); } .tag.external { --c: var(--t6); }
+.tag.song { --c: var(--t7); max-width: 100%; }
+.tag .sugmark, .r .by .sugmark { font-style: normal; font-weight: 500; font-size: .78em; letter-spacing: .06em; text-transform: uppercase; opacity: .8; margin-left: 5px; }
+.r .by.sug { color: var(--fg3); }
 .avail { display: inline-flex; align-items: center; }
 .avail svg { display: block; }
 .avail.local { color: var(--t4); } .avail.external { color: var(--t6); }

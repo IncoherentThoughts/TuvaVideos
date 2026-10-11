@@ -204,6 +204,8 @@ Full-bleed poster grid. Card: Thumbnail with duration in the corner and a colour
 
 **Filters**: chips for Type (song / concert / interview / other), Availability (available only / all) and Favorites; Artist filter set from the Artists tab or a search filter. **Sort**: title, duration, date added, last played; default date added, newest first. Filter and sort state live in the URL query so a reload keeps them. The grid, the Favorites list and the Artists tab are keyboard-walkable: arrows move focus, Enter opens, `f` toggles Favorite on the focused card or row.
 
+A Video's index row carries its linked Song's name and English name after the titles (+3, like an English title), so a Song search lists the Videos linked to it, confirmed or Suggested; Video rows and Library cards show the Song as a tag, dashed with a "suggested" mark while the link is only Suggested.
+
 **Typed filters**: the same filters can be typed into the search box, no clicking needed: `#available`, `#fav`, `#type:concert`, `#artist:Radik_Tyulush` (underscores for spaces, matched against folded Artist names), and the group filters of §6.2. A query made only of filters, committed with Enter, applies those filters to the Library grid (written to its URL state) and closes the dropdown. Filters followed by search text, without Enter, just narrow the dropdown results. Enter on a highlighted row always opens that row.
 
 ### 5.3 Now playing

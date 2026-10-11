@@ -5,7 +5,7 @@ import { foldQuery, foldSegments, foldText } from "../shared/fold";
 import {
   effectiveGroups, hasVideoFilters, parseQuery, rowCap, type Group, type ParsedQuery,
 } from "../shared/filters";
-import { LYRICS_ONLY_SCORE, lyricsSearchable, scoreSegments, songPenalty } from "../shared/score";
+import { LYRICS_ONLY_SCORE, lyricsSearchable, scoreSegments, songPenalty, videoPenalty } from "../shared/score";
 import type { SearchGroup, SearchResponse, SearchRow } from "../shared/types";
 
 export { foldText };
@@ -59,8 +59,8 @@ export function rebuildSearchIndex(db: Db): IndexStats {
   };
   db.transaction(() => {
     db.exec("DELETE FROM search");
-    for (const r of db.query("SELECT id, title, title_latin FROM video").all() as { id: number; title: string; title_latin: string | null }[])
-      add("video", r.id, [r.title, r.title_latin]);
+    // A Video's row carries its linked Song's names (confirmed or Suggested) after the titles, so a Song search finds its Videos.
+    for (const r of db.query(VIDEO_INDEX_SQL).all() as VideoIndexRow[]) add("video", r.id, videoSegments(r));
     for (const r of db.query("SELECT id, title, title_latin FROM chapter").all() as { id: number; title: string; title_latin: string | null }[])
       add("chapter", r.id, [r.title, r.title_latin]);
     for (const r of db.query("SELECT id, name, name_latin FROM artist").all() as { id: number; name: string; name_latin: string | null }[])
@@ -101,11 +101,22 @@ export function rebuildSearchIndex(db: Db): IndexStats {
 }
 
 /** One Video's index row, replaced in place (a title edit does not need a rebuild of the lyrics). */
+interface VideoIndexRow { id: number; title: string; title_latin: string | null; song_name: string | null; song_en: string | null }
+const VIDEO_INDEX_SQL = `SELECT v.id, v.title, v.title_latin, s.name AS song_name, s.english_name AS song_en
+  FROM video v LEFT JOIN mirror_song s ON s.id = v.song_id`;
+const videoSegments = (r: VideoIndexRow) => [r.title, r.title_latin ?? "", r.song_name, r.song_en];
+
 export function reindexVideo(db: Db, id: number) {
   db.query("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(String(id));
-  const r = db.query("SELECT id, title, title_latin FROM video WHERE id = ?").get(id) as { id: number; title: string; title_latin: string | null } | null;
+  let r: VideoIndexRow | null = null;
+  try {
+    r = db.query(`${VIDEO_INDEX_SQL} WHERE v.id = ?`).get(id) as VideoIndexRow | null;
+  } catch {
+    const v = db.query("SELECT id, title, title_latin FROM video WHERE id = ?").get(id) as VideoIndexRow | null; // no Mirror tables yet
+    r = v && { ...v, song_name: null, song_en: null };
+  }
   if (!r) return;
-  const p = [r.title, r.title_latin].filter((x): x is string => !!x && x.trim() !== "");
+  const p = videoSegments(r).filter((x): x is string => !!x && x.trim() !== "");
   db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('video', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
 }
 
@@ -154,6 +165,7 @@ interface VideoFacts {
   type: string;
   fav: boolean;
   songId: string | null;
+  songSuggested: boolean;
   durationS: number | null;
   available: boolean;
   artistKeys: string[];
@@ -161,8 +173,8 @@ interface VideoFacts {
 
 function loadVideoFacts(db: Db, env: SearchEnv, needArtists: boolean): Map<number, VideoFacts> {
   const out = new Map<number, VideoFacts>();
-  for (const v of db.query("SELECT id, title, type, favorited_at, song_id FROM video").all() as any[])
-    out.set(v.id, { id: v.id, title: v.title, type: v.type, fav: !!v.favorited_at, songId: v.song_id, durationS: null, available: false, artistKeys: [] });
+  for (const v of db.query("SELECT id, title, type, favorited_at, song_id, song_suggested FROM video").all() as any[])
+    out.set(v.id, { id: v.id, title: v.title, type: v.type, fav: !!v.favorited_at, songId: v.song_id, songSuggested: !!v.song_suggested, durationS: null, available: false, artistKeys: [] });
   for (const c of db.query("SELECT video_id, root_id, missing_since, duration_s FROM copy").all() as any[]) {
     const f = out.get(c.video_id);
     if (!f) continue;
@@ -253,7 +265,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
 
   for (const c of cands) {
     if (c.kind === "video" && wantVideos && !parsed.lyricsOnly) {
-      const s = scoreOf(c);
+      const s = scoreOf(c, videoPenalty);
       if (s !== null && videoOk(facts.get(Number(c.ref)))) buckets.videos.push({ c, score: s, name: nameOf(c.text) });
     } else if (c.kind === "chapter" && wantVideos && !parsed.lyricsOnly) {
       const s = scoreOf(c);
@@ -310,7 +322,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
       if (c.kind === "video") {
         const f = facts.get(Number(c.ref))!;
         const songs = f.songId ? many<{ name: string }>("SELECT name FROM mirror_song WHERE id = ?", f.songId).map((s) => s.name) : [];
-        return { kind: "video", id: f.id, title: f.title, type: f.type as any, durationS: f.durationS, available: f.available, songs };
+        return { kind: "video", id: f.id, title: f.title, type: f.type as any, durationS: f.durationS, available: f.available, songs, songSuggested: f.songSuggested };
       }
       const ch = one<{ id: number; video_id: number; start_s: number; title: string }>("SELECT id, video_id, start_s, title FROM chapter WHERE id = ?", Number(c.ref));
       if (!ch) return null;

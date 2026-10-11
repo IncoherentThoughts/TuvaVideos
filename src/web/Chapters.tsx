@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatStart, nudgeStart, parseTimeField } from "../shared/timestamps";
 import type { ChapterDto, ChapterPatch, VideoDto } from "../shared/types";
 import { Picker, rowsOf, type SongRow } from "./HeaderEdit";
+import { TRASH } from "./ui";
 import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
 import { FavoriteBadge, StripFrame } from "./ui";
@@ -51,8 +52,19 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
   const wantFocus = useRef<number | null>(null);
   const [pickFor, setPickFor] = useState<number | null>(null);
   const pickBox = useRef<HTMLDivElement>(null);
+  const [pickLeft, setPickLeft] = useState(0);
   useEffect(() => {
-    if (pickFor != null) pickBox.current?.scrollIntoView({ block: "nearest" });
+    if (pickFor == null) return;
+    // open next to the card, clamped so the box stays inside the strip
+    const wrap = pickBox.current?.parentElement;
+    const card = scroller.current?.querySelector<HTMLElement>(`[data-chapter="${pickFor}"]`);
+    if (wrap && card) {
+      const w = wrap.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      const width = pickBox.current?.offsetWidth ?? 380;
+      setPickLeft(Math.max(0, Math.min(c.left - w.left, w.width - width)));
+    }
+    pickBox.current?.scrollIntoView({ block: "nearest" });
   }, [pickFor]);
   const [note, setNote] = useState<string | null>(null);
   const suggestedN = chapters.filter((c) => c.suggested).length;
@@ -142,7 +154,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
           ))}
         </div>
         {picking && (
-          <div class="chs-pick" ref={pickBox}>
+          <div class="chs-pick" ref={pickBox} style={{ left: `${pickLeft}px` }}>
             <div class="dim chs-picklbl">Song for {formatStart(picking.startS)} {picking.title}</div>
             <Picker<SongRow>
               placeholder="Search Songs…"
@@ -407,7 +419,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
             )}
             {!c.suggested && (
               <button class="chbtn no" tabIndex={-1} title="Delete this Chapter (⌫)" aria-label="Delete this Chapter" onClick={() => setMode("delete")}>
-                ⌫
+                {TRASH}
               </button>
             )}
           </div>

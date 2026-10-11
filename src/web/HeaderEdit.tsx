@@ -319,7 +319,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
       )}
       {!s && !picking && (
         <button class="linkbtn" onClick={() => setPicking(true)}>
-          set Song…
+          + add
         </button>
       )}
       {picking && (

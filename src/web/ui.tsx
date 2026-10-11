@@ -43,7 +43,7 @@ export function SongTag({ video }: { video: Pick<VideoDto, "song" | "songSuggest
   if (!s) return null;
   return (
     <span class={`tag song${video.songSuggested ? " sug" : ""}`} title={video.songSuggested ? `Suggested Song: ${s.name ?? "unknown"} (confirm it on Now playing)` : `Song: ${s.name ?? "unknown"}`}>
-      ♪ {s.name ?? "unknown song"}
+      {s.name ?? "unknown song"}
       {video.songSuggested && <i class="sugmark">suggested</i>}
     </span>
   );

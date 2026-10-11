@@ -4,7 +4,7 @@ import { allSongNames, splitAlternates } from "../shared/songNames";
 import { SCRIPTS, parseFootnotes } from "../shared/lyrics/scripts";
 import { sanitizeFootnoteHtml, sanitizeLine } from "../shared/lyrics/sanitize";
 import type { ScriptKey, VersionDto } from "../shared/lyrics/types";
-import type { SongRef } from "../shared/types";
+import type { SongListDto, SongRef } from "../shared/types";
 
 export interface SongRow {
   id: string;
@@ -59,4 +59,37 @@ export function videosPerforming(db: Db, songId: string): { videoId: number; sta
     )
     .all(songId, songId, songId) as { videoId: number; startS: number | null; pointed: number | null }[];
   return rows.map((r) => ({ videoId: r.videoId, startS: r.startS, pointed: !!r.pointed }));
+}
+
+/** Songs with at least one Video or Chapter pointing at them (confirmed or Suggested): counts, lyrics presence and the
+ *  poster Video (the newest by Copy mtime among its Videos, else the Video of its newest Chapter). Empty without a Mirror. */
+export function listSongs(db: Db): SongListDto[] {
+  const has = db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mirror_song'").get();
+  if (!has) return [];
+  const rows = db
+    .query(
+      `WITH used AS (
+         SELECT song_id, MAX(COALESCE((SELECT MAX(c.mtime) FROM copy c WHERE c.video_id = v.id), v.created_at)) AS newest
+           FROM video v WHERE song_id IS NOT NULL GROUP BY song_id
+         UNION ALL
+         SELECT ch.song_id, MAX(COALESCE((SELECT MAX(c.mtime) FROM copy c WHERE c.video_id = v.id), v.created_at))
+           FROM chapter ch JOIN video v ON v.id = ch.video_id WHERE ch.song_id IS NOT NULL GROUP BY ch.song_id
+       )
+       SELECT s.id, s.name, s.english_name,
+         (SELECT COUNT(*) FROM video v WHERE v.song_id = s.id) AS videos,
+         (SELECT COUNT(*) FROM chapter ch WHERE ch.song_id = s.id) AS chapters,
+         (SELECT COUNT(*) FROM mirror_version mv WHERE mv.song_id = s.id) AS versions,
+         (SELECT v.id FROM video v WHERE v.song_id = s.id
+            ORDER BY (SELECT MAX(c.mtime) FROM copy c WHERE c.video_id = v.id) DESC, v.id DESC LIMIT 1) AS posterVideo,
+         (SELECT ch.video_id FROM chapter ch WHERE ch.song_id = s.id
+            ORDER BY (SELECT MAX(c.mtime) FROM copy c WHERE c.video_id = ch.video_id) DESC, ch.id DESC LIMIT 1) AS posterChapterVideo,
+         (SELECT MAX(newest) FROM used WHERE used.song_id = s.id) AS addedAt
+       FROM mirror_song s WHERE s.id IN (SELECT song_id FROM used)
+       ORDER BY s.name COLLATE NOCASE`,
+    )
+    .all() as { id: string; name: string; english_name: string | null; videos: number; chapters: number; versions: number; posterVideo: number | null; posterChapterVideo: number | null; addedAt: string | null }[];
+  return rows.map((r) => ({
+    id: r.id, name: r.name, englishName: r.english_name, videoCount: r.videos, chapterCount: r.chapters, versionCount: r.versions,
+    posterVideoId: r.posterVideo ?? r.posterChapterVideo, addedAt: r.addedAt || null,
+  }));
 }

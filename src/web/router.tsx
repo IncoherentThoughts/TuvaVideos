@@ -1,4 +1,4 @@
-// Hand-rolled history routing (spec 9): `/`, `/play/:videoId[?t=]`, `/favorites`, `/artists`. Filters and sort live in
+// Hand-rolled history routing (spec 9): `/`, `/play/:videoId[?t=]`, `/favorites`, `/artists`, `/songs`. Filters and sort live in
 // the query string. No router library.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -39,6 +39,7 @@ export type Route =
   | { name: "lyrics"; songId: string }
   | { name: "favorites" }
   | { name: "artists" }
+  | { name: "songs" }
   | { name: "notfound" };
 
 export function matchRoute(loc: Loc): Route {
@@ -46,6 +47,7 @@ export function matchRoute(loc: Loc): Route {
   if (p === "/") return { name: "library" };
   if (p === "/favorites") return { name: "favorites" };
   if (p === "/artists") return { name: "artists" };
+  if (p === "/songs") return { name: "songs" };
   const m = p.match(/^\/play\/(\d+)$/);
   if (m) {
     const q = new URLSearchParams(loc.search);

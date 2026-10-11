@@ -197,7 +197,11 @@ Decided in #11 and #12 ([design-direction.md](design-direction.md)). Direction "
 
 Top tabs: **Library**, **Now playing**, **Favorites**, **Artists**; a search box and the Rescan button in the top bar.
 
-**Artists tab**: every Artist with at least one Video (Mirror and Local), with Video count and the poster of their most recent Video; clicking opens the Library grid filtered to that Artist. Local Artists are marked and carry the "merge into…" action (§2.3). A Local Artist's name is edited in place (click it; `PATCH /api/artists/:id`); a Mirror Artist's name belongs to the archive and is not editable. The list fills the width as a multi-column grid. Mirror Artists with no Video are not listed.
+**Artists tab**: every Artist with at least one Video (Mirror and Local), with Video count and the poster of their most recent Video; clicking opens the Library grid filtered to that Artist. Filter by name (folded, Latin or Cyrillic), by kind (all / archive / local); sort by name, Video count or latest Video; state in the query string (`/artists?q=&kind=&sort=&dir=`). Local Artists are marked and carry the "merge into…" action (§2.3). A Local Artist's name is edited in place (click it; `PATCH /api/artists/:id`); a Mirror Artist's name belongs to the archive and is not editable. The list fills the width as a multi-column grid. Mirror Artists with no Video are not listed.
+
+**Songs tab** (`/songs`, `GET /api/songs`): every Mirror Song some Video or Chapter points at (confirmed or Suggested), with its English name, Video and Chapter counts, whether the archive holds lyrics for it, and the poster of its newest Video. Opening one follows the search dropdown's rule (§6.2): Now playing on the first Video performing it with the drawer open, else `/lyrics/:songId`. Filter by name, "with lyrics" only; sort by name, Videos, Chapters or latest Video; same multi-column grid.
+
+**Favorites tab**: the same multi-column grid; filter by kind (Videos and Chapters / Videos / Chapters), Type, availability and title; sort by date starred (default, newest first), title, duration or date added (`/favorites?show=&type=&available=&q=&sort=&dir=`).
 
 ### 5.2 Library
 
@@ -331,7 +335,7 @@ Decided in #26: the parser strips a leading bullet or dash (`- 0:10 Song`), whic
 - **Logs**: stdout and `~/Library/Application Support/TuvaVideos/log.txt`.
 - **Stop**: Ctrl-C. SIGINT lets the ffmpeg job in flight finish, kills the osascript child, checkpoints SQLite, exits.
 - **Startup order**: migrations → Root availability → scan of mounted Roots (in the background) → Music.app `playerState()` read for the Automation prompt → open the tab.
-- **UI stack**: Preact + TypeScript bundled by Bun, hand-rolled history routing: `/` Library, `/play/:videoId[?t=]` Now playing, `/favorites`, `/artists`; filters and sort in the query string.
+- **UI stack**: Preact + TypeScript bundled by Bun, hand-rolled history routing: `/` Library, `/play/:videoId[?t=]` Now playing, `/favorites`, `/artists`, `/songs`; filters and sort in the query string. Tabs in this order: Now playing, Library, Songs, Artists, Favorites.
 
 ---
 

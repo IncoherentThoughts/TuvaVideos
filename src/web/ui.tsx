@@ -54,9 +54,11 @@ export function SongTag({ video }: { video: Pick<VideoDto, "song" | "songSuggest
   );
 }
 
-/** Type, Song and Artist tags. `maxArtists` caps the Artist tags; the rest fold into one "+n" tag (card layouts). */
-export function Tags({ video, maxArtists }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested">; maxArtists?: number }) {
-  const cap = maxArtists != null && video.artists.length > maxArtists;
+/** Type, Song and Artist tags. At most `maxArtists` Artist tags (3 by default, on every list screen); the rest fold into
+ *  one "+n" tag whose hover names them. Now playing's header shows every Artist through its own chip editor. */
+export const MAX_ARTIST_TAGS = 3;
+export function Tags({ video, maxArtists = MAX_ARTIST_TAGS }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested">; maxArtists?: number }) {
+  const cap = video.artists.length > maxArtists;
   const shown = cap ? video.artists.slice(0, maxArtists) : video.artists;
   const rest = cap ? video.artists.slice(maxArtists) : [];
   return (

@@ -1,7 +1,7 @@
 // Client-side data: the whole library (~1100 Videos) is fetched once and filtered in memory (ticket #23).
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
-import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, ScanDto, SearchResponse, SongDto, VideoDto, VideoPatch } from "../shared/types";
+import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { signal });
@@ -71,6 +71,7 @@ export const api = {
   videos: () => get<VideoDto[]>("/api/videos"),
   video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
   artists: () => get<ArtistDto[]>("/api/artists"),
+  songs: () => get<SongListDto[]>("/api/songs"),
   favorites: () => get<FavoriteItem[]>("/api/favorites"),
   scan: () => get<ScanDto>("/api/scan"),
   search: (q: string, signal?: AbortSignal) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`, signal),

@@ -100,6 +100,23 @@ export interface ArtistDto {
   posterVideoId: number | null;
 }
 
+/** GET /api/songs: a Mirror Song some Video or Chapter points at. */
+export interface SongListDto {
+  id: string;
+  name: string;
+  englishName: string | null;
+  /** Videos whose Song pointer is this Song (confirmed or Suggested). */
+  videoCount: number;
+  /** Chapters pointing at this Song. */
+  chapterCount: number;
+  /** Lyrics Versions in the Mirror; 0 = no lyrics. */
+  versionCount: number;
+  /** The newest of its Videos (else the Video of its newest Chapter), for the poster. */
+  posterVideoId: number | null;
+  /** Newest Copy mtime over its Videos and Chapters' Videos, ISO. */
+  addedAt: string | null;
+}
+
 export interface ChapterDto {
   id: number;
   videoId: number;

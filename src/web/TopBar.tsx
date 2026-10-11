@@ -76,10 +76,11 @@ export function TopBar({ route }: { route: Route }) {
         <img src="/olchey.svg" alt="" width="28" height="28" />
       </Link>
       <nav class="tabs">
-        {tab("library", "/", "Library")}
         {tab("play", last != null ? `/play/${last}` : null, "Now playing")}
-        {tab("favorites", "/favorites", "Favorites")}
+        {tab("library", "/", "Library")}
+        {tab("songs", "/songs", "Songs")}
         {tab("artists", "/artists", "Artists")}
+        {tab("favorites", "/favorites", "Favorites")}
       </nav>
       <div class="topright">
         {scan && <ScanIndicator scan={scan} />}

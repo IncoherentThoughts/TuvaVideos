@@ -16,7 +16,7 @@ import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
 import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, renameLocalArtist, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
 import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
-import { songDto, songRef, videosPerforming } from "./songs";
+import { listSongs, songDto, songRef, videosPerforming } from "./songs";
 import type { VideoType } from "../shared/filters";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
 
@@ -335,6 +335,7 @@ export function createHandler(s: Services) {
           return list ? json(list) : json({ error: "no such video" }, 404);
         }
         if (p === "/api/artists") return json(listArtists(s.db));
+        if (p === "/api/songs") return json(listSongs(s.db));
         if (p === "/api/studio/state") return json(s.studio.state());
         if (p === "/api/studio/search") return json({ results: await s.studio.search(url.searchParams.get("q") ?? "") });
         if ((m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})\/studio$/))) return json(await s.studio.songStudio(m[1]!));
@@ -387,7 +388,7 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/scan") return json(s.scanner.progress());
         // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
-        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/artists" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
+        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/artists" || p === "/songs" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {

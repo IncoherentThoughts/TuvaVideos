@@ -244,6 +244,14 @@ describe("Artists", () => {
     const radik = r.find((a) => a.name === "Radik Tyulush");
     expect(radik).toMatchObject({ local: true, videoCount: 2, posterVideoId: 3 });
   });
+  test("GET /api/songs: only Songs a Video or Chapter points at, counts, lyrics, poster", async () => {
+    app.db.query("UPDATE chapter SET song_id = 's1' WHERE id = 1").run();
+    const r = (await api("/api/songs")).body as any[];
+    expect(r.map((x) => x.id)).toEqual(["s1"]); // s2 is pointed at by nothing
+    expect(r[0]).toMatchObject({ name: "Сарыглар", englishName: "Saryglar (Girls)", videoCount: 1, chapterCount: 1, versionCount: 1, posterVideoId: 1 });
+    expect(r[0].addedAt).toBe("2026-01-02T00:00:00Z"); // the Chapter's Video has the newer Copy
+    app.db.query("UPDATE chapter SET song_id = NULL WHERE id = 1").run();
+  });
   test("merge: only Local into Mirror, moves links, drops duplicates, reindexes", async () => {
     expect((await post("/api/artists/1/merge-into/4")).status).toBe(409); // Mirror source
     expect((await post("/api/artists/2/merge-into/3")).status).toBe(409); // Local target
@@ -267,7 +275,7 @@ describe("Artists", () => {
 
 describe("client shell", () => {
   test("client routes serve the shell; the bundle and stylesheet are served", async () => {
-    for (const p of ["/", "/favorites", "/artists", "/play/12"]) {
+    for (const p of ["/", "/favorites", "/artists", "/songs", "/play/12"]) {
       const r = await fetch(url + p);
       expect(r.status).toBe(200);
       expect(await r.text()).toContain('<script type="module" src="/app.js">');

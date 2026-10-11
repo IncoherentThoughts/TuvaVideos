@@ -1,9 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { libraryQuery, defaultLibraryState } from "../shared/libraryView";
-import type { ArtistDto, SearchRow } from "../shared/types";
+import {
+  ARTIST_KINDS, ARTIST_SORTS, artistsQuery, cmpNullsLast, cmpText, nameMatches, naturalDir, parseArtistsSearch, type ArtistSort, type ArtistsState,
+} from "../shared/listView";
+import type { ArtistDto, VideoDto } from "../shared/types";
+import type { SearchRow } from "../shared/types";
+import { NameFilter, SortControls } from "./ListControls";
 import { api, apiError, loadArtists, reloadAll, useStore } from "./data";
 import { navigate } from "./router";
 import { Poster } from "./ui";
+
+const SORT_LABEL: Record<ArtistSort, string> = { name: "Name", videos: "Videos", added: "Latest Video" };
+const KIND_LABEL = { all: "All", mirror: "Archive", local: "Local" } as const;
+
+/** Filter and order the Artists for the page. `videos` supplies the date of each Artist's newest Video. */
+export function viewArtists(artists: ArtistDto[], st: ArtistsState, videos: VideoDto[] | null): ArtistDto[] {
+  const byId = new Map((videos ?? []).map((v) => [v.id, v]));
+  const added = (a: ArtistDto) => {
+    const v = a.posterVideoId != null ? byId.get(a.posterVideoId) : undefined;
+    return v ? (v.addedAt ?? v.createdAt) : null;
+  };
+  const sign = st.dir === "asc" ? 1 : -1;
+  const out = artists.filter((a) => (st.kind === "all" || (st.kind === "local") === a.local) && nameMatches(st.q, a.name, a.nameLatin));
+  out.sort((x, y) => {
+    let c = 0;
+    if (st.sort === "videos") c = sign * (x.videoCount - y.videoCount);
+    else if (st.sort === "added") c = cmpNullsLast(added(x), added(y), sign);
+    else c = sign * cmpText(x.name, y.name);
+    return c || cmpText(x.name, y.name);
+  });
+  return out;
+}
 
 /** "merge into…": search Mirror Artists, pick one, confirm. Only a Local Artist can be merged (spec 2.3). */
 function MergeInto({ artist, onClose }: { artist: ArtistDto; onClose: () => void }) {
@@ -180,20 +207,38 @@ function ArtistRow({ a, open, setOpen }: { a: ArtistDto; open: boolean; setOpen:
   );
 }
 
-export function Artists() {
-  const { artists } = useStore();
+export function Artists({ search }: { search: string }) {
+  const { artists, videos } = useStore();
   const [openId, setOpenId] = useState<number | null>(null);
   useEffect(() => void loadArtists(), []);
+  const st = useMemo(() => parseArtistsSearch(search), [search]);
+  const shown = useMemo(() => (artists ? viewArtists(artists, st, videos) : []), [artists, videos, st]);
+  const go = (patch: Partial<ArtistsState>) => navigate(`/artists${artistsQuery({ ...st, ...patch })}`, { replace: true });
   return (
     <div class="page">
-      <div class="controls">
-        <span class="count">{artists ? `${artists.length} Artist${artists.length === 1 ? "" : "s"} with a Video` : "loading…"}</span>
+      <div class="controls" role="toolbar" aria-label="Artist filters">
+        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name…" label="Filter Artists by name" />
+        <span class="sep" />
+        {ARTIST_KINDS.map((k) => (
+          <button key={k} class={`chip${st.kind === k ? " on" : ""}`} aria-pressed={st.kind === k} onClick={() => go({ kind: k })} title={k === "mirror" ? "Artists from the archive Mirror" : k === "local" ? "Local Artists, created here" : undefined}>
+            {KIND_LABEL[k]}
+          </button>
+        ))}
+        <span class="sep" />
+        <SortControls sorts={ARTIST_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />
+        <span class="count">{artists ? `${shown.length} of ${artists.length} Artist${artists.length === 1 ? "" : "s"}` : "loading…"}</span>
       </div>
       {artists && artists.length === 0 && (
         <div class="empty-state">No Artists are assigned to a Video yet. Artists are set from the Now playing header (ticket #24) or arrive with the archive import.</div>
       )}
+      {artists && artists.length > 0 && shown.length === 0 && (
+        <div class="empty-state">
+          No Artists match these filters.{" "}
+          <button class="linkbtn" onClick={() => navigate("/artists", { replace: true })}>Clear them</button>
+        </div>
+      )}
       <div class="alist">
-        {(artists ?? []).map((a) => (
+        {shown.map((a) => (
           <ArtistRow key={a.id} a={a} open={openId === a.id} setOpen={(v) => setOpenId(v ? a.id : null)} />
         ))}
       </div>

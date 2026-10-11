@@ -1,11 +1,41 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import { TYPES } from "../shared/filters";
+import {
+  FAV_SHOWS, FAV_SORTS, cmpNullsLast, cmpText, favoritesQuery, nameMatches, naturalDir, parseFavoritesSearch, type FavSort, type FavoritesState,
+} from "../shared/listView";
 import type { FavoriteItem } from "../shared/types";
+import { NameFilter, SortControls } from "./ListControls";
 import { api, useStore } from "./data";
 import { savePlayingFrom } from "./playingFrom";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, StripFrame, Tags, fmtDuration } from "./ui";
 
-type Show = "both" | "videos" | "chapters";
+const SORT_LABEL: Record<FavSort, string> = { starred: "Date starred", title: "Title", duration: "Duration", added: "Date added" };
+const SHOW_LABEL = { both: "Videos and Chapters", videos: "Videos", chapters: "Chapters" } as const;
+
+const titleOf = (i: FavoriteItem) => (i.kind === "video" ? i.video.title : i.chapter.title);
+const latinOf = (i: FavoriteItem) => (i.kind === "video" ? i.video.titleLatin : i.chapter.titleLatin);
+
+/** Filter and order the Favorites for the page. A Chapter's duration is its Video's; its title is its own. */
+export function viewFavorites(items: FavoriteItem[], st: FavoritesState): FavoriteItem[] {
+  const sign = st.dir === "asc" ? 1 : -1;
+  const out = items.filter(
+    (i) =>
+      (st.show === "both" || (st.show === "videos" ? i.kind === "video" : i.kind === "chapter")) &&
+      (!st.types.length || st.types.includes(i.video.type)) &&
+      (!st.availableOnly || i.video.available) &&
+      nameMatches(st.q, titleOf(i), latinOf(i), i.kind === "chapter" ? i.video.title : null, i.kind === "chapter" ? i.video.titleLatin : null),
+  );
+  out.sort((x, y) => {
+    let c = 0;
+    if (st.sort === "title") c = sign * cmpText(titleOf(x), titleOf(y));
+    else if (st.sort === "duration") c = cmpNullsLast(x.video.durationS, y.video.durationS, sign);
+    else if (st.sort === "added") c = cmpNullsLast(x.video.addedAt ?? x.video.createdAt, y.video.addedAt ?? y.video.createdAt, sign);
+    else c = cmpNullsLast(x.favoritedAt, y.favoritedAt, sign);
+    return c || cmpNullsLast(x.favoritedAt, y.favoritedAt, -1);
+  });
+  return out;
+}
 
 function VideoRow({ item, onOpen }: { item: Extract<FavoriteItem, { kind: "video" }>; onOpen: () => void }) {
   const v = item.video;
@@ -61,8 +91,7 @@ export function Favorites({ search }: { search: string }) {
   const { favVersion } = useStore();
   const [items, setItems] = useState<FavoriteItem[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const q = new URLSearchParams(search).get("show");
-  const show: Show = q === "videos" || q === "chapters" ? q : "both";
+  const st = useMemo(() => parseFavoritesSearch(search), [search]);
 
   useEffect(() => {
     let alive = true;
@@ -72,22 +101,42 @@ export function Favorites({ search }: { search: string }) {
     };
   }, [favVersion]);
 
-  const setShow = (s: Show) => navigate(`/favorites${s === "both" ? "" : `?show=${s}`}`, { replace: true });
+  const go = (patch: Partial<FavoritesState>) => navigate(`/favorites${favoritesQuery({ ...st, ...patch })}`, { replace: true });
+  const toggleType = (t: (typeof TYPES)[number]) => go({ types: st.types.includes(t) ? st.types.filter((x) => x !== t) : [...st.types, t] });
+  const shown = useMemo(() => (items ? viewFavorites(items, st) : []), [items, st]);
   const snapshot = () => savePlayingFrom("favorites", shown.map((i) => i.video.id));
-  const shown = (items ?? []).filter((i) => show === "both" || (show === "videos" ? i.kind === "video" : i.kind === "chapter"));
 
   return (
     <div class="page">
-      <div class="controls">
-        {(["both", "videos", "chapters"] as const).map((s) => (
-          <button key={s} class={`chip${show === s ? " on" : ""}`} aria-pressed={show === s} onClick={() => setShow(s)}>
-            {s === "both" ? "Videos and Chapters" : s === "videos" ? "Videos" : "Chapters"}
+      <div class="controls" role="toolbar" aria-label="Favorite filters">
+        {FAV_SHOWS.map((s) => (
+          <button key={s} class={`chip${st.show === s ? " on" : ""}`} aria-pressed={st.show === s} onClick={() => go({ show: s })}>
+            {SHOW_LABEL[s]}
           </button>
         ))}
-        <span class="count">{items ? `${shown.length} Favorite${shown.length === 1 ? "" : "s"}` : "loading…"}</span>
+        <span class="sep" />
+        {TYPES.map((t) => (
+          <button key={t} class={`chip${st.types.includes(t) ? " on" : ""}`} aria-pressed={st.types.includes(t)} onClick={() => toggleType(t)}>
+            {t}
+          </button>
+        ))}
+        <span class="sep" />
+        <button class={`chip${st.availableOnly ? " on" : ""}`} aria-pressed={st.availableOnly} onClick={() => go({ availableOnly: !st.availableOnly })}>
+          {st.availableOnly ? "Available only" : "All Videos"}
+        </button>
+        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by title…" label="Filter Favorites by title" />
+        <span class="sep" />
+        <SortControls sorts={FAV_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />
+        <span class="count">{items ? `${shown.length} of ${items.length} Favorite${items.length === 1 ? "" : "s"}` : "loading…"}</span>
       </div>
       {err && <div class="empty-state">Could not load Favorites: {err}</div>}
-      {items && shown.length === 0 && <div class="empty-state">Nothing starred yet. Press <kbd>f</kbd> on a Video in the Library to add one.</div>}
+      {items && items.length === 0 && <div class="empty-state">Nothing starred yet. Press <kbd>f</kbd> on a Video in the Library to add one.</div>}
+      {items && items.length > 0 && shown.length === 0 && (
+        <div class="empty-state">
+          No Favorites match these filters.{" "}
+          <button class="linkbtn" onClick={() => navigate("/favorites", { replace: true })}>Clear them</button>
+        </div>
+      )}
       <div class="flist">
         {shown.map((i) =>
           i.kind === "video" ? <VideoRow key={`v${i.video.id}`} item={i} onOpen={snapshot} /> : <ChapterRow key={`c${i.chapter.id}`} item={i} onOpen={snapshot} />,

@@ -219,7 +219,7 @@ Top tabs: **Library**, **Now playing**, **Favorites**, **Artists**; a search box
 
 Full-bleed poster grid. Card: Thumbnail with duration in the corner and a coloured left edge for availability; title with inline favorite badge; tint tags (Type first, then Artists); meta row of availability icon, chapter count and resolution.
 
-**Filters**: chips for Type (song / concert / interview / other), Availability (available only / all) and Favorites; Artist filter set from the Artists tab or a search filter. **Sort**: title, duration, date added, last played, views; default date added, newest first. Filter and sort state live in the URL query so a reload keeps them. The grid, the Favorites list and the Artists tab are keyboard-walkable: arrows move focus, Enter opens, `f` toggles Favorite on the focused card or row.
+**Filters**: chips for Type (song / concert / interview / other), Availability (available only / all) and Favorites; Artist filter set from the Artists tab or a search filter. **Sort**: views, title, duration, date added, last played; default views, most watched first, with unwatched Videos in date-added order, newest first. Filter and sort state live in the URL query so a reload keeps them. The grid, the Favorites list and the Artists tab are keyboard-walkable: arrows move focus, Enter opens, `f` toggles Favorite on the focused card or row.
 
 A Video's index row carries its linked Song's name and English name after the titles (+3, like an English title), so a Song search lists the Videos linked to it, confirmed or Suggested; Video rows and Library cards show the Song as a tag, dashed with a "suggested" mark while the link is only Suggested.
 

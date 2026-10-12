@@ -1,10 +1,10 @@
 // Library grid filter/sort state and its URL form (spec 5.2). Pure.
-//   /?type=song,concert&available=1&fav=1&artist=Radik_Tyulush&sort=title&dir=asc
+//   /?type=song,concert&available=1&fav=1&artist=Radik_Tyulush&sort=title&dir=asc   (default sort: views, most watched first)
 import { foldQuery } from "./fold";
 import { TYPES, type VideoType } from "./filters";
 import type { VideoDto } from "./types";
 
-export const SORTS = ["added", "title", "duration", "played", "views"] as const;
+export const SORTS = ["views", "added", "title", "duration", "played"] as const;
 export type SortKey = (typeof SORTS)[number];
 
 export interface LibraryState {
@@ -21,7 +21,7 @@ export interface LibraryState {
 export const defaultDir = (s: SortKey): "asc" | "desc" => (s === "title" ? "asc" : "desc");
 
 export const defaultLibraryState = (): LibraryState => ({
-  types: [], availableOnly: false, fav: false, artist: null, sort: "added", dir: "desc",
+  types: [], availableOnly: false, fav: false, artist: null, sort: "views", dir: "desc",
 });
 
 export function parseLibrarySearch(search: string): LibraryState {
@@ -47,7 +47,7 @@ export function libraryQuery(st: LibraryState): string {
   if (st.availableOnly) p.set("available", "1");
   if (st.fav) p.set("fav", "1");
   if (st.artist) p.set("artist", st.artist.replace(/ /g, "_"));
-  if (st.sort !== "added") p.set("sort", st.sort);
+  if (st.sort !== "views") p.set("sort", st.sort);
   if (st.dir !== defaultDir(st.sort)) p.set("dir", st.dir);
   const s = p.toString().replace(/%2C/g, ",");
   return s ? `?${s}` : "";
@@ -89,13 +89,15 @@ export function sortVideos(videos: VideoDto[], st: LibraryState): VideoDto[] {
     if (b == null) return -1;
     return sign * cmp(a, b);
   };
+  const newestFirst = (a: string | null, b: string | null) => (a == null ? 1 : b == null ? -1 : a < b ? 1 : a > b ? -1 : 0);
   const out = [...videos];
   out.sort((x, y) => {
     let c = 0;
     if (st.sort === "title") c = sign * cmpStr(x.title, y.title);
     else if (st.sort === "duration") c = nullsLast(x.durationS, y.durationS, (a, b) => a - b);
     else if (st.sort === "played") c = nullsLast(x.lastPlayedAt, y.lastPlayedAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    else if (st.sort === "views") c = sign * (x.viewCount - y.viewCount);
+    // Views (the default): most watched first; the many unwatched Videos keep the date-added order, newest first.
+    else if (st.sort === "views") c = sign * (x.viewCount - y.viewCount) || newestFirst(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt);
     else c = nullsLast(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
     return c || y.id - x.id;
   });

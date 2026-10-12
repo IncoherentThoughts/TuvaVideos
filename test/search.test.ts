@@ -123,9 +123,11 @@ describe("library view state", () => {
     expect(parseLibrarySearch("?sort=title").dir).toBe("asc"); // natural direction
     expect(parseLibrarySearch("?sort=bogus&type=nope").types).toEqual([]);
   });
-  test("default sort is date added, newest first", () => {
-    const out = viewVideos([vid(1), vid(3), vid(2)], defaultLibraryState());
-    expect(out.map((v) => v.id)).toEqual([3, 2, 1]);
+  test("default sort is views, most watched first; unwatched Videos fall back to date added, newest first", () => {
+    const out = viewVideos([vid(1), vid(3), vid(2, { viewCount: 1 })], defaultLibraryState());
+    expect(out.map((v) => v.id)).toEqual([2, 3, 1]);
+    expect(libraryQuery(defaultLibraryState())).toBe("");
+    expect(parseLibrarySearch("").sort).toBe("views");
   });
   test("filters: type, availability, favorites, artist (folded names)", () => {
     const radik = { id: 1, name: "Radik Tyulyush", nameLatin: null, local: true, suggested: false };

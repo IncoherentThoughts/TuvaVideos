@@ -1,7 +1,8 @@
 // Search results page (`/search?q=`): the Videos a query matches, laid out like the Library grid (spec 6.2). Enter in
 // the search box with no row highlighted lands here; Enter on a highlighted row still opens that row directly.
 // Each card says why it matched: the title with the match marked, a matching Chapter title, the Song's name, or the
-// first matching lyric line of a Song the Video performs.
+// first matching lyric line of a Song the Video performs. A Video reached only through a Chapter (its own title did not
+// match) opens at that Chapter's start, like the dropdown's chapter rows do.
 import type { JSX } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { parseQuery } from "../shared/filters";
@@ -25,6 +26,8 @@ export interface ResultMatch {
   songs: SongRow[];
   /** The Latin title, when the match is there and not in the title itself. */
   latin?: string;
+  /** Open the Video here: the matching Chapter's start, unless the title itself matched. */
+  startS?: number | null;
 }
 
 /** The Videos the response names, in rank order and deduplicated, with the Chapter and Song rows that point at each.
@@ -50,6 +53,19 @@ export function resultMatches(res: SearchResponse): ResultMatch[] {
   const songs = res.groups.find((g) => g.key === "songs")?.rows ?? [];
   for (const r of songs) if (r.kind === "song") for (const v of r.videos) at(v.id).songs.push(r);
   return order;
+}
+
+/** Where opening a result should start: the first matching Chapter's start when the Video was reached only through a
+ *  Chapter (directly, or through a Song performed in a Chapter); null when the title itself matched or nothing points at a time. */
+export function resultStart(m: ResultMatch, titleMatched: boolean): number | null {
+  if (titleMatched) return null;
+  const c = m.chapters[0];
+  if (c) return c.startS;
+  for (const s of m.songs) {
+    const at = s.videos.find((v) => v.id === m.id)?.startS;
+    if (at != null) return at;
+  }
+  return null;
 }
 
 /** The lines under a card's title explaining the match. The title itself carries its own <mark>s. */
@@ -109,7 +125,10 @@ export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }
     return resultMatches(res).flatMap((m) => {
       const v = byId.get(m.id);
       if (!v) return [];
-      if (res.needle && v.titleLatin && !matchRanges(v.title, res.needle).length && matchRanges(v.titleLatin, res.needle).length) m.latin = v.titleLatin;
+      const inTitle = !!res.needle && matchRanges(v.title, res.needle).length > 0;
+      const inLatin = !!res.needle && !inTitle && !!v.titleLatin && matchRanges(v.titleLatin, res.needle).length > 0;
+      if (inLatin) m.latin = v.titleLatin!;
+      m.startS = resultStart(m, inTitle || inLatin);
       return [{ v, m }];
     });
   }, [res, videos]);
@@ -151,6 +170,7 @@ export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }
                 v={v}
                 titleHtml={needle ? highlightHtml(v.title, needle) : escapeHtml(v.title)}
                 why={needle ? <Why m={m} needle={needle} /> : null}
+                startS={m.startS}
                 onOpen={() => savePlayingFrom("search", ids)}
               />
             ))}

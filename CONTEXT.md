@@ -65,7 +65,7 @@ The description, top comments and metadata fetched once for a Video's YouTube id
 _Avoid_: info json, metadata dump, scrape
 
 **Song matcher**:
-The step that attaches a Mirror Song to a Chapter or Video from its title, preferring the Songs the Video's id already links to through Performances, and tolerating spelling and script differences. Its result is always Suggested.
+The step that attaches a Song (Mirror or Local) to a Chapter or Video from its title, preferring the Songs the Video's id already links to through Performances, and tolerating spelling and script differences. Its result is always Suggested.
 _Avoid_: title matcher, fuzzy match, auto-link
 
 **Mirror**:

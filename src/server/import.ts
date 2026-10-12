@@ -6,6 +6,7 @@ import { loadConfig } from "./config";
 import { checkpoint, openDb, type Db } from "./db";
 import { applyPerformanceDefaults, type DefaultsStats } from "./defaults";
 import { suggestArtists, type ArtistSuggestStats } from "./artistSuggest";
+import { suggestSongsFromTitles, type SongSuggestStats } from "./songSuggest";
 import { fillLatinTitles, type LatinFillStats } from "./latin";
 import { initLog, log } from "./log";
 import { BackupError, importMirror, type MirrorImportResult } from "./mirror";
@@ -18,6 +19,7 @@ export interface ImportRun {
   latin: LatinFillStats;
   index: IndexStats;
   artists: ArtistSuggestStats;
+  titleSongs: SongSuggestStats;
   /** null when the matcher was skipped (no Music.app dump). */
   studio: MatchStats | null;
   totalMs: number;
@@ -28,11 +30,12 @@ export async function runImport(db: Db, backupDir: string, studio?: MatcherDeps,
   const t0 = performance.now();
   const mirror = importMirror(db, backupDir);
   const defaults = applyPerformanceDefaults(db);
+  const titleSongs = suggestSongsFromTitles(db); // after the defaults: Performances win over titles
   const latin = fillLatinTitles(db); // after the defaults: a Video that just got a Song may now have an archive spelling
   const artists = suggestArtists(db, { cacheDir }); // the Mirror's Artists just changed: offer them again
   const index = rebuildSearchIndex(db); // after the Latin titles: they are part of the indexed text
   const studioStats = await runStudioMatcher(db, studio); // after the Mirror rows exist: it matches every Mirror Track
-  return { mirror, defaults, latin, artists, index, studio: studioStats, totalMs: Math.round(performance.now() - t0) };
+  return { mirror, defaults, titleSongs, latin, artists, index, studio: studioStats, totalMs: Math.round(performance.now() - t0) };
 }
 
 export function printRun(r: ImportRun) {
@@ -42,6 +45,7 @@ export function printRun(r: ImportRun) {
   log("skipped:", r.mirror.skipped);
   log(`dangling refs: ${r.mirror.dangling.total}`, r.mirror.dangling);
   log("performance defaults:", r.defaults);
+  log("songs from titles:", r.titleSongs);
   log("latin titles:", r.latin);
   log("artist matcher:", r.artists);
   log(`search index: ${r.index.total} rows`, r.index, `${r.index.ms} ms`);

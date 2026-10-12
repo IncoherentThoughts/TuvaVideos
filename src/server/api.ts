@@ -72,7 +72,7 @@ interface VideoDbRow {
   song_id: string | null;
   version_id: string | null;
   song_suggested: number;
-  suggestion_source: "manual" | "comment" | "description" | "performance" | null;
+  suggestion_source: "manual" | "comment" | "description" | "performance" | "title" | null;
   favorited_at: string | null;
   resume_s: number | null;
   last_played_at: string | null;

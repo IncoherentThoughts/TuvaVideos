@@ -7,6 +7,7 @@ import { loadSeedHashes, seedKey, sha256File } from "./hash";
 import { log } from "./log";
 import { applyPerformanceDefaults } from "./defaults";
 import { suggestArtists } from "./artistSuggest";
+import { suggestSongsFromTitles } from "./songSuggest";
 import { fillLatinTitles } from "./latin";
 import { decidePlayback } from "./playback";
 import { probeFile } from "./probe";
@@ -253,6 +254,7 @@ export class Scanner {
     this.prog.phase = "finishing";
     await this.markMissing(root, existing, seen, failedDirs, summary);
     applyPerformanceDefaults(this.db); // Videos still at `other` with no Song (spec 2.3); edited ones are skipped
+    suggestSongsFromTitles(this.db); // then Songs from titles, for the Videos no Performance gave one
     suggestArtists(this.db, { cacheDir: this.cfg.ytCacheDir }); // Suggested Artists from titles; curated Videos are skipped
     rebuildSearchIndex(this.db);
     summary.durationMs = Date.now() - t0;
@@ -320,6 +322,7 @@ export class Scanner {
         );
       if (!found) {
         applyPerformanceDefaults(this.db, { videoId });
+        suggestSongsFromTitles(this.db, { videoId });
         suggestArtists(this.db, { videoId, cacheDir: this.cfg.ytCacheDir });
         fillLatinTitles(this.db, { videoId });
       }

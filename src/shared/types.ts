@@ -68,7 +68,7 @@ export interface VideoDto {
   versionId: string | null;
   song: SongRef | null;
   songSuggested: boolean;
-  suggestionSource: "manual" | "comment" | "description" | "performance" | null;
+  suggestionSource: "manual" | "comment" | "description" | "performance" | "title" | null;
   favoritedAt: string | null;
   resumeS: number | null;
   lastPlayedAt: string | null;

@@ -27,7 +27,7 @@ CREATE TABLE video (
   type_suggested INTEGER NOT NULL DEFAULT 0,
   song_id TEXT, version_id TEXT,          -- Mirror uuids, what a song Video performs
   song_suggested INTEGER NOT NULL DEFAULT 0,
-  suggestion_source TEXT CHECK (suggestion_source IN ('manual','comment','description','performance')),
+  suggestion_source TEXT CHECK (suggestion_source IN ('manual','comment','description','performance','title')),  -- 'title' since 0010
   favorited_at TEXT,
   resume_s REAL, last_played_at TEXT,
   thumbnail_generated_at TEXT, thumbnail_copy_id INTEGER,

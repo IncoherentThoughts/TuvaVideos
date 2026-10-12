@@ -4,6 +4,7 @@
 import type { Db } from "./db";
 import { indexSong, indexVersion, reindexVideo } from "./search";
 import { fillLatinTitles } from "./latin";
+import { suggestSongsFromTitles } from "./songSuggest";
 import { SCRIPTS, parseFootnotes } from "../shared/lyrics/scripts";
 import { sanitizeFootnoteHtml, sanitizeLine } from "../shared/lyrics/sanitize";
 import { DEFAULT_VERSION_LABEL } from "../shared/lyrics/trackVersion";
@@ -27,6 +28,14 @@ const optName = (raw: unknown, what: string): Result<string | null> => {
   return ok(t || null);
 };
 
+/** A new or renamed Song may be what some Video titles name: the title pass runs again, and the Videos it moved are reindexed. */
+function resuggest(db: Db) {
+  const touched: number[] = [];
+  suggestSongsFromTitles(db, { touched });
+  if (touched.length) fillLatinTitles(db);
+  for (const v of touched) reindexVideo(db, v);
+}
+
 export interface LocalSongRow { id: string; name: string; english_name: string | null }
 
 /** Creates a Local Song. A Song (Mirror or Local) already named so, case-insensitively, is returned instead. */
@@ -42,6 +51,7 @@ export function createLocalSong(db: Db, body: Record<string, unknown>): Result<{
   db.transaction(() => {
     db.prepare("INSERT INTO local_song (id, name, english_name, created_at) VALUES (?, ?, ?, ?)").run(id, name.value, en.value, new Date().toISOString());
     indexSong(db, id);
+    resuggest(db);
   })();
   return ok({ id, name: name.value, englishName: en.value, local: true, created: true });
 }
@@ -72,6 +82,7 @@ export function patchLocalSong(db: Db, id: string, body: Record<string, unknown>
     db.prepare("UPDATE local_song SET name = ?, english_name = ? WHERE id = ?").run(name, en, id);
     indexSong(db, id);
     for (const v of db.query("SELECT id FROM video WHERE song_id = ?").all(id) as { id: number }[]) reindexVideo(db, v.id);
+    resuggest(db);
     fillLatinTitles(db);
   })();
   return ok({ id, name, englishName: en });

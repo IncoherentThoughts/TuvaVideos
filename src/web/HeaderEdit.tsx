@@ -312,7 +312,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
       <span class="lbl">Song:</span>
       {s && !picking && (
         <span class={`achip songchip${v.songSuggested ? " sug" : ""}`}>
-          <button class="achip-main" title={v.songSuggested ? "Suggested Song (from the archive's Performances) · click to change" : "Click to change the Song"} onClick={() => setPicking(true)}>
+          <button class="achip-main" title={v.songSuggested ? `Suggested Song (${v.suggestionSource === "title" ? "from the Video's title" : "from the archive's Performances"}) · click to change` : "Click to change the Song"} onClick={() => setPicking(true)}>
             {s.name ?? <span class="dim">unknown song</span>}
             {s.englishName && <span class="en"> · {s.englishName}</span>}
           </button>

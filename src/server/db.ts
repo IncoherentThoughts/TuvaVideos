@@ -15,6 +15,8 @@ export function migrationFiles(dir: string): { version: number; name: string; fi
 }
 
 const ALREADY = /already exists|duplicate column/i;
+/** A migration that rebuilds a table other tables point at opens with this line (SQLite's 12-step table rebuild). */
+const FK_OFF = /^-- foreign_keys: off\b/m;
 
 /**
  * Applies every migration file not yet recorded in the `migration` table (one row per file name), in order.
@@ -36,9 +38,13 @@ export function migrate(db: Db, dir: string): number {
   for (const m of migrationFiles(dir)) {
     if (done.has(m.name)) continue;
     const sql = readFileSync(m.file, "utf8");
+    // foreign_keys can only change outside a transaction; the rebuild is checked before COMMIT instead
+    const fkOff = FK_OFF.test(sql);
+    if (fkOff) db.exec("PRAGMA foreign_keys = OFF");
     db.exec("BEGIN");
     try {
       db.exec(sql);
+      if (fkOff && db.query("PRAGMA foreign_key_check").all().length) throw new Error("foreign key check failed after the rebuild");
       if (m.version > applied) db.exec(`PRAGMA user_version = ${m.version}`);
       record.run(m.name, new Date().toISOString());
       db.exec("COMMIT");
@@ -50,6 +56,8 @@ export function migrate(db: Db, dir: string): number {
         continue;
       }
       throw new Error(`migration ${m.file} failed: ${e}`);
+    } finally {
+      if (fkOff) db.exec("PRAGMA foreign_keys = ON");
     }
     log(`migration ${m.name} applied`);
     applied = Math.max(applied, m.version);

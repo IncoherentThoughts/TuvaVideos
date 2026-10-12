@@ -169,7 +169,7 @@ export type SearchRow =
   | { kind: "video"; id: number; title: string; type: VideoType; durationS: number | null; available: boolean; songs: string[]; songSuggested: boolean }
   | { kind: "chapter"; id: number; videoId: number; videoTitle: string; title: string; startS: number; available: boolean }
   | { kind: "artist"; id: number; name: string; local: boolean; videoCount: number }
-  | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; viaLyrics: boolean; lyric: string | null }
+  | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; viaLyrics: boolean; lyric: string | null; /** Videos performing the Song (their Song pointer, or a Chapter with `startS`), so the results page can list them. */ videos: { id: number; startS: number | null }[] }
   | { kind: "track"; id: string; name: string; album: string | null; by: string[]; songId: string | null; versionId: string | null }
   | { kind: "album"; id: string; name: string; year: number | null; by: string | null };
 

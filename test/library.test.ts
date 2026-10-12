@@ -133,6 +133,7 @@ describe("GET /api/search", () => {
     expect(eng.rows[0]).toMatchObject({ id: "s2" });
     const lyr = group(await search("churtu"), "songs")!;
     expect(lyr.rows[0]).toMatchObject({ id: "s1", viaLyrics: true, lyric: "Улуг-Хем чурту" });
+    expect(lyr.rows[0].videos).toEqual([{ id: 1, startS: null }]); // Video 1 points at s1; the results page lists it under a lyrics hit
     const lyrCy = group(await search("Хайыракан"), "songs")!;
     expect(lyrCy.rows[0].lyric).toBe("Хайыракан тыва");
     const short = await search("ch"); // under 3 characters: lyrics are not searched

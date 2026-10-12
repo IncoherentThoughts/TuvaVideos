@@ -317,6 +317,12 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
       return [];
     }
   };
+  /** Videos performing a Song: by their Song pointer (startS null) or through a Chapter (its first start). */
+  const songVideos = (songId: string) =>
+    many<{ id: number; startS: number | null }>(
+      `SELECT id, NULL AS startS FROM video WHERE song_id = ?
+       UNION ALL SELECT video_id AS id, MIN(start_s) AS startS FROM chapter WHERE song_id = ? AND video_id NOT IN (SELECT id FROM video WHERE song_id = ?) GROUP BY video_id
+       ORDER BY id`, songId, songId, songId);
   const build = (g: Group, b: Scored): SearchRow | null => {
     const c = b.c;
     if (g === "videos") {
@@ -338,7 +344,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
     if (g === "songs") {
       const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number }>("SELECT id, name, english_name, is_hidden FROM mirror_song WHERE id = ?", c.ref);
       if (!s) return null;
-      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null };
+      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos: songVideos(s.id) };
     }
     if (g === "tracks") {
       const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM mirror_track WHERE id = ?", c.ref);

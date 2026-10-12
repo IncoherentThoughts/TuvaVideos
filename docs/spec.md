@@ -184,7 +184,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 | t | Studio playback (§7.4) |
 | y | open / close the lyrics drawer (OSD "no lyrics" when neither the Chapter nor the Video has a Song) |
 | a | Audio panel (also an "Audio" button, §4.7): the Video's Audio settings in the drawer slot; opening it closes the State panel and the lyrics drawer, and either of those closes it |
-| i | State panel (also a "State" button): in the drawer slot while no lyrics are shown, under the Player when they are. Four code-styled sections: the Video's metadata (id, title, Latin title, Type, Artists, Song, YouTube id, duration, chapters, views, added, last played, resume, favorite), live playback (state, time, rate, volume, A-B, chapter, frame, dropped frames, buffered ahead, resolution, focus, error), its Copies (root, container, codecs, resolution, fps, size, fallback) and this key table. Stays on during Studio playback |
+| i | State panel (also a "State" button): in the drawer slot while no lyrics are shown, under the Player when they are. Four code-styled sections: the Video's metadata (id, title, Latin title, Type, Artists, Song, YouTube id, duration, chapters, views, added, last played, resume, favorite), live playback (state, time, rate, volume, A-B, chapter, frame, dropped frames, buffered ahead, resolution, focus, error), its Copies (root, container, codecs, resolution, fps, size, fallback, and the file's path, which reveals it in the Finder via `POST /api/copies/:id/reveal`) and this key table. Stays on during Studio playback |
 
 ### 4.6 Visuals
 

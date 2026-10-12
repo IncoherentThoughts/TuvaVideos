@@ -56,6 +56,8 @@ export const api = {
   /** One more view of the Video; the answer is the updated Video. */
   recordView: (id: number) => send<VideoDto>("POST", `/api/videos/${id}/view`),
   resetViews: (id: number) => send<VideoDto>("DELETE", `/api/videos/${id}/view`),
+  /** Show the Copy's file in the Finder. */
+  revealCopy: (id: number) => send<{ ok: true }>("POST", `/api/copies/${id}/reveal`),
   /** The A-B loop kept on a Video; null clears it (spec 4.3). */
   setLoop: (id: number, loop: { a: number; b: number } | null) => post<{ id: number; loop: { a: number; b: number } | null }>(`/api/videos/${id}/loop`, { loop }),
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),

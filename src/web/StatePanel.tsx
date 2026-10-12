@@ -6,6 +6,7 @@ import { useEffect, useState } from "preact/hooks";
 import { fmtClock, frameNumber, type AbLoop } from "../shared/playerMath";
 import type { CopyDto, VideoDto } from "../shared/types";
 import type { ChapterMark } from "./Timeline";
+import { api } from "./data";
 import { artistSlot, resolutionLabel } from "./ui";
 
 interface Props {
@@ -84,9 +85,9 @@ function Kv({ rows }: { rows: Row[] }) {
 
 function Section({ name, color, aside, children }: { name: string; color: string; aside?: ComponentChildren; children: ComponentChildren }) {
   return (
-    <section class="stp-sec" style={{ "--c": `var(--${color})` }}>
+    <section class={`stp-sec ${name}`} style={{ "--c": `var(--${color})` }}>
       <h5>
-        <span class="cm">{"// "}{name}</span>
+        <span class="nm">{name}</span>
         {aside && <span class="aside">{aside}</span>}
       </h5>
       {children}
@@ -95,6 +96,7 @@ function Section({ name, color, aside, children }: { name: string; color: string
 }
 
 function CopyRow({ c, playing, preferred }: { c: CopyDto; playing: boolean; preferred: boolean }) {
+  const [revealErr, setRevealErr] = useState<string | null>(null);
   const mode = c.playback === "native" ? null : c.fallback.state === "ready" ? c.playback : `${c.playback} · ${c.fallback.state}${c.fallback.error ? `: ${c.fallback.error}` : ""}`;
   return (
     <div class={`cp${playing ? " playing" : ""}${c.missing || !c.available ? " off" : ""}`} title={c.url}>
@@ -112,6 +114,10 @@ function CopyRow({ c, playing, preferred }: { c: CopyDto; playing: boolean; pref
         {" · "}{fmtSize(c.size)}
         {mode && <span class="warn"> · {mode}</span>}
       </div>
+      <button class="cp3 p" title="Show in the Finder" onClick={() => api.revealCopy(c.id).then(() => setRevealErr(null), (e: Error) => setRevealErr(e.message))}>
+        {c.path}
+      </button>
+      {revealErr && <div class="bad">{revealErr}</div>}
     </div>
   );
 }
@@ -129,6 +135,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
   const curIdx = sorted.findLastIndex((c) => c.startS <= t);
   const cur = curIdx >= 0 ? sorted[curIdx] : undefined;
   const focused = document.activeElement === box.current;
+  // (the header badge reads v.paused directly, so it follows play/pause within one tick)
   const focusedName = (document.activeElement as HTMLElement | null)?.id || document.activeElement?.tagName?.toLowerCase() || "body";
   const dur = v && Number.isFinite(v.duration) ? v.duration : video.durationS;
 
@@ -194,7 +201,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
     <div class="stpanel" data-keep-focus="" role="region" aria-label="Player state">
       <div class="stp-head">
         <h4>State</h4>
-        <span class="live"><i /> live</span>
+        {v && !v.paused && !v.ended ? <span class="live on"><i /> live</span> : <span class="live"><i /> {v?.ended ? "ended" : "paused"}</span>}
         <span class="dim">press <kbd>i</kbd> to hide</span>
         <button class="ib" tabIndex={-1} aria-label="Close the State panel" onClick={onClose}>×</button>
       </div>

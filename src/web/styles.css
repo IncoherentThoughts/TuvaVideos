@@ -452,16 +452,19 @@ button.st-main:hover { background: var(--bg3); }
 .drawer.statehost .stp-cols { grid-template-columns: 1fr; }
 .stp-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .stp-head h4 { font-size: 1em; font-weight: 600; font-family: var(--font-ui); }
-.stp-head .live { display: inline-flex; align-items: center; gap: 6px; color: var(--t4); font-size: .85em; letter-spacing: .04em; }
-.stp-head .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--t4); box-shadow: 0 0 6px var(--t4); animation: stp-pulse 1.6s ease-in-out infinite; }
+.stp-head .live { display: inline-flex; align-items: center; gap: 6px; color: var(--t3); font-size: .85em; letter-spacing: .04em; }
+.stp-head .live i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.stp-head .live.on { color: var(--t4); }
+.stp-head .live.on i { box-shadow: 0 0 6px var(--t4); animation: stp-pulse 1.6s ease-in-out infinite; }
 @keyframes stp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .stp-head .dim { font-size: .85em; }
 .stp-head .ib { margin-left: auto; }
 .stp-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
 .stp-sec { --c: var(--fg3); background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 6px; padding: 8px 12px 10px; min-width: 0; }
-.stp-sec h5 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 0 6px; font-weight: 500; font-size: 1em; }
-.stp-sec h5 .cm { color: var(--c); font-style: italic; }
-.stp-sec h5 .aside { font-size: .92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.stp-sec h5 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 0 6px; font-family: var(--font-ui); font-weight: 600; font-size: .8em; }
+.stp-sec h5 .nm { color: var(--c); text-transform: uppercase; letter-spacing: .1em; }
+.stp-sec h5 .aside { font-family: var(--font-mono); font-weight: 400; }
+.stp-sec h5 .aside { font-size: 1.1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .stpanel .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; font-size: .95em; }
 .stpanel .kv b { color: var(--t6); font-weight: 500; white-space: nowrap; display: flex; gap: 10px; }
 .stpanel .kv b::before { counter-increment: ln; content: counter(ln, decimal-leading-zero); color: var(--fg3); opacity: .55; font-weight: 400; width: 2ch; text-align: right; }
@@ -486,8 +489,10 @@ button.st-main:hover { background: var(--bg3); }
 .stpanel .cp1 .root { font-size: .85em; letter-spacing: .06em; text-transform: uppercase; }
 .stpanel .cp1 .root.local { color: var(--t4); } .stpanel .cp1 .root.external { color: var(--t6); }
 .stpanel .cp2 { color: var(--fg3); overflow-wrap: anywhere; }
+.stpanel .cp3 { display: block; font: inherit; font-size: .92em; text-align: left; overflow-wrap: anywhere; padding: 0; margin-top: 2px; }
 /* keys */
-.stpanel .binds { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 12px; }
+.stp-sec.keys { grid-column: 1 / -1; }
+.stpanel .binds { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 12px; }
 .stpanel .binds span { color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .92em; }
 .stpanel .binds kbd { margin-right: 3px; color: var(--t8); background: color-mix(in srgb, var(--t8) 8%, var(--bg3)); border-color: color-mix(in srgb, var(--t8) 25%, var(--line)); }
 @media (max-width: 1000px) { .stp-cols { grid-template-columns: 1fr; } }
@@ -497,29 +502,28 @@ button.st-main:hover { background: var(--bg3); }
 .taglink:hover .tag { filter: brightness(1.2); }
 
 
-/* ---- Audio panel (spec 4.7): the same code-buffer dress as the State panel. Sections are colored blocks
-   (channels blue, equalizer purple, level orange), meters are LED strips, each EQ band has its own color. ---- */
+/* ---- Audio panel (spec 4.7); the meters are segmented LED strips ---- */
 .drawer.audio { overflow: hidden; }
 .drawer.audio .body { display: flex; flex-direction: column; gap: 10px; }
 .drawer.audio .body > * { flex: none; } /* a scrolling column: nothing may shrink */
-.au-sec { --c: var(--fg3); background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 6px; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 10px; }
-.audio h5 { font-family: var(--font-mono); font-size: .88em; color: var(--c); font-style: italic; font-weight: 500; margin: 0; display: flex; justify-content: space-between; align-items: baseline; }
-.audio h5 .dim { font-style: normal; font-weight: 500; font-size: 1em; color: var(--t4); }
+.audio h5 { font-size: .78em; text-transform: uppercase; letter-spacing: .1em; color: var(--fg3); font-weight: 600; margin: 8px 0 0; display: flex; justify-content: space-between; align-items: baseline; }
+.audio h5 .dim { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 1.05em; }
+.audio h5:first-child { margin-top: 0; }
 .audio input[type=range] { accent-color: var(--accent); flex: 1; min-width: 0; }
 .au-meters { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px 10px; font-size: .8em; }
-.au-meters .lbl { color: var(--t6); white-space: nowrap; text-align: right; }
+.au-meters .lbl { color: var(--fg3); white-space: nowrap; text-align: right; }
 .au-meters .bar { --v: 0; position: relative; height: 8px; border-radius: 2px; overflow: hidden; background: linear-gradient(90deg, var(--t4) 0 55%, var(--t3) 55% 80%, var(--t1) 80% 100%); }
 .au-meters .bar::before { content: ""; position: absolute; inset: 0; left: calc(var(--v) * 1%); background: var(--bg3); transition: left .07s linear; }
-.au-meters .bar::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 4px, var(--bg) 4px 6px); }
+.au-meters .bar::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 4px, var(--bg2) 4px 6px); }
 .au-meters .bar.dead::before { left: 3px; } .au-meters .bar.dead { background: var(--t1); }
-.au-routing { display: grid; grid-template-columns: repeat(5, 1fr); font-family: var(--font-mono); }
-.au-routing button { padding: 7px 2px; text-align: center; font-size: .85em; white-space: nowrap; }
+.au-routing { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 4px; }
+.au-routing button { padding: 7px 2px; text-align: center; font-size: .88em; white-space: nowrap; }
 .au-routing button + button { border-left: 1px solid var(--line); }
 .au-row { display: grid; grid-template-columns: 60px minmax(0, 1fr) 52px; align-items: center; gap: 12px; font-size: .9em; }
-.au-row > span:first-child { color: var(--t6); font-family: var(--font-mono); font-size: .92em; }
-.au-row b { text-align: right; font-weight: 500; font-size: .9em; white-space: nowrap; color: var(--t7); }
+.au-row > span:first-child { color: var(--fg2); }
+.au-row b { text-align: right; font-weight: 500; font-size: .9em; white-space: nowrap; }
 .au-check { grid-template-columns: auto auto minmax(0, 1fr); }
-.au-check > span { color: var(--fg); font-family: var(--font-ui); font-size: 1em; }
+.au-check > span { color: var(--fg); }
 .au-check input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 .au-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .au-chips .tag { --c: var(--fg2); padding: 0; overflow: hidden; }
@@ -531,15 +535,14 @@ button.st-main:hover { background: var(--bg3); }
 .au-chips .tag.save { --c: var(--fg3); padding: 4px 8px; border: 1px dashed var(--line); background: transparent; }
 .au-chips .tag.save:hover { color: var(--fg); border-color: var(--fg3); }
 .au-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.au-name input { flex: 1; min-width: 120px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: .9em; }
+.au-name input { flex: 1; min-width: 120px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: .9em; }
 .au-name input:focus { border-color: var(--accent); outline: none; }
 .au-name .err { width: 100%; color: var(--t1); font-size: .82em; }
-.au-faders { display: flex; justify-content: space-between; gap: 4px; padding: 2px 0 0; }
-.au-fader { --c: var(--accent); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: .75em; flex: 1; }
-.au-fader b { font-weight: 500; color: var(--fg3); }
-.au-fader.set b { color: var(--c); }
-.au-fader input[type=range] { writing-mode: vertical-lr; direction: rtl; height: 110px; width: 22px; accent-color: var(--c); }
-.au-fader span { color: var(--c); opacity: .85; }
+.au-faders { display: flex; justify-content: space-between; gap: 4px; padding: 4px 0; }
+.au-fader { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: .75em; flex: 1; }
+.au-fader b { font-weight: 500; color: var(--fg2); }
+.au-fader input[type=range] { writing-mode: vertical-lr; direction: rtl; height: 110px; width: 22px; }
+.au-fader span { color: var(--fg3); }
 .audio .note { margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--line); font-size: .82em; }
 
 /* right-click menu on a Video in a list (VideoMenu.tsx) */

@@ -9,6 +9,7 @@ import type { Roots } from "./roots";
 import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import { serveFile } from "./stream";
+import { run } from "./proc";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
 import { listArtists, listFavoriteRows, mergeArtist, recordLoop, recordResume, recordView, resetViews, setFavorite } from "./catalog";
@@ -114,6 +115,8 @@ export function createHandler(s: Services) {
     missingSince: c.missing_since,
     available: !c.missing_since && s.roots.isAvailable(c.root_id),
     url: `/copy/${c.id}`,
+    /** Where the file is on disk (the Root's path joined with the Copy's path inside it). */
+    path: join(s.roots.get(c.root_id)?.path ?? "", c.rel_path),
   });
 
   interface Extras {
@@ -435,6 +438,13 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/api\/chapters\/(\d+)\/reject$/))) {
           const r = rejectChapter(s.db, Number(m[1]));
           return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+        }
+        if ((m = p.match(/^\/api\/copies\/(\d+)\/reveal$/))) {
+          // Show the Copy's file in the Finder (the State panel's path row).
+          const c = s.db.query(`${COPY_SQL} WHERE c.id = ?`).get(Number(m[1])) as CopyDbRow | null;
+          if (!c) return json({ error: "no such copy" }, 404);
+          const r = await run("open", ["-R", copyJson(c).path], { timeout: 5000 });
+          return r.code === 0 ? json({ ok: true }) : json({ error: r.err.trim() || "open -R failed" }, 500);
         }
         if (p.startsWith("/api/studio/") || p.startsWith("/api/studio-tracks/") || /^\/api\/(tracks|songs)\//.test(p)) {
           const r = await studioPost(req, p);

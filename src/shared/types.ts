@@ -68,6 +68,8 @@ export interface VideoDto {
   favoritedAt: string | null;
   resumeS: number | null;
   lastPlayedAt: string | null;
+  /** The A-B loop left set on this Video, restored when it reopens (spec 4.3). */
+  loop: { a: number; b: number } | null;
   createdAt: string;
   durationS: number | null;
   available: boolean;

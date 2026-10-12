@@ -48,6 +48,8 @@ export const api = {
     return p;
   },
   patchVideo: (id: number, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
+  /** The A-B loop kept on a Video; null clears it (spec 4.3). */
+  setLoop: (id: number, loop: { a: number; b: number } | null) => post<{ id: number; loop: { a: number; b: number } | null }>(`/api/videos/${id}/loop`, { loop }),
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
   createArtist: (name: string) => post<{ id: number; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
   chapters: (videoId: number) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),

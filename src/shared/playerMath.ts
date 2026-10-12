@@ -69,6 +69,14 @@ export function abToggle(ab: AbLoop, t: number): { ab: AbLoop; label: string } {
   return { ab: AB_OFF, label: "A-B loop: off" };
 }
 
+/** A complete loop with both ends in order, else null (a half-set A is nothing worth keeping). */
+export type StoredLoop = { a: number; b: number };
+export function storedLoop(ab: AbLoop | StoredLoop | null | undefined): StoredLoop | null {
+  if (!ab || ab.a == null || ab.b == null) return null;
+  if (!Number.isFinite(ab.a) || !Number.isFinite(ab.b) || ab.a < 0 || ab.b - ab.a < 0.05) return null;
+  return { a: ab.a, b: ab.b };
+}
+
 /** The time to jump back to when playback has run past B (or ended with only A set), else null. */
 export function abLoopTarget(ab: AbLoop, t: number, ended = false): number | null {
   if (ab.a == null) return null;

@@ -332,6 +332,39 @@ describe("resume endpoint", () => {
   });
 });
 
+describe("loop endpoint", () => {
+  const post = (id: number, body: unknown) =>
+    fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const row = (id: number) => app.db.query("SELECT loop_a_s, loop_b_s FROM video WHERE id = ?").get(id) as { loop_a_s: number | null; loop_b_s: number | null };
+  const songId = () => (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+
+  test("a complete loop is stored per Video and reported until cleared", async () => {
+    const id = songId();
+    expect((await api(`/api/videos/${id}`)).loop).toBeNull();
+    const r = await post(id, { loop: { a: 1.5, b: 4 } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ id, loop: { a: 1.5, b: 4 } });
+    expect(row(id)).toEqual({ loop_a_s: 1.5, loop_b_s: 4 });
+    expect((await api(`/api/videos/${id}`)).loop).toEqual({ a: 1.5, b: 4 });
+    expect((await api("/api/videos")).find((v: any) => v.id === id).loop).toEqual({ a: 1.5, b: 4 });
+    expect(await (await post(id, { loop: null })).json()).toEqual({ id, loop: null });
+    expect(row(id)).toEqual({ loop_a_s: null, loop_b_s: null });
+    expect((await api(`/api/videos/${id}`)).loop).toBeNull();
+  });
+
+  test("rejects half-set, reversed, empty and malformed loops", async () => {
+    const id = songId();
+    expect((await post(id, { loop: { a: 3 } })).status).toBe(400);
+    expect((await post(id, { loop: { a: 5, b: 2 } })).status).toBe(400);
+    expect((await post(id, { loop: { a: 2, b: 2.01 } })).status).toBe(400);
+    expect((await post(id, { loop: { a: "1", b: 2 } })).status).toBe(400);
+    expect((await post(id, {})).status).toBe(400);
+    expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", body: "not json" })).status).toBe(400);
+    expect((await post(999999, { loop: null })).status).toBe(404);
+    expect(row(id)).toEqual({ loop_a_s: null, loop_b_s: null });
+  });
+});
+
 describe("screenshot endpoint", () => {
   const png = async () => {
     const out = join(base, "frame.png");

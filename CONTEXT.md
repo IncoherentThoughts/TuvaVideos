@@ -117,3 +117,13 @@ _Avoid_: EQ profile, curve, setting
 **Studio playback**:
 Playing a Studio track in Music.app, driven from the browser (play, pause, seek, loop), with the Video paused meanwhile.
 _Avoid_: Apple Music mode, audio mode, track preview
+
+### TV
+
+**TV app**:
+The app installed on the Samsung TV for browsing and watching the library with the remote. Read-only: no editing, Studio playback, Rescan or screenshots.
+_Avoid_: TV client, Tizen app, TV version
+
+**TV Server**:
+The home-network listener that the TV app talks to, started from a button in the browser app and off at every launch. Runs alongside the localhost app over the same library; the localhost app is unchanged.
+_Avoid_: LAN mode, remote server, second server, TV mode

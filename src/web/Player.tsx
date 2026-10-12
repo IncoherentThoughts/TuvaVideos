@@ -133,6 +133,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   studioOn.current = !!studio;
   const studioCtl = useRef<StudioCtl | null>(null);
   const studioBusy = useRef(false);
+  const closeStudioRef = useRef<() => Promise<void>>(async () => {});
 
   // ---- mutable state that handlers read ----
   const V = useRef(video);
@@ -385,7 +386,11 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         });
       }
     });
-    on("play", () => setPaused(false));
+    on("play", () => {
+      setPaused(false);
+      // the Video resuming by any path (click on the frame, the ⏵ button) ends Studio playback: never both at once
+      if (studioOn.current) void closeStudioRef.current();
+    });
     on("playing", () => {
       setPaused(false);
       setBuffering(false);
@@ -550,6 +555,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     setStudio(null);
     refocus();
   };
+  closeStudioRef.current = closeStudio;
 
   const perform = (a: PlayerAction) => {
     const v = vid.current;

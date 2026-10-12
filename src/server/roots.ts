@@ -50,7 +50,7 @@ export class Roots {
   seed() {
     const ins = this.db.prepare("INSERT OR IGNORE INTO root (path, kind) VALUES (?, ?)");
     ins.run(this.cfg.localRoot, "local");
-    ins.run(this.cfg.externalRoot, "external");
+    if (this.cfg.externalRoot) ins.run(this.cfg.externalRoot, "external");
   }
 
   list(): RootRow[] {

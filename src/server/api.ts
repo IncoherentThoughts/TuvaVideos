@@ -11,7 +11,7 @@ import type { Scanner } from "./scan";
 import { serveFile } from "./stream";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
-import { listArtists, listFavoriteRows, mergeArtist, recordLoop, recordResume, setFavorite } from "./catalog";
+import { listArtists, listFavoriteRows, mergeArtist, recordLoop, recordResume, recordView, resetViews, setFavorite } from "./catalog";
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
 import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, renameLocalArtist, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
@@ -75,6 +75,7 @@ interface VideoDbRow {
   favorited_at: string | null;
   resume_s: number | null;
   last_played_at: string | null;
+  view_count: number;
   loop_a_s: number | null;
   loop_b_s: number | null;
   created_at: string;
@@ -143,6 +144,7 @@ export function createHandler(s: Services) {
       favoritedAt: v.favorited_at,
       resumeS: v.resume_s,
       lastPlayedAt: v.last_played_at,
+      viewCount: v.view_count,
       loop: storedLoop({ a: v.loop_a_s, b: v.loop_b_s }),
       createdAt: v.created_at,
       addedAt: ranked.reduce<string | null>((m, c) => (m == null || c.mtime > m ? c.mtime : m), null),
@@ -380,7 +382,7 @@ export function createHandler(s: Services) {
           return json(items);
         }
         if (p === "/api/search") {
-          const r = runSearch(s.db, { isRootAvailable: (id) => s.roots.isAvailable(id) }, url.searchParams.get("q") ?? "");
+          const r = runSearch(s.db, { isRootAvailable: (id) => s.roots.isAvailable(id) }, url.searchParams.get("q") ?? "", { cap: Math.min(500, Number(url.searchParams.get("limit")) || 0) });
           return json({ needle: r.needle, groups: r.groups, ms: r.ms });
         }
         if (p === "/app.js" || p === "/app.css") return s.web.serve(p);
@@ -401,7 +403,7 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/scan") return json(s.scanner.progress());
         // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
-        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/artists" || p === "/songs" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
+        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/search" || p === "/artists" || p === "/songs" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {
@@ -437,6 +439,11 @@ export function createHandler(s: Services) {
         if (p.startsWith("/api/studio/") || p.startsWith("/api/studio-tracks/") || /^\/api\/(tracks|songs)\//.test(p)) {
           const r = await studioPost(req, p);
           if (r) return r;
+        }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/view$/))) {
+          // One more view (spec 4.3): the Player posts it the first time playback starts on a Now playing visit.
+          if (recordView(s.db, Number(m[1])) === undefined) return json({ error: "no such video" }, 404);
+          return videoResponse(Number(m[1]));
         }
         if ((m = p.match(/^\/api\/videos\/(\d+)\/resume$/))) {
           let body: { resumeS?: unknown; copyId?: unknown } = {};
@@ -492,6 +499,10 @@ export function createHandler(s: Services) {
         const body = (await req.json().catch(() => ({}))) as { eq?: unknown };
         const r = savePreset(s.db, decodeURIComponent(m[1]!), body.eq);
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)\/view$/))) {
+        if (!resetViews(s.db, Number(m[1]))) return json({ error: "no such video" }, 404);
+        return videoResponse(Number(m[1]));
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/audio-presets\/([^/]+)$/))) {
         const r = deletePreset(s.db, decodeURIComponent(m[1]!));

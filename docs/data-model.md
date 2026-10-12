@@ -5,7 +5,7 @@ Decided in [issue #13](https://github.com/IncoherentThoughts/TuvaVideos/issues/1
 ## Storage
 
 - One SQLite file plus caches under `~/Library/Application Support/TuvaVideos/` (`library.db`, `thumbs/`, `remux/`), overridable by an env var for tests.
-- `bun:sqlite`, numbered `.sql` migration files applied at startup, tracked with `PRAGMA user_version`. No ORM.
+- `bun:sqlite`, numbered `.sql` migration files applied at startup, each recorded by file name in the `migration` table (`PRAGMA user_version` still holds the highest number, and a database that predates the table is bootstrapped from it once). Two files may share a number when two branches merge side by side (0008_local_songs, 0008_loop); they apply in name order. No ORM.
 - Thumbnails and remux files are files on disk named by Video id; the database records only that they exist and which Copy they came from.
 
 ## Library tables
@@ -109,7 +109,7 @@ Rules:
 - **Song pointers are columns**: one Song/Version per Video or Chapter. Every Suggested value records its source. There is no per-Video track link: a Video's Studio tracks are derived from its Song (#15 superseded #13's `track_id` columns).
 - **Suggested Chapters** come from the pipeline in `docs/chapter-pipeline.md`; `chapter_rejection` holds the tombstones its re-runs honour.
 - **Studio tracks** live in `studio_track`, keyed by Song uuid; the Studio matcher fills it after every Mirror import, a stale persistent id triggers a re-dump and re-match (a changed confirmed match drops to Suggested). Rules in `docs/studio-playback.md`.
-- **Favorites** are `favorited_at` on Video and Chapter; the Favorites view orders by it. **Resume** is `resume_s` + `last_played_at` on Video. No play count.
+- **Favorites** are `favorited_at` on Video and Chapter; the Favorites view orders by it. **Resume** is `resume_s` + `last_played_at` on Video. **View count** is `view_count` on Video (migration 0009), bumped by `POST /api/videos/:id/view` and zeroed by `DELETE`.
 - **Artists**: one table. A Local Artist has `mirror_id` NULL. Merging a Local Artist into a Mirror one is an update of `video_artist`. Chapters carry no Artists in v1.
 
 ## Mirror tables

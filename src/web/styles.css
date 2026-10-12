@@ -137,6 +137,10 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .card:focus-visible, .card:hover { box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .card .ttl { margin-top: 8px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card .tags { margin-top: 6px; }
+.card .whys { margin-top: 5px; display: flex; flex-direction: column; gap: 2px; }
+.card .why { font-size: .88em; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .why .k { color: var(--fg3); font-family: var(--font-mono); font-size: .92em; }
+.card .why .en { color: var(--fg3); }
 .card .meta { display: flex; align-items: center; gap: 7px; margin-top: 6px; padding-left: 7px; color: var(--fg2); font-size: .88em; }
 .card .meta > span + span::before { content: "·"; margin-right: 7px; color: var(--fg3); }
 .empty-state { padding: 60px 0; text-align: center; color: var(--fg2); }
@@ -509,6 +513,13 @@ button.st-main:hover { background: var(--bg3); }
 .au-fader input[type=range] { writing-mode: vertical-lr; direction: rtl; height: 110px; width: 22px; }
 .au-fader span { color: var(--fg3); }
 .audio .note { margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--line); font-size: .82em; }
+
+/* right-click menu on a Video in a list (VideoMenu.tsx) */
+.vmenu { position: fixed; top: auto; left: auto; z-index: 60; min-width: 200px; max-width: 320px; }
+.vmenu .vm-title { font-weight: 600; padding: 3px 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vmenu .vm-meta { font-family: var(--font-mono); font-size: .85em; color: var(--fg2); padding: 0 4px 4px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.vmenu button:disabled { opacity: .5; cursor: default; }
+.vmenu .vm-err { color: var(--t1); font-size: .85em; padding: 2px 4px; }
 
 /* ---- Local Songs and Local Versions: the "local" mark, the source note above lyrics, the drawer's editor ---- */
 .localmark { font-size: .68em; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--t4); border: 1px solid color-mix(in srgb, var(--t4) 70%, transparent); border-radius: 4px; padding: 0 5px; line-height: 1.6; white-space: nowrap; align-self: center; }

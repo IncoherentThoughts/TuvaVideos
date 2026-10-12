@@ -8,7 +8,7 @@ import { api } from "./data";
 import { SEARCH_ID, releaseSearch } from "./keys";
 import { savePlayingFrom } from "./playingFrom";
 import { openLyrics } from "./lyricsNav";
-import { navigate, playHref } from "./router";
+import { navigate, playHref, searchHref } from "./router";
 import { fmtDuration } from "./ui";
 
 // Chrome fires synthetic mousemoves when rows re-render under a resting pointer; only a real move may change the
@@ -156,6 +156,13 @@ export function SearchBox() {
     (document.activeElement as HTMLElement | null)?.blur();
   };
 
+  /** Text query + Enter with no row highlighted: the results page, laid out like the Library grid. */
+  const showAll = () => {
+    navigate(searchHref(q.trim()));
+    close();
+    (document.activeElement as HTMLElement | null)?.blur();
+  };
+
   const removeChip = (token: string) => {
     const t = token.toLowerCase();
     const words = q.split(/\s+/).filter(Boolean);
@@ -179,7 +186,7 @@ export function SearchBox() {
       e.preventDefault();
       if (hi >= 0 && flat[hi]) return openRow(flat[hi]!);
       if (isFilterOnly(parsed) && hasVideoFilters(parsed)) return applyFilters();
-      if (parsed.text.trim() && flat[0]) openRow(flat[0]);
+      if (parsed.text.trim()) showAll();
     }
   };
 
@@ -230,6 +237,11 @@ export function SearchBox() {
           {filterOnlyApplicable && (
             <div class="tip">
               <kbd>Enter</kbd> applies these filters to the Library grid. <kbd>↓</kbd> then <kbd>Enter</kbd> opens a result.
+            </div>
+          )}
+          {!filterOnlyApplicable && parsed.text.trim() !== "" && flat.length > 0 && (
+            <div class="tip">
+              <kbd>Enter</kbd> shows every matching Video as a grid. <kbd>↓</kbd> then <kbd>Enter</kbd> opens a result.
             </div>
           )}
           {res && total === 0 && <div class="empty">No results for “{parsed.text || q}”</div>}

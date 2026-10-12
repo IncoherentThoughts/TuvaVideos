@@ -108,7 +108,7 @@ describe("html to lyric lines and alternates", () => {
 });
 
 const vid = (id: number, o: Partial<VideoDto> = {}): VideoDto => ({
-  id, youtubeId: null, title: `V${id}`, titleLatin: null, titleLatinSource: null, type: "other", typeSuggested: false, songId: null, versionId: null, song: null, songSuggested: false, suggestionSource: null, favoritedAt: null, resumeS: null, lastPlayedAt: null, loop: null,
+  id, youtubeId: null, title: `V${id}`, titleLatin: null, titleLatinSource: null, type: "other", typeSuggested: false, songId: null, versionId: null, song: null, songSuggested: false, suggestionSource: null, favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, loop: null,
   createdAt: "2026-01-01T00:00:00Z", addedAt: `2026-01-0${id}T00:00:00Z`, chapterCount: 0, artists: [], availability: null,
   durationS: id * 100, available: false, preferredCopyId: null, width: null, height: null, thumbnail: null, copies: [], ...o,
 });
@@ -123,9 +123,11 @@ describe("library view state", () => {
     expect(parseLibrarySearch("?sort=title").dir).toBe("asc"); // natural direction
     expect(parseLibrarySearch("?sort=bogus&type=nope").types).toEqual([]);
   });
-  test("default sort is date added, newest first", () => {
-    const out = viewVideos([vid(1), vid(3), vid(2)], defaultLibraryState());
-    expect(out.map((v) => v.id)).toEqual([3, 2, 1]);
+  test("default sort is views, most watched first; unwatched Videos fall back to date added, newest first", () => {
+    const out = viewVideos([vid(1), vid(3), vid(2, { viewCount: 1 })], defaultLibraryState());
+    expect(out.map((v) => v.id)).toEqual([2, 3, 1]);
+    expect(libraryQuery(defaultLibraryState())).toBe("");
+    expect(parseLibrarySearch("").sort).toBe("views");
   });
   test("filters: type, availability, favorites, artist (folded names)", () => {
     const radik = { id: 1, name: "Radik Tyulyush", nameLatin: null, local: true, suggested: false };
@@ -148,6 +150,8 @@ describe("library view state", () => {
     expect(run("title")).toEqual([2, 1, 3]);
     expect(run("duration")).toEqual([3, 2, 1]);
     expect(run("played")).toEqual([3, 1, 2]);
+    const seen = [vid(1, { viewCount: 2 }), vid(2, { viewCount: 0 }), vid(3, { viewCount: 5 })];
+    expect(viewVideos(seen, { ...defaultLibraryState(), sort: "views", dir: "desc" }).map((v) => v.id)).toEqual([3, 1, 2]);
     expect(viewVideos(vs, { ...defaultLibraryState(), sort: "played", dir: "asc" }).map((v) => v.id)).toEqual([1, 3, 2]);
   });
 });

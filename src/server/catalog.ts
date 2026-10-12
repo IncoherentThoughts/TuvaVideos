@@ -103,6 +103,18 @@ export function recordResume(db: Db, videoId: number, positionS: number, copyId?
   return { resumeS, finished: resumeS === 0 && positionS > 0 };
 }
 
+/** One more view of a Video (migration 0009). Returns the new count, or undefined when the Video does not exist. */
+export function recordView(db: Db, videoId: number): number | undefined {
+  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return undefined;
+  db.prepare("UPDATE video SET view_count = view_count + 1 WHERE id = ?").run(videoId);
+  return (db.query("SELECT view_count n FROM video WHERE id = ?").get(videoId) as { n: number }).n;
+}
+
+/** Resets a Video's view count to 0. False when the Video does not exist. */
+export function resetViews(db: Db, videoId: number): boolean {
+  return db.prepare("UPDATE video SET view_count = 0 WHERE id = ?").run(videoId).changes > 0;
+}
+
 /**
  * A-B loop (spec 4.3). A complete loop is kept per Video until the user turns it off; null clears it. Returns what
  * was stored, or undefined for no such Video.

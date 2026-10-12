@@ -133,6 +133,7 @@ describe("GET /api/search", () => {
     expect(eng.rows[0]).toMatchObject({ id: "s2" });
     const lyr = group(await search("churtu"), "songs")!;
     expect(lyr.rows[0]).toMatchObject({ id: "s1", viaLyrics: true, lyric: "Улуг-Хем чурту" });
+    expect(lyr.rows[0].videos).toEqual([{ id: 1, startS: null }]); // Video 1 points at s1; the results page lists it under a lyrics hit
     const lyrCy = group(await search("Хайыракан"), "songs")!;
     expect(lyrCy.rows[0].lyric).toBe("Хайыракан тыва");
     const short = await search("ch"); // under 3 characters: lyrics are not searched
@@ -177,6 +178,11 @@ describe("GET /api/search", () => {
     expect(plain.total).toBe(12);
     expect(plain.rows.length).toBe(8);
     expect(group(await search("zebra #videos"), "videos")!.rows.length).toBe(12);
+    // `limit=` (the /search results page) overrides the cap; it is clamped to 500 and ignored when not positive.
+    expect(group((await api(`/api/search?q=zebra&limit=3`)).body, "videos")!.rows.length).toBe(3);
+    expect(group((await api(`/api/search?q=zebra&limit=500`)).body, "videos")!.rows.length).toBe(12);
+    expect(group((await api(`/api/search?q=zebra&limit=0`)).body, "videos")!.rows.length).toBe(8);
+    expect(group((await api(`/api/search?q=zebra&limit=abc`)).body, "videos")!.rows.length).toBe(8);
     app.db.query("DELETE FROM video WHERE title LIKE 'Zebra %'").run();
     rebuildSearchIndex(app.db);
   });
@@ -275,7 +281,7 @@ describe("Artists", () => {
 
 describe("client shell", () => {
   test("client routes serve the shell; the bundle and stylesheet are served", async () => {
-    for (const p of ["/", "/favorites", "/artists", "/songs", "/play/12"]) {
+    for (const p of ["/", "/favorites", "/artists", "/songs", "/search", "/play/12"]) {
       const r = await fetch(url + p);
       expect(r.status).toBe(200);
       expect(await r.text()).toContain('<script type="module" src="/app.js">');

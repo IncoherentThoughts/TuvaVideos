@@ -222,12 +222,13 @@ const nameOf = (text: string) => text.split(SEP)[0] ?? text;
 
 export type SearchResult = SearchResponse & { parsed: ParsedQuery };
 
-export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
+export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: number } = {}): SearchResult {
   const t0 = performance.now();
   const parsed = parseQuery(q);
   const needle = foldQuery(parsed.text);
   const groups = effectiveGroups(parsed);
-  const cap = rowCap(parsed);
+  // `opts.cap` lets the results page (/search) ask for more rows than the dropdown shows.
+  const cap = opts.cap && opts.cap > 0 ? opts.cap : rowCap(parsed);
   const bare = needle === "";
   if (bare && !(parsed.groups.length || hasVideoFilters(parsed) || parsed.lyricsOnly)) return { needle, groups: [], ms: 0, parsed };
 
@@ -341,6 +342,12 @@ export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
       return [];
     }
   };
+  /** Videos performing a Song: by their Song pointer (startS null) or through a Chapter (its first start). */
+  const songVideos = (songId: string) =>
+    many<{ id: number; startS: number | null }>(
+      `SELECT id, NULL AS startS FROM video WHERE song_id = ?
+       UNION ALL SELECT video_id AS id, MIN(start_s) AS startS FROM chapter WHERE song_id = ? AND video_id NOT IN (SELECT id FROM video WHERE song_id = ?) GROUP BY video_id
+       ORDER BY id`, songId, songId, songId);
   const build = (g: Group, b: Scored): SearchRow | null => {
     const c = b.c;
     if (g === "videos") {
@@ -362,7 +369,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
     if (g === "songs") {
       const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number; local: number }>("SELECT id, name, english_name, is_hidden, local FROM song_all WHERE id = ?", c.ref);
       if (!s) return null;
-      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, local: !!s.local, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null };
+      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, local: !!s.local, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos: songVideos(s.id) };
     }
     if (g === "tracks") {
       const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM mirror_track WHERE id = ?", c.ref);

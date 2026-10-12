@@ -5,31 +5,54 @@ import { log } from "./log";
 
 export type Db = Database;
 
-/** Numbered migrations `NNNN_name.sql`; the highest applied number lives in PRAGMA user_version. */
-export function migrationFiles(dir: string): { version: number; file: string }[] {
+/** Numbered migrations `NNNN_name.sql`, in number order (files sharing a number, from branches merged side by side, in name order). */
+export function migrationFiles(dir: string): { version: number; name: string; file: string }[] {
   return readdirSync(dir)
     .filter((f) => /^\d+_.*\.sql$/.test(f))
-    .map((f) => ({ version: Number(f.split("_")[0]), file: join(dir, f) }))
+    .sort()
+    .map((f) => ({ version: Number(f.split("_")[0]), name: f, file: join(dir, f) }))
     .sort((a, b) => a.version - b.version);
 }
 
+const ALREADY = /already exists|duplicate column/i;
+
+/**
+ * Applies every migration file not yet recorded in the `migration` table (one row per file name), in order.
+ * `PRAGMA user_version` still tracks the highest number applied, for readers of older databases.
+ *
+ * Before the table existed, user_version alone recorded progress, and two branches merged with the same number
+ * (0008_local_songs + 0008_loop) could leave a database past 8 with only one of them applied. A database with no
+ * rows and a user_version above 0 is bootstrapped once: every file numbered at or below user_version is tried, and
+ * one that fails only because its objects already exist is recorded as applied (each file opens with a CREATE or an
+ * ALTER ... ADD COLUMN, so a re-run stops on its first statement and changes nothing).
+ */
 export function migrate(db: Db, dir: string): number {
+  db.exec("CREATE TABLE IF NOT EXISTS migration (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)");
   const current = (db.query("PRAGMA user_version").get() as { user_version: number }).user_version;
+  const done = new Set((db.query("SELECT name FROM migration").all() as { name: string }[]).map((r) => r.name));
+  const legacy = done.size === 0 && current > 0;
+  const record = db.prepare("INSERT OR IGNORE INTO migration (name, applied_at) VALUES (?, ?)");
   let applied = current;
   for (const m of migrationFiles(dir)) {
-    if (m.version <= current) continue;
+    if (done.has(m.name)) continue;
     const sql = readFileSync(m.file, "utf8");
     db.exec("BEGIN");
     try {
       db.exec(sql);
-      db.exec(`PRAGMA user_version = ${m.version}`);
+      if (m.version > applied) db.exec(`PRAGMA user_version = ${m.version}`);
+      record.run(m.name, new Date().toISOString());
       db.exec("COMMIT");
     } catch (e) {
       db.exec("ROLLBACK");
+      if (legacy && m.version <= current && ALREADY.test(String(e))) {
+        record.run(m.name, new Date().toISOString());
+        log(`migration ${m.name} was already applied (recorded)`);
+        continue;
+      }
       throw new Error(`migration ${m.file} failed: ${e}`);
     }
-    log(`migration ${m.version} applied`);
-    applied = m.version;
+    log(`migration ${m.name} applied`);
+    applied = Math.max(applied, m.version);
   }
   return applied;
 }

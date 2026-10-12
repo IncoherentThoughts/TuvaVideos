@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { useMemo } from "preact/hooks";
 import { TYPES } from "../shared/filters";
 import {
@@ -10,17 +11,18 @@ import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, Tags, resolutionLabel } from "./ui";
 import { useWindowed } from "./windowed";
 
-const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played" };
+const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
-function Card({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
+export function Card({ v, onOpen, titleHtml, why }: { v: VideoDto; onOpen: () => void; /** Title with <mark>s (search results); plain title otherwise. */ titleHtml?: string; /** Why the search matched: lines under the title. */ why?: ComponentChildren }) {
   const res = resolutionLabel(v.height);
   return (
     <Link href={playHref(v.id)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <Poster video={v} dur edge />
       <div class="ttl">
         {v.favoritedAt && <FavoriteBadge />}
-        {v.title}
+        {titleHtml != null ? <span dangerouslySetInnerHTML={{ __html: titleHtml }} /> : v.title}
       </div>
+      {why}
       <Tags video={v} />
       <div class="meta">
         <AvailabilityIcon availability={v.availability} />

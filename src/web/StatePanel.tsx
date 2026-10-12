@@ -21,6 +21,8 @@ interface Props {
   vid: { current: HTMLVideoElement | null };
   box: { current: HTMLDivElement | null };
   copyLabel: string;
+  /** The Video's view count (migration 0009). */
+  views: number;
   fps: number | null;
   ab: AbLoop;
   chapters: ChapterMark[];
@@ -56,7 +58,7 @@ const BINDINGS: [string[], string][] = [
   [["Esc"], "back to the Player"], [[], ""],
 ];
 
-export function StatePanel({ vid, box, copyLabel, fps, ab, chapters, seeks, keys, onClose }: Props) {
+export function StatePanel({ vid, box, views, copyLabel, fps, ab, chapters, seeks, keys, onClose }: Props) {
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 250);
@@ -74,6 +76,7 @@ export function StatePanel({ vid, box, copyLabel, fps, ab, chapters, seeks, keys
     rows.push(
       ["src", v.currentSrc.replace(location.origin, "") || "—"],
       ["copy", copyLabel],
+      ["views", `${views} (right-click the Video in a list to reset)`],
       ["readyState", READY[v.readyState] ?? String(v.readyState)],
       ["network", NET[v.networkState] ?? String(v.networkState)],
       ["focus", focused ? "player (keys captured)" : `${(document.activeElement as HTMLElement | null)?.id || document.activeElement?.tagName?.toLowerCase() || "body"} (keys pass)`, focused ? "good" : "warn"],

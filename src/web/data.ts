@@ -29,7 +29,7 @@ export function apiError(e: unknown): string {
   return m;
 }
 
-async function send<T>(method: "PATCH" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
+async function send<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!r.ok) throw new Error(`${url}: ${r.status} ${await r.text().catch(() => "")}`);
   return (await r.json()) as T;
@@ -53,6 +53,9 @@ export const api = {
     return p;
   },
   patchVideo: (id: number, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
+  /** One more view of the Video; the answer is the updated Video. */
+  recordView: (id: number) => send<VideoDto>("POST", `/api/videos/${id}/view`),
+  resetViews: (id: number) => send<VideoDto>("DELETE", `/api/videos/${id}/view`),
   /** The A-B loop kept on a Video; null clears it (spec 4.3). */
   setLoop: (id: number, loop: { a: number; b: number } | null) => post<{ id: number; loop: { a: number; b: number } | null }>(`/api/videos/${id}/loop`, { loop }),
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
@@ -97,7 +100,7 @@ export const api = {
   songs: () => get<SongListDto[]>("/api/songs"),
   favorites: () => get<FavoriteItem[]>("/api/favorites"),
   scan: () => get<ScanDto>("/api/scan"),
-  search: (q: string, signal?: AbortSignal) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`, signal),
+  search: (q: string, signal?: AbortSignal, limit?: number) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`, signal),
   rescan: () => post<{ queued: number[] }>("/api/rescan"),
   quit: () => post<{ quitting: true }>("/api/quit"),
   setFavorite: (kind: "video" | "chapter", id: number, favorite?: boolean) =>

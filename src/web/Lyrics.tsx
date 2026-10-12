@@ -181,26 +181,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
     <aside class="drawer" ref={root} tabIndex={-1} data-lyrics-drawer="" aria-label="Lyrics" onKeyDown={onKeyDown}>
       <div class="hd">
         <div class="row">
-          <span class="hctl">
-            <span class="seg" role="group" aria-label="Script">
-              {SCRIPTS.map((x) => (
-                <button key={x.key} class={sc === x.key ? "on" : ""} aria-pressed={sc === x.key} disabled={!present.includes(x.key)} title={present.includes(x.key) ? undefined : `This Version has no ${x.label}`} onClick={() => chooseScript(x.key)}>
-                  {x.label}
-                </button>
-              ))}
-            </span>
-            {song && !editing && (
-              <button class="ib add" aria-label="Add a local Version" title="Write a local lyrics Version for this Song" onClick={() => setEditing({ versionId: null })}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 4v16M4 12h16" /></svg>
-              </button>
-            )}
-            {onClose && (
-              <button class="ib close" aria-label="Close lyrics" title="Close (Esc while the drawer has focus)" onClick={onClose}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg>
-              </button>
-            )}
-          </span>
-          {/* The title comes after the floated controls so it flows around them: a long name wraps to the full drawer width below. */}
+          {/* Title first; the controls sit beside it when they fit and drop below it (right-aligned) when they do not. */}
           <span class="ttl">
             {song?.local && !renaming ? (
               <span
@@ -232,6 +213,25 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
             )}
             {song?.englishName && <span class="en">· {song.englishName}</span>}
             {song?.local && <span class="localmark" title="A local Song: created in this library, not in the archive">local song</span>}
+          </span>
+          <span class="hctl">
+            <span class="seg" role="group" aria-label="Script">
+              {SCRIPTS.map((x) => (
+                <button key={x.key} class={sc === x.key ? "on" : ""} aria-pressed={sc === x.key} disabled={!present.includes(x.key)} title={present.includes(x.key) ? undefined : `This Version has no ${x.label}`} onClick={() => chooseScript(x.key)}>
+                  {x.label}
+                </button>
+              ))}
+            </span>
+            {song && !editing && (
+              <button class="ib add" aria-label="Add a local Version" title="Write a local lyrics Version for this Song" onClick={() => setEditing({ versionId: null })}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 4v16M4 12h16" /></svg>
+              </button>
+            )}
+            {onClose && (
+              <button class="ib close" aria-label="Close lyrics" title="Close (Esc while the drawer has focus)" onClick={onClose}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg>
+              </button>
+            )}
           </span>
         </div>
         {renameErr && <div class="edit-err" role="alert">{renameErr}</div>}

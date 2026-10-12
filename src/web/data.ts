@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { AudioPreset, AudioState } from "../shared/audio";
 import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
-import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
+import type { VersionInput } from "../shared/lyrics/types";
+import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { navigate, playHref } from "./router";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -36,8 +37,12 @@ async function send<T>(method: "PATCH" | "PUT" | "DELETE", url: string, body?: u
 
 const songCache = new Map<string, Promise<SongDto>>();
 
+/** Forgets a cached Song (a Local Version was written, or a Local Song renamed) so the next read is fresh. */
+export const forgetSong = (id: string) => void songCache.delete(id);
+
 export const api = {
-  /** A Song with its Versions. Cached for the page's life: the Mirror only changes through the CLI import. */
+  /** A Song with its Versions. Cached for the page's life: the Mirror only changes through the CLI import, and the
+   *  local edits call forgetSong. */
   song: (id: string): Promise<SongDto> => {
     let p = songCache.get(id);
     if (!p) {
@@ -50,6 +55,13 @@ export const api = {
   patchVideo: (id: number, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
   createArtist: (name: string) => post<{ id: number; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
+  // Local Songs and Local Versions (lyrics written here, outside the Mirror).
+  createSong: (body: LocalSongCreate) => post<{ id: string; name: string; englishName: string | null; local: boolean; created: boolean }>("/api/songs", body),
+  patchSong: (id: string, body: Partial<LocalSongCreate>) => send<{ id: string; name: string; englishName: string | null }>("PATCH", `/api/songs/${encodeURIComponent(id)}`, body).finally(() => forgetSong(id)),
+  deleteSong: (id: string) => send<{ deleted: true }>("DELETE", `/api/songs/${encodeURIComponent(id)}`).finally(() => forgetSong(id)),
+  addVersion: (songId: string, body: VersionInput) => post<{ id: string }>(`/api/songs/${encodeURIComponent(songId)}/versions`, body).finally(() => forgetSong(songId)),
+  patchVersion: (songId: string, id: string, body: VersionInput) => send<{ id: string }>("PATCH", `/api/versions/${encodeURIComponent(id)}`, body).finally(() => forgetSong(songId)),
+  deleteVersion: (songId: string, id: string) => send<{ deleted: true }>("DELETE", `/api/versions/${encodeURIComponent(id)}`).finally(() => forgetSong(songId)),
   chapters: (videoId: number) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),
   // Audio settings (spec 4.7): per Video; `state: null` clears them. Presets: built-in and custom EQ curves.
   audio: (videoId: number) => get<{ state: AudioState | null }>(`/api/videos/${videoId}/audio`),

@@ -67,7 +67,7 @@ function checkSong(db: Db, songId: unknown, versionId: unknown, current: { song_
   let version = current.version_id;
   if (songId !== undefined) {
     if (songId !== null && typeof songId !== "string") return bad("songId must be a string or null");
-    if (songId && !db.query("SELECT 1 FROM mirror_song WHERE id = ?").get(songId)) return bad("unknown song (import the Mirror first?)", 404);
+    if (songId && !db.query("SELECT 1 FROM song_all WHERE id = ?").get(songId)) return bad("unknown song (import the Mirror first, or add a local Song)", 404);
     if ((songId ?? null) !== song) version = null; // a different Song starts on its default Version
     song = songId ?? null;
   }
@@ -75,7 +75,7 @@ function checkSong(db: Db, songId: unknown, versionId: unknown, current: { song_
     if (versionId !== null && typeof versionId !== "string") return bad("versionId must be a string or null");
     if (versionId) {
       if (!song) return bad("versionId needs a Song");
-      if (!db.query("SELECT 1 FROM mirror_version WHERE id = ? AND song_id = ?").get(versionId, song)) return bad("that Version does not belong to the Song");
+      if (!db.query("SELECT 1 FROM version_all WHERE id = ? AND song_id = ?").get(versionId, song)) return bad("that Version does not belong to the Song");
     }
     version = versionId ?? null;
   }

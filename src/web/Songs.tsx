@@ -1,4 +1,5 @@
-// /songs: every Mirror Song some Video or Chapter points at, with counts; filter by name, archive lyrics, sort.
+// /songs: every Mirror Song some Video or Chapter points at, and every Local Song, with counts; filter by name, lyrics,
+// sort; "New local Song…" makes a Local Song and opens its lyrics page so lyrics can be written.
 // Opening a Song follows the search dropdown's rule (lyricsNav.ts): the first Video performing it with the drawer
 // open, else the lyrics page on its own.
 import { useEffect, useMemo, useState } from "preact/hooks";
@@ -7,7 +8,7 @@ import {
 } from "../shared/listView";
 import type { SongListDto } from "../shared/types";
 import { NameFilter, SortControls } from "./ListControls";
-import { api, useStore } from "./data";
+import { api, apiError, useStore } from "./data";
 import { openLyrics } from "./lyricsNav";
 import { navigate } from "./router";
 import { Poster } from "./ui";
@@ -52,10 +53,17 @@ function SongRow({ s }: { s: SongListDto }) {
         <div class="nm">
           <span class="nm-text">{s.name}</span>
           {s.englishName && <span class="en">{s.englishName}</span>}
+          {s.local && <span class="localmark" title="A local Song: created in this library, not in the archive">local</span>}
         </div>
         <div class="cnt">
-          {counts.join(" · ")}
-          {s.versionCount > 0 ? <span class="lyr-mark" title={`${plural(s.versionCount, "lyrics Version")} in the archive`}> · lyrics</span> : <span class="dim"> · no lyrics</span>}
+          {counts.join(" · ") || <span class="dim">no Video yet</span>}
+          {s.versionCount > 0 ? (
+            <span class="lyr-mark" title={`${plural(s.versionCount, "lyrics Version")}${s.localVersionCount ? ` (${s.localVersionCount} local)` : " in the archive"}`}>
+              {" "}· lyrics{s.localVersionCount > 0 && <span class="dim"> ({s.localVersionCount === s.versionCount ? "local" : `${s.localVersionCount} local`})</span>}
+            </span>
+          ) : (
+            <span class="dim"> · no lyrics</span>
+          )}
         </div>
       </div>
     </div>
@@ -65,6 +73,20 @@ function SongRow({ s }: { s: SongListDto }) {
 export function Songs({ search }: { search: string }) {
   const [songs, setSongs] = useState<SongListDto[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+  const create = async (name: string) => {
+    const t = name.trim();
+    if (!t) return void setCreating(false);
+    try {
+      const s = await api.createSong({ name: t });
+      setCreating(false);
+      setCreateErr(null);
+      navigate(`/lyrics/${s.id}`);
+    } catch (e) {
+      setCreateErr(apiError(e));
+    }
+  };
   const st = useMemo(() => parseSongsSearch(search), [search]);
   useEffect(() => {
     let alive = true;
@@ -85,8 +107,26 @@ export function Songs({ search }: { search: string }) {
         </button>
         <span class="sep" />
         <SortControls sorts={SONG_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />
+        <span class="sep" />
+        {!creating ? (
+          <button class="btn small" onClick={() => setCreating(true)} title="Make a Song the archive does not have; its lyrics are written on its page">
+            + New local Song…
+          </button>
+        ) : (
+          <input
+            class="pk-in"
+            autoFocus
+            placeholder="Song name (Enter to create)"
+            aria-label="New local Song name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.preventDefault(), void create((e.target as HTMLInputElement).value));
+              else if (e.key === "Escape") (e.preventDefault(), setCreating(false), setCreateErr(null));
+            }}
+          />
+        )}
         <span class="count">{songs ? `${shown.length} of ${songs.length} Song${songs.length === 1 ? "" : "s"}` : "loading…"}</span>
       </div>
+      {createErr && <div class="edit-err" role="alert">{createErr}</div>}
       {err && <div class="empty-state">Could not load Songs: {err}</div>}
       {songs && songs.length === 0 && <div class="empty-state">No Song is linked to a Video or Chapter yet. Songs arrive with the archive import and are attached from Now playing.</div>}
       {songs && songs.length > 0 && shown.length === 0 && (

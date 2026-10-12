@@ -363,6 +363,12 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .drawer .hd { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .drawer .hd .row { display: flex; gap: 8px; align-items: flex-start; }
 .drawer .hd .row .seg, .drawer .hd .row .ib { flex: none; }
+.drawer .hd .row .ib { --c: var(--accent); width: 25px; height: 25px; font-size: 1.1em; border-radius: calc(var(--r) * .6); color: var(--c); background: color-mix(in srgb, var(--c) 9%, transparent); border: 1px solid color-mix(in srgb, var(--c) 28%, var(--line)); }
+.drawer .hd .row .ib:hover { background: color-mix(in srgb, var(--c) 20%, transparent); border-color: color-mix(in srgb, var(--c) 50%, var(--line)); }
+.drawer .hd .row .ib.add { --c: var(--t3); }
+.drawer .hd .row .ib.close { --c: var(--no); }
+/* Odd-sized icons in the 23px inner box leave whole-pixel margins, so the strokes land on the exact centre. */
+.drawer .hd .row .ib svg { display: block; }
 .drawer .hd .row .ttl { flex: 1; }
 .drawer .hd .ttl { font-weight: 600; font-size: 1.05em; display: flex; gap: 6px; align-items: baseline; min-width: 0; flex-wrap: wrap; padding-top: 2px; }
 .drawer .hd .ttl .en { font-weight: 400; color: var(--fg3); font-size: .9em; }

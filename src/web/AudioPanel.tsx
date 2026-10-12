@@ -33,12 +33,16 @@ function useLevels(vid: Props["vid"]) {
   return lv;
 }
 
+// A segmented LED meter: the bar holds a green→yellow→red gradient, `--v` (0–100) uncovers it from the left.
 const Meter = ({ v, label }: { v: number; label: string }) => (
   <>
     <span class="lbl mono">{label}</span>
-    <div class="bar" title={`${label}: ${Math.round(v * 100)}`}><i style={{ width: `${Math.round(v * 100)}%` }} class={v < 0.02 ? "dead" : ""} /></div>
+    <div class={`bar${v < 0.02 ? " dead" : ""}`} title={`${label}: ${Math.round(v * 100)}`} style={{ "--v": Math.round(v * 100) }} />
   </>
 );
+
+/** One gruvbox slot per band, low to high: red, orange, yellow, green, aqua, blue, purple. */
+const BAND_COLORS = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
 
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n}`;
 
@@ -80,7 +84,8 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
         </div>
       </div>
       <div class="body">
-        <h5>Channels</h5>
+        <section class="au-sec" style={{ "--c": "var(--t6)" }}>
+        <h5><span class="cm">{"// "}channels</span></h5>
         <div class="au-meters">
           <Meter v={lv.in[0]} label="in L" /><Meter v={lv.in[1]} label="in R" />
           <Meter v={lv.out[0]} label="out L" /><Meter v={lv.out[1]} label="out R" />
@@ -107,8 +112,10 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <input type="range" min={0} max={VOL_MAX} step={0.05} value={s.volR} onInput={(e) => onChange({ volR: +e.currentTarget.value })} onDblClick={() => onChange({ volR: 1 })} />
           <b class="mono">{Math.round(s.volR * 100)}</b>
         </label>
+        </section>
 
-        <h5>Equalizer <span class="dim">{preset?.name ?? "custom"}</span></h5>
+        <section class="au-sec" style={{ "--c": "var(--t7)" }}>
+        <h5><span class="cm">{"// "}equalizer</span> <span class="dim">{preset?.name ?? "custom"}</span></h5>
         <div class="au-chips">
           {presets.map((p) => (
             <span key={p.name} class={`tag${preset?.name === p.name ? " on" : ""}${p.builtIn ? "" : " custom"}`} title={p.blurb ?? `custom: ${p.eq.map(signed).join(" ")}`}>
@@ -132,15 +139,17 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
         )}
         <div class="au-faders">
           {BANDS.map((b, i) => (
-            <label key={b.hz} class="au-fader" title={`${b.hz} Hz · double-click to zero`}>
+            <label key={b.hz} class={`au-fader${s.eq[i] ? " set" : ""}`} style={{ "--c": `var(--${BAND_COLORS[i]})` }} title={`${b.hz} Hz · double-click to zero`}>
               <b class="mono">{signed(s.eq[i]!)}</b>
               <input type="range" min={EQ_MIN} max={EQ_MAX} step={1} value={s.eq[i]} aria-label={`${b.hz} Hz`} onInput={(e) => setBand(i, +e.currentTarget.value)} onDblClick={() => setBand(i, 0)} />
               <span class="mono">{b.label}</span>
             </label>
           ))}
         </div>
+        </section>
 
-        <h5>Level</h5>
+        <section class="au-sec" style={{ "--c": "var(--t2)" }}>
+        <h5><span class="cm">{"// "}level</span></h5>
         <label class="au-row">
           <span>Preamp</span>
           <input type="range" min={PREAMP_MIN} max={PREAMP_MAX} step={1} value={s.preamp} onInput={(e) => onChange({ preamp: +e.currentTarget.value })} onDblClick={() => onChange({ preamp: 0 })} />
@@ -151,7 +160,8 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <span>Even out loudness</span>
           <input type="range" min={0} max={1} step={0.05} value={s.compressAmount} disabled={!s.compress} aria-label="Leveler amount" onInput={(e) => onChange({ compressAmount: +e.currentTarget.value })} />
         </label>
-        <p class="note dim">Saved for this Video. <kbd>Esc</kbd> returns to the Player.</p>
+        </section>
+        <p class="note dim mono">{"// "}saved for this Video · <kbd>Esc</kbd> returns to the Player</p>
       </div>
     </aside>
   );

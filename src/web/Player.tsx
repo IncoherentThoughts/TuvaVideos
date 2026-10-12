@@ -6,7 +6,7 @@ import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies"
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, keyAction, type PlayerAction } from "../shared/keymap";
 import {
-  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, speedBy, volumeBy, type AbLoop,
+  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, speedBy, storedLoop, volumeBy, type AbLoop,
 } from "../shared/playerMath";
 import { RESUME_INTERVAL_MS, ResumeClock, startPosition } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
@@ -120,7 +120,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const [vol, setVol] = useState({ volume: audio.volume, muted: audio.muted });
   const [buffering, setBuffering] = useState(false);
   const [fs, setFs] = useState(false);
-  const [ab, setAb] = useState<AbLoop>(AB_OFF);
+  const [ab, setAb] = useState<AbLoop>(() => storedLoop(video.loop) ?? AB_OFF); // a loop left set last time comes back (spec 4.3)
   const [aspect, setAspect] = useState<number | null>(null);
   const [osd, setOsd] = useState<{ text: string; n: number } | null>(null);
   const [osdFlash, setOsdFlash] = useState(false);
@@ -148,7 +148,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     lastPos: 0,
     hold: 0, // position kept while "Copy unavailable"
     wasPlaying: true,
-    ab: AB_OFF as AbLoop,
+    ab: (storedLoop(video.loop) ?? AB_OFF) as AbLoop,
     phase: "loading" as Phase,
     osdN: 0,
     osdTimer: 0 as unknown as ReturnType<typeof setTimeout>,
@@ -608,10 +608,14 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         toggleFullscreen();
         break;
       case "abLoop": {
+        const was = storedLoop(R.current.ab);
         const s = abToggle(R.current.ab, v.currentTime);
         R.current.ab = s.ab;
         setAb(s.ab);
         say(s.label);
+        // persist a complete loop, and its clearing; a half-set A is not kept (spec 4.3)
+        const now = storedLoop(s.ab);
+        if (now || was) void api.setLoop(V.current.id, now).catch(() => {});
         break;
       }
       case "chapter": {

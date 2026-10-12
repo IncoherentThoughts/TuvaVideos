@@ -11,7 +11,7 @@ import type { Scanner } from "./scan";
 import { serveFile } from "./stream";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
-import { listArtists, listFavoriteRows, mergeArtist, recordResume, setFavorite } from "./catalog";
+import { listArtists, listFavoriteRows, mergeArtist, recordLoop, recordResume, setFavorite } from "./catalog";
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
 import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, renameLocalArtist, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
@@ -19,6 +19,7 @@ import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, list
 import { listSongs, songDto, songRef, videosPerforming } from "./songs";
 import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } from "./audio";
 import type { VideoType } from "../shared/filters";
+import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
 
 export interface Services {
@@ -73,6 +74,8 @@ interface VideoDbRow {
   favorited_at: string | null;
   resume_s: number | null;
   last_played_at: string | null;
+  loop_a_s: number | null;
+  loop_b_s: number | null;
   created_at: string;
   thumbnail_generated_at: string | null;
   thumbnail_copy_id: number | null;
@@ -139,6 +142,7 @@ export function createHandler(s: Services) {
       favoritedAt: v.favorited_at,
       resumeS: v.resume_s,
       lastPlayedAt: v.last_played_at,
+      loop: storedLoop({ a: v.loop_a_s, b: v.loop_b_s }),
       createdAt: v.created_at,
       addedAt: ranked.reduce<string | null>((m, c) => (m == null || c.mtime > m ? c.mtime : m), null),
       chapterCount: extras.chapterCount,
@@ -440,6 +444,22 @@ export function createHandler(s: Services) {
           } catch {}
           if (typeof body.resumeS !== "number" || !Number.isFinite(body.resumeS) || body.resumeS < 0) return json({ error: "resumeS must be a number >= 0" }, 400);
           const r = recordResume(s.db, Number(m[1]), body.resumeS, typeof body.copyId === "number" ? body.copyId : null);
+          if (!r) return json({ error: "no such video" }, 404);
+          return json({ id: Number(m[1]), ...r });
+        }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/loop$/))) {
+          let body: { loop?: unknown } = {};
+          try {
+            body = (await req.json()) as typeof body;
+          } catch {
+            return json({ error: "body must be JSON" }, 400);
+          }
+          const l = body.loop;
+          if (l !== null) {
+            const ok = typeof l === "object" && l != null && typeof (l as StoredLoop).a === "number" && typeof (l as StoredLoop).b === "number" && storedLoop(l as StoredLoop) != null;
+            if (!ok) return json({ error: "loop must be null or {a, b} in seconds with b later than a" }, 400);
+          }
+          const r = recordLoop(s.db, Number(m[1]), l as StoredLoop | null);
           if (!r) return json({ error: "no such video" }, 404);
           return json({ id: Number(m[1]), ...r });
         }

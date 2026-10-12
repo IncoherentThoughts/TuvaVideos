@@ -1,5 +1,6 @@
 // Artists, Favorites and the writes behind them (spec 5.1, 5.5, 2.3). SQL only; JSON shaping stays in api.ts.
 import type { Db } from "./db";
+import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import { storedResume } from "../shared/resume";
 import type { ArtistDto } from "../shared/types";
 
@@ -100,4 +101,15 @@ export function recordResume(db: Db, videoId: number, positionS: number, copyId?
   const resumeS = storedResume(positionS, duration);
   db.prepare("UPDATE video SET resume_s = ?, last_played_at = ? WHERE id = ?").run(resumeS, new Date().toISOString(), videoId);
   return { resumeS, finished: resumeS === 0 && positionS > 0 };
+}
+
+/**
+ * A-B loop (spec 4.3). A complete loop is kept per Video until the user turns it off; null clears it. Returns what
+ * was stored, or undefined for no such Video.
+ */
+export function recordLoop(db: Db, videoId: number, loop: StoredLoop | null): { loop: StoredLoop | null } | undefined {
+  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return undefined;
+  const l = storedLoop(loop);
+  db.prepare("UPDATE video SET loop_a_s = ?, loop_b_s = ? WHERE id = ?").run(l?.a ?? null, l?.b ?? null, videoId);
+  return { loop: l };
 }

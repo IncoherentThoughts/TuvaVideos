@@ -15,7 +15,8 @@ export interface Config {
   studioDumpPath: string;
   port: number;
   localRoot: string;
-  externalRoot: string;
+  /** Optional external Root (a drive); unset since the library moved under the local Root's `archive/` (2026-10-11). */
+  externalRoot?: string;
   ffmpeg: string;
   ffprobe: string;
   cwebp: string;
@@ -44,7 +45,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     studioDumpPath: join(dataDir, "studio-dump.json"),
     port: Number(env.TUVA_PORT ?? 4400),
     localRoot: env.TUVA_LOCAL_ROOT ?? "/Users/evanwilliams/Desktop/Khoomei/Videos",
-    externalRoot: env.TUVA_EXTERNAL_ROOT ?? "/Users/evanwilliams/Desktop/Хөөмей",
+    externalRoot: env.TUVA_EXTERNAL_ROOT,
     ffmpeg: findBin("ffmpeg"),
     ffprobe: findBin("ffprobe"),
     cwebp: findBin("cwebp"),

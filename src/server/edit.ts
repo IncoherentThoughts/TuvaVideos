@@ -36,7 +36,7 @@ export function patchVideo(db: Db, id: number, body: VideoPatch & Record<string,
     let version = cur.version_id;
     if ("songId" in body) {
       if (body.songId !== null && typeof body.songId !== "string") return bad("songId must be a string or null");
-      if (body.songId && !db.query("SELECT 1 FROM mirror_song WHERE id = ?").get(body.songId)) return bad("unknown song (import the Mirror first?)", 404);
+      if (body.songId && !db.query("SELECT 1 FROM song_all WHERE id = ?").get(body.songId)) return bad("unknown song (import the Mirror first, or add a local Song)", 404);
       if ((body.songId ?? null) !== song) version = null; // a different Song starts on its default Version
       song = body.songId ?? null;
     }
@@ -44,7 +44,7 @@ export function patchVideo(db: Db, id: number, body: VideoPatch & Record<string,
       if (body.versionId !== null && typeof body.versionId !== "string") return bad("versionId must be a string or null");
       if (body.versionId) {
         if (!song) return bad("versionId needs a Song");
-        if (!db.query("SELECT 1 FROM mirror_version WHERE id = ? AND song_id = ?").get(body.versionId, song)) return bad("that Version does not belong to the Song");
+        if (!db.query("SELECT 1 FROM version_all WHERE id = ? AND song_id = ?").get(body.versionId, song)) return bad("that Version does not belong to the Song");
       }
       version = body.versionId ?? null;
     }

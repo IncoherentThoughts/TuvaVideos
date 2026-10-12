@@ -49,7 +49,7 @@ export interface LatinFillStats {
 function loadSongs(db: Db): Map<string, SongNames> {
   const out = new Map<string, SongNames>();
   if (!hasTable(db, "mirror_song")) return out;
-  for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM mirror_song").all() as any[]) out.set(s.id, songNames(s));
+  for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all").all() as any[]) out.set(s.id, songNames(s));
   return out;
 }
 

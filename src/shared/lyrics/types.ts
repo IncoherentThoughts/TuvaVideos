@@ -21,7 +21,15 @@ export interface VersionDto {
   id: string;
   label: string;
   displayOrder: number;
+  /** A Local Version: written here, not in the archive; editable and deletable. */
+  local: boolean;
   scripts: Record<ScriptKey, ScriptDto>;
+}
+
+/** POST /api/songs/:id/versions and PATCH /api/versions/:id: any key may be left out; a null Script clears it. */
+export interface VersionInput {
+  label?: string;
+  scripts?: Partial<Record<ScriptKey, ScriptDto | null>>;
 }
 
 /** One `<p>` of a lyric. */

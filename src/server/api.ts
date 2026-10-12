@@ -17,6 +17,7 @@ import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, 
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
 import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
 import { listSongs, songDto, songRef, videosPerforming } from "./songs";
+import { createLocalSong, createLocalVersion, deleteLocalSong, deleteLocalVersion, patchLocalSong, patchLocalVersion } from "./localSongs";
 import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } from "./audio";
 import type { VideoType } from "../shared/filters";
 import { storedLoop, type StoredLoop } from "../shared/playerMath";
@@ -541,6 +542,39 @@ export function createHandler(s: Services) {
         const r = setVideoArtists(s.db, Number(m[1]), body.artistIds);
         if (!r.ok) return json({ error: r.error }, r.status);
         return videoResponse(Number(m[1]));
+      }
+      // Local Songs and Local Versions (the lyrics drawer's editor and the Song picker's "add as local song").
+      if (req.method === "POST" && p === "/api/songs") {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = createLocalSong(s.db, body);
+        return r.ok ? json(r.value, r.value.created ? 201 : 200) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = patchLocalSong(s.db, m[1]!, body);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
+        const r = deleteLocalSong(s.db, m[1]!);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "POST" && (m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})\/versions$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = createLocalVersion(s.db, m[1]!, body);
+        return r.ok ? json(r.value, 201) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/versions\/([0-9a-fA-F-]{8,64})$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = patchLocalVersion(s.db, m[1]!, body);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/versions\/([0-9a-fA-F-]{8,64})$/))) {
+        const r = deleteLocalVersion(s.db, m[1]!);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
       if (req.method === "POST" && p === "/api/artists") {
         const body = await readJson(req);

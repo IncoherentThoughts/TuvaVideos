@@ -80,6 +80,14 @@ _Avoid_: transliteration (the act), romanized title, english title (the archive'
 An Artist created here because the Mirror has no row for them. Never exported to the archive.
 _Avoid_: custom artist, unknown artist, extra artist
 
+**Local Song**:
+A Song created here because the Mirror has none, pointed at by Videos and Chapters exactly like a Mirror Song. Renamable and deletable here (while nothing points at it); never exported. Its Versions are all Local Versions. Marked "local" wherever it is shown.
+_Avoid_: custom song, user song, unknown song (that is a dangling uuid)
+
+**Local Version**:
+A lyrics Version written here, attached to a Mirror Song or a Local Song, with the same three Scripts and Footnotes as a Mirror Version. Listed after the Song's Mirror Versions; editable and deletable; survives an import; never exported. The lyrics pane marks it "local" on its pill and above its lines.
+_Avoid_: custom lyrics, user lyrics, local lyrics (as the noun), override
+
 ### Playback
 
 **Player**:

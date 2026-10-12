@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatStart, nudgeStart, parseTimeField } from "../shared/timestamps";
 import type { ChapterDto, ChapterPatch, VideoDto } from "../shared/types";
-import { Picker, rowsOf, type SongRow } from "./HeaderEdit";
+import { Picker, createSongRow, rowsOf, songPickerRow, type SongRow } from "./HeaderEdit";
 import { TRASH } from "./ui";
 import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
@@ -159,17 +159,17 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
             <Picker<SongRow>
               placeholder="Search Songs…"
               search={rowsOf("song")}
-              row={(r) => (
-                <>
-                  <span>{r.name}</span>
-                  {r.englishName && <span class="dim"> · {r.englishName}</span>}
-                </>
-              )}
+              row={songPickerRow}
               onPick={(r) => {
                 setPickFor(null);
                 wantFocus.current = picking.id;
                 void run(() => api.patchChapter(picking.id, { songId: r.id }));
               }}
+              create={createSongRow((id) => {
+                setPickFor(null);
+                wantFocus.current = picking.id;
+                void run(() => api.patchChapter(picking.id, { songId: id }));
+              })}
               onClose={() => {
                 setPickFor(null);
                 wantFocus.current = picking.id;

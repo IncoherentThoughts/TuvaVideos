@@ -89,7 +89,7 @@ export function readInfo(cacheDir: string, youtubeId: string): YtInfo | null {
 
 function loadSongs(db: Db) {
   if (!hasTable(db, "mirror_song")) return { all: [] as PreparedSong[], byId: new Map<string, PreparedSong>(), names: new Map<string, string>() };
-  const rows = db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM mirror_song").all() as any[];
+  const rows = db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all").all() as any[];
   const all = prepareSongs(rows);
   return { all, byId: new Map(all.map((s) => [s.id, s])), names: new Map<string, string>(rows.map((r) => [r.id, r.name])) };
 }

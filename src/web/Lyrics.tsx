@@ -1,6 +1,8 @@
 // The Lyrics drawer, variant "Reader" (spec 5.4, #12 prototype A). One Script at a time, Version pills, numbered lines
 // continuous across stanzas, no current line, superscript Markers with a tooltip, a Footnotes section for the shown
 // Script. `[` and `]` cycle Markers only while this element has focus; Esc closes it when it has focus.
+// Local Songs and Local Versions (written here, not in the archive) are marked "local" in the header, on their pills
+// and above their lines; a pencil opens the editor (LyricsEditor) for a Local Version, a plus adds one to any Song.
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { entriesById, augmentMarkers, defaultMarkerLabel, footnoteDefDomId } from "../shared/lyrics/markers";
 import { markersInReadingOrder, numberLines, parseHtmlToLines } from "../shared/lyrics/normalize";
@@ -8,7 +10,8 @@ import { SCRIPTS, effectiveScript, presentScripts } from "../shared/lyrics/scrip
 import { isPointedVersionAt, openingVersionIndex } from "../shared/lyrics/trackVersion";
 import type { ScriptKey } from "../shared/lyrics/types";
 import type { SongDto } from "../shared/types";
-import { api } from "./data";
+import { api, apiError } from "./data";
+import { LyricsEditor } from "./LyricsEditor";
 
 const SCRIPT_STORE = "tuva.lyricsScript";
 let scriptPref: ScriptKey = "cyrillic";
@@ -46,18 +49,24 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
   const [pick, setPick] = useState<string | null>(null);
   const [script, setScript] = useState<ScriptKey>(scriptPref);
   const [tip, setTip] = useState<Tip | null>(null);
+  /** The editor: closed, a new Version, or the Local Version being edited. */
+  const [editing, setEditing] = useState<null | { versionId: string | null }>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameErr, setRenameErr] = useState<string | null>(null);
   const root = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
 
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     let alive = true;
-    setSong(undefined);
-    setPick(null);
+    if (!reload) setSong(undefined);
+    if (!reload) setPick(null);
     api.song(songId).then((s) => alive && setSong(s)).catch(() => alive && setSong(null));
     return () => {
       alive = false;
     };
-  }, [songId]);
+  }, [songId, reload]);
+  useEffect(() => (setEditing(null), setRenaming(false)), [songId]);
   useEffect(() => setPick(null), [versionId]);
   useEffect(() => {
     if (autoFocus && song) {
@@ -146,14 +155,54 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
   };
 
   const alternates = (song?.names ?? []).filter((n) => n.kind === "alternate_title" || n.kind === "alternate_spelling").map((n) => n.text);
+  const editingVersion = editing?.versionId ? versions.find((v) => v.id === editing.versionId) ?? null : null;
+  /** After a save or delete: re-read the Song (forgetSong already dropped the cache) and show the Version in question. */
+  const afterEdit = (showId: string | null) => {
+    setEditing(null);
+    setPick(showId);
+    setReload((n) => n + 1);
+    root.current?.focus({ preventScroll: true });
+  };
+  const rename = async (name: string) => {
+    if (!song) return;
+    const t = name.trim();
+    if (!t || t === song.name) return void setRenaming(false);
+    try {
+      await api.patchSong(song.id, { name: t });
+      setRenameErr(null);
+      setRenaming(false);
+      setReload((n) => n + 1);
+    } catch (e) {
+      setRenameErr(apiError(e));
+    }
+  };
 
   return (
     <aside class="drawer" ref={root} tabIndex={-1} data-lyrics-drawer="" aria-label="Lyrics" onKeyDown={onKeyDown}>
       <div class="hd">
         <div class="row">
           <span class="ttl">
-            {song ? song.name : song === null ? "Unknown song" : "Lyrics"}
+            {song?.local && !renaming ? (
+              <button class="editable ttl-btn" title="Local Song · click to rename" onClick={() => setRenaming(true)}>
+                {song.name}
+              </button>
+            ) : song?.local && renaming ? (
+              <input
+                class="pk-in ttl-in"
+                autoFocus
+                value={song.name}
+                aria-label="Song name"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.preventDefault(), void rename((e.target as HTMLInputElement).value));
+                  else if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setRenaming(false));
+                }}
+                onBlur={(e) => void rename((e.target as HTMLInputElement).value)}
+              />
+            ) : (
+              (song ? song.name : song === null ? "Unknown song" : "Lyrics")
+            )}
             {song?.englishName && <span class="en">· {song.englishName}</span>}
+            {song?.local && <span class="localmark" title="A local Song: created in this library, not in the archive">local song</span>}
           </span>
           <span class="seg" role="group" aria-label="Script">
             {SCRIPTS.map((x) => (
@@ -162,12 +211,18 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
               </button>
             ))}
           </span>
+          {song && !editing && (
+            <button class="ib" aria-label="Add a local Version" title="Write a local lyrics Version for this Song" onClick={() => setEditing({ versionId: null })}>
+              +
+            </button>
+          )}
           {onClose && (
             <button class="ib" aria-label="Close lyrics" title="Close (Esc while the drawer has focus)" onClick={onClose}>
               ×
             </button>
           )}
         </div>
+        {renameErr && <div class="edit-err" role="alert">{renameErr}</div>}
         {alternates.length > 0 && (
           <div class="alts dim" title={alternates.join(", ")}>
             also: {alternates.join(" · ")}
@@ -176,8 +231,9 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
         {versions.length > 1 && (
           <div class="pills" role="group" aria-label="Version">
             {versions.map((x, i) => (
-              <button key={x.id} class={`pill${i === idx ? " on" : ""}`} aria-pressed={i === idx} title={onPickVersion ? "Sets this Video's Version" : undefined} onClick={() => (setPick(x.id), onPickVersion?.(x.id))}>
+              <button key={x.id} class={`pill${i === idx ? " on" : ""}${x.local ? " local" : ""}`} aria-pressed={i === idx} title={`${x.local ? "Local Version (stored here, not in the archive)" : "Archive Version"}${onPickVersion ? " · sets this Video's Version" : ""}`} onClick={() => (setPick(x.id), onPickVersion?.(x.id))}>
                 {x.label}
+                {x.local && <span class="b"> · local</span>}
                 {fromChapter && isPointedVersionAt(versions, versionId, i) && <span class="b"> · this chapter</span>}
               </button>
             ))}
@@ -195,11 +251,41 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
         onScroll={() => tip && setTip(null)}
         onClick={(e) => supOf(e.target) && jump(supOf(e.target)!)}
       >
-        {song === undefined && <p class="empty">Loading…</p>}
-        {song === null && <p class="empty">This Song is not in the Mirror (unknown song).</p>}
-        {song && !version && <p class="empty">This Song has no Version in the Mirror: no lyrics.</p>}
-        {version && present.length === 0 && <p class="empty">This Version has no text.</p>}
-        {version && present.length > 0 && (
+        {editing && song && (
+          <LyricsEditor
+            key={editing.versionId ?? "new"}
+            songId={song.id}
+            version={editingVersion}
+            takenLabels={versions.filter((v) => v.id !== editing.versionId).map((v) => v.label)}
+            script={sc}
+            onSaved={afterEdit}
+            onDeleted={() => afterEdit(null)}
+            onCancel={() => (setEditing(null), root.current?.focus({ preventScroll: true }))}
+          />
+        )}
+        {!editing && song === undefined && <p class="empty">Loading…</p>}
+        {!editing && song === null && <p class="empty">This Song is not in the Mirror (unknown song).</p>}
+        {!editing && song && !version && (
+          <p class="empty">
+            {song.local ? "This local Song has no lyrics yet." : "This Song has no Version in the Mirror: no lyrics."}{" "}
+            <button class="linkbtn" onClick={() => setEditing({ versionId: null })}>+ add local lyrics</button>
+          </p>
+        )}
+        {!editing && version && (
+          <div class={`vsrc${version.local ? " local" : ""}`} role="note">
+            {version.local ? (
+              <>
+                <span class="localmark">local</span>
+                <span>Stored in this library, not in the archive.</span>
+                <button class="linkbtn" onClick={() => setEditing({ versionId: version.id })}>edit</button>
+              </>
+            ) : (
+              <span class="dim">From the archive Mirror.</span>
+            )}
+          </div>
+        )}
+        {!editing && version && present.length === 0 && <p class="empty">This Version has no text.</p>}
+        {!editing && version && present.length > 0 && (
           <div class="lyr" lang={SCRIPTS.find((x) => x.key === sc)!.lang}>
             {lines.map((l, i) =>
               l.blank ? (
@@ -213,7 +299,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
             )}
           </div>
         )}
-        {defs.length > 0 && (
+        {!editing && defs.length > 0 && (
           <section aria-label="Footnotes">
             <div class="fnh">
               <span>Footnotes</span>

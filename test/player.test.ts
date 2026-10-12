@@ -3,7 +3,7 @@ import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../src/shared/cop
 import { dispatchKey, isRepeatable, keyAction, playerOwnsKey, type PlayerAction } from "../src/shared/keymap";
 import { positionIn, resolvePlayingFrom, stepFrom, uniqueIds, type PlayingFrom } from "../src/shared/playingFrom";
 import {
-  AB_OFF, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, parseFrameRate, speedBy, volumeBy,
+  AB_OFF, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, parseFrameRate, speedBy, storedLoop, volumeBy,
 } from "../src/shared/playerMath";
 import { FINISHED_WITHIN_S, RESUME_INTERVAL_MS, ResumeClock, isFinished, startPosition, storedResume } from "../src/shared/resume";
 import { SeekThrottle } from "../src/shared/seekThrottle";
@@ -176,6 +176,16 @@ describe("speed, volume, clamping, A-B loop", () => {
     expect(s.ab).toEqual(AB_OFF);
     expect(abToggle({ a: 20, b: null }, 5).ab).toEqual({ a: 5, b: 20 }); // B before A swaps
     expect(abToggle({ a: 20, b: null }, 20).ab).toEqual({ a: 20, b: null }); // empty loop refused
+  });
+  test("storedLoop keeps only a complete loop (what persists across sessions)", () => {
+    expect(storedLoop(AB_OFF)).toBeNull();
+    expect(storedLoop(null)).toBeNull();
+    expect(storedLoop({ a: 10, b: null })).toBeNull(); // half-set A is not kept
+    expect(storedLoop({ a: 10, b: 20 })).toEqual({ a: 10, b: 20 });
+    expect(storedLoop({ a: 20, b: 10 })).toBeNull();
+    expect(storedLoop({ a: 10, b: 10.01 })).toBeNull();
+    expect(storedLoop({ a: NaN, b: 10 })).toBeNull();
+    expect(abToggle(storedLoop({ a: 10, b: 20 })!, 15).ab).toEqual(AB_OFF); // l on a restored loop turns it off
   });
   test("fmtClock", () => {
     expect(fmtClock(0)).toBe("0:00");

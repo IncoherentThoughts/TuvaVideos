@@ -75,17 +75,13 @@ export function rebuildSearchIndex(db: Db): IndexStats {
         log(`search index: skipping ${table}: ${e}`);
       }
     };
+    // Songs and Versions come through the song_all / version_all views: Mirror rows and Local ones together.
     section("mirror_song", () => {
-      for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM mirror_song").all() as any[])
-        // Positional segments for songPenalty: 0 name, 1 English (the name again when absent, so alternates stay at 2+), then
-      // one folded segment per alternate title and per alternate spelling.
-      add("song", s.id, [s.name, s.english_name ?? s.name, ...splitAlternates(s.alternate_titles), ...splitAlternates(s.alternate_spellings)]);
+      for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all").all() as any[]) add("song", s.id, songSegments(s));
     });
     section("mirror_version", () => {
-      for (const v of db.query("SELECT id, cyrillic, transliteration, translation FROM mirror_version").all() as any[]) {
-        for (const script of ["cyrillic", "transliteration", "translation"] as const) {
-          htmlToLines(v[script]).forEach((line, i) => add("lyric", `${v.id}:${script}:${i + 1}`, [line]));
-        }
+      for (const v of db.query("SELECT id, cyrillic, transliteration, translation FROM version_all").all() as any[]) {
+        for (const [ref, line] of lyricSegments(v)) add("lyric", ref, [line]);
       }
     });
     section("mirror_track", () => {
@@ -100,10 +96,39 @@ export function rebuildSearchIndex(db: Db): IndexStats {
   return stats;
 }
 
+// Positional segments for songPenalty: 0 name, 1 English (the name again when absent, so alternates stay at 2+), then
+// one folded segment per alternate title and per alternate spelling.
+const songSegments = (s: { name: string; english_name: string | null; alternate_titles: string | null; alternate_spellings: string | null }) =>
+  [s.name, s.english_name ?? s.name, ...splitAlternates(s.alternate_titles), ...splitAlternates(s.alternate_spellings)];
+/** One index row per line per Script of a Version: ref `versionId:script:lineNo`. */
+function lyricSegments(v: { id: string; cyrillic: string | null; transliteration: string | null; translation: string | null }): [string, string][] {
+  const out: [string, string][] = [];
+  for (const script of ["cyrillic", "transliteration", "translation"] as const) htmlToLines(v[script]).forEach((line, i) => out.push([`${v.id}:${script}:${i + 1}`, line]));
+  return out;
+}
+
+/** One Song's index row (a Local Song created, renamed or deleted), replaced in place. */
+export function indexSong(db: Db, id: string) {
+  db.query("DELETE FROM search WHERE kind = 'song' AND ref_id = ?").run(id);
+  const s = db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all WHERE id = ?").get(id) as any;
+  if (!s) return;
+  const p = songSegments(s).filter((x): x is string => !!x && x.trim() !== "");
+  if (p.length) db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('song', ?, ?, ?)").run(id, p.join(SEP), foldSegments(p));
+}
+
+/** One Version's lyric rows (a Local Version written, edited or deleted), replaced in place. */
+export function indexVersion(db: Db, id: string) {
+  db.query("DELETE FROM search WHERE kind = 'lyric' AND ref_id LIKE ?").run(`${id}:%`);
+  const v = db.query("SELECT id, cyrillic, transliteration, translation FROM version_all WHERE id = ?").get(id) as any;
+  if (!v) return;
+  const ins = db.prepare("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('lyric', ?, ?, ?)");
+  for (const [ref, line] of lyricSegments(v)) if (line.trim()) ins.run(ref, line, foldSegments([line]));
+}
+
 /** One Video's index row, replaced in place (a title edit does not need a rebuild of the lyrics). */
 interface VideoIndexRow { id: number; title: string; title_latin: string | null; song_name: string | null; song_en: string | null }
 const VIDEO_INDEX_SQL = `SELECT v.id, v.title, v.title_latin, s.name AS song_name, s.english_name AS song_en
-  FROM video v LEFT JOIN mirror_song s ON s.id = v.song_id`;
+  FROM video v LEFT JOIN song_all s ON s.id = v.song_id`;
 const videoSegments = (r: VideoIndexRow) => [r.title, r.title_latin ?? "", r.song_name, r.song_en];
 
 export function reindexVideo(db: Db, id: number) {
@@ -260,7 +285,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
   if (lyricCands.length && groups.includes("songs")) {
     try {
       const vs = new Set(lyricCands.map((c) => c.ref.split(":")[0]!));
-      for (const r of db.query("SELECT id, song_id FROM mirror_version").all() as any[]) if (vs.has(r.id)) versionSong.set(r.id, r.song_id);
+      for (const r of db.query("SELECT id, song_id FROM version_all").all() as any[]) if (vs.has(r.id)) versionSong.set(r.id, r.song_id);
     } catch {}
   }
 
@@ -328,7 +353,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
     if (g === "videos") {
       if (c.kind === "video") {
         const f = facts.get(Number(c.ref))!;
-        const songs = f.songId ? many<{ name: string }>("SELECT name FROM mirror_song WHERE id = ?", f.songId).map((s) => s.name) : [];
+        const songs = f.songId ? many<{ name: string }>("SELECT name FROM song_all WHERE id = ?", f.songId).map((s) => s.name) : [];
         return { kind: "video", id: f.id, title: f.title, type: f.type as any, durationS: f.durationS, available: f.available, songs, songSuggested: f.songSuggested };
       }
       const ch = one<{ id: number; video_id: number; start_s: number; title: string }>("SELECT id, video_id, start_s, title FROM chapter WHERE id = ?", Number(c.ref));
@@ -342,9 +367,9 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
       return a ? { kind: "artist", id: a.id, name: a.name, local: a.mirror_id == null, videoCount: a.n } : null;
     }
     if (g === "songs") {
-      const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number }>("SELECT id, name, english_name, is_hidden FROM mirror_song WHERE id = ?", c.ref);
+      const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number; local: number }>("SELECT id, name, english_name, is_hidden, local FROM song_all WHERE id = ?", c.ref);
       if (!s) return null;
-      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos: songVideos(s.id) };
+      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, local: !!s.local, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos: songVideos(s.id) };
     }
     if (g === "tracks") {
       const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM mirror_track WHERE id = ?", c.ref);

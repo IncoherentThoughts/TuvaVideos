@@ -520,3 +520,30 @@ button.st-main:hover { background: var(--bg3); }
 .vmenu .vm-meta { font-family: var(--font-mono); font-size: .85em; color: var(--fg2); padding: 0 4px 4px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .vmenu button:disabled { opacity: .5; cursor: default; }
 .vmenu .vm-err { color: var(--t1); font-size: .85em; padding: 2px 4px; }
+
+/* ---- Local Songs and Local Versions: the "local" mark, the source note above lyrics, the drawer's editor ---- */
+.localmark { font-size: .68em; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--t4); border: 1px solid color-mix(in srgb, var(--t4) 70%, transparent); border-radius: 4px; padding: 0 5px; line-height: 1.6; white-space: nowrap; align-self: center; }
+.arow .nm .localmark { margin-left: 6px; }
+.pill.local { border-style: solid; border-color: color-mix(in srgb, var(--t4) 60%, var(--line)); }
+.pill.local.on { background: var(--t4); border-color: var(--t4); color: var(--accent-fg); }
+.vsrc { display: flex; align-items: center; gap: 8px; font-size: .85em; margin-bottom: 12px; color: var(--fg2); }
+.vsrc.local { padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--t4) 45%, var(--line)); border-left: 3px solid var(--t4); border-radius: 6px; background: color-mix(in srgb, var(--t4) 7%, transparent); }
+.vsrc .linkbtn { margin-left: auto; }
+.drawer .ttl .ttl-btn { font: inherit; color: inherit; text-align: left; padding: 0; border-bottom: 1px dashed var(--line); }
+.drawer .ttl .ttl-btn:hover { border-bottom-color: var(--fg2); }
+.drawer .ttl .ttl-in { width: 100%; font: inherit; }
+.lyr-edit { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.lyr-edit-head { display: flex; gap: 8px; align-items: center; font-size: .9em; }
+.lyr-edit-row { display: flex; gap: 8px; align-items: center; }
+.lyr-edit-row .lbl { color: var(--fg2); font-size: .9em; }
+.lyr-edit-row .pk-in { flex: 1; width: auto; border-color: var(--line); }
+.lyr-edit-row .pk-in:focus { border-color: var(--accent); }
+.lyr-edit .seg button { position: relative; padding-right: 16px; }
+.lyr-edit .seg .dot { position: absolute; right: 6px; top: 50%; width: 5px; height: 5px; margin-top: -2px; border-radius: 50%; background: var(--t4); }
+.lyr-edit .seg button.on .dot { background: var(--accent-fg); }
+.lyr-ta { width: 100%; resize: vertical; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; line-height: 1.5; outline: none; }
+.lyr-ta:focus { border-color: var(--accent); }
+.lyr-ta.lines { flex: 1; min-height: 180px; font-family: var(--font-lyrics); font-size: calc(var(--fs) * 1.05); }
+.lyr-ta.fns { min-height: 56px; font-size: .9em; }
+.lyr-edit-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.lyr-edit-confirm { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; font-size: .9em; }

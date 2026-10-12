@@ -228,11 +228,11 @@ export interface DanglingBreakdown {
 export function countDanglingRefs(db: Db): DanglingBreakdown {
   const n = (sql: string) => (db.query(sql).get() as { n: number }).n;
   const d = {
-    videoSong: n("SELECT COUNT(*) n FROM video WHERE song_id IS NOT NULL AND song_id NOT IN (SELECT id FROM mirror_song)"),
-    videoVersion: n("SELECT COUNT(*) n FROM video WHERE version_id IS NOT NULL AND version_id NOT IN (SELECT id FROM mirror_version)"),
-    chapterSong: n("SELECT COUNT(*) n FROM chapter WHERE song_id IS NOT NULL AND song_id NOT IN (SELECT id FROM mirror_song)"),
-    chapterVersion: n("SELECT COUNT(*) n FROM chapter WHERE version_id IS NOT NULL AND version_id NOT IN (SELECT id FROM mirror_version)"),
-    studioTrackSong: n("SELECT COUNT(*) n FROM studio_track WHERE song_id NOT IN (SELECT id FROM mirror_song)"),
+    videoSong: n("SELECT COUNT(*) n FROM video WHERE song_id IS NOT NULL AND song_id NOT IN (SELECT id FROM song_all)"),
+    videoVersion: n("SELECT COUNT(*) n FROM video WHERE version_id IS NOT NULL AND version_id NOT IN (SELECT id FROM version_all)"),
+    chapterSong: n("SELECT COUNT(*) n FROM chapter WHERE song_id IS NOT NULL AND song_id NOT IN (SELECT id FROM song_all)"),
+    chapterVersion: n("SELECT COUNT(*) n FROM chapter WHERE version_id IS NOT NULL AND version_id NOT IN (SELECT id FROM version_all)"),
+    studioTrackSong: n("SELECT COUNT(*) n FROM studio_track WHERE song_id NOT IN (SELECT id FROM song_all)"),
     artist: n("SELECT COUNT(*) n FROM artist WHERE mirror_id IS NOT NULL AND mirror_id NOT IN (SELECT id FROM mirror_artist)"),
     total: 0,
   };

@@ -183,7 +183,7 @@ export class Studio {
 
   /** "add to Song": a Local Studio track. A Song that already lists this recording is told so, not duplicated. */
   async addLocal(songId: string, persistentId: string): Promise<Result<{ id: number }>> {
-    if (!this.db.query("SELECT 1 FROM mirror_song WHERE id = ?").get(songId)) return bad("no such Song", 404);
+    if (!this.db.query("SELECT 1 FROM song_all WHERE id = ?").get(songId)) return bad("no such Song", 404);
     if (!(await this.knows(persistentId))) return bad("that track is not in the Music.app library", 404);
     const dup = this.db.query("SELECT id FROM studio_track WHERE song_id = ? AND persistent_id = ?").get(songId, persistentId) as { id: number } | null;
     if (dup) return bad("the Song already lists that track", 409);

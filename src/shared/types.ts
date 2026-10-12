@@ -18,7 +18,9 @@ export interface SongRef {
   englishName: string | null;
   /** Hidden in the archive (un-reviewed); shown with a badge. */
   hidden: boolean;
-  versions: { id: string; label: string }[];
+  /** A Local Song (no Mirror row). */
+  local: boolean;
+  versions: { id: string; label: string; local: boolean }[];
 }
 
 export interface StripDto {
@@ -70,6 +72,8 @@ export interface VideoDto {
   lastPlayedAt: string | null;
   /** Times the Player started this Video here (migration 0009); reset by right-click in any list. */
   viewCount: number;
+  /** The A-B loop left set on this Video, restored when it reopens (spec 4.3). */
+  loop: { a: number; b: number } | null;
   createdAt: string;
   durationS: number | null;
   available: boolean;
@@ -111,8 +115,12 @@ export interface SongListDto {
   videoCount: number;
   /** Chapters pointing at this Song. */
   chapterCount: number;
-  /** Lyrics Versions in the Mirror; 0 = no lyrics. */
+  /** Lyrics Versions (Mirror and Local); 0 = no lyrics. */
   versionCount: number;
+  /** Local Versions among them. */
+  localVersionCount: number;
+  /** A Local Song (no Mirror row); listed even before any Video points at it. */
+  local: boolean;
   /** The newest of its Videos (else the Video of its newest Chapter), for the poster. */
   posterVideoId: number | null;
   /** Newest Copy mtime over its Videos and Chapters' Videos, ISO. */
@@ -171,7 +179,7 @@ export type SearchRow =
   | { kind: "video"; id: number; title: string; type: VideoType; durationS: number | null; available: boolean; songs: string[]; songSuggested: boolean }
   | { kind: "chapter"; id: number; videoId: number; videoTitle: string; title: string; startS: number; available: boolean }
   | { kind: "artist"; id: number; name: string; local: boolean; videoCount: number }
-  | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; viaLyrics: boolean; lyric: string | null; /** Videos performing the Song (their Song pointer, or a Chapter with `startS`), so the results page can list them. */ videos: { id: number; startS: number | null }[] }
+  | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; local: boolean; viaLyrics: boolean; lyric: string | null; /** Videos performing the Song (their Song pointer, or a Chapter with `startS`), so the results page can list them. */ videos: { id: number; startS: number | null }[] }
   | { kind: "track"; id: string; name: string; album: string | null; by: string[]; songId: string | null; versionId: string | null }
   | { kind: "album"; id: string; name: string; year: number | null; by: string | null };
 
@@ -198,6 +206,8 @@ export interface SongDto {
   name: string;
   englishName: string | null;
   hidden: boolean;
+  /** A Local Song: created here, renamable and deletable; its Versions are all Local. */
+  local: boolean;
   alternateTitles: string[];
   alternateSpellings: string[];
   /** Every name with its kind (name, english, alternate_title, alternate_spelling). */
@@ -215,4 +225,10 @@ export interface VideoPatch {
   type?: VideoType;
   songId?: string | null;
   versionId?: string | null;
+}
+
+/** POST /api/songs: a Local Song. An existing Song with the same name (case-insensitively) is returned instead. */
+export interface LocalSongCreate {
+  name: string;
+  englishName?: string | null;
 }

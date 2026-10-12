@@ -47,7 +47,7 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 | `thumbs/<video-id>.poster.webp`, `thumbs/<video-id>.strip.webp` | Thumbnails, one pair per Video |
 | `remux/` | Fallback files, one per Copy that needs one |
 
-`bun:sqlite`, numbered `.sql` migrations applied at startup, tracked with `PRAGMA user_version`, no ORM.
+`bun:sqlite`, numbered `.sql` migrations applied at startup, recorded by file name in the `migration` table (`PRAGMA user_version` keeps the highest number), no ORM.
 
 ### 2.2 Entities
 
@@ -151,6 +151,7 @@ Plain `<video src>` over the Range server. No MediaSource, no mpv IPC, no transc
 ### 4.3 Resume and autoplay
 
 - Resume position is written every 5 s while playing and on pause, seek, Copy switch and leaving the page (`POST /api/videos/:id/resume`). A Video reopens at it without asking; within 30 s of the end counts as finished and is stored as 0. The Player's tick runs on a timer, not `requestAnimationFrame`, so a background tab keeps writing Resume and looping A-B (#24).
+- The A-B loop persists per Video (`POST /api/videos/:id/loop`, columns `video.loop_a_s/loop_b_s`): a complete loop left set when the Player closes comes back when the Video reopens, in this or a later session, until `l` turns it off. A half-set loop (A only) is not kept.
 - Opening a Video autoplays; the poster shows until the first frame.
 
 ### 4.4 Playing from
@@ -238,6 +239,8 @@ Decided in #26: `c` creates the Chapter at once (source `manual`, untitled) so t
 ### 5.4 Lyrics drawer
 
 Closable right drawer, variant "Reader" (#12). Header: Song title with English title dimmed; a Script segmented control (Cyrillic / Latin / English) showing one Script at a time, disabled when the Version lacks it, choice clamped to a Script the Version has. When the Song has several Versions, a row of pills; the Chapter's Version badged "· this chapter"; opens on the Chapter's Version else the first in display order. Numbered lines continuous across stanzas with blank lines as spacers. No current line (no timed lyrics exist). Footnote markers are superscript accent digits; adjacent markers get a CSS comma; a marker with no entry is struck through; hover/focus shows a two-column tooltip; click jumps to the entry and flashes it; `[` `]` cycle markers while the drawer has focus (the Player's speed keys apply only while the Player has focus; focus is the dispatcher, as for `/` and Esc). A "Footnotes" section at the bottom lists the shown Script's entries.
+
+**Local lyrics.** A Song the archive lacks is made as a **Local Song**: from the Song picker's create row ("add 'X' as local song", the same shape as the Local Artist row) on the header or a Chapter card, or from the Songs tab's "New local Song…". A **Local Version** is written in the drawer's editor (the `+` in the header, or "+ add local lyrics" on a Song without lyrics, or "edit" above a Local Version's lines): a label, one Script at a time behind the same segmented control, a textarea of lines (an empty line is a stanza break, `[3]` a Footnote Marker) and a textarea of Footnotes (`3: text` per line); ⌘/Ctrl+Enter saves, Esc cancels. Local rows are **clearly marked**: a green "local" mark beside the Song title and on the Version pill, and a bordered note above the lines ("Stored in this library, not in the archive · edit") where an archive Version reads "From the archive Mirror". Local Versions come after the archive's in the pill row. A Local Song's name is renamed by clicking it in the drawer; a Local Song nothing points at can be deleted from `/lyrics/:songId`. Endpoints: `POST /api/songs`, `PATCH`/`DELETE /api/songs/:id`, `POST /api/songs/:id/versions`, `PATCH`/`DELETE /api/versions/:id`; archive rows answer 409.
 
 Rendering port: the archive's `scripts.ts`, `normalize.ts`, `markers.ts` regex core, `trackVersion.ts`, `highlightSnippet`, with its sanitizer allowlists (`LINE`: `p br b strong i em u s sub sup span`; `FOOTNOTE`: `b strong i em u br sub sup`) applied by a dependency-free server-side tokenizer, not DOMPurify (#25). A Song no Video performs opens at `/lyrics/:songId`. One `<p>` is one line; `<p class="ln-blank">` is a stanza break.
 

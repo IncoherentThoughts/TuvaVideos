@@ -46,7 +46,7 @@ function RowView({ row, needle, on, idx, pick, hover }: { row: SearchRow; needle
       return (
         <div {...common}>
           <span class="nm" dangerouslySetInnerHTML={{ __html: highlightHtml(row.name, needle) + (row.englishName ? ` <span class="en">· ${highlightHtml(row.englishName, needle)}</span>` : "") }} />
-          <span class="typ song">song{row.viaLyrics ? " · lyrics" : ""}</span>
+          <span class="typ song">song{row.local ? " · local" : ""}{row.viaLyrics ? " · lyrics" : ""}</span>
           {row.lyric && <span class="sn" dangerouslySetInnerHTML={{ __html: `<b>Lyrics:</b> ${highlightHtml(row.lyric, needle)}` }} />}
         </div>
       );

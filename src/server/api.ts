@@ -11,14 +11,16 @@ import type { Scanner } from "./scan";
 import { serveFile } from "./stream";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
-import { listArtists, listFavoriteRows, mergeArtist, recordResume, recordView, resetViews, setFavorite } from "./catalog";
+import { listArtists, listFavoriteRows, mergeArtist, recordLoop, recordResume, recordView, resetViews, setFavorite } from "./catalog";
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
 import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, renameLocalArtist, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
 import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
 import { listSongs, songDto, songRef, videosPerforming } from "./songs";
+import { createLocalSong, createLocalVersion, deleteLocalSong, deleteLocalVersion, patchLocalSong, patchLocalVersion } from "./localSongs";
 import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } from "./audio";
 import type { VideoType } from "../shared/filters";
+import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
 
 export interface Services {
@@ -74,6 +76,8 @@ interface VideoDbRow {
   resume_s: number | null;
   last_played_at: string | null;
   view_count: number;
+  loop_a_s: number | null;
+  loop_b_s: number | null;
   created_at: string;
   thumbnail_generated_at: string | null;
   thumbnail_copy_id: number | null;
@@ -141,6 +145,7 @@ export function createHandler(s: Services) {
       resumeS: v.resume_s,
       lastPlayedAt: v.last_played_at,
       viewCount: v.view_count,
+      loop: storedLoop({ a: v.loop_a_s, b: v.loop_b_s }),
       createdAt: v.created_at,
       addedAt: ranked.reduce<string | null>((m, c) => (m == null || c.mtime > m ? c.mtime : m), null),
       chapterCount: extras.chapterCount,
@@ -450,6 +455,22 @@ export function createHandler(s: Services) {
           if (!r) return json({ error: "no such video" }, 404);
           return json({ id: Number(m[1]), ...r });
         }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/loop$/))) {
+          let body: { loop?: unknown } = {};
+          try {
+            body = (await req.json()) as typeof body;
+          } catch {
+            return json({ error: "body must be JSON" }, 400);
+          }
+          const l = body.loop;
+          if (l !== null) {
+            const ok = typeof l === "object" && l != null && typeof (l as StoredLoop).a === "number" && typeof (l as StoredLoop).b === "number" && storedLoop(l as StoredLoop) != null;
+            if (!ok) return json({ error: "loop must be null or {a, b} in seconds with b later than a" }, 400);
+          }
+          const r = recordLoop(s.db, Number(m[1]), l as StoredLoop | null);
+          if (!r) return json({ error: "no such video" }, 404);
+          return json({ id: Number(m[1]), ...r });
+        }
         if ((m = p.match(/^\/api\/videos\/(\d+)\/screenshot$/))) {
           const v = s.db.query("SELECT title FROM video WHERE id = ?").get(Number(m[1])) as { title: string } | null;
           if (!v) return json({ error: "no such video" }, 404);
@@ -532,6 +553,39 @@ export function createHandler(s: Services) {
         const r = setVideoArtists(s.db, Number(m[1]), body.artistIds);
         if (!r.ok) return json({ error: r.error }, r.status);
         return videoResponse(Number(m[1]));
+      }
+      // Local Songs and Local Versions (the lyrics drawer's editor and the Song picker's "add as local song").
+      if (req.method === "POST" && p === "/api/songs") {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = createLocalSong(s.db, body);
+        return r.ok ? json(r.value, r.value.created ? 201 : 200) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = patchLocalSong(s.db, m[1]!, body);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
+        const r = deleteLocalSong(s.db, m[1]!);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "POST" && (m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})\/versions$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = createLocalVersion(s.db, m[1]!, body);
+        return r.ok ? json(r.value, 201) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/versions\/([0-9a-fA-F-]{8,64})$/))) {
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = patchLocalVersion(s.db, m[1]!, body);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/versions\/([0-9a-fA-F-]{8,64})$/))) {
+        const r = deleteLocalVersion(s.db, m[1]!);
+        return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
       if (req.method === "POST" && p === "/api/artists") {
         const body = await readJson(req);

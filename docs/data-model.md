@@ -5,7 +5,7 @@ Decided in [issue #13](https://github.com/IncoherentThoughts/TuvaVideos/issues/1
 ## Storage
 
 - One SQLite file plus caches under `~/Library/Application Support/TuvaVideos/` (`library.db`, `thumbs/`, `remux/`), overridable by an env var for tests.
-- `bun:sqlite`, numbered `.sql` migration files applied at startup, tracked with `PRAGMA user_version`. No ORM.
+- `bun:sqlite`, numbered `.sql` migration files applied at startup, each recorded by file name in the `migration` table (`PRAGMA user_version` still holds the highest number, and a database that predates the table is bootstrapped from it once). Two files may share a number when two branches merge side by side (0008_local_songs, 0008_loop); they apply in name order. No ORM.
 - Thumbnails and remux files are files on disk named by Video id; the database records only that they exist and which Copy they came from.
 
 ## Library tables
@@ -119,6 +119,10 @@ Imported from a post-migration-129 backup only (the 2026-10-07 one or newer); th
 Dropped from the import: the archive's `zz_` test song and every row that belongs to it, composers, bands, tags, history, profiles and every staff or personal table, plus the columns the research doc lists (`editors_notes`, timestamps, `lastfm_id`, `label`, `source`, `sources`, `transcription_note`, `song_type`).
 
 **Re-import** is one transaction: delete every `mirror_*` row, insert the new set, upsert `artist` rows by `mirror_id`, write a `mirror_import` row. Local tables are untouched; a dangling uuid stays and renders as "unknown song/artist" (ADR-0001).
+
+## Local Songs and Local Versions
+
+Migration 0008. `local_song (id uuid, name, english_name, alternate_titles, alternate_spellings, created_at)` and `local_version (id uuid, song_id, label, display_order, the three Script HTML columns, the three Footnote JSON columns, created_at, updated_at, UNIQUE (song_id, label))` hold the Songs and lyrics Versions written here. `local_version.song_id` is a Mirror Song or a Local Song uuid, plain TEXT with no foreign key, as everywhere else (ADR-0001). Two views join each pair for readers: `song_all` (`mirror_song` ∪ `local_song`, with `local` 0/1 and `is_hidden` 0 for local rows) and `version_all` (`mirror_version` ∪ `local_version`, with `local`). Every reader of Songs or Versions (`songs.ts`, the search index, Latin titles, the Song matcher, the Song/Version checks on `PATCH /api/videos/:id` and the Chapter endpoints, the dangling-ref count) queries the views; the import still writes and wipes only `mirror_*`, so local rows survive it. Versions are ordered `local, display_order, label`: the archive's first, then the local ones. Deleting a Local Version NULLs the `version_id` of Videos and Chapters pointing at it; deleting a Local Song is refused while a Video, Chapter or Studio track points at it. Local lyric HTML is the archive's shape (`<p>` per line, `<p class="ln-blank"><br></p>` for a stanza break, `<sup data-fn="n">` for a Marker), produced from plain text by `shared/lyrics/plain.ts` and sanitized with the LINE / FOOTNOTE profiles on write.
 
 ## Latin titles
 

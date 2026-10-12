@@ -5,7 +5,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { TYPES, type VideoType } from "../shared/filters";
 import type { ArtistRef, SearchRow, VideoDto, VideoPatch } from "../shared/types";
-import { api, loadArtists, replaceVideo } from "./data";
+import { api, apiError, loadArtists, replaceVideo } from "./data";
 import { TypeTag, artistSlot, artistTitle } from "./ui";
 import { Link } from "./router";
 import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
@@ -101,6 +101,28 @@ export function Picker<T>(props: {
     </div>
   );
 }
+
+/** A Song row in a Picker: name, English name, and "· local" for a Local Song. */
+export const songPickerRow = (r: SongRow) => (
+  <>
+    <span>{r.name}</span>
+    {r.englishName && <span class="dim"> · {r.englishName}</span>}
+    {r.local && <span class="dim"> · local</span>}
+  </>
+);
+
+/** The Picker's create row for Songs: makes a Local Song named `q` (or returns the one already so named) and hands it on. */
+export const createSongRow = (onCreated: (id: string) => void, onError?: (msg: string) => void) => (q: string) => ({
+  label: `add '${q}' as local song`,
+  run: async () => {
+    try {
+      const s = await api.createSong({ name: q });
+      onCreated(s.id);
+    } catch (e) {
+      onError?.(apiError(e));
+    }
+  },
+});
 
 export function rowsOf<K extends "song" | "artist">(kind: K) {
   return async (q: string): Promise<Extract<SearchRow, { kind: K }>[]> => {
@@ -326,13 +348,9 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
         <Picker<SongRow>
           placeholder="Search Songs…"
           search={rowsOf("song")}
-          row={(r) => (
-            <>
-              <span>{r.name}</span>
-              {r.englishName && <span class="dim"> · {r.englishName}</span>}
-            </>
-          )}
+          row={songPickerRow}
           onPick={(r) => (setPicking(false), void patch({ songId: r.id }).then((ok) => ok && setChoosing(true)))}
+          create={createSongRow((id) => (setPicking(false), void patch({ songId: id })))}
           onClose={() => setPicking(false)}
         />
       )}

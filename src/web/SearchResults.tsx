@@ -10,7 +10,7 @@ import type { SearchResponse, SearchRow, VideoDto } from "../shared/types";
 import { Card } from "./Library";
 import { api, useStore } from "./data";
 import { savePlayingFrom } from "./playingFrom";
-import { Link } from "./router";
+import { Link, navigate, searchHref } from "./router";
 import { fmtDuration } from "./ui";
 import { useWindowed } from "./windowed";
 
@@ -83,7 +83,7 @@ function Why({ m, needle }: { m: ResultMatch; needle: string }) {
   return lines.length ? <div class="whys">{lines}</div> : null;
 }
 
-export function SearchResults({ q }: { q: string }) {
+export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }) {
   const { videos } = useStore();
   const [res, setRes] = useState<SearchResponse | null>(null);
   const [failed, setFailed] = useState(false);
@@ -113,8 +113,10 @@ export function SearchResults({ q }: { q: string }) {
       return [{ v, m }];
     });
   }, [res, videos]);
-  const ids = useMemo(() => shown.map((x) => x.v.id), [shown]);
-  const { limit, sentinel } = useWindowed(q, shown.length);
+  // "views" keeps the ranking as the tie-break: equally watched Videos stay in match order.
+  const ordered = useMemo(() => (sort === "views" ? [...shown].sort((a, b) => b.v.viewCount - a.v.viewCount) : shown), [shown, sort]);
+  const ids = useMemo(() => ordered.map((x) => x.v.id), [ordered]);
+  const { limit, sentinel } = useWindowed(`${q}|${sort}`, shown.length);
   const loading = !failed && (!res || !videos) && q.trim() !== "";
   const needle = res?.needle ?? "";
 
@@ -122,6 +124,11 @@ export function SearchResults({ q }: { q: string }) {
     <div class="page">
       <div class="controls" role="toolbar" aria-label="Search results">
         <span class="chip on">Search: {parseQuery(q).text || q}</span>
+        <span class="sep" />
+        <select class="chip" aria-label="Sort" value={sort} onChange={(e) => navigate(searchHref(q, (e.target as HTMLSelectElement).value === "views" ? "views" : "rank"), { replace: true })}>
+          <option value="rank">Best match</option>
+          <option value="views">Most viewed</option>
+        </select>
         <span class="count">{loading ? "searching…" : `${shown.length} Video${shown.length === 1 ? "" : "s"}`}</span>
       </div>
       {failed ? (
@@ -138,7 +145,7 @@ export function SearchResults({ q }: { q: string }) {
       ) : (
         <>
           <div class="wall">
-            {shown.slice(0, limit).map(({ v, m }) => (
+            {ordered.slice(0, limit).map(({ v, m }) => (
               <Card
                 key={v.id}
                 v={v}

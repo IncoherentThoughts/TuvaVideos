@@ -18,7 +18,7 @@ import { StudioBar, type StudioCtl } from "./Studio";
 import { StatePanel, type KeyLog, type SeekLog } from "./StatePanel";
 import { AudioEngine } from "./audioEngine";
 import { isDefaultAudio, type AudioState } from "../shared/audio";
-import { api, apiError } from "./data";
+import { api, apiError, replaceVideo } from "./data";
 
 export type { ChapterMark } from "./Timeline";
 
@@ -49,6 +49,8 @@ interface Props {
   studioSongs?(): string[];
   /** The State panel (`i`): shown when true; the page owns the flag so it can place the panel in the drawer slot. */
   stateOpen?: boolean;
+  /** The Video came back changed from the server (a counted view): the parent keeps its own copy. */
+  onVideo?: (v: VideoDto) => void;
   onStateToggle?(): void;
   /** `y`: open or close the lyrics drawer; returns an OSD notice when there is nothing to show. */
   onLyricsToggle?(): string | null;
@@ -105,7 +107,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -142,6 +144,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     token: 0, // bumped by every load and on unmount; a stale async load stops when it sees a newer one
     started: false, // metadata loaded and the start position applied: only then may Resume be written
     resumeOn: true, // false while no Copy plays, so the Resume position is kept as it was
+    viewed: false, // a view is counted once per Now playing visit, the first time playback starts (spec 4.3)
     pending: { at: 0, play: true },
     failed: new Set<number>(),
     retries: new Map<number, number>(),
@@ -392,6 +395,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     on("playing", () => {
       setPaused(false);
       setBuffering(false);
+      if (!r.viewed) {
+        r.viewed = true;
+        api.recordView(V.current.id).then((fresh) => (replaceVideo(fresh), onVideo?.(fresh))).catch(() => {});
+      }
     });
     on("pause", () => {
       setPaused(v.paused);
@@ -805,7 +812,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       </div>
       {studio && <StudioBar key={studio.songId} songId={studio.songId} initial={studio.data} say={(t, ms) => say(t, ms)} onClose={() => (setStudio(null), refocus())} ctl={studioCtl} />}
       {showState && (() => {
-        const panel = <StatePanel vid={vid} box={box} copyLabel={copy ? copyLabel(copy) : "—"} fps={fps} ab={ab} chapters={chapters} seeks={seeks} keys={keyLog} onClose={() => (onStateToggle?.(), refocus())} />;
+        const panel = <StatePanel vid={vid} box={box} views={video.viewCount} copyLabel={copy ? copyLabel(copy) : "—"} fps={fps} ab={ab} chapters={chapters} seeks={seeks} keys={keyLog} onClose={() => (onStateToggle?.(), refocus())} />;
         return stateHost?.current ? createPortal(panel, stateHost.current) : panel;
       })()}
     </div>

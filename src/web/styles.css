@@ -513,3 +513,10 @@ button.st-main:hover { background: var(--bg3); }
 .au-fader input[type=range] { writing-mode: vertical-lr; direction: rtl; height: 110px; width: 22px; }
 .au-fader span { color: var(--fg3); }
 .audio .note { margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--line); font-size: .82em; }
+
+/* right-click menu on a Video in a list (VideoMenu.tsx) */
+.vmenu { position: fixed; top: auto; left: auto; z-index: 60; min-width: 200px; max-width: 320px; }
+.vmenu .vm-title { font-weight: 600; padding: 3px 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vmenu .vm-meta { font-family: var(--font-mono); font-size: .85em; color: var(--fg2); padding: 0 4px 4px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.vmenu button:disabled { opacity: .5; cursor: default; }
+.vmenu .vm-err { color: var(--t1); font-size: .85em; padding: 2px 4px; }

@@ -274,6 +274,25 @@ describe("Missing and unmounted Roots", () => {
   });
 });
 
+describe("view count (migration 0009)", () => {
+  const id = () => (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+  const count = () => (app.db.query("SELECT view_count n FROM video WHERE id = ?").get(id()) as { n: number }).n;
+  test("POST /api/videos/:id/view counts one, DELETE resets, /api/videos reports it", async () => {
+    expect(count()).toBe(0);
+    const r1 = await fetch(`${base_url}/api/videos/${id()}/view`, { method: "POST" });
+    expect(r1.status).toBe(200);
+    expect(((await r1.json()) as any).viewCount).toBe(1);
+    await fetch(`${base_url}/api/videos/${id()}/view`, { method: "POST" });
+    expect(count()).toBe(2);
+    expect((await api(`/api/videos/${id()}`)).viewCount).toBe(2);
+    const r2 = await fetch(`${base_url}/api/videos/${id()}/view`, { method: "DELETE" });
+    expect(((await r2.json()) as any).viewCount).toBe(0);
+    expect(count()).toBe(0);
+    expect((await fetch(`${base_url}/api/videos/999999/view`, { method: "POST" })).status).toBe(404);
+    expect((await fetch(`${base_url}/api/videos/999999/view`, { method: "DELETE" })).status).toBe(404);
+  });
+});
+
 describe("resume endpoint", () => {
   const post = (id: number, body: unknown, raw = false) =>
     fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", headers: { "content-type": raw ? "text/plain" : "application/json" }, body: JSON.stringify(body) });

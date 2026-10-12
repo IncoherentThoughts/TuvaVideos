@@ -28,7 +28,7 @@ export function apiError(e: unknown): string {
   return m;
 }
 
-async function send<T>(method: "PATCH" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
+async function send<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!r.ok) throw new Error(`${url}: ${r.status} ${await r.text().catch(() => "")}`);
   return (await r.json()) as T;
@@ -48,6 +48,9 @@ export const api = {
     return p;
   },
   patchVideo: (id: number, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
+  /** One more view of the Video; the answer is the updated Video. */
+  recordView: (id: number) => send<VideoDto>("POST", `/api/videos/${id}/view`),
+  resetViews: (id: number) => send<VideoDto>("DELETE", `/api/videos/${id}/view`),
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
   createArtist: (name: string) => post<{ id: number; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
   chapters: (videoId: number) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),

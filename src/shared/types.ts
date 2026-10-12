@@ -68,6 +68,8 @@ export interface VideoDto {
   favoritedAt: string | null;
   resumeS: number | null;
   lastPlayedAt: string | null;
+  /** Times the Player started this Video here (migration 0009); reset by right-click in any list. */
+  viewCount: number;
   createdAt: string;
   durationS: number | null;
   available: boolean;

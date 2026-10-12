@@ -10,7 +10,7 @@ import { savePlayingFrom } from "./playingFrom";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, StripFrame, Tags, fmtDuration } from "./ui";
 
-const SORT_LABEL: Record<FavSort, string> = { starred: "Date starred", title: "Title", duration: "Duration", added: "Date added" };
+const SORT_LABEL: Record<FavSort, string> = { starred: "Date starred", title: "Title", duration: "Duration", added: "Date added", views: "Views" };
 const SHOW_LABEL = { both: "Videos and Chapters", videos: "Videos", chapters: "Chapters" } as const;
 
 const titleOf = (i: FavoriteItem) => (i.kind === "video" ? i.video.title : i.chapter.title);
@@ -31,6 +31,7 @@ export function viewFavorites(items: FavoriteItem[], st: FavoritesState): Favori
     if (st.sort === "title") c = sign * cmpText(titleOf(x), titleOf(y));
     else if (st.sort === "duration") c = cmpNullsLast(x.video.durationS, y.video.durationS, sign);
     else if (st.sort === "added") c = cmpNullsLast(x.video.addedAt ?? x.video.createdAt, y.video.addedAt ?? y.video.createdAt, sign);
+    else if (st.sort === "views") c = sign * (x.video.viewCount - y.video.viewCount);
     else c = cmpNullsLast(x.favoritedAt, y.favoritedAt, sign);
     return c || cmpNullsLast(x.favoritedAt, y.favoritedAt, -1);
   });

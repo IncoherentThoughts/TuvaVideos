@@ -11,7 +11,7 @@ import type { Scanner } from "./scan";
 import { serveFile } from "./stream";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
-import { listArtists, listFavoriteRows, mergeArtist, recordResume, setFavorite } from "./catalog";
+import { listArtists, listFavoriteRows, mergeArtist, recordResume, recordView, resetViews, setFavorite } from "./catalog";
 import { MAX_SCREENSHOT_BYTES, isPng, saveScreenshot } from "./screenshot";
 import { confirmVideoArtists, createLocalArtist, patchVideo, rejectVideoArtist, renameLocalArtist, setVideoArtists } from "./edit";
 import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
@@ -73,6 +73,7 @@ interface VideoDbRow {
   favorited_at: string | null;
   resume_s: number | null;
   last_played_at: string | null;
+  view_count: number;
   created_at: string;
   thumbnail_generated_at: string | null;
   thumbnail_copy_id: number | null;
@@ -139,6 +140,7 @@ export function createHandler(s: Services) {
       favoritedAt: v.favorited_at,
       resumeS: v.resume_s,
       lastPlayedAt: v.last_played_at,
+      viewCount: v.view_count,
       createdAt: v.created_at,
       addedAt: ranked.reduce<string | null>((m, c) => (m == null || c.mtime > m ? c.mtime : m), null),
       chapterCount: extras.chapterCount,
@@ -433,6 +435,11 @@ export function createHandler(s: Services) {
           const r = await studioPost(req, p);
           if (r) return r;
         }
+        if ((m = p.match(/^\/api\/videos\/(\d+)\/view$/))) {
+          // One more view (spec 4.3): the Player posts it the first time playback starts on a Now playing visit.
+          if (recordView(s.db, Number(m[1])) === undefined) return json({ error: "no such video" }, 404);
+          return videoResponse(Number(m[1]));
+        }
         if ((m = p.match(/^\/api\/videos\/(\d+)\/resume$/))) {
           let body: { resumeS?: unknown; copyId?: unknown } = {};
           try {
@@ -471,6 +478,10 @@ export function createHandler(s: Services) {
         const body = (await req.json().catch(() => ({}))) as { eq?: unknown };
         const r = savePreset(s.db, decodeURIComponent(m[1]!), body.eq);
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)\/view$/))) {
+        if (!resetViews(s.db, Number(m[1]))) return json({ error: "no such video" }, 404);
+        return videoResponse(Number(m[1]));
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/audio-presets\/([^/]+)$/))) {
         const r = deletePreset(s.db, decodeURIComponent(m[1]!));

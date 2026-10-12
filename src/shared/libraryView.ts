@@ -4,7 +4,7 @@ import { foldQuery } from "./fold";
 import { TYPES, type VideoType } from "./filters";
 import type { VideoDto } from "./types";
 
-export const SORTS = ["added", "title", "duration", "played"] as const;
+export const SORTS = ["added", "title", "duration", "played", "views"] as const;
 export type SortKey = (typeof SORTS)[number];
 
 export interface LibraryState {
@@ -95,6 +95,7 @@ export function sortVideos(videos: VideoDto[], st: LibraryState): VideoDto[] {
     if (st.sort === "title") c = sign * cmpStr(x.title, y.title);
     else if (st.sort === "duration") c = nullsLast(x.durationS, y.durationS, (a, b) => a - b);
     else if (st.sort === "played") c = nullsLast(x.lastPlayedAt, y.lastPlayedAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    else if (st.sort === "views") c = sign * (x.viewCount - y.viewCount);
     else c = nullsLast(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
     return c || y.id - x.id;
   });

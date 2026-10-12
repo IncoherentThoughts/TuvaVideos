@@ -40,7 +40,7 @@ export type Route =
   | { name: "favorites" }
   | { name: "artists" }
   | { name: "songs" }
-  | { name: "search"; q: string }
+  | { name: "search"; q: string; sort: "rank" | "views" }
   | { name: "notfound" };
 
 export function matchRoute(loc: Loc): Route {
@@ -49,7 +49,10 @@ export function matchRoute(loc: Loc): Route {
   if (p === "/favorites") return { name: "favorites" };
   if (p === "/artists") return { name: "artists" };
   if (p === "/songs") return { name: "songs" };
-  if (p === "/search") return { name: "search", q: new URLSearchParams(loc.search).get("q") ?? "" };
+  if (p === "/search") {
+    const sp = new URLSearchParams(loc.search);
+    return { name: "search", q: sp.get("q") ?? "", sort: sp.get("sort") === "views" ? "views" : "rank" };
+  }
   const m = p.match(/^\/play\/(\d+)$/);
   if (m) {
     const q = new URLSearchParams(loc.search);
@@ -88,4 +91,4 @@ export function Link(props: { href: string; class?: string; children?: Component
 }
 
 /** The search results page for a query (spec 6.2). */
-export const searchHref = (q: string) => `/search?q=${encodeURIComponent(q)}`;
+export const searchHref = (q: string, sort: "rank" | "views" = "rank") => `/search?q=${encodeURIComponent(q)}${sort === "views" ? "&sort=views" : ""}`;

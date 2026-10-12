@@ -18,7 +18,7 @@ export const SONG_SORTS = ["name", "videos", "chapters", "added"] as const;
 export type SongSort = (typeof SONG_SORTS)[number];
 export interface SongsState { q: string; lyricsOnly: boolean; sort: SongSort; dir: Dir }
 
-export const FAV_SORTS = ["starred", "title", "duration", "added"] as const;
+export const FAV_SORTS = ["starred", "title", "duration", "added", "views"] as const;
 export type FavSort = (typeof FAV_SORTS)[number];
 export const FAV_SHOWS = ["both", "videos", "chapters"] as const;
 export type FavShow = (typeof FAV_SHOWS)[number];

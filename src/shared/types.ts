@@ -51,6 +51,8 @@ export interface CopyDto {
   playback: "native" | "remux" | "transcode";
   fallback: { state: string; progress?: number | null; error?: string };
   url: string;
+  /** Absolute path of the file on disk. */
+  path: string;
 }
 
 export interface VideoDto {

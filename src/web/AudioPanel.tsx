@@ -33,10 +33,11 @@ function useLevels(vid: Props["vid"]) {
   return lv;
 }
 
+// A segmented LED meter: the bar holds a green→yellow→red gradient, `--v` (0–100) uncovers it from the left.
 const Meter = ({ v, label }: { v: number; label: string }) => (
   <>
     <span class="lbl mono">{label}</span>
-    <div class="bar" title={`${label}: ${Math.round(v * 100)}`}><i style={{ width: `${Math.round(v * 100)}%` }} class={v < 0.02 ? "dead" : ""} /></div>
+    <div class={`bar${v < 0.02 ? " dead" : ""}`} title={`${label}: ${Math.round(v * 100)}`} style={{ "--v": Math.round(v * 100) }} />
   </>
 );
 

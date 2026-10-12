@@ -13,10 +13,10 @@ import { useWindowed } from "./windowed";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
-export function Card({ v, onOpen, titleHtml, why }: { v: VideoDto; onOpen: () => void; /** Title with <mark>s (search results); plain title otherwise. */ titleHtml?: string; /** Why the search matched: lines under the title. */ why?: ComponentChildren }) {
+export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpen: () => void; /** Title with <mark>s (search results); plain title otherwise. */ titleHtml?: string; /** Why the search matched: lines under the title. */ why?: ComponentChildren; /** Open the Video at this time (a search that matched a Chapter) instead of its Resume position. */ startS?: number | null }) {
   const res = resolutionLabel(v.height);
   return (
-    <Link href={playHref(v.id)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
+    <Link href={playHref(v.id, startS)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <Poster video={v} dur edge />
       <div class="ttl">
         {v.favoritedAt && <FavoriteBadge />}

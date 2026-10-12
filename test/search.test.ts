@@ -6,6 +6,7 @@ import { scoreFolded, scoreSegments, songPenalty, lyricsSearchable } from "../sr
 import { defaultLibraryState, libraryQuery, parseLibrarySearch, viewVideos } from "../src/shared/libraryView";
 import { htmlToLines, splitAlternates } from "../src/server/search";
 import type { VideoDto } from "../src/shared/types";
+import { resultStart } from "../src/web/SearchResults";
 
 describe("folding", () => {
   test("Latin specials", () => {
@@ -153,5 +154,21 @@ describe("library view state", () => {
     const seen = [vid(1, { viewCount: 2 }), vid(2, { viewCount: 0 }), vid(3, { viewCount: 5 })];
     expect(viewVideos(seen, { ...defaultLibraryState(), sort: "views", dir: "desc" }).map((v) => v.id)).toEqual([3, 1, 2]);
     expect(viewVideos(vs, { ...defaultLibraryState(), sort: "played", dir: "asc" }).map((v) => v.id)).toEqual([1, 3, 2]);
+  });
+});
+
+describe("search results: where a card opens", () => {
+  const ch = (id: number, videoId: number, startS: number) => ({ kind: "chapter" as const, id, videoId, videoTitle: "", title: "t", startS, available: true });
+  const song = (videos: { id: number; startS: number | null }[]) => ({ kind: "song" as const, id: "s", name: "n", englishName: null, hidden: false, local: false, viaLyrics: false, lyric: null, videos });
+
+  test("a Video reached only through a Chapter opens at that Chapter", () => {
+    expect(resultStart({ id: 1, chapters: [ch(9, 1, 125.5), ch(10, 1, 300)], songs: [] }, false)).toBe(125.5);
+  });
+  test("a Video whose title matched opens at the start even when a Chapter also matched", () => {
+    expect(resultStart({ id: 1, chapters: [ch(9, 1, 125.5)], songs: [] }, true)).toBeNull();
+  });
+  test("a Song performed in a Chapter opens at that Chapter; a Song pointer without a time does not", () => {
+    expect(resultStart({ id: 1, chapters: [], songs: [song([{ id: 2, startS: 7 }, { id: 1, startS: 42 }])] }, false)).toBe(42);
+    expect(resultStart({ id: 1, chapters: [], songs: [song([{ id: 1, startS: null }])] }, false)).toBeNull();
   });
 });

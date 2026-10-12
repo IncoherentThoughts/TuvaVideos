@@ -36,7 +36,7 @@ export function artistTitle(artist: ArtistRef): string | undefined {
 export function ArtistTag({ artist }: { artist: ArtistRef }) {
   return (
     <span class={`tag${artist.suggested ? " sug" : ""}`} style={{ "--c": `var(--t${artistSlot(artist.name)})` }} title={artistTitle(artist)}>
-      {artist.name}
+      <span class="nm">{artist.name}</span>
       {artist.suggested && <i class="sugmark">suggested</i>}
     </span>
   );
@@ -48,19 +48,27 @@ export function SongTag({ video }: { video: Pick<VideoDto, "song" | "songSuggest
   if (!s) return null;
   return (
     <span class={`tag song${video.songSuggested ? " sug" : ""}`} title={video.songSuggested ? `Suggested Song: ${s.name ?? "unknown"} (confirm it on Now playing)` : `Song: ${s.name ?? "unknown"}`}>
-      {s.name ?? "unknown song"}
+      <span class="nm">{s.name ?? "unknown song"}</span>
       {video.songSuggested && <i class="sugmark">suggested</i>}
     </span>
   );
 }
 
-/** Type, Song and Artist tags. At most `maxArtists` Artist tags (3 by default, on every list screen); the rest fold into
- *  one "+n" tag whose hover names them. Now playing's header shows every Artist through its own chip editor. */
+/** Type, Song and Artist tags. At most `maxArtists` confirmed Artist tags (3 by default, on every list screen); the rest
+ *  fold into one "+n" tag whose hover names them. Suggested Artists (the server lists them after the confirmed ones) get
+ *  the same treatment with their own, tighter cap: at most `maxSuggested` shown, the rest fold into a dashed "+n suggested"
+ *  tag. Now playing's header shows every Artist through its own chip editor. */
 export const MAX_ARTIST_TAGS = 3;
-export function Tags({ video, maxArtists = MAX_ARTIST_TAGS }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested">; maxArtists?: number }) {
-  const cap = video.artists.length > maxArtists;
-  const shown = cap ? video.artists.slice(0, maxArtists) : video.artists;
-  const rest = cap ? video.artists.slice(maxArtists) : [];
+export const MAX_SUGGESTED_ARTIST_TAGS = 1;
+export function Tags({ video, maxArtists = MAX_ARTIST_TAGS, maxSuggested = MAX_SUGGESTED_ARTIST_TAGS }: {
+  video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested">; maxArtists?: number; maxSuggested?: number;
+}) {
+  const confirmed = video.artists.filter((a) => !a.suggested);
+  const suggested = video.artists.filter((a) => a.suggested);
+  const shown = confirmed.slice(0, maxArtists);
+  const rest = confirmed.slice(maxArtists);
+  const shownSug = suggested.slice(0, maxSuggested);
+  const restSug = suggested.slice(maxSuggested);
   return (
     <div class="tags">
       <TypeTag type={video.type} />
@@ -71,6 +79,15 @@ export function Tags({ video, maxArtists = MAX_ARTIST_TAGS }: { video: Pick<Vide
       {rest.length > 0 && (
         <span class="tag more" title={rest.map((a) => a.name).join(", ")}>
           +{rest.length}
+        </span>
+      )}
+      {shownSug.map((a) => (
+        <ArtistTag key={a.id} artist={a} />
+      ))}
+      {restSug.length > 0 && (
+        <span class="tag more sug" title={`Suggested Artists (from the title): ${restSug.map((a) => a.name).join(", ")} — confirm them on Now playing`}>
+          +{restSug.length}
+          <i class="sugmark">suggested</i>
         </span>
       )}
     </div>

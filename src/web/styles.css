@@ -87,12 +87,15 @@ mark { background: color-mix(in srgb, var(--t3) 35%, transparent); color: var(--
 
 /* ---- tags, chips, icons ---- */
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.tag { --c: var(--t8); display: inline-flex; align-items: center; gap: 4px; font-size: .85em; font-weight: 600; line-height: 1; padding: 3px 7px; border-radius: calc(var(--r) * .5); white-space: nowrap; letter-spacing: .01em;
+.tag { --c: var(--t8); display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: .85em; font-weight: 600; line-height: 1; padding: 3px 7px; border-radius: calc(var(--r) * .5); white-space: nowrap; letter-spacing: .01em;
   background: color-mix(in srgb, var(--c) 18%, transparent); color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+/* A long name ellipsizes inside the pill; the "suggested" mark never gets pushed out of it. */
+.tag .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tag .sugmark { flex-shrink: 0; }
 .tag.sug { border-style: dashed; opacity: .85; }
 .tag.type-song { --c: var(--t1); } .tag.type-concert { --c: var(--t3); } .tag.type-interview { --c: var(--t5); } .tag.type-other { --c: var(--t8); }
 .tag.local { --c: var(--t4); } .tag.external { --c: var(--t6); }
-.tag.song { --c: var(--t7); max-width: 100%; }
+.tag.song { --c: var(--t7); }
 .tag.more { --c: var(--fg2); cursor: help; }
 .tag .sugmark, .r .by .sugmark { font-style: normal; font-weight: 500; font-size: .78em; letter-spacing: .06em; text-transform: uppercase; opacity: .8; margin-left: 5px; }
 .r .by.sug { color: var(--fg3); }

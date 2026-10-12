@@ -1,4 +1,4 @@
-// Hand-rolled history routing (spec 9): `/`, `/play/:videoId[?t=]`, `/favorites`, `/artists`, `/songs`. Filters and sort live in
+// Hand-rolled history routing (spec 9): `/`, `/play/:videoId[?t=]`, `/favorites`, `/artists`, `/songs`, `/search?q=`. Filters and sort live in
 // the query string. No router library.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -40,6 +40,7 @@ export type Route =
   | { name: "favorites" }
   | { name: "artists" }
   | { name: "songs" }
+  | { name: "search"; q: string }
   | { name: "notfound" };
 
 export function matchRoute(loc: Loc): Route {
@@ -48,6 +49,7 @@ export function matchRoute(loc: Loc): Route {
   if (p === "/favorites") return { name: "favorites" };
   if (p === "/artists") return { name: "artists" };
   if (p === "/songs") return { name: "songs" };
+  if (p === "/search") return { name: "search", q: new URLSearchParams(loc.search).get("q") ?? "" };
   const m = p.match(/^\/play\/(\d+)$/);
   if (m) {
     const q = new URLSearchParams(loc.search);
@@ -84,3 +86,6 @@ export function Link(props: { href: string; class?: string; children?: Component
     </a>
   );
 }
+
+/** The search results page for a query (spec 6.2). */
+export const searchHref = (q: string) => `/search?q=${encodeURIComponent(q)}`;

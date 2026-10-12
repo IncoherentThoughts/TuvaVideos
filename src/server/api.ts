@@ -375,7 +375,7 @@ export function createHandler(s: Services) {
           return json(items);
         }
         if (p === "/api/search") {
-          const r = runSearch(s.db, { isRootAvailable: (id) => s.roots.isAvailable(id) }, url.searchParams.get("q") ?? "");
+          const r = runSearch(s.db, { isRootAvailable: (id) => s.roots.isAvailable(id) }, url.searchParams.get("q") ?? "", { cap: Math.min(500, Number(url.searchParams.get("limit")) || 0) });
           return json({ needle: r.needle, groups: r.groups, ms: r.ms });
         }
         if (p === "/app.js" || p === "/app.css") return s.web.serve(p);
@@ -396,7 +396,7 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/scan") return json(s.scanner.progress());
         // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
-        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/artists" || p === "/songs" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
+        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/search" || p === "/artists" || p === "/songs" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {

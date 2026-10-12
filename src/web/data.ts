@@ -83,7 +83,7 @@ export const api = {
   songs: () => get<SongListDto[]>("/api/songs"),
   favorites: () => get<FavoriteItem[]>("/api/favorites"),
   scan: () => get<ScanDto>("/api/scan"),
-  search: (q: string, signal?: AbortSignal) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`, signal),
+  search: (q: string, signal?: AbortSignal, limit?: number) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`, signal),
   rescan: () => post<{ queued: number[] }>("/api/rescan"),
   quit: () => post<{ quitting: true }>("/api/quit"),
   setFavorite: (kind: "video" | "chapter", id: number, favorite?: boolean) =>

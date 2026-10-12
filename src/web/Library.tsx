@@ -12,7 +12,7 @@ import { useWindowed } from "./windowed";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played" };
 
-function Card({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
+export function Card({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
   const res = resolutionLabel(v.height);
   return (
     <Link href={playHref(v.id)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>

@@ -197,12 +197,13 @@ const nameOf = (text: string) => text.split(SEP)[0] ?? text;
 
 export type SearchResult = SearchResponse & { parsed: ParsedQuery };
 
-export function runSearch(db: Db, env: SearchEnv, q: string): SearchResult {
+export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: number } = {}): SearchResult {
   const t0 = performance.now();
   const parsed = parseQuery(q);
   const needle = foldQuery(parsed.text);
   const groups = effectiveGroups(parsed);
-  const cap = rowCap(parsed);
+  // `opts.cap` lets the results page (/search) ask for more rows than the dropdown shows.
+  const cap = opts.cap && opts.cap > 0 ? opts.cap : rowCap(parsed);
   const bare = needle === "";
   if (bare && !(parsed.groups.length || hasVideoFilters(parsed) || parsed.lyricsOnly)) return { needle, groups: [], ms: 0, parsed };
 

@@ -200,13 +200,15 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
         <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
         <div class="np-head">
           <div class="np-titlerow">
-            <HeaderTitle video={v} onChange={setV} />
+            <div class="np-titles">
+              <HeaderTitle video={v} onChange={setV} />
+              {v.titleLatin && <div class="latin muted">{v.titleLatin}</div>}
+            </div>
             <span class="from mono" title="< and > step through this list">
               Playing from: {SOURCE_LABEL[playingFrom.source]}
               {pos && <> · {pos.n} of {pos.total}</>}
             </span>
           </div>
-          {v.titleLatin && <div class="latin muted">{v.titleLatin}</div>}
           <div class="np-meta">
             <AvailabilityIcon availability={v.availability} />
             <button

@@ -188,9 +188,12 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .np { display: flex; gap: 14px; padding: 14px 20px 40px; max-width: 1500px; margin: 0 auto; }
 .np-main { flex: 1; min-width: 0; }
 .np-head { margin-top: 14px; }
-.np-titlerow { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+/* Title + transliteration are one column; "Playing from" is pinned top-right and never drops between them. */
+.np-titlerow { display: flex; align-items: flex-start; gap: 16px 24px; }
+.np-titles { flex: 1; min-width: 0; }
 .np-titlerow h1 { font-size: 1.5em; font-weight: 600; line-height: 1.3; min-width: 0; overflow-wrap: anywhere; }
-.np-titlerow .from { margin-left: auto; font-size: .85em; color: var(--fg3); white-space: nowrap; }
+.np-titlerow .from { flex: none; margin-top: .55em; font-size: .85em; color: var(--fg3); white-space: nowrap; }
+@media (max-width: 900px) { .np-titlerow { flex-wrap: wrap; } .np-titlerow .from { width: 100%; margin-top: 0; } }
 .latin { font-size: 1em; margin-top: 2px; }
 .np-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 1.05em; }
 .favtoggle { display: inline-flex; padding: 0; line-height: 0; border-radius: calc(var(--r) * .5); }
@@ -361,17 +364,18 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .drawer { height: 100%; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2); display: flex; flex-direction: column; min-height: 0; outline: none; position: relative; }
 .drawer:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
 .drawer .hd { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-.drawer .hd .row { display: flex; gap: 8px; align-items: flex-start; }
-.drawer .hd .row .seg, .drawer .hd .row .ib { flex: none; }
+/* Title first; the controls follow on the same line when they fit, else wrap to a line of their own, right-aligned. */
+.drawer .hd .row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; }
+.drawer .hd .row .hctl { flex: none; display: inline-flex; gap: 8px; align-items: center; margin-left: auto; }
 .drawer .hd .row .ib { --c: var(--accent); width: 25px; height: 25px; font-size: 1.1em; border-radius: calc(var(--r) * .6); color: var(--c); background: color-mix(in srgb, var(--c) 9%, transparent); border: 1px solid color-mix(in srgb, var(--c) 28%, var(--line)); }
 .drawer .hd .row .ib:hover { background: color-mix(in srgb, var(--c) 20%, transparent); border-color: color-mix(in srgb, var(--c) 50%, var(--line)); }
 .drawer .hd .row .ib.add { --c: var(--t3); }
 .drawer .hd .row .ib.close { --c: var(--no); }
 /* Odd-sized icons in the 23px inner box leave whole-pixel margins, so the strokes land on the exact centre. */
 .drawer .hd .row .ib svg { display: block; }
-.drawer .hd .row .ttl { flex: 1; }
-.drawer .hd .ttl { font-weight: 600; font-size: 1.05em; display: flex; gap: 6px; align-items: baseline; min-width: 0; flex-wrap: wrap; padding-top: 2px; }
-.drawer .hd .ttl .en { font-weight: 400; color: var(--fg3); font-size: .9em; }
+.drawer .hd .ttl { flex: 1 0 auto; max-width: 100%; font-weight: 600; font-size: 1.05em; line-height: 1.35; padding-top: 3px; }
+.drawer .hd .ttl .en { font-weight: 400; color: var(--fg3); font-size: .9em; margin-left: 5px; }
+.drawer .hd .ttl .localmark { margin-left: 6px; vertical-align: middle; }
 .drawer .alts { font-size: .88em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .drawer .body { padding: 16px; overflow: auto; scrollbar-width: thin; flex: 1; min-height: 0; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: calc(var(--r) * .6); overflow: hidden; }
@@ -566,9 +570,9 @@ button.st-main:hover { background: var(--bg3); }
 .vsrc { display: flex; align-items: center; gap: 8px; font-size: .85em; margin-bottom: 12px; color: var(--fg2); }
 .vsrc.local { padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--t4) 45%, var(--line)); border-left: 3px solid var(--t4); border-radius: 6px; background: color-mix(in srgb, var(--t4) 7%, transparent); }
 .vsrc .linkbtn { margin-left: auto; }
-.drawer .ttl .ttl-btn { font: inherit; color: inherit; text-align: left; padding: 0; border-bottom: 1px dashed var(--line); }
+.drawer .ttl .ttl-btn { cursor: pointer; border-bottom: 1px dashed var(--line); }
 .drawer .ttl .ttl-btn:hover { border-bottom-color: var(--fg2); }
-.drawer .ttl .ttl-in { width: 100%; font: inherit; }
+.drawer .ttl .ttl-in { display: block; width: 100%; font: inherit; }
 .lyr-edit { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .lyr-edit-head { display: flex; gap: 8px; align-items: center; font-size: .9em; }
 .lyr-edit-row { display: flex; gap: 8px; align-items: center; }

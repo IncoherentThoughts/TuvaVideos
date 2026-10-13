@@ -94,6 +94,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
   };
   // PROTOTYPE: Clean up state (in memory) and the Auto wand
   const [cleanup, setCleanup] = useState<Cleanup>(DEFAULT_CLEANUP);
+  useEffect(() => { if (vid.current) AudioEngine.for(vid.current).setMultiband(cleanup.multiband); }, [cleanup.multiband]);
   const [auto, setAuto] = useState<{ phase: "idle" } | { phase: "ask"; copy: CopyDto } | { phase: "busy"; label: string }>({ phase: "idle" });
   const [autoReport, setAutoReport] = useState<ReportRow[] | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -262,6 +263,11 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <input type="checkbox" checked={s.compress} onChange={(e) => onChange({ compress: e.currentTarget.checked })} />
           <span>Even out loudness</span>
           <input type="range" min={0} max={1} step={0.05} value={s.compressAmount} disabled={!s.compress} aria-label="Leveler amount" onInput={(e) => onChange({ compressAmount: +e.currentTarget.value })} />
+        </label>
+        <label class="au-row au-check au-sub" title="PROTOTYPE: three bands (below 200 Hz, 200 Hz to 3 kHz, above) each levelled on their own, so a drum thump no longer ducks the voice">
+          <input type="checkbox" checked={cleanup.multiband} disabled={!s.compress} onChange={(e) => setCleanup((c) => ({ ...c, multiband: e.currentTarget.checked }))} />
+          <span>Per band <span class="dim">low · mid · high</span></span>
+          <span />
         </label>
         <p class="note dim">Saved for this Video. <kbd>Esc</kbd> returns to the Player.</p>
       </div>

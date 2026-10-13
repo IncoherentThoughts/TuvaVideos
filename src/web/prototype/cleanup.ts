@@ -7,8 +7,13 @@ export interface Cleanup {
   highpass: number | null; // Hz, off when null
   lowpass: number | null;
   notches: Notch[];
+  /** spectral denoise (an AudioWorklet): on, strength 0…1, and whether the noise profile is tracked or was learned */
+  denoise: boolean;
+  denoiseAmount: number;
+  /** the leveler splits into three bands (lives in AudioEngine; carried here so the prototype state is in one place) */
+  multiband: boolean;
 }
-export const DEFAULT_CLEANUP: Cleanup = { highpass: null, lowpass: null, notches: [] };
+export const DEFAULT_CLEANUP: Cleanup = { highpass: null, lowpass: null, notches: [], denoise: false, denoiseAmount: 0.5, multiband: false };
 export const HP_MIN = 20, HP_MAX = 400, LP_MIN = 2000, LP_MAX = 16000, NOTCH_MAX = 3;
 
 /** log-scale slider helpers: a 0…1 position ↔ Hz over [lo, hi] */
@@ -17,6 +22,19 @@ export const hzToPos = (hz: number, lo: number, hi: number) => Math.log(hz / lo)
 export const fmtHz = (hz: number) => (hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 1 : 2).replace(/\.?0+$/, "")}k` : `${Math.round(hz)}`);
 
 /** The Web Audio part. Sits between the channel matrix and the EQ; rebuilt in place when the settings change. */
+import { DENOISE_WORKLET_SRC } from "./denoiseWorklet";
+
+const workletReady = new WeakMap<AudioContext, Promise<void>>();
+const loadWorklet = (ctx: AudioContext) => {
+  let p = workletReady.get(ctx);
+  if (!p) {
+    const url = URL.createObjectURL(new Blob([DENOISE_WORKLET_SRC], { type: "application/javascript" }));
+    p = ctx.audioWorklet.addModule(url);
+    workletReady.set(ctx, p);
+  }
+  return p;
+};
+
 export class CleanupEngine {
   private hp: BiquadFilterNode[];
   private lp: BiquadFilterNode[];
@@ -25,6 +43,13 @@ export class CleanupEngine {
   private outNode: GainNode;
   private ana: AnalyserNode;
   private spectrum: Float32Array<ArrayBuffer>;
+  private tail: GainNode;
+  private dnDry: GainNode;
+  private dnWet: GainNode;
+  private dn: AudioWorkletNode | null = null;
+  /** "auto" (tracked floor), "learning", or "learned"; the panel shows it */
+  denoiseMode: "auto" | "learning" | "learned" = "auto";
+  onDenoiseMode: ((m: CleanupEngine["denoiseMode"]) => void) | null = null;
   cleanup: Cleanup = DEFAULT_CLEANUP;
 
   constructor(private ctx: AudioContext) {
@@ -39,7 +64,32 @@ export class CleanupEngine {
     this.ana.smoothingTimeConstant = 0.6;
     this.spectrum = new Float32Array(this.ana.frequencyBinCount);
     this.inNode.connect(this.ana);
+    // the denoise sits at the end of the chain on a dry/wet pair; the worklet joins when its module has loaded
+    this.tail = ctx.createGain();
+    this.dnDry = ctx.createGain();
+    this.dnWet = ctx.createGain();
+    this.dnWet.gain.value = 0;
+    this.tail.connect(this.dnDry); this.dnDry.connect(this.outNode);
+    this.dnWet.connect(this.outNode);
+    void loadWorklet(ctx).then(() => {
+      this.dn = new AudioWorkletNode(ctx, "tuva-denoise", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+      this.dn.port.onmessage = (e) => { if (e.data?.type === "learned") { this.denoiseMode = "learned"; this.onDenoiseMode?.("learned"); } };
+      this.tail.connect(this.dn); this.dn.connect(this.dnWet);
+      this.set(this.cleanup);
+    }).catch((e) => console.warn("denoise worklet failed", e));
     this.rebuild();
+  }
+
+  /** Learn the noise profile from the next ~second of sound (play a gap or a pause). */
+  learnNoise() {
+    if (!this.dn) return;
+    this.denoiseMode = "learning"; this.onDenoiseMode?.("learning");
+    this.dn.port.postMessage({ type: "learn", frames: Math.round(this.ctx.sampleRate / 512) });
+  }
+  /** Back to the tracked floor. */
+  autoNoise() {
+    this.dn?.port.postMessage({ type: "auto" });
+    this.denoiseMode = "auto"; this.onDenoiseMode?.("auto");
   }
 
   get input(): AudioNode { return this.inNode; }
@@ -49,6 +99,9 @@ export class CleanupEngine {
     this.inNode.disconnect();
     this.inNode.connect(this.ana);
     for (const f of [...this.hp, ...this.lp, ...this.notch]) f.disconnect();
+    this.tail.disconnect();
+    this.tail.connect(this.dnDry);
+    if (this.dn) this.tail.connect(this.dn);
     this.notch = this.cleanup.notches.flatMap((n) => {
       const hs = n.harmonics ? [1, 2, 3] : [1];
       return hs.map((h) => {
@@ -63,7 +116,7 @@ export class CleanupEngine {
     let node: AudioNode = this.inNode;
     const chain = [...(this.cleanup.highpass ? this.hp : []), ...(this.cleanup.lowpass ? this.lp : []), ...this.notch];
     for (const f of chain) { node.connect(f); node = f; }
-    node.connect(this.outNode);
+    node.connect(this.tail);
   }
 
   set(c: Cleanup) {
@@ -76,6 +129,10 @@ export class CleanupEngine {
     const ramp = (p: AudioParam, v: number) => p.setTargetAtTime(v, t, 0.02);
     if (c.highpass) for (const f of this.hp) ramp(f.frequency, c.highpass);
     if (c.lowpass) for (const f of this.lp) ramp(f.frequency, c.lowpass);
+    const on = c.denoise && !!this.dn;
+    ramp(this.dnWet.gain, on ? 1 : 0);
+    ramp(this.dnDry.gain, on ? 0 : 1);
+    if (this.dn) ramp(this.dn.parameters.get("amount")!, c.denoiseAmount);
     let k = 0;
     for (const n of c.notches) for (const h of n.harmonics ? [1, 2, 3] : [1]) {
       const f = this.notch[k++]!;

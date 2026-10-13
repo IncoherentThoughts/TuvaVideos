@@ -10,6 +10,14 @@ const hzAt = (x: number, w: number) => posToHz(x / w, SPEC_LO, SPEC_HI);
 
 export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElement | null }; c: Cleanup; setC: (f: (prev: Cleanup) => Cleanup) => void }) {
   const [finding, setFinding] = useState(false);
+  const [dnMode, setDnMode] = useState<"auto" | "learning" | "learned">("auto");
+  useEffect(() => {
+    const e = engine();
+    if (!e) return;
+    setDnMode(e.denoiseMode);
+    e.onDenoiseMode = setDnMode;
+    return () => { e.onDenoiseMode = null; };
+  }, [vid.current]);
   const [msg, setMsg] = useState<string | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = () => (vid.current ? AudioEngine.for(vid.current).cleanup : null);
@@ -137,6 +145,18 @@ export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElem
           </label>
         </div>
       ))}
+      <label class="au-row au-check" title="Spectral denoise: subtracts the noise floor per frequency band. Auto tracks the floor from gaps and pauses; Learn takes the next second as the profile">
+        <input type="checkbox" checked={c.denoise} onChange={(e) => patch({ denoise: e.currentTarget.checked })} />
+        <span>Denoise</span>
+        <input type="range" min={0} max={1} step={0.05} value={c.denoiseAmount} disabled={!c.denoise} aria-label="Denoise amount" onInput={(e) => patch({ denoiseAmount: +e.currentTarget.value })} />
+      </label>
+      {c.denoise && (
+        <div class="au-chips au-dn">
+          <span class="dim">profile: <b class={`mono dn-${dnMode}`}>{dnMode === "learning" ? "listening…" : dnMode}</b></span>
+          <button class="tag save" disabled={dnMode === "learning"} title="Seek to a gap or a pause first, then press: the next second becomes the noise profile" onClick={() => engine()?.learnNoise()}>Learn noise now</button>
+          {dnMode === "learned" && <button class="tag save" title="Back to the tracked floor" onClick={() => engine()?.autoNoise()}>Auto</button>}
+        </div>
+      )}
       <p class="note dim">Prototype: not saved. Click the spectrum to place a notch; drag its Freq to tune.</p>
     </>
   );

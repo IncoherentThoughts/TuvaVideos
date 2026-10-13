@@ -16,6 +16,9 @@ export interface Measure {
   tone: { hz: number; prominence: number; persistence: number } | null;
   /** how this was measured, for the report */
   how: string;
+  /** full pass only: the quiet floor (10th percentile of per-second mono RMS) and the typical level (median) */
+  floorDb?: number;
+  typicalDb?: number;
 }
 
 const median = (xs: number[]) => {
@@ -65,13 +68,13 @@ export async function analyzeFull(copyId: number, onProgress: (frac: number) => 
   // per-second RMS accumulators
   let sL = 0, sR = 0, sn = 0;
   // the mono frame being filled for the FFT (hop = N, no overlap: plenty of frames in a whole file)
-  const mono = new Float32Array(N);
+  const monoFrame = new Float32Array(N);
   let fill = 0;
   let carry = new Uint8Array(0);
   let samples = 0;
   const reader = res.body.getReader();
   const foldFrame = () => {
-    spectrumDb(mono, frameDb);
+    spectrumDb(monoFrame, frameDb);
     for (let i = 0; i < bins; i++) sum[i]! += frameDb[i]!;
     // persistent-peak bookkeeping: which bins stand ≥ 10 dB over their ±120 Hz neighbourhood in this frame
     const peaks = localPeaks(frameDb, hzPerBin, 10);
@@ -91,7 +94,7 @@ export async function analyzeFull(copyId: number, onProgress: (frac: number) => 
       const l = view.getInt16(o, true) / 32768, r = view.getInt16(o + 2, true) / 32768;
       sL += l * l; sR += r * r; sn++;
       if (sn === rate) { secL.push(10 * Math.log10(sL / sn + 1e-12)); secR.push(10 * Math.log10(sR / sn + 1e-12)); sL = sR = 0; sn = 0; }
-      mono[fill++] = (l + r) / 2;
+      monoFrame[fill++] = (l + r) / 2;
       if (fill === N) foldFrame();
       samples++;
     }
@@ -112,7 +115,9 @@ export async function analyzeFull(copyId: number, onProgress: (frac: number) => 
       if (!tone || persistence * prom > tone.persistence * tone.prominence) tone = { hz: i * hzPerBin, prominence: prom, persistence };
     }
   }
-  return { chDb, spectrum, hzPerBin, tone, how: `whole file, ${Math.round(samples / rate)} s` };
+  const mono = secL.map((l, i) => Math.max(l, secR[i] ?? -120)).sort((a, b) => a - b);
+  const floorDb = mono[Math.floor(mono.length * 0.1)] ?? -120, typicalDb = mono[mono.length >> 1] ?? -120;
+  return { chDb, spectrum, hzPerBin, tone, how: `whole file, ${Math.round(samples / rate)} s`, floorDb, typicalDb };
 }
 
 /** Bins that are local maxima ≥ minDb over the median of their ±120 Hz neighbourhood, 40 Hz…16 kHz. */

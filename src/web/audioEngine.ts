@@ -25,6 +25,10 @@ export class AudioEngine {
   private comp: DynamicsCompressorNode;
   private dry: GainNode;
   private wet: GainNode;
+  /** PROTOTYPE: the three-band leveler (LR4 crossovers at 200 Hz and 3 kHz, a compressor per band) */
+  private bands: DynamicsCompressorNode[];
+  private wetMulti: GainNode;
+  private multiband = false;
   private out: GainNode;
   private anaIn: [AnalyserNode, AnalyserNode];
   private anaOut: [AnalyserNode, AnalyserNode];
@@ -80,6 +84,21 @@ export class AudioEngine {
     this.comp.connect(this.wet);
     this.dry.connect(this.out);
     this.wet.connect(this.out);
+    // PROTOTYPE: multiband. Each band is a Linkwitz-Riley 4th-order slice: two cascaded Butterworth biquads per edge.
+    const bq = (type: BiquadFilterType, hz: number) => { const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = hz; f.Q.value = Math.SQRT1_2; return f; };
+    const slice = (...fs: BiquadFilterNode[]) => { let n: AudioNode = node; for (const f of fs) { n.connect(f); n = f; } return n; };
+    const lowEnd = slice(bq("lowpass", 200), bq("lowpass", 200));
+    const midEnd = slice(bq("highpass", 200), bq("highpass", 200), bq("lowpass", 3000), bq("lowpass", 3000));
+    const highEnd = slice(bq("highpass", 3000), bq("highpass", 3000));
+    this.wetMulti = g();
+    this.wetMulti.gain.value = 0;
+    this.bands = [lowEnd, midEnd, highEnd].map((end) => {
+      const c = ctx.createDynamicsCompressor();
+      c.knee.value = 20; c.attack.value = 0.01; c.release.value = 0.25;
+      end.connect(c); c.connect(this.wetMulti);
+      return c;
+    });
+    this.wetMulti.connect(this.out);
 
     const splitOut = ctx.createChannelSplitter(2);
     this.out.connect(splitOut);
@@ -139,10 +158,21 @@ export class AudioEngine {
     s.eq.forEach((db, i) => ramp(this.filters[i]!.gain, db));
 
     const a = s.compressAmount;
-    this.comp.threshold.value = -12 - 30 * a;
-    this.comp.ratio.value = 2 + 10 * a;
-    ramp(this.wet.gain, s.compress ? dbToGain(6 * a) : 0); // make-up gain grows with the amount
+    for (const c of [this.comp, ...this.bands]) {
+      c.threshold.value = -12 - 30 * a;
+      c.ratio.value = 2 + 10 * a;
+    }
+    // per-band compressors each see less energy than the full mix, so the multiband makeup is a touch smaller
+    ramp(this.wet.gain, s.compress && !this.multiband ? dbToGain(6 * a) : 0); // make-up gain grows with the amount
+    ramp(this.wetMulti.gain, s.compress && this.multiband ? dbToGain(4 * a) : 0);
     ramp(this.dry.gain, s.compress ? 0 : 1);
+  }
+
+  /** PROTOTYPE: single or three-band leveler. */
+  setMultiband(on: boolean) {
+    if (this.multiband === on) return;
+    this.multiband = on;
+    this.set(this.state);
   }
 
   /** PROTOTYPE: silence the speakers without silencing the analysers (element.muted would mute the source too). */

@@ -57,6 +57,18 @@ export function autoSettings(m: Measure): { audio: AudioState; cleanup: Cleanup;
   const top = bandDb(avg, m.hzPerBin, 10000, 16000), upper = bandDb(avg, m.hzPerBin, 4000, 8000);
   if (top > upper - 6 && top > -75) { cleanup.lowpass = 10000; report.push({ k: "hiss", heard: "flat floor over 10 kHz", did: "cut above 10k Hz" }); }
 
+  // --- noise: a floor that never gets far below the music → denoise, harder the closer it sits ---
+  // a floor is only a *noise* floor when the quiet seconds are quiet (−65…−35 dBFS) yet not silent; a dense mix that
+  // never drops below −30 says nothing about noise and is left alone
+  if (m.floorDb !== undefined && m.typicalDb !== undefined && m.floorDb > -65 && m.floorDb < -35) {
+    const gap = m.typicalDb - m.floorDb;
+    cleanup.denoise = true;
+    cleanup.denoiseAmount = Math.round(clamp((m.floorDb + 65) / 30, 0.3, 0.8) * 20) / 20;
+    report.push({ k: "noise", heard: `floor ${m.floorDb.toFixed(0)} dBFS, ${gap.toFixed(0)} dB under the music`, did: `denoise ${cleanup.denoiseAmount}` });
+  }
+  // the leveler splits into bands when the recording is lumpy enough to need it hard
+  if (audio.compress && audio.compressAmount >= 0.4) { cleanup.multiband = true; report.push({ k: "leveler", heard: "working hard", did: "per band" }); }
+
   // --- EQ: nudge each band halfway toward a gentle reference tilt (−3 dB/oct from 400 Hz), capped at ±6 ---
   const ref = (hz: number) => -3 * Math.log2(hz / 400);
   const measured = BANDS.map((b) => bandDb(avg, m.hzPerBin, b.hz / 1.4, b.hz * 1.4));

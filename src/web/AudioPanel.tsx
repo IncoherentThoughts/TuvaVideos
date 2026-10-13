@@ -8,6 +8,8 @@ import {
 } from "../shared/audio";
 import { AudioEngine, type Levels } from "./audioEngine";
 import { CleanupSection } from "./prototype/CleanupSection"; // PROTOTYPE
+import { DEFAULT_CLEANUP, type Cleanup } from "./prototype/cleanup"; // PROTOTYPE
+import { autoSettings, type Measure } from "./prototype/auto"; // PROTOTYPE
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -21,6 +23,13 @@ interface Props {
 }
 
 const METER_MS = 70;
+
+// PROTOTYPE: a magic wand, same stroke style as the icons in ui.tsx
+const WandIcon = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M15 4V2M15 10V8M11 6h2M17 6h2M4 20l9-9M13 11l-2-2M20 15l1-1M19 20l1 1M5 3l1 1" />
+  </svg>
+);
 
 function useLevels(vid: Props["vid"]) {
   const [lv, setLv] = useState<Levels>({ in: [0, 0], out: [0, 0] });
@@ -70,6 +79,41 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       setErr(String((x as Error).message ?? x));
     }
   };
+  // PROTOTYPE: Clean up state (in memory) and the Auto wand
+  const [cleanup, setCleanup] = useState<Cleanup>(DEFAULT_CLEANUP);
+  const [auto, setAuto] = useState<"idle" | "listening">("idle");
+  const [autoReport, setAutoReport] = useState<string[] | null>(null);
+  const runAuto = async () => {
+    const v = vid.current;
+    if (!v) return;
+    const eng = AudioEngine.for(v);
+    if (v.paused) void v.play();
+    // measure the recording as it is: defaults in, cleanup off, then listen for ~2 s
+    const before = { audio: s, cleanup };
+    onChange({ ...before.audio, routing: "stereo", balance: 0, volL: 1, volR: 1, preamp: 0 });
+    setCleanup(() => DEFAULT_CLEANUP);
+    setAuto("listening");
+    setAutoReport(null);
+    await new Promise((r) => setTimeout(r, 300));
+    const m: Measure = { chDb: [0, 0], frames: [], hzPerBin: 0 };
+    const sums: [number, number] = [0, 0];
+    const N = 24;
+    for (let i = 0; i < N; i++) {
+      await new Promise((r) => setTimeout(r, 80));
+      const [l, r] = eng.inputDb();
+      sums[0] += l; sums[1] += r;
+      const sp = eng.cleanup.read();
+      m.frames.push(Float32Array.from(sp.db));
+      m.hzPerBin = sp.hzPerBin;
+    }
+    m.chDb = [sums[0] / N, sums[1] / N];
+    const out = autoSettings(m, eng.cleanup);
+    onChange(out.audio);
+    setCleanup(() => out.cleanup);
+    setAutoReport(out.report);
+    setAuto("idle");
+  };
+
   const nameExists = !!name.trim() && presets.some((p) => !p.builtIn && p.name.toLowerCase() === name.trim().toLowerCase());
 
   return (
@@ -77,11 +121,21 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       <div class="hd">
         <div class="row">
           <span class="ttl">Audio</span>
+          <button class="btn small wand" disabled={auto === "listening"} onClick={() => void runAuto()} title="Auto: listen for a moment, then balance channels, level, clean-up and EQ for this recording (prototype)">
+            <WandIcon /> {auto === "listening" ? "listening…" : "Auto"}
+          </button>
           {!isDefaultAudio(s) && <button class="btn small" onClick={onReset} title="Back to the sound as recorded">Reset</button>}
           <button class="ib" aria-label="Close audio" title="Close (a while the Player has focus)" onClick={onClose}>×</button>
         </div>
       </div>
       <div class="body">
+        {autoReport && (
+          <div class="au-report">
+            <b>Auto</b>
+            <ul>{autoReport.map((r) => <li key={r}>{r}</li>)}</ul>
+            <button class="ib" aria-label="Dismiss" onClick={() => setAutoReport(null)}>×</button>
+          </div>
+        )}
         <h5>Channels</h5>
         <div class="au-meters">
           <Meter v={lv.in[0]} label="in L" /><Meter v={lv.in[1]} label="in R" />
@@ -110,7 +164,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <b class="mono">{Math.round(s.volR * 100)}</b>
         </label>
 
-        <CleanupSection vid={vid} />{/* PROTOTYPE */}
+        <CleanupSection vid={vid} c={cleanup} setC={setCleanup} />{/* PROTOTYPE */}
 
         <h5>Equalizer <span class="dim">{preset?.name ?? "custom"}</span></h5>
         <div class="au-chips">

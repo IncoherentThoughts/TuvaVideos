@@ -145,6 +145,18 @@ export class AudioEngine {
     ramp(this.dry.gain, s.compress ? 0 : 1);
   }
 
+  /** PROTOTYPE: raw per-channel input RMS in dBFS (before the chain) for the Auto wand. */
+  inputDb(): [number, number] {
+    const rms = (a: AnalyserNode) => {
+      const buf = new Float32Array(a.fftSize);
+      a.getFloatTimeDomainData(buf);
+      let s = 0;
+      for (const x of buf) s += x * x;
+      return 20 * Math.log10(Math.sqrt(s / buf.length) + 1e-9);
+    };
+    return [rms(this.anaIn[0]), rms(this.anaIn[1])];
+  }
+
   levels(): Levels {
     const rms = (a: AnalyserNode) => {
       const buf = new Float32Array(a.fftSize);

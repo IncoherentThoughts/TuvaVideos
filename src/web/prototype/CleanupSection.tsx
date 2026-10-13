@@ -2,14 +2,13 @@
 // component only (reset on remount; nothing is saved). Spectrum: a canvas, log-frequency, click to place a notch.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { AudioEngine } from "../audioEngine";
-import { DEFAULT_CLEANUP, HP_MAX, HP_MIN, LP_MAX, LP_MIN, NOTCH_MAX, fmtHz, hzToPos, posToHz, type Cleanup, type Notch } from "./cleanup";
+import { HP_MAX, HP_MIN, LP_MAX, LP_MIN, NOTCH_MAX, fmtHz, hzToPos, posToHz, type Cleanup, type Notch } from "./cleanup";
 
 const SPEC_LO = 30, SPEC_HI = 16000;
 const xOf = (hz: number, w: number) => hzToPos(hz, SPEC_LO, SPEC_HI) * w;
 const hzAt = (x: number, w: number) => posToHz(x / w, SPEC_LO, SPEC_HI);
 
-export function CleanupSection({ vid }: { vid: { current: HTMLVideoElement | null } }) {
-  const [c, setC] = useState<Cleanup>(DEFAULT_CLEANUP);
+export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElement | null }; c: Cleanup; setC: (f: (prev: Cleanup) => Cleanup) => void }) {
   const [finding, setFinding] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);

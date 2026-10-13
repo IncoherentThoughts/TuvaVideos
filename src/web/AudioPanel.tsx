@@ -27,7 +27,7 @@ const METER_MS = 70;
 // PROTOTYPE: a magic wand, same stroke style as the icons in ui.tsx
 const WandIcon = () => (
   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M15 4V2M15 10V8M11 6h2M17 6h2M4 20l9-9M13 11l-2-2M20 15l1-1M19 20l1 1M5 3l1 1" />
+    <path d="M3 21 14.5 9.5" /><path d="M17 3v8M13 7h8" />
   </svg>
 );
 

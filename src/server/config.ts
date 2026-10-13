@@ -32,9 +32,13 @@ export interface Config {
   webDir: string;
 }
 
-function findBin(name: string): string {
-  const fixed = `/usr/local/bin/${name}`;
-  if (existsSync(fixed)) return fixed;
+/**
+ * Native arm64 Homebrew first: the x86_64 build under /usr/local runs under Rosetta at about half the speed
+ * (docs/research/plex-low-lag.md §6). `TUVA_BIN_DIR` puts another directory in front.
+ */
+export function findBin(name: string, env: Record<string, string | undefined> = process.env): string {
+  const dirs = [env.TUVA_BIN_DIR, "/opt/homebrew/bin", "/usr/local/bin"].filter((d): d is string => !!d);
+  for (const d of dirs) if (existsSync(join(d, name))) return join(d, name);
   return Bun.which(name) ?? name;
 }
 
@@ -57,9 +61,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     passive: port !== DEFAULT_PORT && env.TUVA_DATA_DIR === undefined,
     localRoot: env.TUVA_LOCAL_ROOT ?? "/Users/evanwilliams/Desktop/Khoomei/Videos",
     externalRoot: env.TUVA_EXTERNAL_ROOT,
-    ffmpeg: findBin("ffmpeg"),
-    ffprobe: findBin("ffprobe"),
-    cwebp: findBin("cwebp"),
+    ffmpeg: findBin("ffmpeg", env),
+    ffprobe: findBin("ffprobe", env),
+    cwebp: findBin("cwebp", env),
     trash: env.TUVA_TRASH ?? "/usr/bin/trash",
     openTab: env.TUVA_NO_OPEN !== "1",
     migrationsDir: join(import.meta.dir, "..", "..", "migrations"),

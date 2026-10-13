@@ -256,6 +256,19 @@ export function createHandler(s: Services) {
     };
   };
 
+  // PROTOTYPE: the Copy's audio track as raw PCM (s16le, stereo, 32 kHz) for the Audio panel's full-file Auto analysis.
+  // ffmpeg demuxes the whole file but decodes only audio; the stream is killed when the client goes away.
+  const PCM_RATE = 32000;
+  function pcmRoute(req: Request, id: number): Response {
+    const c = s.db.query(`${COPY_SQL.replace("c.fallback_file, c.missing_since", "c.fallback_file, c.missing_since, r.path AS root_path")} WHERE c.id = ?`).get(id) as (CopyDbRow & { root_path: string }) | null;
+    if (!c) return json({ error: "no such copy" }, 404);
+    if (c.missing_since) return json({ error: "copy is missing" }, 404);
+    const path = join(c.root_path, c.rel_path);
+    const proc = Bun.spawn([s.cfg.ffmpeg, "-v", "error", "-nostdin", "-i", path, "-vn", "-ac", "2", "-ar", String(PCM_RATE), "-f", "s16le", "-"], { stdout: "pipe", stderr: "ignore" });
+    req.signal.addEventListener("abort", () => proc.kill());
+    return new Response(proc.stdout, { headers: { "content-type": "application/octet-stream", "cache-control": "no-store", "x-sample-rate": String(PCM_RATE), "x-channels": "2" } });
+  }
+
   async function copyRoute(req: Request, id: number): Promise<Response> {
     const c = s.db.query(`${COPY_SQL.replace("c.fallback_file, c.missing_since", "c.fallback_file, c.missing_since, r.path AS root_path")} WHERE c.id = ?`).get(id) as (CopyDbRow & { root_path: string }) | null;
     if (!c) return json({ error: "no such copy" }, 404);
@@ -337,6 +350,7 @@ export function createHandler(s: Services) {
     try {
       if (req.method === "GET" || req.method === "HEAD") {
         if ((m = p.match(/^\/copy\/(\d+)$/))) return copyRoute(req, Number(m[1]));
+        if ((m = p.match(/^\/copy\/(\d+)\/pcm$/))) return pcmRoute(req, Number(m[1])); // PROTOTYPE
         if ((m = p.match(/^\/thumbs\/(\d+)\/(poster|strip)\.webp$/))) return thumbRoute(req, Number(m[1]), m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
         if (p === "/api/videos") return json(allVideos());

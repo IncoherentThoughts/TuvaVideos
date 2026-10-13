@@ -91,27 +91,32 @@ export class CleanupEngine {
     return { db: this.spectrum, hzPerBin: this.ctx.sampleRate / this.ana.fftSize };
   }
 
-  /**
-   * The sharpest narrow peak: the bin that stands furthest above the median of its ±N neighbours, over `frames`
-   * reads. Returns null when nothing stands out by `minDb`.
-   */
+  /** The sharpest narrow peak over `frames` (see findPeak). */
   findTone(frames: Float32Array[], hzPerBin: number, minDb = 12): { hz: number; prominence: number } | null {
     const n = frames[0]!.length;
     const avg = new Float32Array(n);
     for (const f of frames) for (let i = 0; i < n; i++) avg[i]! += f[i]! / frames.length;
-    const lo = Math.ceil(40 / hzPerBin), hi = Math.min(n - 1, Math.floor(16000 / hzPerBin));
-    let best: { hz: number; prominence: number } | null = null;
-    const W = Math.max(4, Math.round(120 / hzPerBin)); // neighbourhood ±120 Hz
-    for (let i = lo; i < hi; i++) {
-      const v = avg[i]!;
-      if (v < -90 || v < avg[i - 1]! || v < avg[i + 1]!) continue;
-      const nb: number[] = [];
-      for (let j = Math.max(1, i - W); j <= Math.min(n - 1, i + W); j++) if (Math.abs(j - i) > 2) nb.push(avg[j]!);
-      nb.sort((a, b) => a - b);
-      const med = nb[nb.length >> 1]!;
-      const prom = v - med;
-      if (prom >= minDb && (!best || prom > best.prominence)) best = { hz: i * hzPerBin, prominence: prom };
-    }
-    return best;
+    return findPeak(avg, hzPerBin, minDb);
   }
+}
+
+/**
+ * The sharpest narrow peak of an averaged spectrum: the bin that stands furthest above the median of its ±120 Hz
+ * neighbours. Null when nothing stands out by `minDb`.
+ */
+export function findPeak(avg: Float32Array, hzPerBin: number, minDb = 12): { hz: number; prominence: number } | null {
+  const n = avg.length;
+  const lo = Math.ceil(40 / hzPerBin), hi = Math.min(n - 1, Math.floor(16000 / hzPerBin));
+  let best: { hz: number; prominence: number } | null = null;
+  const W = Math.max(4, Math.round(120 / hzPerBin));
+  for (let i = lo; i < hi; i++) {
+    const v = avg[i]!;
+    if (v < -90 || v < avg[i - 1]! || v < avg[i + 1]!) continue;
+    const nb: number[] = [];
+    for (let j = Math.max(1, i - W); j <= Math.min(n - 1, i + W); j++) if (Math.abs(j - i) > 2) nb.push(avg[j]!);
+    nb.sort((a, b) => a - b);
+    const prom = v - nb[nb.length >> 1]!;
+    if (prom >= minDb && (!best || prom > best.prominence)) best = { hz: i * hzPerBin, prominence: prom };
+  }
+  return best;
 }

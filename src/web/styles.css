@@ -630,3 +630,6 @@ button.st-main:hover { background: var(--bg3); }
 .au-report .kv { font-size: 1em; }
 .au-report .kv > span { white-space: normal; }
 .au-report .arrow { color: var(--fg3); margin: 0 6px; }
+.au-ask p { margin: 2px 0 8px; color: var(--fg2); line-height: 1.4; }
+.au-ask .n { color: var(--t7); } .au-ask .u { color: var(--fg3); }
+.au-report .kv b:empty::before { content: ""; }

@@ -9,7 +9,9 @@ import {
 import { AudioEngine, type Levels } from "./audioEngine";
 import { CleanupSection } from "./prototype/CleanupSection"; // PROTOTYPE
 import { DEFAULT_CLEANUP, type Cleanup } from "./prototype/cleanup"; // PROTOTYPE
-import { autoSettings, type Measure, type ReportRow } from "./prototype/auto"; // PROTOTYPE
+import { autoSettings, type ReportRow } from "./prototype/auto"; // PROTOTYPE
+import { analyzeFull, analyzeSampled, type Measure } from "./prototype/analyze"; // PROTOTYPE
+import type { CopyDto } from "../shared/types";
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -20,6 +22,8 @@ interface Props {
   onSavePreset(name: string, eq: number[]): Promise<void>;
   onDeletePreset(name: string): Promise<void>;
   onClose(): void;
+  /** PROTOTYPE: the Video's Copies, to size the one playing for the Auto wand */
+  copies?: CopyDto[];
 }
 
 const METER_MS = 70;
@@ -62,7 +66,7 @@ const Meter = ({ v, label }: { v: number; label: string }) => (
 
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n}`;
 
-export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose }: Props) {
+export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose, copies = [] }: Props) {
   const lv = useLevels(vid);
   const preset = presetFor(s.eq, presets);
   const [naming, setNaming] = useState(false);
@@ -90,38 +94,57 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
   };
   // PROTOTYPE: Clean up state (in memory) and the Auto wand
   const [cleanup, setCleanup] = useState<Cleanup>(DEFAULT_CLEANUP);
-  const [auto, setAuto] = useState<"idle" | "listening">("idle");
+  const [auto, setAuto] = useState<{ phase: "idle" } | { phase: "ask"; copy: CopyDto } | { phase: "busy"; label: string }>({ phase: "idle" });
   const [autoReport, setAutoReport] = useState<ReportRow[] | null>(null);
-  const runAuto = async () => {
+  const abort = useRef<AbortController | null>(null);
+  // the Copy the Player is on: its id is in the <video> src
+  const playingCopy = (): CopyDto | null => {
+    const m = vid.current?.src.match(/\/copy\/(\d+)/);
+    return (m && copies.find((c) => c.id === Number(m[1]))) ?? null;
+  };
+  const BIG_BYTES = 1e9, BIG_SECS = 20 * 60;
+  const isBig = (c: CopyDto) => c.size > BIG_BYTES || (c.durationS ?? 0) > BIG_SECS;
+
+  const startAuto = () => {
+    const c = playingCopy();
+    if (c && isBig(c)) setAuto({ phase: "ask", copy: c });
+    else void runAuto(c ? "full" : "sampled");
+  };
+  const cancelAuto = () => { abort.current?.abort(); setAuto({ phase: "idle" }); };
+  const runAuto = async (how: "full" | "sampled") => {
     const v = vid.current;
     if (!v) return;
     const eng = AudioEngine.for(v);
-    if (v.paused) void v.play();
-    // measure the recording as it is: defaults in, cleanup off, then listen for ~2 s
-    const before = { audio: s, cleanup };
-    onChange({ ...before.audio, routing: "stereo", balance: 0, volL: 1, volR: 1, preamp: 0 });
-    setCleanup(() => DEFAULT_CLEANUP);
-    setAuto("listening");
     setAutoReport(null);
-    await new Promise((r) => setTimeout(r, 300));
-    const m: Measure = { chDb: [0, 0], frames: [], hzPerBin: 0 };
-    const sums: [number, number] = [0, 0];
-    const N = 24;
-    for (let i = 0; i < N; i++) {
-      await new Promise((r) => setTimeout(r, 80));
-      const [l, r] = eng.inputDb();
-      sums[0] += l; sums[1] += r;
-      const sp = eng.cleanup.read();
-      m.frames.push(Float32Array.from(sp.db));
-      m.hzPerBin = sp.hzPerBin;
+    const ac = new AbortController();
+    abort.current = ac;
+    try {
+      let m: Measure;
+      if (how === "full") {
+        const c = playingCopy();
+        if (!c) throw new Error("no Copy");
+        setAuto({ phase: "busy", label: "decoding…" });
+        m = await analyzeFull(c.id, (f) => setAuto({ phase: "busy", label: `decoding ${Math.round(f * 100)} %` }), c.durationS, ac.signal);
+      } else {
+        // measure through the live chain with the chain at its defaults
+        onChange({ ...s, routing: "stereo", balance: 0, volL: 1, volR: 1, preamp: 0 });
+        setCleanup(() => DEFAULT_CLEANUP);
+        setAuto({ phase: "busy", label: "listening…" });
+        await new Promise((r) => setTimeout(r, 300));
+        m = await analyzeSampled(v, eng, (f) => setAuto({ phase: "busy", label: `listening ${Math.round(f * 100)} %` }));
+      }
+      if (ac.signal.aborted) return;
+      const out = autoSettings(m);
+      onChange(out.audio);
+      setCleanup(() => out.cleanup);
+      setAutoReport(out.report);
+    } catch (e) {
+      if (!ac.signal.aborted) setAutoReport([{ k: "error", heard: String((e as Error).message ?? e), did: "" }]);
+    } finally {
+      if (abort.current === ac) { abort.current = null; setAuto({ phase: "idle" }); }
     }
-    m.chDb = [sums[0] / N, sums[1] / N];
-    const out = autoSettings(m, eng.cleanup);
-    onChange(out.audio);
-    setCleanup(() => out.cleanup);
-    setAutoReport(out.report);
-    setAuto("idle");
   };
+  const fmtBytes = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 
   const nameExists = !!name.trim() && presets.some((p) => !p.builtIn && p.name.toLowerCase() === name.trim().toLowerCase());
 
@@ -130,14 +153,30 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       <div class="hd">
         <div class="row">
           <span class="ttl">Audio</span>
-          <button class="btn small wand" disabled={auto === "listening"} onClick={() => void runAuto()} title="Auto: listen for a moment, then balance channels, level, clean-up and EQ for this recording (prototype)">
-            <WandIcon /> {auto === "listening" ? "listening…" : "Auto"}
-          </button>
+          {auto.phase === "busy" ? (
+            <button class="btn small wand" onClick={cancelAuto} title="Stop">
+              <WandIcon /> {auto.label} <span class="dim">×</span>
+            </button>
+          ) : (
+            <button class="btn small wand" disabled={auto.phase === "ask"} onClick={startAuto} title="Auto: analyse the recording, then balance channels, level, clean-up and EQ (prototype)">
+              <WandIcon /> Auto
+            </button>
+          )}
           {!isDefaultAudio(s) && <button class="btn small" onClick={onReset} title="Back to the sound as recorded">Reset</button>}
           <button class="ib" aria-label="Close audio" title="Close (a while the Player has focus)" onClick={onClose}>×</button>
         </div>
       </div>
       <div class="body">
+        {auto.phase === "ask" && (
+          <div class="au-report stpanel au-ask">
+            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">large Copy</span><button class="ib" aria-label="Cancel" onClick={cancelAuto}>×</button></div>
+            <p>This Copy is <span class="n">{fmtBytes(auto.copy.size)}</span>{auto.copy.durationS ? <> · <span class="n">{Math.round(auto.copy.durationS / 60)}</span><span class="u"> min</span></> : null}. Decoding the whole file reads all of it, which can take a while.</p>
+            <div class="au-chips">
+              <button class="tag save" onClick={() => void runAuto("sampled")}>Sample 5 places <span class="dim">~8 s</span></button>
+              <button class="tag save" onClick={() => void runAuto("full")}>Decode whole file</button>
+            </div>
+          </div>
+        )}
         {autoReport && (
           <div class="au-report stpanel">
             <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">{autoReport.length} change{autoReport.length === 1 ? "" : "s"}</span><button class="ib" aria-label="Dismiss" onClick={() => setAutoReport(null)}>×</button></div>
@@ -145,7 +184,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
               {autoReport.map((r) => (
                 <>
                   <b>{r.k}</b>
-                  <span><span class="u">{r.heard}</span><span class="arrow">→</span><Did s={r.did} /></span>
+                  <span><span class="u">{r.heard}</span>{r.did && <><span class="arrow">→</span><Did s={r.did} /></>}</span>
                 </>
               ))}
             </div>

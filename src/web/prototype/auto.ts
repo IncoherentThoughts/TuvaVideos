@@ -1,15 +1,8 @@
 // PROTOTYPE — throwaway. The Auto wand: listen for a moment, then propose Audio settings + Clean up for this
 // recording. Pure decisions over measurements; the measuring loop is in the panel.
 import { BANDS, DEFAULT_AUDIO, EQ_MAX, EQ_MIN, PREAMP_MAX, PREAMP_MIN, type AudioState } from "../../shared/audio";
-import { CleanupEngine, DEFAULT_CLEANUP, fmtHz, type Cleanup } from "./cleanup";
-
-export interface Measure {
-  /** per-channel input RMS in dBFS, averaged over the listen */
-  chDb: [number, number];
-  /** averaged spectrum frames (dB per bin) and Hz per bin, taken after the channel matrix, before cleanup */
-  frames: Float32Array[];
-  hzPerBin: number;
-}
+import { DEFAULT_CLEANUP, fmtHz, type Cleanup } from "./cleanup";
+import type { Measure } from "./analyze";
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const TARGET_DB = -20; // where a healthy recording's RMS sits
@@ -25,13 +18,11 @@ function bandDb(avg: Float32Array, hzPerBin: number, lo: number, hi: number): nu
 /** One line of the report: a key, what was heard, what was done. Values in `did` are "name value" pairs the panel colours. */
 export interface ReportRow { k: string; heard: string; did: string }
 
-export function autoSettings(m: Measure, engine: CleanupEngine): { audio: AudioState; cleanup: Cleanup; report: ReportRow[] } {
+export function autoSettings(m: Measure): { audio: AudioState; cleanup: Cleanup; report: ReportRow[] } {
   const audio: AudioState = { ...DEFAULT_AUDIO, eq: [...DEFAULT_AUDIO.eq] };
   const cleanup: Cleanup = { ...DEFAULT_CLEANUP, notches: [] };
   const report: ReportRow[] = [];
-  const n = m.frames[0]!.length;
-  const avg = new Float32Array(n);
-  for (const f of m.frames) for (let i = 0; i < n; i++) avg[i]! += f[i]! / m.frames.length;
+  const avg = m.spectrum;
 
   // --- channels: one side dead → use the other in both ears; a lean → even it out ---
   const [L, R] = m.chDb;
@@ -54,11 +45,12 @@ export function autoSettings(m: Measure, engine: CleanupEngine): { audio: AudioS
   }
 
   // --- artifacts: a dominant tone → notch (hum below 200 Hz gets harmonics); rumble → high-pass; a flat noise floor on top → low-pass ---
-  const tone = engine.findTone(m.frames, m.hzPerBin, 15);
+  const tone = m.tone;
   if (tone) {
     const hum = tone.hz < 200;
     cleanup.notches.push({ hz: Math.round(tone.hz), q: hum ? 30 : 20, depth: 30, harmonics: hum });
     report.push({ k: "tone", heard: `${fmtHz(tone.hz)} Hz +${Math.round(tone.prominence)} dB`, did: `notch ${fmtHz(tone.hz)} Hz${hum ? " harmonics" : ""}` });
+    if (tone.persistence < 1) report.push({ k: "", heard: `present ${Math.round(tone.persistence * 100)} % of the time`, did: "" });
   }
   const sub = bandDb(avg, m.hzPerBin, 20, 60), low = bandDb(avg, m.hzPerBin, 100, 300);
   if (sub > low - 3) { cleanup.highpass = 80; report.push({ k: "rumble", heard: "energy under 60 Hz", did: "cut below 80 Hz" }); }
@@ -74,5 +66,6 @@ export function autoSettings(m: Measure, engine: CleanupEngine): { audio: AudioS
   if (eq.some((g) => g !== 0)) { audio.eq = eq.map((g) => clamp(g, EQ_MIN, EQ_MAX)); report.push({ k: "eq", heard: "tonal tilt", did: eq.map((g) => (g > 0 ? "+" : "") + g).join(" ") }); }
 
   if (!report.length) report.push({ k: "result", heard: "balanced already", did: "no change" });
+  report.unshift({ k: "measured", heard: m.how, did: "" });
   return { audio, cleanup, report };
 }

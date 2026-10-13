@@ -145,6 +145,11 @@ export class AudioEngine {
     ramp(this.dry.gain, s.compress ? 0 : 1);
   }
 
+  /** PROTOTYPE: silence the speakers without silencing the analysers (element.muted would mute the source too). */
+  mute(on: boolean) {
+    this.out.gain.setTargetAtTime(on ? 0 : 1, this.ctx.currentTime, 0.01);
+  }
+
   /** PROTOTYPE: raw per-channel input RMS in dBFS (before the chain) for the Auto wand. */
   inputDb(): [number, number] {
     const rms = (a: AnalyserNode) => {

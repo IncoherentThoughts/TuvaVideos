@@ -11,6 +11,8 @@ const dataDir = join(base, "data");
 const localDir = join(base, "local");
 const extDir = join(base, "ext");
 const shotsDir = join(base, "shots");
+const trashDir = join(base, "trash");
+const trashBin = join(base, "fake-trash.sh");
 mkdirSync(localDir, { recursive: true });
 mkdirSync(extDir, { recursive: true });
 
@@ -36,9 +38,11 @@ beforeAll(async () => {
   writeFileSync(join(localDir, "Song One [aaaaaaaaaaa].f251.webm"), "partial");
   writeFileSync(join(localDir, "._Song One [aaaaaaaaaaa].mp4"), "appledouble");
   writeFileSync(join(localDir, "notes.txt"), "x");
+  mkdirSync(trashDir, { recursive: true });
+  writeFileSync(trashBin, `#!/bin/sh\nmv "$1" "${trashDir}/"\n`, { mode: 0o755 });
 
   const cfg = loadConfig({
-    TUVA_DATA_DIR: dataDir, TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir, TUVA_EXTERNAL_ROOT: extDir, TUVA_SCREENSHOT_DIR: shotsDir,
+    TUVA_DATA_DIR: dataDir, TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir, TUVA_EXTERNAL_ROOT: extDir, TUVA_SCREENSHOT_DIR: shotsDir, TUVA_TRASH: trashBin,
   });
   app = await startApp(cfg);
   base_url = `http://localhost:${app.server.port}`;
@@ -421,5 +425,51 @@ describe("screenshot endpoint", () => {
     expect((await shot(id, "-3", await png())).status).toBe(400);
     expect((await shot(id, "abc", await png())).status).toBe(400);
     expect((await shot(999999, "5", await png())).status).toBe(404);
+  });
+});
+
+describe("deleting a Video", () => {
+  const del = (id: number, media: boolean) => fetch(`${base_url}/api/videos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ media }) });
+  const rescan = async () => {
+    await app.scanner.requestAll();
+    await app.scanner.whenIdle();
+  };
+
+  test("entry only: the file stays on disk and a rescan does not bring the Video back (content-hash identity)", async () => {
+    const v = app.db.query("SELECT id, content_hash FROM video WHERE youtube_id IS NULL AND title = 'No Id Concert'").get() as { id: number; content_hash: string };
+    app.db.query("INSERT INTO chapter (video_id, start_s, title, source) VALUES (?, 1, 'x', 'manual')").run(v.id);
+    const r = await del(v.id, false);
+    expect(r.status).toBe(200);
+    const j: any = await r.json();
+    expect(j.trashed).toEqual([]);
+    expect(j.tombstoned).toBe(true);
+    expect(existsSync(join(localDir, "No Id Concert.mkv"))).toBe(true);
+    expect((await fetch(`${base_url}/api/videos/${v.id}`)).status).toBe(404);
+    expect(app.db.query("SELECT COUNT(*) n FROM chapter WHERE video_id = ?").get(v.id)).toEqual({ n: 0 });
+    await rescan();
+    expect(app.db.query("SELECT COUNT(*) n FROM video WHERE content_hash = ?").get(v.content_hash)).toEqual({ n: 0 });
+  });
+
+  test("with media: the file goes to the Trash and no tombstone is kept", async () => {
+    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'bbbbbbbbbbb'").get() as { id: number }).id;
+    const j: any = await (await del(id, true)).json();
+    expect(j.trashed).toEqual([join(localDir, "Live [bbbbbbbbbbb].webm")]);
+    expect(j.kept).toEqual([]);
+    expect(j.tombstoned).toBe(false);
+    expect(existsSync(join(trashDir, "Live [bbbbbbbbbbb].webm"))).toBe(true);
+    expect(app.db.query("SELECT COUNT(*) n FROM deleted_video WHERE youtube_id = 'bbbbbbbbbbb'").get()).toEqual({ n: 0 });
+    expect((await api("/api/videos")).some((v: any) => v.youtubeId === "bbbbbbbbbbb")).toBe(false);
+  });
+
+  test("entry only, YouTube id: skipped by later scans", async () => {
+    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+    expect((await del(id, false)).status).toBe(200);
+    await rescan();
+    expect(app.db.query("SELECT COUNT(*) n FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get()).toEqual({ n: 0 });
+    expect(app.db.query("SELECT COUNT(*) n FROM copy WHERE rel_path LIKE '%aaaaaaaaaaa%'").get()).toEqual({ n: 0 });
+  });
+
+  test("an unknown Video is a 404", async () => {
+    expect((await del(999999, false)).status).toBe(404);
   });
 });

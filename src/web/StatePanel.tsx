@@ -60,7 +60,7 @@ const BINDINGS: [string[], string][] = [
   [["c"], "add Chapter here"], [["t"], "Studio playback"],
   [["i"], "this panel"], [["y"], "lyrics drawer"],
   [["a"], "audio panel"], [["/"], "focus search"],
-  [["Esc"], "back to the Player"],
+  [["Esc"], "back to the Player"], [["v"], "back to the Player (from anywhere)"],
 ];
 
 /** Seconds of media buffered past `t` (0 when nothing buffered holds `t`). */

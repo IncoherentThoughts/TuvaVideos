@@ -1,13 +1,18 @@
 // Right-click menu on a Video in any list (Library grid, search results, Favorites rows): shows the view count
 // (migration 0009) and resets it. Mounted once in the app shell; it listens for `contextmenu` on any element that
-// carries `data-fav-kind="video"` and `data-id`, the markers the keyboard walker already uses.
+// carries `data-fav-kind="video"` and `data-id`, the markers the keyboard walker already uses. In the Library grid it
+// also offers Delete (DeleteVideo.tsx).
 import { useEffect, useRef, useState } from "preact/hooks";
+import type { VideoDto } from "../shared/types";
 import { api, replaceVideo, useStore } from "./data";
+import { DeleteVideoDialog } from "./DeleteVideo";
 
 interface Open {
   id: number;
   x: number;
   y: number;
+  /** Opened on a card of the Library grid, where Delete is offered. */
+  grid: boolean;
 }
 
 export function VideoMenu() {
@@ -15,6 +20,7 @@ export function VideoMenu() {
   const [open, setOpen] = useState<Open | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [del, setDel] = useState<VideoDto | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,7 +29,7 @@ export function VideoMenu() {
       if (!el) return;
       e.preventDefault();
       setErr(null);
-      setOpen({ id: Number(el.dataset.id), x: e.clientX, y: e.clientY });
+      setOpen({ id: Number(el.dataset.id), x: e.clientX, y: e.clientY, grid: !!el.closest(".wall") });
     };
     const close = () => setOpen(null);
     const onDown = (e: MouseEvent) => {
@@ -52,9 +58,10 @@ export function VideoMenu() {
     if (x !== open.x || y !== open.y) setOpen({ ...open, x: Math.max(8, x), y: Math.max(8, y) });
   }, [open]);
 
-  if (!open) return null;
+  const dialog = del && <DeleteVideoDialog video={del} onClose={() => setDel(null)} />;
+  if (!open) return dialog;
   const v = videos?.find((x) => x.id === open.id);
-  if (!v) return null;
+  if (!v) return dialog;
 
   const reset = async () => {
     setBusy(true);
@@ -74,6 +81,11 @@ export function VideoMenu() {
       <button role="menuitem" disabled={busy || v.viewCount === 0} onClick={() => void reset()}>
         Reset view count
       </button>
+      {open.grid && (
+        <button role="menuitem" class="vm-danger" onClick={() => (setOpen(null), setDel(v))}>
+          Delete from library…
+        </button>
+      )}
       {err && <div class="vm-err">{err}</div>}
     </div>
   );

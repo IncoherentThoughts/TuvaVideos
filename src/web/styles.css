@@ -614,3 +614,17 @@ button.st-main:hover { background: var(--bg3); }
 .lyr-ta.fns { min-height: 56px; font-size: .9em; }
 .lyr-edit-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .lyr-edit-confirm { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; font-size: .9em; }
+
+/* Delete a Video (DeleteVideo.tsx): a modal confirmation, and the Now playing page's button at the very bottom */
+dialog.delconfirm { margin: auto; width: min(520px, calc(100vw - 32px)); padding: 18px 20px; color: var(--fg); background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 14px 40px rgba(0, 0, 0, .55); }
+dialog.delconfirm::backdrop { background: rgba(0, 0, 0, .55); }
+dialog.delconfirm h3 { margin: 0 0 8px; font-size: 1.05em; }
+dialog.delconfirm p { margin: 6px 0; }
+dialog.delconfirm .ttl { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.delconfirm .check { display: flex; gap: 8px; align-items: baseline; margin: 12px 0 6px; cursor: pointer; }
+dialog.delconfirm .paths { margin: 4px 0; padding: 0 0 0 18px; font-size: .8em; color: var(--fg2); max-height: 140px; overflow: auto; }
+dialog.delconfirm .paths li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.delconfirm .err { color: var(--t1); }
+dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.np-delete { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); }
+.vmenu .vm-danger { color: var(--t1); }

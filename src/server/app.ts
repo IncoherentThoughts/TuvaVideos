@@ -21,7 +21,7 @@ export interface App extends Services {
  */
 export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit?: () => void } = {}): Promise<App> {
   initLog(cfg.logPath);
-  log(`TuvaVideos starting, data dir ${cfg.dataDir}`);
+  log(`TuvaVideos starting, data dir ${cfg.dataDir}${cfg.passive ? " (passive: no startup or remount scan)" : ""}`);
   const db = openDb(cfg.dbPath, cfg.migrationsDir);
 
   const roots = new Roots(db, cfg);
@@ -34,7 +34,8 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
     thumbs.adoptSeed();
     thumbs.kick(true);
   });
-  roots.onBecameAvailable((r) => scanner.request(r.id)); // startup, remount
+  // startup, remount; a passive server (a test preview on the real library) scans only on an explicit Rescan
+  if (!cfg.passive) roots.onBecameAvailable((r) => scanner.request(r.id));
 
   const web = new WebBundle(cfg);
   await web.build();
@@ -49,7 +50,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
 
   // Thumbnails already adopted from the seed cache are browsable before any Root answers.
   thumbs.adoptSeed();
-  await roots.pollAll(); // fires the startup scans through onBecameAvailable
+  await roots.pollAll(); // fires the startup scans through onBecameAvailable (none when passive)
   roots.start(10_000);
 
   // The same object the handler reads (`quit` may be set later, e.g. by tests), not a copy.

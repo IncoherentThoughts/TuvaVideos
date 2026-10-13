@@ -56,6 +56,9 @@ export const api = {
   /** One more view of the Video; the answer is the updated Video. */
   recordView: (id: number) => send<VideoDto>("POST", `/api/videos/${id}/view`),
   resetViews: (id: number) => send<VideoDto>("DELETE", `/api/videos/${id}/view`),
+  /** Delete the Video from the library; `media` also moves its files to the Trash. */
+  deleteVideo: (id: number, media: boolean) =>
+    send<{ deleted: true; trashed: string[]; kept: { path: string; reason: string }[]; tombstoned: boolean }>("DELETE", `/api/videos/${id}`, { media }),
   /** Show the Copy's file in the Finder. */
   revealCopy: (id: number) => send<{ ok: true }>("POST", `/api/copies/${id}/reveal`),
   relocate: (videoId: number, body: { path: string; copyId?: number | null; merge?: boolean }) => post<VideoDto>(`/api/videos/${videoId}/relocate`, body),
@@ -158,6 +161,17 @@ export async function loadVideos() {
 /** Puts an edited Video (the server's answer) into the in-memory library so grids and tags agree. */
 export function replaceVideo(v: VideoDto) {
   if (state.videos) set({ videos: state.videos.map((x) => (x.id === v.id ? v : x)) });
+}
+
+/** Drops a deleted Video from the in-memory library (and from "Now playing" if it was the last one played). */
+export function removeVideo(id: number) {
+  if (lastPlayed === id) {
+    lastPlayed = null;
+    try {
+      sessionStorage.removeItem("tuva.lastPlayed");
+    } catch {}
+  }
+  set({ videos: state.videos?.filter((x) => x.id !== id) ?? null, favVersion: state.favVersion + 1 });
 }
 
 export async function loadArtists() {

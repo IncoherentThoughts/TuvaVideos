@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { parseQuery } from "../shared/filters";
 import { escapeHtml, highlightHtml, matchRanges } from "../shared/fold";
 import type { SearchResponse, SearchRow, VideoDto } from "../shared/types";
+import { hasArtistNamed } from "../shared/libraryView";
 import { Card } from "./Library";
 import { api, useStore } from "./data";
 import { savePlayingFrom } from "./playingFrom";
@@ -32,8 +33,9 @@ export interface ResultMatch {
 
 /** The Videos the response names, in rank order and deduplicated, with the Chapter and Song rows that point at each.
  *  Video rows and Chapter rows come first (the Videos group's order); Videos reached only through a matching Song
- *  (its name or its lyrics) follow, in the Songs group's order. */
-export function resultMatches(res: SearchResponse): ResultMatch[] {
+ *  (its name or its lyrics) follow, in the Songs group's order; then, given the Library's Videos, those by a matching
+ *  Artist (#artists) and those performing a matching Track's Song (#tracks). */
+export function resultMatches(res: SearchResponse, library: VideoDto[] = []): ResultMatch[] {
   const byId = new Map<number, ResultMatch>();
   const order: ResultMatch[] = [];
   const at = (id: number) => {
@@ -52,6 +54,10 @@ export function resultMatches(res: SearchResponse): ResultMatch[] {
   }
   const songs = res.groups.find((g) => g.key === "songs")?.rows ?? [];
   for (const r of songs) if (r.kind === "song") for (const v of r.videos) at(v.id).songs.push(r);
+  const artists = res.groups.find((g) => g.key === "artists")?.rows ?? [];
+  for (const r of artists) if (r.kind === "artist") for (const v of library) if (hasArtistNamed(v, r.name)) at(v.id);
+  const tracks = res.groups.find((g) => g.key === "tracks")?.rows ?? [];
+  for (const r of tracks) if (r.kind === "track" && r.songId) for (const v of library) if (v.songId === r.songId) at(v.id);
   return order;
 }
 
@@ -122,16 +128,21 @@ export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }
   const shown = useMemo(() => {
     if (!res || !videos) return [] as { v: VideoDto; m: ResultMatch }[];
     const byId = new Map(videos.map((v) => [v.id, v]));
-    return resultMatches(res).flatMap((m) => {
+    // Video filters (#fav #available #type: #artist:) hold for every card, however the Video was reached.
+    const p = parseQuery(q);
+    // A matching Chapter already passed them on the server (#fav there means the Chapter itself is a Favorite).
+    const passes = (v: VideoDto, m: ResultMatch) =>
+      (!p.available || v.available) && (!p.fav || !!v.favoritedAt || m.chapters.length > 0) && (!p.types.length || p.types.includes(v.type)) && p.artists.every((a) => hasArtistNamed(v, a));
+    return resultMatches(res, videos).flatMap((m) => {
       const v = byId.get(m.id);
-      if (!v) return [];
+      if (!v || !passes(v, m)) return [];
       const inTitle = !!res.needle && matchRanges(v.title, res.needle).length > 0;
       const inLatin = !!res.needle && !inTitle && !!v.titleLatin && matchRanges(v.titleLatin, res.needle).length > 0;
       if (inLatin) m.latin = v.titleLatin!;
       m.startS = resultStart(m, inTitle || inLatin);
       return [{ v, m }];
     });
-  }, [res, videos]);
+  }, [res, videos, q]);
   // "views" keeps the ranking as the tie-break: equally watched Videos stay in match order.
   const ordered = useMemo(() => (sort === "views" ? [...shown].sort((a, b) => b.v.viewCount - a.v.viewCount) : shown), [shown, sort]);
   const ids = useMemo(() => ordered.map((x) => x.v.id), [ordered]);

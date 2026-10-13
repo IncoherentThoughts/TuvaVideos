@@ -12,6 +12,7 @@ import { loadPlayingFrom, onPlayingFromChange, savePlayingFrom } from "./playing
 import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
+import { RelocateButton } from "./Relocate";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
 import { AudioPanel } from "./AudioPanel";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
@@ -223,6 +224,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
             >
               <FavoriteBadge off={!v.favoritedAt} />
             </button>
+            <RelocateButton video={v} onChange={setV} />
             <span class="mono dim">{fmtDuration(v.durationS)}</span>
             <button class={`btn small lyricsbtn${drawer ? " on" : ""}`} aria-pressed={drawer} aria-controls="lyrbody" title="Lyrics drawer (y while the Player has focus)" onClick={() => (drawer ? closeDrawer() : (setDrawer(true), setFocusDrawer(true)))}>
               Lyrics
@@ -263,7 +265,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
       {drawer && (
         <div class="drawer-wrap">
           {target ? (
-            <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={!target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void api.patchVideo(v.id, { versionId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
+            <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={!target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void api.patchVideo(v.id, { versionId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={!target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void api.patchVideo(v.id, { songId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
           ) : (
             <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
               <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>

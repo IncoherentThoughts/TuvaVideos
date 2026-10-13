@@ -99,3 +99,19 @@ export function filterChips(p: ParsedQuery): FilterChip[] {
 
 /** Row cap per group: 8, or 40 when the user filtered (spec 6.2). */
 export const rowCap = (p: ParsedQuery) => (p.groups.length || p.lyricsOnly || hasVideoFilters(p) ? 40 : 8);
+
+/** A single word the parser takes as a filter (it leaves no search text behind): shown as a pill in the search box. */
+export const isFilterToken = (w: string) => w.startsWith("#") && !/\s/.test(w) && isFilterOnly(parseQuery(w));
+
+/** Colour slot (1-8, the tag palette) of a filter pill: Groups use their result colours, Types their tag colours. */
+export function filterSlot(token: string): number {
+  const p = parseQuery(token);
+  const GROUP_SLOT: Record<Group, number> = { songs: 1, videos: 3, artists: 5, tracks: 6, albums: 7 };
+  const TYPE_SLOT: Record<VideoType, number> = { song: 1, concert: 3, interview: 5, other: 8 };
+  if (p.groups[0]) return GROUP_SLOT[p.groups[0]];
+  if (p.types[0]) return TYPE_SLOT[p.types[0]];
+  if (p.lyricsOnly) return 7;
+  if (p.available) return 4;
+  if (p.fav) return 2;
+  return 6; // #artist:… (the box colours it by the Artist's own slot)
+}

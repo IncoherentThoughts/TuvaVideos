@@ -299,23 +299,23 @@ function TypeField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
   );
 }
 
+/** The Song tag links to every Video performing the Song, like an Artist tag; relinking lives at the top of the lyrics drawer. */
 function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promise<boolean> }) {
   const [picking, setPicking] = useState(false);
-  // Version pills show only while linking: after a Song with several Versions was just chosen, until one is picked.
-  // Otherwise the Version is handled in the lyrics drawer (its pills write the Video's Version).
-  const [choosing, setChoosing] = useState(false);
-  useEffect(() => setChoosing(false), [v.id]);
   const s = v.song;
-  const versions = s?.versions ?? [];
   return (
     <span class="field songrow">
       <span class="lbl">Song:</span>
-      {s && !picking && (
+      {s && (
         <span class={`achip songchip${v.songSuggested ? " sug" : ""}`}>
-          <button class="achip-main" title={v.songSuggested ? `Suggested Song (${v.suggestionSource === "title" ? "from the Video's title" : "from the archive's Performances"}) · click to change` : "Click to change the Song"} onClick={() => setPicking(true)}>
+          <Link
+            href={`/${libraryQuery({ ...defaultLibraryState(), song: s.id })}`}
+            class="achip-main"
+            title={`Every Video performing ${s.name ?? "this Song"}${v.songSuggested ? ` · Suggested (${v.suggestionSource === "title" ? "from the Video's title" : "from the archive's Performances"})` : ""} · change it from the lyrics drawer`}
+          >
             {s.name ?? <span class="dim">unknown song</span>}
             {s.englishName && <span class="en"> · {s.englishName}</span>}
-          </button>
+          </Link>
           <button class="x" title="Clear the Song" aria-label="Clear the Song" onClick={() => void patch({ songId: null })}>
             <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
           </button>
@@ -326,35 +326,27 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
           ✓
         </button>
       )}
-      {s && choosing && versions.length > 1 && (
-        <span class="pills" role="group" aria-label="Version">
-          <span class="lbl">Version:</span>
-          {versions.map((x, i) => {
-            const on = v.versionId ? v.versionId === x.id : i === 0;
-            return (
-              <button key={x.id} class={`pill${on ? " on" : ""}`} aria-pressed={on} onClick={() => (setChoosing(false), void patch({ versionId: x.id }))}>
-                {x.label}
-              </button>
-            );
-          })}
-        </span>
-      )}
       {!s && !picking && (
         <button class="linkbtn" onClick={() => setPicking(true)}>
           + add
         </button>
       )}
-      {picking && (
-        <Picker<SongRow>
-          placeholder="Search Songs…"
-          search={rowsOf("song")}
-          row={songPickerRow}
-          onPick={(r) => (setPicking(false), void patch({ songId: r.id }).then((ok) => ok && setChoosing(true)))}
-          create={createSongRow((id) => (setPicking(false), void patch({ songId: id })))}
-          onClose={() => setPicking(false)}
-        />
-      )}
+      {!s && picking && <SongPicker onPick={(id) => (setPicking(false), void patch({ songId: id }))} onClose={() => setPicking(false)} />}
     </span>
+  );
+}
+
+/** Search Songs (or make a Local one) and hand back the chosen id. */
+export function SongPicker({ onPick, onClose }: { onPick: (songId: string) => void; onClose: () => void }) {
+  return (
+    <Picker<SongRow>
+      placeholder="Search Songs…"
+      search={rowsOf("song")}
+      row={songPickerRow}
+      onPick={(r) => onPick(r.id)}
+      create={createSongRow(onPick)}
+      onClose={onClose}
+    />
   );
 }
 

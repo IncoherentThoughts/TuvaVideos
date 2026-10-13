@@ -233,7 +233,9 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
   if (bare && !(parsed.groups.length || hasVideoFilters(parsed) || parsed.lyricsOnly)) return { needle, groups: [], ms: 0, parsed };
 
   const wantVideos = groups.includes("videos");
-  const needFacts = wantVideos || groups.includes("artists");
+  const videoFilters = hasVideoFilters(parsed);
+  // Video filters stack onto the Artists and Songs groups too: those keep only rows with a Video that passes them.
+  const needFacts = wantVideos || groups.includes("artists") || (videoFilters && groups.includes("songs"));
   const facts = needFacts ? loadVideoFacts(db, env, parsed.artists.length > 0) : new Map<number, VideoFacts>();
   const artistWanted = parsed.artists.map(foldQuery);
   const videoOk = (f: VideoFacts | undefined) =>
@@ -369,7 +371,8 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
     if (g === "songs") {
       const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number; local: number }>("SELECT id, name, english_name, is_hidden, local FROM song_all WHERE id = ?", c.ref);
       if (!s) return null;
-      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, local: !!s.local, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos: songVideos(s.id) };
+      const videos = songVideos(s.id).filter((x) => !videoFilters || videoOk(facts.get(x.id)));
+      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, local: !!s.local, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos };
     }
     if (g === "tracks") {
       const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM mirror_track WHERE id = ?", c.ref);
@@ -390,7 +393,14 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
   const out: SearchGroup[] = [];
   for (const g of groups) {
     let list = buckets[g];
-    if (g === "artists" && hasVideoFilters(parsed)) {
+    if (g === "songs" && videoFilters) {
+      // Songs narrowed by Video filters: only those performed (Song pointer or Chapter) by a Video that passes them.
+      const ok = new Set<string>();
+      for (const r of many<{ video_id: number; song_id: string }>("SELECT id AS video_id, song_id FROM video WHERE song_id IS NOT NULL UNION ALL SELECT video_id, song_id FROM chapter WHERE song_id IS NOT NULL"))
+        if (videoOk(facts.get(r.video_id))) ok.add(r.song_id);
+      list = list.filter((b) => ok.has(b.c.ref));
+    }
+    if (g === "artists" && videoFilters) {
       // Artists narrowed by Video filters: only those with a Video that passes them.
       const ok = new Set<number>();
       for (const r of db.query("SELECT video_id, artist_id FROM video_artist").all() as { video_id: number; artist_id: number }[])

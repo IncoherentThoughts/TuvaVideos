@@ -58,6 +58,8 @@ export const api = {
   resetViews: (id: number) => send<VideoDto>("DELETE", `/api/videos/${id}/view`),
   /** Show the Copy's file in the Finder. */
   revealCopy: (id: number) => send<{ ok: true }>("POST", `/api/copies/${id}/reveal`),
+  relocate: (videoId: number, body: { path: string; copyId?: number | null; merge?: boolean }) => post<VideoDto>(`/api/videos/${videoId}/relocate`, body),
+  chooseFile: (start: string) => post<{ path?: string; cancelled?: true }>("/api/choose-file", { start }),
   /** The A-B loop kept on a Video; null clears it (spec 4.3). */
   setLoop: (id: number, loop: { a: number; b: number } | null) => post<{ id: number; loop: { a: number; b: number } | null }>(`/api/videos/${id}/loop`, { loop }),
   setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),

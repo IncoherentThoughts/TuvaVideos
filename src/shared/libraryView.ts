@@ -1,5 +1,5 @@
 // Library grid filter/sort state and its URL form (spec 5.2). Pure.
-//   /?type=song,concert&available=1&fav=1&artist=Radik_Tyulush&sort=title&dir=asc   (default sort: views, most watched first)
+//   /?type=song,concert&available=1&fav=1&artist=Radik_Tyulush&song=<songId>&sort=title&dir=asc   (default sort: views, most watched first)
 import { foldQuery } from "./fold";
 import { TYPES, type VideoType } from "./filters";
 import type { VideoDto } from "./types";
@@ -13,6 +13,8 @@ export interface LibraryState {
   fav: boolean;
   /** Artist name, spaces (not underscores). */
   artist: string | null;
+  /** Song id: only the Videos performing it (the Library fetches that list; filterVideos does not see it). */
+  song: string | null;
   sort: SortKey;
   dir: "asc" | "desc";
 }
@@ -21,7 +23,7 @@ export interface LibraryState {
 export const defaultDir = (s: SortKey): "asc" | "desc" => (s === "title" ? "asc" : "desc");
 
 export const defaultLibraryState = (): LibraryState => ({
-  types: [], availableOnly: false, fav: false, artist: null, sort: "views", dir: "desc",
+  types: [], availableOnly: false, fav: false, artist: null, song: null, sort: "views", dir: "desc",
 });
 
 export function parseLibrarySearch(search: string): LibraryState {
@@ -32,6 +34,7 @@ export function parseLibrarySearch(search: string): LibraryState {
   st.fav = p.get("fav") === "1";
   const artist = p.get("artist");
   st.artist = artist ? artist.replace(/_/g, " ") : null;
+  st.song = p.get("song") || null;
   const sort = p.get("sort");
   if (sort && (SORTS as readonly string[]).includes(sort)) st.sort = sort as SortKey;
   st.dir = defaultDir(st.sort);
@@ -47,6 +50,7 @@ export function libraryQuery(st: LibraryState): string {
   if (st.availableOnly) p.set("available", "1");
   if (st.fav) p.set("fav", "1");
   if (st.artist) p.set("artist", st.artist.replace(/ /g, "_"));
+  if (st.song) p.set("song", st.song);
   if (st.sort !== "views") p.set("sort", st.sort);
   if (st.dir !== defaultDir(st.sort)) p.set("dir", st.dir);
   const s = p.toString().replace(/%2C/g, ",");

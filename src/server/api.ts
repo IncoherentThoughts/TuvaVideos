@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import { extensionOf, contentTypeFor } from "./filename";
@@ -19,6 +20,7 @@ import { indexArtist, rebuildSearchIndex, runSearch } from "./search";
 import { addChapter, chapterDto, confirmAll, confirmChapter, deleteChapter, listChapters, patchChapter, rejectChapter, type ChapterRow } from "./chapters/store";
 import { listSongs, songDto, songRef, videosPerforming } from "./songs";
 import { createLocalSong, createLocalVersion, deleteLocalSong, deleteLocalVersion, patchLocalSong, patchLocalVersion } from "./localSongs";
+import { relocateCopy } from "./relocate";
 import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } from "./audio";
 import type { VideoType } from "../shared/filters";
 import { storedLoop, type StoredLoop } from "../shared/playerMath";
@@ -604,6 +606,29 @@ export function createHandler(s: Services) {
         if (!r.ok) return json({ error: r.error }, r.status);
         if (r.value.created) indexArtist(s.db, r.value.id);
         return json({ id: r.value.id, name: r.value.name, local: true, created: r.value.created }, r.value.created ? 201 : 200);
+      }
+      if (req.method === "POST" && (m = p.match(/^\/api\/videos\/(\d+)\/relocate$/))) {
+        // Point a Video's Copy at its file's new place (Now playing's folder button). See relocate.ts.
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        const r = await relocateCopy(s.db, s.cfg, s.roots.list(), Number(m[1]), body as any);
+        if (!r.ok) return json({ error: r.error, ...("conflict" in r ? { conflict: r.conflict } : {}) }, r.status);
+        await s.roots.check(r.value.rootId);
+        s.thumbs.kick();
+        return videoResponse(Number(m[1]));
+      }
+      if (req.method === "POST" && p === "/api/choose-file") {
+        // The Finder's "choose file" dialog (macOS), for the folder button: a browser page cannot learn a file's full path.
+        const body = (await readJson(req)) ?? {};
+        // Open where the file used to be, or the nearest folder above it that still exists.
+        let start = typeof body.start === "string" && body.start.startsWith("/") ? body.start : "";
+        while (start && start !== "/" && !(await stat(start).then((x) => x.isDirectory(), () => false))) start = dirname(start);
+        if (start === "/") start = "";
+        const loc = start ? ` default location (POSIX file ${JSON.stringify(start)})` : "";
+        const r = await run("osascript", ["-e", 'tell application "System Events" to activate', "-e", `tell application "System Events" to return POSIX path of (choose file with prompt "Where is this Video's file now?"${loc})`], { timeout: 600_000 });
+        if (r.code === 0) return json({ path: r.out.trim() });
+        if (/-128|cancel/i.test(r.err)) return json({ cancelled: true });
+        return json({ error: r.err.trim() || "the file dialog failed" }, 500);
       }
       if (req.method === "POST" && p === "/api/rescan") {
         const queued = await s.scanner.requestAll();

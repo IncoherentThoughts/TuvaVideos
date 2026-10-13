@@ -273,6 +273,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
             onSavePreset={savePreset}
             onDeletePreset={deletePreset}
             onClose={() => (setAudioOpen(false), ctl.current?.focus())}
+            copies={v.copies}
           />
         </div>
       )}

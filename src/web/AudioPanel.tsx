@@ -1,12 +1,17 @@
 // The Audio panel (spec 4.7, `a` or the Audio button): the Video's Audio settings in the drawer slot. Channels (live
-// meters, routing, balance, per-channel volume), the equalizer (presets, built-in and custom, over seven faders) and
-// level (preamp, leveler). Controlled: the page owns the settings and persists them; this only renders and edits.
+// meters, routing, balance, per-channel volume), clean up (CleanupSection), the equalizer (presets, built-in and
+// custom, over seven faders) and level (preamp, leveler). The Auto wand in the header measures the recording and
+// proposes all of it, with a report. Controlled: the page owns the settings and persists them; this only renders and edits.
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
-  BANDS, EQ_MAX, EQ_MIN, PREAMP_MAX, PREAMP_MIN, PRESET_NAME_MAX, ROUTINGS, VOL_MAX, isDefaultAudio, presetFor, presetNameError,
+  BANDS, DEFAULT_AUDIO, EQ_MAX, EQ_MIN, PREAMP_MAX, PREAMP_MIN, PRESET_NAME_MAX, ROUTINGS, VOL_MAX, isDefaultAudio, presetFor, presetNameError,
   type AudioPreset, type AudioState,
 } from "../shared/audio";
+import { autoSettings, type Measure, type ReportRow } from "../shared/audioAuto";
+import type { CopyDto } from "../shared/types";
 import { AudioEngine, type Levels } from "./audioEngine";
+import { analyzeFull, analyzeSampled } from "./audioAnalyze";
+import { CleanupSection } from "./CleanupSection";
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -17,9 +22,29 @@ interface Props {
   onSavePreset(name: string, eq: number[]): Promise<void>;
   onDeletePreset(name: string): Promise<void>;
   onClose(): void;
+  /** the Video's Copies: the Auto wand sizes the one playing to decide whether to warn before decoding it whole */
+  copies: CopyDto[];
 }
 
 const METER_MS = 70;
+/** A Copy over either of these gets the "sample or decode?" question before Auto reads all of it. */
+const BIG_BYTES = 1e9, BIG_SECS = 20 * 60;
+
+// the "did" half of an Auto report row, coloured like the State panel: numbers pink, words green
+const Did = ({ s }: { s: string }) => (
+  <>
+    {s.split(" ").map((w, i) => (
+      <span key={i} class={/^[+-]?\d/.test(w) ? "n" : "s"}>{i ? " " : ""}{w}</span>
+    ))}
+  </>
+);
+
+// Lucide "audio-lines" (ISC, lucide.dev), same stroke style as the icons in ui.tsx
+const WandIcon = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3" />
+  </svg>
+);
 
 function useLevels(vid: Props["vid"]) {
   const [lv, setLv] = useState<Levels>({ in: [0, 0], out: [0, 0] });
@@ -43,7 +68,7 @@ const Meter = ({ v, label }: { v: number; label: string }) => (
 
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n}`;
 
-export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose }: Props) {
+export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose, copies }: Props) {
   const lv = useLevels(vid);
   const preset = presetFor(s.eq, presets);
   const [naming, setNaming] = useState(false);
@@ -69,6 +94,56 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       setErr(String((x as Error).message ?? x));
     }
   };
+  // The Auto wand: measure (the whole Copy decoded, or five places through the live chain), then apply and report.
+  const [auto, setAuto] = useState<{ phase: "idle" } | { phase: "ask"; copy: CopyDto } | { phase: "busy"; label: string }>({ phase: "idle" });
+  const [autoReport, setAutoReport] = useState<ReportRow[] | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  // the Copy the Player is on: its id is in the <video> src
+  const playingCopy = (): CopyDto | null => {
+    const m = vid.current?.src.match(/\/copy\/(\d+)/);
+    return (m && copies.find((c) => c.id === Number(m[1]))) ?? null;
+  };
+  const isBig = (c: CopyDto) => c.size > BIG_BYTES || (c.durationS ?? 0) > BIG_SECS;
+
+  const startAuto = () => {
+    const c = playingCopy();
+    if (c && isBig(c)) setAuto({ phase: "ask", copy: c });
+    else void runAuto(c ? "full" : "sampled");
+  };
+  const cancelAuto = () => { abort.current?.abort(); setAuto({ phase: "idle" }); };
+  const runAuto = async (how: "full" | "sampled") => {
+    const v = vid.current;
+    if (!v) return;
+    const eng = AudioEngine.for(v);
+    setAutoReport(null);
+    const ac = new AbortController();
+    abort.current = ac;
+    try {
+      let m: Measure;
+      if (how === "full") {
+        const c = playingCopy();
+        if (!c) throw new Error("no Copy");
+        setAuto({ phase: "busy", label: "decoding…" });
+        m = await analyzeFull(c.id, (f) => setAuto({ phase: "busy", label: `decoding ${Math.round(f * 100)} %` }), c.durationS, ac.signal);
+      } else {
+        // measure through the live chain with the chain at its defaults
+        onChange(DEFAULT_AUDIO);
+        setAuto({ phase: "busy", label: "listening…" });
+        await new Promise((r) => setTimeout(r, 300));
+        m = await analyzeSampled(v, eng, (f) => setAuto({ phase: "busy", label: `listening ${Math.round(f * 100)} %` }));
+      }
+      if (ac.signal.aborted) return;
+      const out = autoSettings(m);
+      onChange(out.audio);
+      setAutoReport(out.report);
+    } catch (e) {
+      if (!ac.signal.aborted) setAutoReport([{ k: "error", heard: String((e as Error).message ?? e), did: "" }]);
+    } finally {
+      if (abort.current === ac) { abort.current = null; setAuto({ phase: "idle" }); }
+    }
+  };
+  const fmtBytes = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
+
   const nameExists = !!name.trim() && presets.some((p) => !p.builtIn && p.name.toLowerCase() === name.trim().toLowerCase());
 
   return (
@@ -76,11 +151,43 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       <div class="hd">
         <div class="row">
           <span class="ttl">Audio</span>
+          {auto.phase === "busy" ? (
+            <button class="btn small wand" onClick={cancelAuto} title="Stop">
+              <WandIcon /> {auto.label} <span class="dim">×</span>
+            </button>
+          ) : (
+            <button class="btn small wand" disabled={auto.phase === "ask"} onClick={startAuto} title="Auto: measure the recording, then set channels, clean up, EQ and level to suit it">
+              <WandIcon /> Auto
+            </button>
+          )}
           {!isDefaultAudio(s) && <button class="btn small" onClick={onReset} title="Back to the sound as recorded">Reset</button>}
           <button class="ib" aria-label="Close audio" title="Close (a while the Player has focus)" onClick={onClose}>×</button>
         </div>
       </div>
       <div class="body">
+        {auto.phase === "ask" && (
+          <div class="au-report stpanel au-ask">
+            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">large Copy</span><button class="ib" aria-label="Cancel" onClick={cancelAuto}>×</button></div>
+            <p>This Copy is <span class="n">{fmtBytes(auto.copy.size)}</span>{auto.copy.durationS ? <> · <span class="n">{Math.round(auto.copy.durationS / 60)}</span><span class="u"> min</span></> : null}. Decoding the whole file reads all of it, which can take a while.</p>
+            <div class="au-chips">
+              <button class="tag save" onClick={() => void runAuto("sampled")}>Sample 5 places <span class="dim">~8 s</span></button>
+              <button class="tag save" onClick={() => void runAuto("full")}>Decode whole file</button>
+            </div>
+          </div>
+        )}
+        {autoReport && (
+          <div class="au-report stpanel">
+            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">{autoReport.length} change{autoReport.length === 1 ? "" : "s"}</span><button class="ib" aria-label="Dismiss" onClick={() => setAutoReport(null)}>×</button></div>
+            <div class="kv">
+              {autoReport.map((r) => (
+                <>
+                  <b>{r.k}</b>
+                  <span><span class="u">{r.heard}</span>{r.did && <><span class="arrow">→</span><Did s={r.did} /></>}</span>
+                </>
+              ))}
+            </div>
+          </div>
+        )}
         <h5>Channels</h5>
         <div class="au-meters">
           <Meter v={lv.in[0]} label="in L" /><Meter v={lv.in[1]} label="in R" />
@@ -108,6 +215,8 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <input type="range" min={0} max={VOL_MAX} step={0.05} value={s.volR} onInput={(e) => onChange({ volR: +e.currentTarget.value })} onDblClick={() => onChange({ volR: 1 })} />
           <b class="mono">{Math.round(s.volR * 100)}</b>
         </label>
+
+        <CleanupSection vid={vid} state={s} onChange={onChange} />
 
         <h5>Equalizer <span class="dim">{preset?.name ?? "custom"}</span></h5>
         <div class="au-chips">
@@ -151,6 +260,11 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <input type="checkbox" checked={s.compress} onChange={(e) => onChange({ compress: e.currentTarget.checked })} />
           <span>Even out loudness</span>
           <input type="range" min={0} max={1} step={0.05} value={s.compressAmount} disabled={!s.compress} aria-label="Leveler amount" onInput={(e) => onChange({ compressAmount: +e.currentTarget.value })} />
+        </label>
+        <label class="au-row au-check au-sub" title="Three bands (below 200 Hz, 200 Hz to 3 kHz, above) each levelled on their own, so a drum thump no longer ducks the voice">
+          <input type="checkbox" checked={s.multiband} disabled={!s.compress} onChange={(e) => onChange({ multiband: e.currentTarget.checked })} />
+          <span>Per band <span class="dim">low · mid · high</span></span>
+          <span />
         </label>
         <p class="note dim">Saved for this Video. <kbd>Esc</kbd> returns to the Player.</p>
       </div>

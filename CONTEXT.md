@@ -107,8 +107,20 @@ A Studio track attached to a Song directly, without a Mirror Track behind it, be
 _Avoid_: custom track, manual track, extra track
 
 **Audio settings**:
-What the Player does to a Video's sound: channel routing, balance, per-channel volume, equalizer, preamp and leveler. Per Video, persisted, applied whenever the Video plays. Edited in the Audio panel.
+What the Player does to a Video's sound: channel routing, balance, per-channel volume, clean up (cutoffs, notches, denoise), equalizer, preamp and leveler. Per Video, persisted, applied whenever the Video plays. Edited in the Audio panel.
 _Avoid_: audio fix, effects, filters, mix (the recording's own mix is what these correct)
+
+**Clean up**:
+The Audio settings that remove what the recording picked up rather than shape what it kept: the Rumble and Hiss cutoffs, up to three Notches, and the Denoise.
+_Avoid_: filters, restoration, repair
+
+**Notch**:
+A narrow cut at one frequency, for a tone that sits over a recording (hum, a whine, a feedback ring). Placed on the spectrum, by Find tone, or by Auto. With harmonics, it also cuts twice and three times its frequency.
+_Avoid_: band-stop, EQ cut, hum filter
+
+**Auto (Audio)**:
+The wand in the Audio panel: measures the Copy (decoded whole, or sampled at five places) and sets the Audio settings to suit it, with a report of what it heard and did.
+_Avoid_: auto-EQ, normalize, magic, analysis mode
 
 **Audio preset**:
 A named set of the seven equalizer band gains, shared across Videos. Built-in ones ship with the app; custom ones are the user's and can be overwritten or deleted.

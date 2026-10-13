@@ -11,6 +11,7 @@ import { suggestSongsFromTitles } from "./songSuggest";
 import { fillLatinTitles } from "./latin";
 import { decidePlayback } from "./playback";
 import { probeFile } from "./probe";
+import { isDeleted } from "./deleteVideo";
 import { isIoError, sleep } from "./proc";
 import type { RootRow, Roots } from "./roots";
 import { rebuildSearchIndex } from "./search";
@@ -232,6 +233,8 @@ export class Scanner {
         }
         continue;
       }
+      // A deleted Video's file left on disk (deleteVideo.ts): skipped before the probe when the name carries its id.
+      if (!row && isDeleted(this.db, { youtubeId: parseFilename(entry.name).youtubeId, contentHash: null })) continue;
       todo.push({ entry, row });
     }
 
@@ -290,6 +293,8 @@ export class Scanner {
         }
       }
     }
+
+    if (!row && contentHash && isDeleted(this.db, { youtubeId: null, contentHash })) return;
 
     const facts = [
       f.duration, containerFor(parsed.ext), f.videoCodec, f.audioCodec, f.width, f.height, f.rFrameRate, playback,

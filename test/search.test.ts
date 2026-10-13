@@ -1,7 +1,7 @@
 // Pure parts of ticket #23: folding, the #12 scorer, the typed-filter parser, library view state, HTML to lyric lines.
 import { describe, expect, test } from "bun:test";
 import { foldQuery, foldSegments, foldText, highlightHtml, matchRanges } from "../src/shared/fold";
-import { effectiveGroups, filterChips, isFilterOnly, parseQuery, rowCap } from "../src/shared/filters";
+import { effectiveGroups, filterChips, filterSlot, isFilterOnly, isFilterToken, parseQuery, rowCap } from "../src/shared/filters";
 import { scoreFolded, scoreSegments, songPenalty, lyricsSearchable } from "../src/shared/score";
 import { defaultLibraryState, libraryQuery, parseLibrarySearch, viewVideos } from "../src/shared/libraryView";
 import { htmlToLines, splitAlternates } from "../src/server/search";
@@ -93,6 +93,13 @@ describe("typed filters", () => {
     expect(isFilterOnly(parseQuery("alash"))).toBe(false);
     expect(isFilterOnly(parseQuery(""))).toBe(false);
   });
+  test("filter tokens become pills; anything else stays text", () => {
+    for (const t of ["#songs", "#Artist", "#fav", "#available", "#lyrics", "#type:concert", "#artist:Radik_Tyulush"]) expect(isFilterToken(t)).toBe(true);
+    for (const t of ["#nope", "#type:bogus", "#artist:", "songs", "#"]) expect(isFilterToken(t)).toBe(false);
+    expect(filterSlot("#songs")).toBe(1);
+    expect(filterSlot("#artists")).toBe(5);
+    expect(filterSlot("#type:concert")).toBe(3);
+  });
 });
 
 describe("html to lyric lines and alternates", () => {
@@ -123,6 +130,9 @@ describe("library view state", () => {
     expect(parseLibrarySearch(q)).toEqual(st);
     expect(parseLibrarySearch("?sort=title").dir).toBe("asc"); // natural direction
     expect(parseLibrarySearch("?sort=bogus&type=nope").types).toEqual([]);
+    const withSong = { ...defaultLibraryState(), song: "a1b2-c3" };
+    expect(libraryQuery(withSong)).toBe("?song=a1b2-c3");
+    expect(parseLibrarySearch("?song=a1b2-c3")).toEqual(withSong);
   });
   test("default sort is views, most watched first; unwatched Videos fall back to date added, newest first", () => {
     const out = viewVideos([vid(1), vid(3), vid(2, { viewCount: 1 })], defaultLibraryState());

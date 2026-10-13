@@ -1,11 +1,11 @@
 import type { ComponentChildren } from "preact";
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { TYPES } from "../shared/filters";
 import {
   SORTS, defaultDir, libraryQuery, parseLibrarySearch, viewVideos, type LibraryState, type SortKey,
 } from "../shared/libraryView";
-import type { VideoDto } from "../shared/types";
-import { useStore } from "./data";
+import type { SongDto, VideoDto } from "../shared/types";
+import { api, useStore } from "./data";
 import { savePlayingFrom } from "./playingFrom";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, Tags, resolutionLabel } from "./ui";
@@ -36,7 +36,24 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
 export function Library({ search }: { search: string }) {
   const { videos } = useStore();
   const st = useMemo(() => parseLibrarySearch(search), [search]);
-  const shown = useMemo(() => (videos ? viewVideos(videos, st) : []), [videos, st]);
+  // `?song=`: the Videos performing that Song (its Song pointer, or a Chapter), from the Song's own record.
+  const [song, setSong] = useState<SongDto | null | undefined>(undefined);
+  useEffect(() => {
+    if (!st.song) return void setSong(undefined);
+    let alive = true;
+    setSong(undefined);
+    api.song(st.song).then((s) => alive && setSong(s)).catch(() => alive && setSong(null));
+    return () => {
+      alive = false;
+    };
+  }, [st.song]);
+  const songVideos = useMemo(() => (song ? new Map(song.videos.map((x) => [x.id, x])) : null), [song]);
+  const shown = useMemo(() => {
+    if (!videos) return [];
+    const all = viewVideos(videos, st);
+    if (!st.song) return all;
+    return songVideos ? all.filter((v) => songVideos.has(v.id)) : [];
+  }, [videos, st, songVideos]);
   // Only a window of the grid is in the DOM (see windowed.ts); `shown` stays the whole list for the count and Playing from.
   const { limit, sentinel } = useWindowed(search, shown.length);
 
@@ -62,6 +79,14 @@ export function Library({ search }: { search: string }) {
           <span class="chip on artist">
             Artist: {st.artist}
             <button aria-label="Clear the Artist filter" onClick={() => go({ artist: null })}>
+              ×
+            </button>
+          </span>
+        )}
+        {st.song && (
+          <span class="chip on song">
+            Song: {song ? song.name : song === null ? "unknown song" : "…"}
+            <button aria-label="Clear the Song filter" onClick={() => go({ song: null })}>
               ×
             </button>
           </span>
@@ -98,7 +123,8 @@ export function Library({ search }: { search: string }) {
         <>
           <div class="wall">
             {shown.slice(0, limit).map((v) => (
-              <Card key={v.id} v={v} onOpen={() => savePlayingFrom("library", shown.map((x) => x.id))} />
+              // A Video performing the Song only in a Chapter opens at that Chapter.
+              <Card key={v.id} v={v} startS={songVideos?.get(v.id)?.pointed ? null : songVideos?.get(v.id)?.startS} onOpen={() => savePlayingFrom("library", shown.map((x) => x.id))} />
             ))}
           </div>
           <div ref={sentinel} class="wall-more" aria-hidden="true" />

@@ -11,6 +11,7 @@ import { isPointedVersionAt, openingVersionIndex } from "../shared/lyrics/trackV
 import type { ScriptKey } from "../shared/lyrics/types";
 import type { SongDto } from "../shared/types";
 import { api, apiError } from "./data";
+import { SongPicker } from "./HeaderEdit";
 import { LyricsEditor } from "./LyricsEditor";
 
 const SCRIPT_STORE = "tuva.lyricsScript";
@@ -38,13 +39,15 @@ export interface LyricsReaderProps {
   onClose?: () => void;
   /** A Version pill was clicked: the page writes it to the Video (absent when the pointer is a Chapter's, or on the Lyrics page). */
   onPickVersion?: (versionId: string) => void;
+  /** Present when the drawer shows the Video's own Song: a button at the top links a different Song to the Video. */
+  onChangeSong?: (songId: string) => void;
   /** Take focus once the Song has loaded (opened from the button or the search box). */
   autoFocus?: boolean;
   /** Called once the drawer has taken that focus, so the page can stop asking (a Chapter change must not steal focus from the Player). */
   onFocused?: () => void;
 }
 
-export function LyricsReader({ songId, versionId, fromChapter = false, onClose, onPickVersion, autoFocus = false, onFocused }: LyricsReaderProps) {
+export function LyricsReader({ songId, versionId, fromChapter = false, onClose, onPickVersion, onChangeSong, autoFocus = false, onFocused }: LyricsReaderProps) {
   const [song, setSong] = useState<SongDto | null | undefined>(undefined);
   const [pick, setPick] = useState<string | null>(null);
   const [script, setScript] = useState<ScriptKey>(scriptPref);
@@ -53,6 +56,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
   const [editing, setEditing] = useState<null | { versionId: string | null }>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameErr, setRenameErr] = useState<string | null>(null);
+  const [relinking, setRelinking] = useState(false);
   const root = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
 
@@ -66,7 +70,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
       alive = false;
     };
   }, [songId, reload]);
-  useEffect(() => (setEditing(null), setRenaming(false)), [songId]);
+  useEffect(() => (setEditing(null), setRenaming(false), setRelinking(false)), [songId]);
   useEffect(() => setPick(null), [versionId]);
   useEffect(() => {
     if (autoFocus && song) {
@@ -215,6 +219,11 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
             {song?.local && <span class="localmark" title="A local Song: created in this library, not in the archive">local song</span>}
           </span>
           <span class="hctl">
+            {onChangeSong && (
+              <button class={`ib relink${relinking ? " on" : ""}`} aria-label="Change this Video's Song" aria-expanded={relinking} title="Link a different Song to this Video" onClick={() => setRelinking(!relinking)}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-4-4M20 16H7l4 4" /></svg>
+              </button>
+            )}
             <span class="seg" role="group" aria-label="Script">
               {SCRIPTS.map((x) => (
                 <button key={x.key} class={sc === x.key ? "on" : ""} aria-pressed={sc === x.key} disabled={!present.includes(x.key)} title={present.includes(x.key) ? undefined : `This Version has no ${x.label}`} onClick={() => chooseScript(x.key)}>
@@ -235,6 +244,12 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
           </span>
         </div>
         {renameErr && <div class="edit-err" role="alert">{renameErr}</div>}
+        {onChangeSong && relinking && (
+          <div class="relink-row">
+            <span class="lbl">Song:</span>
+            <SongPicker onPick={(id) => (setRelinking(false), id !== songId && onChangeSong(id))} onClose={() => setRelinking(false)} />
+          </div>
+        )}
         {alternates.length > 0 && (
           <div class="alts dim" title={alternates.join(", ")}>
             also: {alternates.join(" · ")}

@@ -133,3 +133,17 @@ describe("Local Songs and Versions", () => {
     expect(versionsOf(db, "m1").length).toBe(1);
   });
 });
+
+describe("stacked filters on the Songs group", () => {
+  test("#fav narrows Songs to those a Favorite Video performs, and their Video lists", () => {
+    const db = openDb(":memory:", MIGRATIONS);
+    db.exec("INSERT INTO mirror_song (id, name, slug) VALUES ('m1', 'Чавыдак', 'chavydak'), ('m2', 'Чавыдак-2', 'chavydak-2')");
+    db.exec("INSERT INTO video (id, youtube_id, title, created_at, song_id, favorited_at) VALUES (1, 'aaaaaaaaaaa', 'A', 'x', 'm1', 'x'), (2, 'bbbbbbbbbbb', 'B', 'x', 'm1', NULL), (3, 'ccccccccccc', 'C', 'x', 'm2', NULL)");
+    rebuildSearchIndex(db);
+    const songs = (q: string) => search(db, env, q).groups.find((g) => g.key === "songs")?.rows ?? [];
+    expect(songs("#songs chavydak").map((r) => r.id).sort()).toEqual(["m1", "m2"]);
+    const fav = songs("#songs #fav chavydak");
+    expect(fav.map((r) => r.id)).toEqual(["m1"]);
+    expect((fav[0] as any).videos.map((v: any) => v.id)).toEqual([1]);
+  });
+});

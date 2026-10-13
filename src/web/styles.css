@@ -399,6 +399,9 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .drawer .hd .relink-row .pk-in, .drawer .hd .relink-row .pk-list { width: 100%; }
 /* Odd-sized icons in the 23px inner box leave whole-pixel margins, so the strokes land on the exact centre. */
 .drawer .hd .row .ib svg { display: block; }
+.drawer.audio .hd .row { align-items: center; }
+.drawer.audio .hd .ttl { padding-top: 0; }
+.drawer.audio .hd .row .ib { line-height: 1; padding: 0 0 2px; }
 .drawer .hd .ttl { flex: 1 0 auto; max-width: 100%; font-weight: 600; font-size: 1.05em; line-height: 1.35; padding-top: 3px; }
 .drawer .hd .ttl .en { font-weight: 400; color: var(--fg3); font-size: .9em; margin-left: 5px; }
 .drawer .hd .ttl .localmark { margin-left: 6px; vertical-align: middle; }
@@ -615,7 +618,7 @@ button.st-main:hover { background: var(--bg3); }
 .lyr-edit-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .lyr-edit-confirm { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; font-size: .9em; }
 
-/* PROTOTYPE: Audio panel "Clean up" section */
+/* Audio panel: Clean up section, the Auto wand and its report */
 .au-spec { width: 100%; height: 70px; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; }
 .au-notch { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
 .au-notch .row { display: flex; align-items: center; gap: 10px; font-size: .85em; }

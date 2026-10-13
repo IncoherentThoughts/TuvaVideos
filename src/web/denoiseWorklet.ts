@@ -1,4 +1,4 @@
-// PROTOTYPE — throwaway. The spectral denoise AudioWorklet: STFT (N = 1024, hop 512, sqrt-Hann both sides), a noise
+// The spectral denoise AudioWorklet (spec 4.7, Clean up): STFT (N = 1024, hop 512, sqrt-Hann both sides), a noise
 // power profile per bin, spectral subtraction with a floor, and gain smoothing against musical noise. The profile is
 // either tracked automatically (a running minimum that rises slowly, so pauses and gaps set it) or learned from a
 // stretch the user marks. Served as a Blob URL since the UI bundle is one file.

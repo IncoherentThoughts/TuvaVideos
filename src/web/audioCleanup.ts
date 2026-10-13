@@ -1,27 +1,8 @@
-// PROTOTYPE — throwaway. "Clean up" tools for the Audio panel: cutoffs (high/low-pass), notches for a dominant tone,
-// a live spectrum with a tone finder. Lives in memory per page, never persisted. Question being answered: does this
-// set of controls actually rescue the bad recordings (e.g. /play/975, /play/682), and does the spectrum + Find tone
-// make the notch findable by a non-engineer? Wired into AudioEngine via `CleanupEngine.attach`.
-export interface Notch { hz: number; q: number; depth: number; harmonics: boolean }
-export interface Cleanup {
-  highpass: number | null; // Hz, off when null
-  lowpass: number | null;
-  notches: Notch[];
-  /** spectral denoise (an AudioWorklet): on, strength 0…1, and whether the noise profile is tracked or was learned */
-  denoise: boolean;
-  denoiseAmount: number;
-  /** the leveler splits into three bands (lives in AudioEngine; carried here so the prototype state is in one place) */
-  multiband: boolean;
-}
-export const DEFAULT_CLEANUP: Cleanup = { highpass: null, lowpass: null, notches: [], denoise: false, denoiseAmount: 0.5, multiband: false };
-export const HP_MIN = 20, HP_MAX = 400, LP_MIN = 2000, LP_MAX = 16000, NOTCH_MAX = 3;
-
-/** log-scale slider helpers: a 0…1 position ↔ Hz over [lo, hi] */
-export const posToHz = (p: number, lo: number, hi: number) => Math.round(lo * Math.pow(hi / lo, p));
-export const hzToPos = (hz: number, lo: number, hi: number) => Math.log(hz / lo) / Math.log(hi / lo);
-export const fmtHz = (hz: number) => (hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 1 : 2).replace(/\.?0+$/, "")}k` : `${Math.round(hz)}`);
-
-/** The Web Audio part. Sits between the channel matrix and the EQ; rebuilt in place when the settings change. */
+// The Clean up part of the Web Audio chain (spec 4.7): cutoffs (two cascaded biquads each, 24 dB/oct), up to three
+// notches (peaking cuts, with 2× and 3× harmonics for hum) and the spectral denoise worklet on a dry/wet pair, between
+// the channel matrix and the EQ. Also the spectrum the panel draws and the tone finder behind "Find tone".
+import { DEFAULT_AUDIO, type AudioState } from "../shared/audio";
+import { findPeak } from "../shared/audioAuto";
 import { DENOISE_WORKLET_SRC } from "./denoiseWorklet";
 
 const workletReady = new WeakMap<AudioContext, Promise<void>>();
@@ -50,7 +31,7 @@ export class CleanupEngine {
   /** "auto" (tracked floor), "learning", or "learned"; the panel shows it */
   denoiseMode: "auto" | "learning" | "learned" = "auto";
   onDenoiseMode: ((m: CleanupEngine["denoiseMode"]) => void) | null = null;
-  cleanup: Cleanup = DEFAULT_CLEANUP;
+  private state: AudioState = DEFAULT_AUDIO;
 
   constructor(private ctx: AudioContext) {
     this.inNode = ctx.createGain();
@@ -71,13 +52,18 @@ export class CleanupEngine {
     this.dnWet.gain.value = 0;
     this.tail.connect(this.dnDry); this.dnDry.connect(this.outNode);
     this.dnWet.connect(this.outNode);
-    void loadWorklet(ctx).then(() => {
-      this.dn = new AudioWorkletNode(ctx, "tuva-denoise", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+    this.rebuild();
+  }
+
+  /** The worklet, made the first time the denoise is switched on (it costs an FFT per block while it exists). */
+  private dnLoading: Promise<void> | null = null;
+  private ensureDenoise() {
+    this.dnLoading ??= loadWorklet(this.ctx).then(() => {
+      this.dn = new AudioWorkletNode(this.ctx, "tuva-denoise", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       this.dn.port.onmessage = (e) => { if (e.data?.type === "learned") { this.denoiseMode = "learned"; this.onDenoiseMode?.("learned"); } };
       this.tail.connect(this.dn); this.dn.connect(this.dnWet);
-      this.set(this.cleanup);
+      this.set(this.state);
     }).catch((e) => console.warn("denoise worklet failed", e));
-    this.rebuild();
   }
 
   /** Learn the noise profile from the next ~second of sound (play a gap or a pause). */
@@ -102,7 +88,7 @@ export class CleanupEngine {
     this.tail.disconnect();
     this.tail.connect(this.dnDry);
     if (this.dn) this.tail.connect(this.dn);
-    this.notch = this.cleanup.notches.flatMap((n) => {
+    this.notch = this.state.notches.flatMap((n) => {
       const hs = n.harmonics ? [1, 2, 3] : [1];
       return hs.map((h) => {
         const f = this.ctx.createBiquadFilter();
@@ -114,17 +100,20 @@ export class CleanupEngine {
       });
     });
     let node: AudioNode = this.inNode;
-    const chain = [...(this.cleanup.highpass ? this.hp : []), ...(this.cleanup.lowpass ? this.lp : []), ...this.notch];
+    const chain = [...(this.state.highpass ? this.hp : []), ...(this.state.lowpass ? this.lp : []), ...this.notch];
     for (const f of chain) { node.connect(f); node = f; }
     node.connect(this.tail);
   }
 
-  set(c: Cleanup) {
-    const structural = c.notches.length !== this.cleanup.notches.length
-      || c.notches.some((n, i) => n.harmonics !== this.cleanup.notches[i]!.harmonics)
-      || !!c.highpass !== !!this.cleanup.highpass || !!c.lowpass !== !!this.cleanup.lowpass;
-    this.cleanup = c;
+  /** Apply the Clean up fields of the settings; the graph is rebuilt only when a filter joins or leaves. */
+  set(c: AudioState) {
+    const prev = this.state;
+    const structural = c.notches.length !== prev.notches.length
+      || c.notches.some((n, i) => n.harmonics !== prev.notches[i]!.harmonics)
+      || !!c.highpass !== !!prev.highpass || !!c.lowpass !== !!prev.lowpass;
+    this.state = c;
     if (structural) this.rebuild();
+    if (c.denoise) this.ensureDenoise();
     const t = this.ctx.currentTime;
     const ramp = (p: AudioParam, v: number) => p.setTargetAtTime(v, t, 0.02);
     if (c.highpass) for (const f of this.hp) ramp(f.frequency, c.highpass);
@@ -157,23 +146,3 @@ export class CleanupEngine {
   }
 }
 
-/**
- * The sharpest narrow peak of an averaged spectrum: the bin that stands furthest above the median of its ±120 Hz
- * neighbours. Null when nothing stands out by `minDb`.
- */
-export function findPeak(avg: Float32Array, hzPerBin: number, minDb = 12): { hz: number; prominence: number } | null {
-  const n = avg.length;
-  const lo = Math.ceil(40 / hzPerBin), hi = Math.min(n - 1, Math.floor(16000 / hzPerBin));
-  let best: { hz: number; prominence: number } | null = null;
-  const W = Math.max(4, Math.round(120 / hzPerBin));
-  for (let i = lo; i < hi; i++) {
-    const v = avg[i]!;
-    if (v < -90 || v < avg[i - 1]! || v < avg[i + 1]!) continue;
-    const nb: number[] = [];
-    for (let j = Math.max(1, i - W); j <= Math.min(n - 1, i + W); j++) if (Math.abs(j - i) > 2) nb.push(avg[j]!);
-    nb.sort((a, b) => a - b);
-    const prom = v - nb[nb.length >> 1]!;
-    if (prom >= minDb && (!best || prom > best.prominence)) best = { hz: i * hzPerBin, prominence: prom };
-  }
-  return best;
-}

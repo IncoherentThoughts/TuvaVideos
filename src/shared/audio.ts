@@ -1,5 +1,6 @@
-// Audio settings (spec 4.7): what the Player does to a Video's sound. Pure data and rules; the Web Audio chain that
-// applies them is src/web/audioEngine.ts. Settings are per Video and persist (video_audio); EQ presets are shared.
+// Audio settings (spec 4.7): what the Player does to a Video's sound: channels, clean up (cutoffs, notches, denoise),
+// EQ and level. Pure data and rules; the Web Audio chain that applies them is src/web/audioEngine.ts, and the Auto
+// wand's decisions are audioAuto.ts. Settings are per Video and persist (video_audio); EQ presets are shared.
 
 export type Routing = "stereo" | "mono" | "left" | "right" | "swap";
 
@@ -18,6 +19,22 @@ export interface AudioState {
   compress: boolean;
   /** 0 (gentle) … 1 (hard) */
   compressAmount: number;
+  /** the leveler works in three bands (below 200 Hz, 200 Hz to 3 kHz, above) instead of on the whole mix */
+  multiband: boolean;
+  /** Clean up: cutoffs in Hz (null = off), up to NOTCH_MAX notches, and the spectral denoise with its strength 0…1 */
+  highpass: number | null;
+  lowpass: number | null;
+  notches: Notch[];
+  denoise: boolean;
+  denoiseAmount: number;
+}
+
+/** A notch: a peaking cut of `depth` dB at `hz`, `q` wide; `harmonics` also cuts 2× and 3× (hum has harmonics). */
+export interface Notch {
+  hz: number;
+  q: number;
+  depth: number;
+  harmonics: boolean;
 }
 
 export const BANDS: { hz: number; label: string; type: "lowshelf" | "peaking" | "highshelf" }[] = [
@@ -65,10 +82,25 @@ export const DEFAULT_AUDIO: AudioState = {
   eq: [0, 0, 0, 0, 0, 0, 0],
   compress: false,
   compressAmount: 0.5,
+  multiband: false,
+  highpass: null,
+  lowpass: null,
+  notches: [],
+  denoise: false,
+  denoiseAmount: 0.5,
 };
 
 export const EQ_MIN = -12, EQ_MAX = 12, PREAMP_MIN = -12, PREAMP_MAX = 18, VOL_MAX = 2;
 export const PRESET_NAME_MAX = 40;
+/** Clean up ranges: the high-pass (rumble) and low-pass (hiss) sliders, and a notch's place, width and depth. */
+export const HP_MIN = 20, HP_MAX = 400, LP_MIN = 2000, LP_MAX = 16000;
+export const NOTCH_MAX = 3, NOTCH_HZ_MIN = 30, NOTCH_HZ_MAX = 16000, NOTCH_Q_MIN = 2, NOTCH_Q_MAX = 60, NOTCH_DEPTH_MAX = 40;
+
+/** Log-scale sliders: a 0…1 position ↔ Hz over [lo, hi]. */
+export const posToHz = (p: number, lo: number, hi: number) => Math.round(lo * Math.pow(hi / lo, p));
+export const hzToPos = (hz: number, lo: number, hi: number) => Math.log(hz / lo) / Math.log(hi / lo);
+/** "66", "2.5k", "10k" */
+export const fmtHz = (hz: number) => (hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 1 : 2).replace(/\.?0+$/, "")}k` : `${Math.round(hz)}`);
 
 const ROUTING_KEYS = new Set<string>(ROUTINGS.map((r) => r.key));
 const num = (x: unknown, lo: number, hi: number, fallback: number) => (typeof x === "number" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : fallback);
@@ -80,7 +112,26 @@ export function normalizeEq(x: unknown): number[] | null {
   return x.map((v: number) => Math.round(Math.min(EQ_MAX, Math.max(EQ_MIN, v)) * 10) / 10);
 }
 
-/** Settings out of anything stored or posted: every field clamped, unknown fields dropped, bad input → null. */
+/** A cutoff out of anything: a frequency inside its range, or null (off). */
+const cutoff = (x: unknown, lo: number, hi: number): number | null => (typeof x === "number" && Number.isFinite(x) ? Math.round(Math.min(hi, Math.max(lo, x))) : null);
+
+/** The notches out of anything: well-formed ones kept and clamped, the rest dropped, at most NOTCH_MAX. */
+export function normalizeNotches(x: unknown): Notch[] {
+  if (!Array.isArray(x)) return [];
+  const out: Notch[] = [];
+  for (const n of x) {
+    if (!n || typeof n !== "object" || typeof (n as Notch).hz !== "number" || !Number.isFinite((n as Notch).hz)) continue;
+    const o = n as Record<string, unknown>;
+    out.push({ hz: Math.round(num(o.hz, NOTCH_HZ_MIN, NOTCH_HZ_MAX, NOTCH_HZ_MIN)), q: Math.round(num(o.q, NOTCH_Q_MIN, NOTCH_Q_MAX, 30)), depth: Math.round(num(o.depth, 0, NOTCH_DEPTH_MAX, 30)), harmonics: o.harmonics === true });
+    if (out.length === NOTCH_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * Settings out of anything stored or posted: every field clamped, unknown fields dropped, bad input → null. Fields a
+ * stored row predates (the Clean up ones) take their defaults, so older rows keep working.
+ */
 export function normalizeAudio(x: unknown): AudioState | null {
   if (!x || typeof x !== "object") return null;
   const o = x as Record<string, unknown>;
@@ -95,6 +146,12 @@ export function normalizeAudio(x: unknown): AudioState | null {
     eq,
     compress: o.compress === true,
     compressAmount: num(o.compressAmount, 0, 1, 0.5),
+    multiband: o.multiband === true,
+    highpass: cutoff(o.highpass, HP_MIN, HP_MAX),
+    lowpass: cutoff(o.lowpass, LP_MIN, LP_MAX),
+    notches: normalizeNotches(o.notches),
+    denoise: o.denoise === true,
+    denoiseAmount: num(o.denoiseAmount, 0, 1, 0.5),
   };
 }
 

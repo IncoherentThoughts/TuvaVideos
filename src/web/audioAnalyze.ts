@@ -1,25 +1,9 @@
-// PROTOTYPE — throwaway. Two ways to measure a recording for the Auto wand:
+// Two ways to measure a recording for the Auto wand (spec 4.7); both produce a Measure for shared/audioAuto.ts:
 //   analyzeFull    streams the Copy's whole audio track (GET /copy/:id/pcm) and folds it as it arrives: per-second
 //                  channel levels, a Welch spectrum, and how persistently each bin is a peak. Nothing is held in memory.
 //   analyzeSampled seeks the Player to a few spread-out places and listens through the live analysers.
-// Both produce a Measure for auto.ts.
-import { AudioEngine } from "../audioEngine";
-import { findPeak } from "./cleanup";
-
-export interface Measure {
-  /** per-channel RMS in dBFS: median over the active (non-silent) seconds / windows */
-  chDb: [number, number];
-  /** averaged spectrum, dB per bin (Analyser-like scale: 0 dB = full-scale sine) */
-  spectrum: Float32Array;
-  hzPerBin: number;
-  /** a tone that was there the whole time, or null */
-  tone: { hz: number; prominence: number; persistence: number } | null;
-  /** how this was measured, for the report */
-  how: string;
-  /** full pass only: the quiet floor (10th percentile of per-second mono RMS) and the typical level (median) */
-  floorDb?: number;
-  typicalDb?: number;
-}
+import { findPeak, localPeaks, type Measure } from "../shared/audioAuto";
+import type { AudioEngine } from "./audioEngine";
 
 const median = (xs: number[]) => {
   if (!xs.length) return -120;
@@ -118,24 +102,6 @@ export async function analyzeFull(copyId: number, onProgress: (frac: number) => 
   const mono = secL.map((l, i) => Math.max(l, secR[i] ?? -120)).sort((a, b) => a - b);
   const floorDb = mono[Math.floor(mono.length * 0.1)] ?? -120, typicalDb = mono[mono.length >> 1] ?? -120;
   return { chDb, spectrum, hzPerBin, tone, how: `whole file, ${Math.round(samples / rate)} s`, floorDb, typicalDb };
-}
-
-/** Bins that are local maxima ≥ minDb over the median of their ±120 Hz neighbourhood, 40 Hz…16 kHz. */
-function localPeaks(db: Float32Array, hzPerBin: number, minDb: number): { bin: number; prominence: number }[] {
-  const out: { bin: number; prominence: number }[] = [];
-  const lo = Math.ceil(40 / hzPerBin), hi = Math.min(db.length - 2, Math.floor(16000 / hzPerBin));
-  const W = Math.max(4, Math.round(120 / hzPerBin));
-  for (let i = lo; i < hi; i++) {
-    const v = db[i]!;
-    if (v < -90 || v < db[i - 1]! || v < db[i + 1]!) continue;
-    // cheap neighbourhood median: sample every 2nd bin
-    const nb: number[] = [];
-    for (let j = Math.max(1, i - W); j <= Math.min(db.length - 1, i + W); j += 2) if (Math.abs(j - i) > 2) nb.push(db[j]!);
-    nb.sort((a, b) => a - b);
-    const prom = v - nb[nb.length >> 1]!;
-    if (prom >= minDb) out.push({ bin: i, prominence: prom });
-  }
-  return out;
 }
 
 // ---- sampled: a few spread-out places through the live chain ----

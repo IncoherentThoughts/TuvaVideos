@@ -1,14 +1,21 @@
-// PROTOTYPE — throwaway. The "Clean up" section of the Audio panel (see ./cleanup.ts). State lives in this
-// component only (reset on remount; nothing is saved). Spectrum: a canvas, log-frequency, click to place a notch.
+// The Clean up section of the Audio panel (spec 4.7): a live spectrum (log frequency; click to place a notch), the
+// rumble and hiss cutoffs, Find tone and the hum shortcuts, the notch cards and the denoise. Controlled like the rest
+// of the panel: the settings come in, edits go out through onChange.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { AudioEngine } from "../audioEngine";
-import { HP_MAX, HP_MIN, LP_MAX, LP_MIN, NOTCH_MAX, fmtHz, hzToPos, posToHz, type Cleanup, type Notch } from "./cleanup";
+import { AudioEngine } from "./audioEngine";
+import { HP_MAX, HP_MIN, LP_MAX, LP_MIN, NOTCH_DEPTH_MAX, NOTCH_HZ_MAX, NOTCH_HZ_MIN, NOTCH_MAX, NOTCH_Q_MAX, NOTCH_Q_MIN, fmtHz, hzToPos, posToHz, type AudioState, type Notch } from "../shared/audio";
 
-const SPEC_LO = 30, SPEC_HI = 16000;
+const SPEC_LO = NOTCH_HZ_MIN, SPEC_HI = NOTCH_HZ_MAX;
 const xOf = (hz: number, w: number) => hzToPos(hz, SPEC_LO, SPEC_HI) * w;
 const hzAt = (x: number, w: number) => posToHz(x / w, SPEC_LO, SPEC_HI);
 
-export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElement | null }; c: Cleanup; setC: (f: (prev: Cleanup) => Cleanup) => void }) {
+interface Props {
+  vid: { current: HTMLVideoElement | null };
+  state: AudioState;
+  onChange(patch: Partial<AudioState>): void;
+}
+
+export function CleanupSection({ vid, state: c, onChange }: Props) {
   const [finding, setFinding] = useState(false);
   const [dnMode, setDnMode] = useState<"auto" | "learning" | "learned">("auto");
   useEffect(() => {
@@ -21,12 +28,10 @@ export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElem
   const [msg, setMsg] = useState<string | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = () => (vid.current ? AudioEngine.for(vid.current).cleanup : null);
-  const patch = (p: Partial<Cleanup>) => setC((prev) => ({ ...prev, ...p }));
-  const setNotch = (i: number, p: Partial<Notch>) => setC((prev) => ({ ...prev, notches: prev.notches.map((n, j) => (j === i ? { ...n, ...p } : n)) }));
-  const addNotch = (hz: number) => setC((prev) => (prev.notches.length >= NOTCH_MAX ? prev : { ...prev, notches: [...prev.notches, { hz: Math.round(hz), q: 30, depth: 30, harmonics: false }] }));
-  const dropNotch = (i: number) => setC((prev) => ({ ...prev, notches: prev.notches.filter((_, j) => j !== i) }));
-
-  useEffect(() => { engine()?.set(c); }, [c]);
+  const patch = onChange;
+  const setNotch = (i: number, p: Partial<Notch>) => onChange({ notches: c.notches.map((n, j) => (j === i ? { ...n, ...p } : n)) });
+  const addNotch = (hz: number) => { if (c.notches.length < NOTCH_MAX) onChange({ notches: [...c.notches, { hz: Math.round(hz), q: 30, depth: 30, harmonics: false }] }); };
+  const dropNotch = (i: number) => onChange({ notches: c.notches.filter((_, j) => j !== i) });
 
   // the spectrum, ~30 fps
   useEffect(() => {
@@ -71,7 +76,7 @@ export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElem
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [c]);
+  }, [c.highpass, c.lowpass, c.notches]);
 
   const findTone = async () => {
     const e = engine();
@@ -103,7 +108,7 @@ export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElem
 
   return (
     <>
-      <h5>Clean up <span class="dim">prototype</span></h5>
+      <h5>Clean up</h5>
       <canvas ref={canvas} class="au-spec" width={320} height={70} title="Live spectrum · click to place a notch" onClick={onCanvasClick} />
       <label class="au-row" title="Cut below: a 24 dB/oct high-pass for rumble, handling noise, mains thump">
         <span>Rumble</span>
@@ -135,12 +140,12 @@ export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElem
           </label>
           <label class="au-row" title="narrow (high Q) takes only the tone; wide takes its neighbours too">
             <span>Width</span>
-            <input type="range" min={2} max={60} step={1} value={n.q} onInput={(e) => setNotch(i, { q: +e.currentTarget.value })} />
+            <input type="range" min={NOTCH_Q_MIN} max={NOTCH_Q_MAX} step={1} value={n.q} onInput={(e) => setNotch(i, { q: +e.currentTarget.value })} />
             <b class="mono">Q {n.q}</b>
           </label>
           <label class="au-row">
             <span>Depth</span>
-            <input type="range" min={0} max={40} step={1} value={n.depth} onInput={(e) => setNotch(i, { depth: +e.currentTarget.value })} />
+            <input type="range" min={0} max={NOTCH_DEPTH_MAX} step={1} value={n.depth} onInput={(e) => setNotch(i, { depth: +e.currentTarget.value })} />
             <b class="mono">−{n.depth} dB</b>
           </label>
         </div>
@@ -157,7 +162,6 @@ export function CleanupSection({ vid, c, setC }: { vid: { current: HTMLVideoElem
           {dnMode === "learned" && <button class="tag save" title="Back to the tracked floor" onClick={() => engine()?.autoNoise()}>Auto</button>}
         </div>
       )}
-      <p class="note dim">Prototype: not saved. Click the spectrum to place a notch; drag its Freq to tune.</p>
     </>
   );
 }

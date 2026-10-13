@@ -125,12 +125,18 @@ describe("audio settings and presets", () => {
     const videos = await api("/api/videos");
     const id = videos.find((v: any) => v.youtubeId === "aaaaaaaaaaa").id;
     expect(await api(`/api/videos/${id}/audio`)).toEqual({ state: null });
-    const state = { routing: "left", balance: 0.2, volL: 1, volR: 1.5, preamp: 6, eq: [0, 0, 0, 3, 5, 3, 0], compress: true, compressAmount: 0.5 };
+    const state = {
+      routing: "left", balance: 0.2, volL: 1, volR: 1.5, preamp: 6, eq: [0, 0, 0, 3, 5, 3, 0], compress: true, compressAmount: 0.5, multiband: true,
+      highpass: 80, lowpass: null, notches: [{ hz: 66, q: 30, depth: 30, harmonics: true }], denoise: true, denoiseAmount: 0.5,
+    };
     const put = (body: unknown) => api(`/api/videos/${id}/audio`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     expect(await put({ state })).toEqual({ state });
     expect(await api(`/api/videos/${id}/audio`)).toEqual({ state });
+    // a row written before Clean up existed reads back with the Clean up defaults
+    const older = { routing: "left", balance: 0.2, volL: 1, volR: 1.5, preamp: 6, eq: [0, 0, 0, 3, 5, 3, 0], compress: true, compressAmount: 0.5 };
+    expect(await put({ state: older })).toEqual({ state: { ...older, multiband: false, highpass: null, lowpass: null, notches: [], denoise: false, denoiseAmount: 0.5 } });
     expect((await put({ state: { eq: [1, 2] } })).error).toMatch(/eq/);
-    expect(await put({ state: { ...state, routing: "stereo", balance: 0, volR: 1, preamp: 0, eq: [0, 0, 0, 0, 0, 0, 0], compress: false } })).toEqual({ state: null });
+    expect(await put({ state: { ...older, routing: "stereo", balance: 0, volR: 1, preamp: 0, eq: [0, 0, 0, 0, 0, 0, 0], compress: false } })).toEqual({ state: null });
     expect(await api(`/api/videos/${id}/audio`)).toEqual({ state: null });
     expect((await api(`/api/videos/999999/audio`)).error).toBe("no such video");
   });
@@ -151,6 +157,18 @@ describe("audio settings and presets", () => {
 });
 
 describe("streaming", () => {
+  test("the PCM route streams the Copy's audio as s16le stereo 32 kHz (spec 4.7, Auto)", async () => {
+    const [song] = (await api("/api/videos")).filter((v: any) => v.youtubeId === "aaaaaaaaaaa");
+    const res = await fetch(`${base_url}/copy/${song.copies[0].id}/pcm`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-sample-rate")).toBe("32000");
+    expect(res.headers.get("x-channels")).toBe("2");
+    const bytes = (await res.arrayBuffer()).byteLength;
+    // 4 bytes per stereo frame; the fixture is a few seconds long
+    expect(bytes % 4).toBe(0);
+    expect(bytes / 4 / 32000).toBeGreaterThan(0.5);
+    expect((await fetch(`${base_url}/copy/999999/pcm`)).status).toBe(404);
+  });
   test("Range requests give 206 with Content-Range", async () => {
     const [song] = (await api("/api/videos")).filter((v: any) => v.youtubeId === "aaaaaaaaaaa");
     const url = base_url + song.copies[0].url;

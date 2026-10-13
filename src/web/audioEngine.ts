@@ -1,9 +1,10 @@
 // The Web Audio chain that applies a Video's Audio settings (spec 4.7, shared/audio.ts) to the Player's <video>:
-//   <video> → preamp → channel matrix (routing, balance, per-channel volume) → 7-band EQ → leveler → speakers
+//   <video> → preamp → channel matrix (routing, balance, per-channel volume) → clean up (cutoffs, notches, denoise;
+//   audioCleanup.ts) → 7-band EQ → leveler (one band or three) → speakers
 // One AudioContext for the page; one chain per <video> element (createMediaElementSource is one-shot per element),
 // built only when settings differ from the defaults or the panel is open, so untouched Videos never pass through it.
 import { BANDS, DEFAULT_AUDIO, type AudioState } from "../shared/audio";
-import { CleanupEngine } from "./prototype/cleanup"; // PROTOTYPE
+import { CleanupEngine } from "./audioCleanup";
 
 let shared: AudioContext | null = null;
 const context = () => (shared ??= new AudioContext());
@@ -25,14 +26,13 @@ export class AudioEngine {
   private comp: DynamicsCompressorNode;
   private dry: GainNode;
   private wet: GainNode;
-  /** PROTOTYPE: the three-band leveler (LR4 crossovers at 200 Hz and 3 kHz, a compressor per band) */
+  /** the three-band leveler (LR4 crossovers at 200 Hz and 3 kHz, a compressor per band) */
   private bands: DynamicsCompressorNode[];
   private wetMulti: GainNode;
-  private multiband = false;
   private out: GainNode;
   private anaIn: [AnalyserNode, AnalyserNode];
   private anaOut: [AnalyserNode, AnalyserNode];
-  /** PROTOTYPE: cutoffs + notches between the matrix and the EQ */
+  /** cutoffs, notches and the denoise, between the matrix and the EQ */
   readonly cleanup: CleanupEngine;
   private onPlay: () => void;
   state: AudioState = DEFAULT_AUDIO;
@@ -66,7 +66,7 @@ export class AudioEngine {
       f.Q.value = 1;
       return f;
     });
-    this.cleanup = new CleanupEngine(ctx); // PROTOTYPE
+    this.cleanup = new CleanupEngine(ctx);
     merge.connect(this.cleanup.input);
     let node: AudioNode = this.cleanup.output;
     for (const f of this.filters) { node.connect(f); node = f; }
@@ -84,7 +84,7 @@ export class AudioEngine {
     this.comp.connect(this.wet);
     this.dry.connect(this.out);
     this.wet.connect(this.out);
-    // PROTOTYPE: multiband. Each band is a Linkwitz-Riley 4th-order slice: two cascaded Butterworth biquads per edge.
+    // the three-band leveler: each band is a Linkwitz-Riley 4th-order slice, two cascaded Butterworth biquads per edge
     const bq = (type: BiquadFilterType, hz: number) => { const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = hz; f.Q.value = Math.SQRT1_2; return f; };
     const slice = (...fs: BiquadFilterNode[]) => { let n: AudioNode = node; for (const f of fs) { n.connect(f); n = f; } return n; };
     const lowEnd = slice(bq("lowpass", 200), bq("lowpass", 200));
@@ -163,24 +163,18 @@ export class AudioEngine {
       c.ratio.value = 2 + 10 * a;
     }
     // per-band compressors each see less energy than the full mix, so the multiband makeup is a touch smaller
-    ramp(this.wet.gain, s.compress && !this.multiband ? dbToGain(6 * a) : 0); // make-up gain grows with the amount
-    ramp(this.wetMulti.gain, s.compress && this.multiband ? dbToGain(4 * a) : 0);
+    ramp(this.wet.gain, s.compress && !s.multiband ? dbToGain(6 * a) : 0); // make-up gain grows with the amount
+    ramp(this.wetMulti.gain, s.compress && s.multiband ? dbToGain(4 * a) : 0);
     ramp(this.dry.gain, s.compress ? 0 : 1);
+    this.cleanup.set(s);
   }
 
-  /** PROTOTYPE: single or three-band leveler. */
-  setMultiband(on: boolean) {
-    if (this.multiband === on) return;
-    this.multiband = on;
-    this.set(this.state);
-  }
-
-  /** PROTOTYPE: silence the speakers without silencing the analysers (element.muted would mute the source too). */
+  /** Silence the speakers without silencing the analysers (element.muted would mute the source too). */
   mute(on: boolean) {
     this.out.gain.setTargetAtTime(on ? 0 : 1, this.ctx.currentTime, 0.01);
   }
 
-  /** PROTOTYPE: raw per-channel input RMS in dBFS (before the chain) for the Auto wand. */
+  /** Raw per-channel RMS in dBFS after the preamp, for the Auto wand (which measures with the preamp at 0). */
   inputDb(): [number, number] {
     const rms = (a: AnalyserNode) => {
       const buf = new Float32Array(a.fftSize);

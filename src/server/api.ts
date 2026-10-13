@@ -256,7 +256,7 @@ export function createHandler(s: Services) {
     };
   };
 
-  // PROTOTYPE: the Copy's audio track as raw PCM (s16le, stereo, 32 kHz) for the Audio panel's full-file Auto analysis.
+  // The Copy's audio track as raw PCM (s16le, stereo, 32 kHz) for the Audio panel's whole-file Auto analysis (spec 4.7).
   // ffmpeg demuxes the whole file but decodes only audio; the stream is killed when the client goes away.
   const PCM_RATE = 32000;
   function pcmRoute(req: Request, id: number): Response {
@@ -350,7 +350,7 @@ export function createHandler(s: Services) {
     try {
       if (req.method === "GET" || req.method === "HEAD") {
         if ((m = p.match(/^\/copy\/(\d+)$/))) return copyRoute(req, Number(m[1]));
-        if ((m = p.match(/^\/copy\/(\d+)\/pcm$/))) return pcmRoute(req, Number(m[1])); // PROTOTYPE
+        if ((m = p.match(/^\/copy\/(\d+)\/pcm$/))) return pcmRoute(req, Number(m[1]));
         if ((m = p.match(/^\/thumbs\/(\d+)\/(poster|strip)\.webp$/))) return thumbRoute(req, Number(m[1]), m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
         if (p === "/api/videos") return json(allVideos());

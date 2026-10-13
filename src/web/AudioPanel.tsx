@@ -1,17 +1,17 @@
 // The Audio panel (spec 4.7, `a` or the Audio button): the Video's Audio settings in the drawer slot. Channels (live
-// meters, routing, balance, per-channel volume), the equalizer (presets, built-in and custom, over seven faders) and
-// level (preamp, leveler). Controlled: the page owns the settings and persists them; this only renders and edits.
+// meters, routing, balance, per-channel volume), clean up (CleanupSection), the equalizer (presets, built-in and
+// custom, over seven faders) and level (preamp, leveler). The Auto wand in the header measures the recording and
+// proposes all of it, with a report. Controlled: the page owns the settings and persists them; this only renders and edits.
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
-  BANDS, EQ_MAX, EQ_MIN, PREAMP_MAX, PREAMP_MIN, PRESET_NAME_MAX, ROUTINGS, VOL_MAX, isDefaultAudio, presetFor, presetNameError,
+  BANDS, DEFAULT_AUDIO, EQ_MAX, EQ_MIN, PREAMP_MAX, PREAMP_MIN, PRESET_NAME_MAX, ROUTINGS, VOL_MAX, isDefaultAudio, presetFor, presetNameError,
   type AudioPreset, type AudioState,
 } from "../shared/audio";
-import { AudioEngine, type Levels } from "./audioEngine";
-import { CleanupSection } from "./prototype/CleanupSection"; // PROTOTYPE
-import { DEFAULT_CLEANUP, type Cleanup } from "./prototype/cleanup"; // PROTOTYPE
-import { autoSettings, type ReportRow } from "./prototype/auto"; // PROTOTYPE
-import { analyzeFull, analyzeSampled, type Measure } from "./prototype/analyze"; // PROTOTYPE
+import { autoSettings, type Measure, type ReportRow } from "../shared/audioAuto";
 import type { CopyDto } from "../shared/types";
+import { AudioEngine, type Levels } from "./audioEngine";
+import { analyzeFull, analyzeSampled } from "./audioAnalyze";
+import { CleanupSection } from "./CleanupSection";
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -22,13 +22,15 @@ interface Props {
   onSavePreset(name: string, eq: number[]): Promise<void>;
   onDeletePreset(name: string): Promise<void>;
   onClose(): void;
-  /** PROTOTYPE: the Video's Copies, to size the one playing for the Auto wand */
-  copies?: CopyDto[];
+  /** the Video's Copies: the Auto wand sizes the one playing to decide whether to warn before decoding it whole */
+  copies: CopyDto[];
 }
 
 const METER_MS = 70;
+/** A Copy over either of these gets the "sample or decode?" question before Auto reads all of it. */
+const BIG_BYTES = 1e9, BIG_SECS = 20 * 60;
 
-// PROTOTYPE: the "did" half of an Auto report row, coloured like the State panel: numbers pink, words green
+// the "did" half of an Auto report row, coloured like the State panel: numbers pink, words green
 const Did = ({ s }: { s: string }) => (
   <>
     {s.split(" ").map((w, i) => (
@@ -37,7 +39,7 @@ const Did = ({ s }: { s: string }) => (
   </>
 );
 
-// PROTOTYPE: Lucide "audio-lines" (ISC, lucide.dev), same stroke style as the icons in ui.tsx
+// Lucide "audio-lines" (ISC, lucide.dev), same stroke style as the icons in ui.tsx
 const WandIcon = () => (
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3" />
@@ -66,7 +68,7 @@ const Meter = ({ v, label }: { v: number; label: string }) => (
 
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n}`;
 
-export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose, copies = [] }: Props) {
+export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose, copies }: Props) {
   const lv = useLevels(vid);
   const preset = presetFor(s.eq, presets);
   const [naming, setNaming] = useState(false);
@@ -92,9 +94,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       setErr(String((x as Error).message ?? x));
     }
   };
-  // PROTOTYPE: Clean up state (in memory) and the Auto wand
-  const [cleanup, setCleanup] = useState<Cleanup>(DEFAULT_CLEANUP);
-  useEffect(() => { if (vid.current) AudioEngine.for(vid.current).setMultiband(cleanup.multiband); }, [cleanup.multiband]);
+  // The Auto wand: measure (the whole Copy decoded, or five places through the live chain), then apply and report.
   const [auto, setAuto] = useState<{ phase: "idle" } | { phase: "ask"; copy: CopyDto } | { phase: "busy"; label: string }>({ phase: "idle" });
   const [autoReport, setAutoReport] = useState<ReportRow[] | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -103,7 +103,6 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
     const m = vid.current?.src.match(/\/copy\/(\d+)/);
     return (m && copies.find((c) => c.id === Number(m[1]))) ?? null;
   };
-  const BIG_BYTES = 1e9, BIG_SECS = 20 * 60;
   const isBig = (c: CopyDto) => c.size > BIG_BYTES || (c.durationS ?? 0) > BIG_SECS;
 
   const startAuto = () => {
@@ -128,8 +127,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
         m = await analyzeFull(c.id, (f) => setAuto({ phase: "busy", label: `decoding ${Math.round(f * 100)} %` }), c.durationS, ac.signal);
       } else {
         // measure through the live chain with the chain at its defaults
-        onChange({ ...s, routing: "stereo", balance: 0, volL: 1, volR: 1, preamp: 0 });
-        setCleanup(() => DEFAULT_CLEANUP);
+        onChange(DEFAULT_AUDIO);
         setAuto({ phase: "busy", label: "listening…" });
         await new Promise((r) => setTimeout(r, 300));
         m = await analyzeSampled(v, eng, (f) => setAuto({ phase: "busy", label: `listening ${Math.round(f * 100)} %` }));
@@ -137,7 +135,6 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       if (ac.signal.aborted) return;
       const out = autoSettings(m);
       onChange(out.audio);
-      setCleanup(() => out.cleanup);
       setAutoReport(out.report);
     } catch (e) {
       if (!ac.signal.aborted) setAutoReport([{ k: "error", heard: String((e as Error).message ?? e), did: "" }]);
@@ -159,7 +156,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
               <WandIcon /> {auto.label} <span class="dim">×</span>
             </button>
           ) : (
-            <button class="btn small wand" disabled={auto.phase === "ask"} onClick={startAuto} title="Auto: analyse the recording, then balance channels, level, clean-up and EQ (prototype)">
+            <button class="btn small wand" disabled={auto.phase === "ask"} onClick={startAuto} title="Auto: measure the recording, then set channels, clean up, EQ and level to suit it">
               <WandIcon /> Auto
             </button>
           )}
@@ -219,7 +216,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <b class="mono">{Math.round(s.volR * 100)}</b>
         </label>
 
-        <CleanupSection vid={vid} c={cleanup} setC={setCleanup} />{/* PROTOTYPE */}
+        <CleanupSection vid={vid} state={s} onChange={onChange} />
 
         <h5>Equalizer <span class="dim">{preset?.name ?? "custom"}</span></h5>
         <div class="au-chips">
@@ -264,8 +261,8 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <span>Even out loudness</span>
           <input type="range" min={0} max={1} step={0.05} value={s.compressAmount} disabled={!s.compress} aria-label="Leveler amount" onInput={(e) => onChange({ compressAmount: +e.currentTarget.value })} />
         </label>
-        <label class="au-row au-check au-sub" title="PROTOTYPE: three bands (below 200 Hz, 200 Hz to 3 kHz, above) each levelled on their own, so a drum thump no longer ducks the voice">
-          <input type="checkbox" checked={cleanup.multiband} disabled={!s.compress} onChange={(e) => setCleanup((c) => ({ ...c, multiband: e.currentTarget.checked }))} />
+        <label class="au-row au-check au-sub" title="Three bands (below 200 Hz, 200 Hz to 3 kHz, above) each levelled on their own, so a drum thump no longer ducks the voice">
+          <input type="checkbox" checked={s.multiband} disabled={!s.compress} onChange={(e) => onChange({ multiband: e.currentTarget.checked })} />
           <span>Per band <span class="dim">low · mid · high</span></span>
           <span />
         </label>

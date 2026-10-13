@@ -94,3 +94,52 @@ export function fmtClock(s: number | null | undefined): string {
   const sec = t % 60;
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 }
+
+// ---- keyframe seeks (spec 4.1) ----
+
+/**
+ * How far past the keyframe a keyframe seek lands. Chromium starts demuxing about 100 ms before the requested time
+ * (measured 2026-10-13: a request up to 80 ms past a keyframe decoded the whole previous GOP, from 100 ms on only the
+ * frames up to the target), so landing on the keyframe itself would cost the very GOP the snap is meant to skip.
+ * 150 ms in is a handful of frames at any frame rate and not visible as a mislanding.
+ */
+export const KEYFRAME_LEAD = 0.15;
+const EPS = 5e-4;
+
+/** Index of the last keyframe at or before `t` in a sorted list, or -1. */
+export function keyframeBefore(keyframes: readonly number[], t: number): number {
+  let lo = 0, hi = keyframes.length - 1, ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (keyframes[mid]! <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return ans;
+}
+
+/**
+ * Where a keyframe seek lands (what mpv's plain arrows and seek bar do): KEYFRAME_LEAD past the keyframe nearest
+ * `target`, so the browser decodes a few frames instead of a whole GOP. A relative seek (`from` given) never stays
+ * put: when the nearest keyframe is the one already playing, the next one in the direction of travel is taken, so
+ * short steps over long GOPs still move. Without an index the exact target comes back unchanged.
+ */
+export function keyframeSeekTarget(target: number, keyframes: readonly number[], from?: number): number {
+  if (!keyframes.length) return target;
+  const i = keyframeBefore(keyframes, target);
+  const before = i >= 0 ? keyframes[i]! : null;
+  const after = i + 1 < keyframes.length ? keyframes[i + 1]! : null;
+  let k = before == null ? after! : after == null ? before : target - before <= after - target ? before : after;
+  if (from != null) {
+    const dir = Math.sign(target - from);
+    const cur = keyframeBefore(keyframes, from + EPS); // the keyframe the current frame belongs to
+    const onCur = cur >= 0 && from - keyframes[cur]! <= KEYFRAME_LEAD + 0.05; // sitting where a keyframe seek lands
+    if (dir > 0 && k <= from + EPS) {
+      if (cur + 1 >= keyframes.length) return target; // no keyframe ahead: the exact target (the end is near)
+      k = keyframes[cur + 1]!;
+    } else if (dir < 0 && cur >= 0 && k >= keyframes[cur]!) {
+      const n = onCur ? cur - 1 : cur;
+      if (n < 0) return 0;
+      k = keyframes[n]!;
+    }
+  }
+  return k + KEYFRAME_LEAD;
+}

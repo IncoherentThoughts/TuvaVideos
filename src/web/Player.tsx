@@ -1,19 +1,21 @@
 // The Player (spec 4, playback-architecture.md): a plain <video> over the Range server inside a focusable container
 // that owns the mpv-style keys. State machine of what is on screen: loading -> (preparing) -> ready, or unavailable.
+// Seeks (spec 4.1): the bar and the plain arrows snap to the playing Copy's keyframes once its index has arrived
+// (one decoded frame instead of a GOP); Shift-arrows, frame steps, Chapters, `?t=` and Resume are exact.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { createPortal } from "preact/compat";
 import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
-  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, speedBy, storedLoop, volumeBy, type AbLoop,
+  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
 } from "../shared/playerMath";
 import { RESUME_INTERVAL_MS, ResumeClock, startPosition } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
 import { studioRoute, type SongStudioDto } from "../shared/studio";
 import type { CopyDto, VideoDto } from "../shared/types";
 import { CopyPicker, copyLabel } from "./CopyPicker";
-import { Timeline, type ChapterMark } from "./Timeline";
+import { StripFrame, Timeline, type ChapterMark } from "./Timeline";
 import { StudioBar, type StudioCtl } from "./Studio";
 import { StatePanel } from "./StatePanel";
 import { AudioEngine } from "./audioEngine";
@@ -124,6 +126,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const [fs, setFs] = useState(false);
   const [ab, setAb] = useState<AbLoop>(() => storedLoop(video.loop) ?? AB_OFF); // a loop left set last time comes back (spec 4.3)
   const [aspect, setAspect] = useState<number | null>(null);
+  const [scrub, setScrub] = useState<number | null>(null); // the bar is being dragged: the strip frame at this time covers the stage
   const [osd, setOsd] = useState<{ text: string; n: number } | null>(null);
   const [osdFlash, setOsdFlash] = useState(false);
   const [osdAlways, setOsdAlways] = useState(false);
@@ -149,6 +152,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     retries: new Map<number, number>(),
     lastPos: 0,
     hold: 0, // position kept while "Copy unavailable"
+    keyframes: null as number[] | null, // the playing Copy's keyframe index, once fetched
+    seekTarget: null as number | null, // the last requested seek while it is in flight or queued: held keys step from it
     wasPlaying: true,
     ab: (storedLoop(video.loop) ?? AB_OFF) as AbLoop,
     phase: "loading" as Phase,
@@ -211,9 +216,24 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     const r = R.current;
     r.pending = { at, play };
     r.started = false;
+    r.keyframes = null;
+    r.seekTarget = null;
     throttle.current.reset();
     v.src = `/copy/${id}`;
     v.load();
+  };
+
+  /** The Copy's keyframe index (spec 4.1): asked for on load; a Copy being indexed is polled, one that cannot be is left exact. */
+  const fetchKeyframes = async (id: number, token: number) => {
+    for (let tries = 0; tries < 60; tries++) {
+      const st = await api.keyframes(id).catch(() => null);
+      if (token !== R.current.token || !st || st.state === "none") return;
+      if (st.state === "ready") {
+        R.current.keyframes = st.keyframes;
+        return;
+      }
+      await sleep(3000);
+    }
   };
 
   /** Waits out a "preparing" Fallback (spec 3.4): the overlay shows while `awaitCopy` polls. */
@@ -246,6 +266,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       if (!ok) return void lose(id, true, at, play);
     }
     attach(id, at, play);
+    void fetchKeyframes(id, token);
   };
 
   /** The playing Copy is gone (Root unmounted) or broken: next Available Copy at the same timestamp, else "Copy unavailable". */
@@ -339,10 +360,18 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   }, [video, copyId, phase]);
 
   // ---- seeking ----
-  const seekTo = (t: number, throttled = false) => {
+  type SeekMode = "exact" | "keyframe";
+  /**
+   * `keyframe` snaps to the Copy's keyframe index when it has arrived (nearest to `t`; for a relative seek `from` is
+   * where it started, so it always moves). `throttled`: one seek in flight, the latest target wins (held keys).
+   */
+  const seekTo = (t: number, mode: SeekMode = "exact", from?: number, throttled = false) => {
     const v = vid.current;
     if (!v || v.readyState === 0) return;
-    const c = clampTime(t, Number.isFinite(v.duration) ? v.duration : null);
+    const dur = Number.isFinite(v.duration) ? v.duration : null;
+    let c = clampTime(t, dur);
+    if (mode === "keyframe" && R.current.keyframes) c = clampTime(keyframeSeekTarget(c, R.current.keyframes, from), dur);
+    R.current.seekTarget = c;
     throttle.current.request(c, throttled);
     setTime(c);
   };
@@ -412,6 +441,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     on("canplay", () => setBuffering(false));
     on("seeked", () => {
       throttle.current.landed();
+      if (!throttle.current.busy) r.seekTarget = null;
       setTime(v.currentTime);
       r.lastPos = v.currentTime;
       clearTimeout(r.seekWrite);
@@ -572,10 +602,13 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         togglePause();
         flash();
         break;
-      case "seekBy":
-        seekTo(v.currentTime + a.seconds);
+      case "seekBy": {
+        // a held key steps from the seek already requested, not from the frame still on screen
+        const base = R.current.seekTarget ?? v.currentTime;
+        seekTo(base + a.seconds, a.exact ? "exact" : "keyframe", base, true);
         flash();
         break;
+      }
       case "frameStep": {
         const fps = copy?.frameRate ?? FALLBACK_FPS;
         v.pause();
@@ -725,6 +758,12 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
             )}
           </div>
         )}
+        {scrub != null && (
+          <div class="scrub" aria-hidden="true">
+            <StripFrame video={video} t={scrub} width="min(60%, 560px)" />
+            <span class="mono">{fmtClock(scrub)}</span>
+          </div>
+        )}
         {(buffering || phase === "loading") && <div class="spin" aria-label="Loading" />}
         {phase === "preparing" && (
           <div class="overlay" role="status">
@@ -752,7 +791,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
           </div>
         )}
       </div>
-      <Timeline video={video} time={time} duration={duration} bufferedEnd={bufEnd} chapters={chapters} ab={ab} onSeek={seekTo} />
+      <Timeline video={video} time={time} duration={duration} bufferedEnd={bufEnd} chapters={chapters} ab={ab} onSeek={(t) => seekTo(t, "keyframe")} onScrub={setScrub} />
       <div class="ctl" data-keep-focus="">
         <button class="ib" tabIndex={-1} title="Play / pause (space)" onClick={() => (togglePause(), refocus())}>
           {paused ? PLAY_ICON : PAUSE_ICON}

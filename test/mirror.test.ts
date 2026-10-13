@@ -287,6 +287,7 @@ describe("editing endpoints", () => {
   beforeAll(async () => {
     app = await startApp(loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: join(base, "local"), TUVA_EXTERNAL_ROOT: join(base, "ext") }));
     url = `http://localhost:${app.server.port}`;
+    await app.scanner.requestAll(); // nothing is scanned at startup (spec 3.2)
     await app.scanner.whenIdle();
     const db = app.db;
     db.exec("INSERT INTO video (id, youtube_id, title, created_at) VALUES (1, 'aaaaaaaaaaa', 'Чаңгыс баглааш', 'x'), (2, 'bbbbbbbbbbb', 'Concert', 'x'), (3, 'eeeeeeeeeee', 'Plain', 'x')");

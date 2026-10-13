@@ -30,6 +30,8 @@ A single-user, offline, macOS-only local player for a personal library of Tuvan 
 
 ~2000 files total (Batch 7 added 2026-10-10: 636 mkv downloads of Performance ids missing from the library, all new ids, plus one `.info.json` per file), 220 YouTube ids with 2+ Copies, 12 ids present in both Roots, ~26 GB redundant (pruned 2026-10-11: 249 duplicate Copies trashed, 21 Videos that were the same footage under a renamed file merged into one, catalogued Video first; `docs/prune-proposal.md`). Containers: webm, mp4, mkv; codecs H.264 / VP9 / AV1 (16 files, Batch 6) with Opus / AAC / Vorbis; one E-AC3 file; ~13 unmerged yt-dlp partials. The external drive was returning I/O errors on 2026-10-10 (#21); v1 must work with it absent.
 
+**Download rule** (2026-10-13): new Copies are at most 1080p and VP9 or H.264, never AV1 (`yt-dlp -S "res:1080,vcodec:vp9"`, as in `scripts/download-missing-youtube.sh`). The M1 decodes H.264, HEVC and VP9 in hardware and AV1 in software, and a 2160p Copy is decoded in full to be shown in a ~1,100 px stage. The existing AV1 (~200) and 2160p / 1440p (~80) Copies are re-downloaded later (#61).
+
 ---
 
 ## 2. Storage and data model
@@ -96,9 +98,9 @@ Lifecycle in §9.
 
 ### 3.2 Scan
 
-- At startup and on an explicit rescan, walk each mounted Root; for each new or changed (size/mtime) file run ffprobe once and store the per-Copy facts; compute SHA-256 only for id-less files.
+- On the Rescan button and on a remount, walk each mounted Root; for each new or changed (size/mtime) file run ffprobe once and store the per-Copy facts; compute SHA-256 only for id-less files. A changed file also drops the Copy's keyframe index (§4.1).
 - Root availability is a 1-byte read of a known Copy, never `readdir` (exFAT over FSKit returned EIO on `readdir` while reads worked).
-- **Triggers**: startup, a "Rescan" button in the top bar, and a remount. No `fs.watch` (unreliable on exFAT). New files appear only on a Rescan or a remount. A **passive** server — any port other than 4400 on the default data dir, i.e. a test preview sharing the real library — skips the startup and remount scans (and so the Thumbnail pass they start); it still plays everything, shows existing Thumbnails, and scans on its own Rescan button.
+- **Triggers**: a "Rescan" button in the top bar, and a remount. **Not startup** (since 2026-10-13): a scan and the Thumbnail pass it starts run four ffmpeg processes while the first Video plays, so the Roots found at startup are left as they are until the Rescan button; a Root that mounts later is scanned when it appears. No `fs.watch` (unreliable on exFAT). New files appear only on a Rescan or a remount. A **passive** server — any port other than 4400 on the default data dir, i.e. a test preview sharing the real library — skips the remount scan too; it still plays everything, shows existing Thumbnails, and scans on its own Rescan button.
 - **Mount poll**: every 10 s the server does the 1-byte read on each Root. An unmounted Root that becomes Available triggers a scan of that Root; a Root that disappears flips its Videos to unavailable (and the Player follows §4.2).
 - **Unmounted at startup**: the Root is skipped, its Videos are unavailable, no error is shown.
 - **Progress**: a small top-bar indicator with files seen / probed while a scan runs.
@@ -142,7 +144,15 @@ Decided in #10 and #14 ([playback-architecture.md](playback-architecture.md), AD
 
 ### 4.1 Element and seeking
 
-Plain `<video src>` over the Range server. No MediaSource, no mpv IPC, no transcoding for Chromium-native codecs. Scrub drag is throttled: one seek in flight, latest pointer target wins; click-to-seek is unthrottled.
+Plain `<video src>` over the Range server. No MediaSource, no mpv IPC, no transcoding for Chromium-native codecs.
+
+Setting `currentTime` is always a frame-exact seek: Chromium decodes from the previous keyframe to the target, and keyframes in this library sit ~5 s apart, so an exact seek shows its frame after 0.3–0.6 s. mpv feels instant because its arrows and seek bar snap to keyframes. The Player does the same (2026-10-13):
+
+- **Keyframe index**: per Copy, the keyframe timestamps (`copy.keyframes`, little-endian uint32 ms) from one ffprobe pass over the packets, no decode. Made lazily when a Copy first plays (`GET /api/copies/:id/keyframes` answers 202 while one job at a time runs, then 200 with the times) or ahead of time by `bun run index-keyframes`; dropped when a rescan sees the file changed. A Fallback is indexed in place of its source (same video stream).
+- **Keyframe seeks**: the bar (click and drag release) and the plain arrows land 0.15 s past the keyframe nearest the target (Chromium starts demuxing ~100 ms before the requested time; a request on the keyframe itself decodes the whole previous GOP, measured 2026-10-13: 2.4 s vs 0.1 s on a 4K60 VP9 Copy, 170 vs 20 ms on an AV1 one); a relative step never stays on the keyframe it started from, so a 5 s step over a 5.1 s GOP still moves. Until the index arrives they are exact.
+- **Exact seeks**: Shift-arrows, frame steps, Chapter keys and cards, `?t=`, Resume and the A-B loop.
+- **Dragging the bar seeks nothing**: the strip frame under the pointer covers the stage with its timestamp; one keyframe seek goes out on release. Held arrow keys are throttled: one seek in flight, the latest target wins, each step counted from the seek already requested.
+- Chromium has no `fastSeek()`; AV1 decodes in software on the M1 (hence the download rule in §2).
 
 ### 4.2 Copy selection
 
@@ -166,8 +176,8 @@ Keys are handled only while the Player container has focus. No native `<video co
 | Key | Action |
 |---|---|
 | space, p | pause / play |
-| ← → | ±5 s |
-| ↑ ↓ | ±60 s |
+| ← → | ±5 s, to the nearest keyframe (§4.1) |
+| ↑ ↓ | ±60 s, to the nearest keyframe |
 | ⇧← ⇧→ / ⇧↑ ⇧↓ | exact ±1 s / ±5 s |
 | , . | frame step back / forward (OSD shows the frame number; needs `r_frame_rate`) |
 | [ ] | speed ±0.1 (additive; departs from mpv) |
@@ -189,7 +199,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 
 ### 4.6 Visuals
 
-The video box takes the Copy's own aspect ratio. A poster frame shows before first play. Hovering the bar shows the scrub-strip frame and timestamp above the pointer. Chapter ticks on the timeline; chapter cards use the same strip frames. Volume is an icon; the frame number sits beside the time while paused.
+The video box takes the Copy's own aspect ratio. A poster frame shows before first play. Hovering the bar shows the scrub-strip frame and timestamp above the pointer; dragging it shows that frame over the stage until release (§4.1). Chapter ticks on the timeline; chapter cards use the same strip frames. Volume is an icon; the frame number sits beside the time while paused.
 
 ### 4.7 Audio settings
 
@@ -353,7 +363,7 @@ Decided in #26: the parser strips a leading bullet or dash (`- 0:10 Song`), whic
 - **Start**: `bun run start` (alias `tuva`) starts the server on port **4400** (`TUVA_PORT` overrides, for tests only), then opens `http://localhost:4400` in the default browser. If a TuvaVideos health endpoint already answers on the port, it only opens the tab.
 - **Logs**: stdout and `~/Library/Application Support/TuvaVideos/log.txt`.
 - **Stop**: Ctrl-C. SIGINT lets the ffmpeg job in flight finish, kills the osascript child, checkpoints SQLite, exits.
-- **Startup order**: migrations → Root availability → scan of mounted Roots (in the background) → Music.app `playerState()` read for the Automation prompt → open the tab.
+- **Startup order**: migrations → Root availability → Music.app `playerState()` read for the Automation prompt → open the tab. No scan at startup (§3.2).
 - **UI stack**: Preact + TypeScript bundled by Bun, hand-rolled history routing: `/` Library, `/play/:videoId[?t=]` Now playing, `/favorites`, `/artists`, `/songs`; filters and sort in the query string. Tabs in this order: Now playing, Library, Songs, Artists, Favorites.
 
 ---

@@ -305,7 +305,7 @@ export class Scanner {
       this.db
         .prepare(
           `UPDATE copy SET size = ?, mtime = ?, duration_s = ?, container = ?, video_codec = ?, audio_codec = ?, width = ?, height = ?,
-             r_frame_rate = ?, playback = ?, fallback_file = NULL, content_hash = COALESCE(?, content_hash), missing_since = NULL WHERE id = ?`,
+             r_frame_rate = ?, playback = ?, fallback_file = NULL, keyframes = NULL, content_hash = COALESCE(?, content_hash), missing_since = NULL WHERE id = ?`,
         )
         .run(entry.size, mtime, ...facts, contentHash, row.id);
       summary.updatedCopies++;

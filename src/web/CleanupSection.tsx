@@ -33,11 +33,14 @@ export function CleanupSection({ vid, state: c, onChange }: Props) {
   const addNotch = (hz: number) => { if (c.notches.length < NOTCH_MAX) onChange({ notches: [...c.notches, { hz: Math.round(hz), q: 30, depth: 30, harmonics: false }] }); };
   const dropNotch = (i: number) => onChange({ notches: c.notches.filter((_, j) => j !== i) });
 
-  // the spectrum, ~30 fps
+  // the spectrum, capped at 25 fps: an 8192-point FFT and a full redraw per frame is wasted at the display's 60–120 Hz
   useEffect(() => {
     let raf = 0;
-    const draw = () => {
+    let last = 0;
+    const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
+      if (now - last < 40) return;
+      last = now;
       const cv = canvas.current, e = engine();
       if (!cv || !e) return;
       const w = cv.width, h = cv.height, g = cv.getContext("2d")!;
@@ -74,7 +77,7 @@ export function CleanupSection({ vid, state: c, onChange }: Props) {
       g.fillStyle = "rgba(255,255,255,.35)"; g.font = "9px ui-monospace, monospace";
       for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) g.fillText(fmtHz(f), xOf(f, w) + 2, h - 2);
     };
-    draw();
+    draw(0);
     return () => cancelAnimationFrame(raf);
   }, [c.highpass, c.lowpass, c.notches]);
 

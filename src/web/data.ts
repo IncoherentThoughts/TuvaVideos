@@ -4,7 +4,7 @@ import type { AudioPreset, AudioState } from "../shared/audio";
 import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { VersionInput } from "../shared/lyrics/types";
-import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
+import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { navigate, playHref } from "./router";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -61,6 +61,8 @@ export const api = {
     send<{ deleted: true; trashed: string[]; kept: { path: string; reason: string }[]; tombstoned: boolean }>("DELETE", `/api/videos/${id}`, { media }),
   /** Show the Copy's file in the Finder. */
   revealCopy: (id: number) => send<{ ok: true }>("POST", `/api/copies/${id}/reveal`),
+  /** The Copy's keyframe index (spec 4.1): `ready` with the times, `indexing` while ffprobe reads it, `none` when it cannot be made now. */
+  keyframes: (id: number) => get<KeyframeStatusDto>(`/api/copies/${id}/keyframes`),
   relocate: (videoId: number, body: { path: string; copyId?: number | null; merge?: boolean }) => post<VideoDto>(`/api/videos/${videoId}/relocate`, body),
   chooseFile: (start: string) => post<{ path?: string; cancelled?: true }>("/api/choose-file", { start }),
   /** The A-B loop kept on a Video; null clears it (spec 4.3). */

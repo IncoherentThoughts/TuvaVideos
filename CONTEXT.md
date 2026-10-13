@@ -43,12 +43,20 @@ The timestamp the user last left a Video at; playback reopens there without aski
 _Avoid_: progress, watch position, bookmark
 
 **Preferred Copy**:
-The Copy the selection rule picks when a Video is played: local Root first, then one that plays as-is, then larger resolution, then smaller size. The user may switch Copies for one play; the choice is never remembered.
+The Copy the selection rule picks when a Video is played: local Root first, then one that plays as-is under the Playback profile of the player in use, then larger resolution, then smaller size. The user may switch Copies for one play; the choice is never remembered.
 _Avoid_: best copy, default copy, pinned copy, copy to play
 
 **Fallback (of a Copy)**:
-The one-time cached remux or audio transcode played instead of the Copy's own file when the browser cannot play it as-is. Made at scan time when possible, otherwise on first play while the Player shows it preparing.
+The one-time cached remux or audio transcode played instead of the Copy's own file when the player's Playback profile cannot play it as-is. Made for the browser only, at scan time when possible, otherwise on first play while the Player shows it preparing. At most one per Copy; the TV app plays it when its own Playback profile allows.
 _Avoid_: remux (the act), transcode (the act), converted file, pipe
+
+**Playback profile**:
+The containers, codecs and limits one player (the browser, or the TV app) plays as-is. Each Copy is judged against each Playback profile once, at scan time, and judged again when the profile changes.
+_Avoid_: device profile, client profile, capabilities, codec support
+
+**Live remux**:
+A stream made on the fly while the TV app plays a Copy that neither the Copy itself nor its Fallback suits: the video copied untouched, the audio copied or converted. Leaves nothing cached; one at a time.
+_Avoid_: transcode, pipe, live Fallback, on-the-fly conversion
 
 ### Enrichment
 
@@ -93,6 +101,14 @@ _Avoid_: custom lyrics, user lyrics, local lyrics (as the noun), override
 **Player**:
 The in-browser video surface and its mpv-style keyboard bindings. Captures keys only while focused.
 _Avoid_: viewer, video element, mpv (which is the reference, not the thing)
+
+**Keyframe seek**:
+A seek that lands on the playing Copy's nearest keyframe (from its Keyframe index) so the browser decodes one frame; what the timeline bar and the plain arrow keys do. The opposite is an exact seek (Shift-arrows, frame step, Chapters, Resume).
+_Avoid_: fast seek, coarse seek, snap (as the noun)
+
+**Keyframe index**:
+The list of a Copy's keyframe timestamps, read once from the file's packets and stored on the Copy; made when the Copy first plays or ahead of time by the index command.
+_Avoid_: seek table, cue index, GOP map
 
 **Playing from**:
 The ordered list of Videos the Player steps through with previous/next: the list the Video was opened from (grid as filtered and sorted, Favorites, search results), or library order when opened by URL.

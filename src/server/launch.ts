@@ -34,7 +34,7 @@ export async function launch(cfg: Config) {
     process.exit(0);
   };
   const app = await startApp(cfg, { quit: () => void shutdown("quit (power button)") });
-  void app.studio.probe(); // spec 9: after the scan kicked off, before the tab opens, so the Automation prompt is predictable
+  void app.studio.probe(); // spec 9: before the tab opens, so the Automation prompt is predictable
   if (cfg.openTab) openTab(cfg.port);
 
   process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -23,4 +23,5 @@ Data lives under `~/Library/Application Support/TuvaVideos/` (`library.db`, `thu
 | `bun run suggest-chapters [ids] [--dry-run]` | Offline: writes Suggested Chapters from the cache and Mirror Performances |
 | `bun run suggest-artists [id] [--dry-run]` | Re-runs the Artist matcher over the titles (Videos with a confirmed Artist are left alone) |
 | `bun run studio-match [--cached]` | Matches Mirror Tracks to Music.app tracks |
+| `bun run index-keyframes` | Indexes the keyframes of every Copy on a mounted Root that has none yet, so keyframe seeks are instant from the first play (otherwise each Copy is indexed when it first plays) |
 | `bun test`, `bun run typecheck` | Tests and types |

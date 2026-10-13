@@ -8,6 +8,7 @@ import { rankCopies } from "./ranking";
 import type { Roots } from "./roots";
 import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
+import { deleteVideo } from "./deleteVideo";
 import { serveFile } from "./stream";
 import { run } from "./proc";
 import type { Thumbnails } from "./thumbs";
@@ -513,6 +514,12 @@ export function createHandler(s: Services) {
       if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)\/view$/))) {
         if (!resetViews(s.db, Number(m[1]))) return json({ error: "no such video" }, 404);
         return videoResponse(Number(m[1]));
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)$/))) {
+        // Delete a Video from the library; `media: true` also moves its files to the Trash (deleteVideo.ts).
+        const body = (await req.json().catch(() => ({}))) as { media?: unknown };
+        const r = await deleteVideo(s.db, s.cfg, s.roots, Number(m[1]), { media: body.media === true });
+        return r ? json(r) : json({ error: "no such video" }, 404);
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/audio-presets\/([^/]+)$/))) {
         const r = deletePreset(s.db, decodeURIComponent(m[1]!));

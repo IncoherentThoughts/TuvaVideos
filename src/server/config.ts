@@ -20,6 +20,8 @@ export interface Config {
   ffmpeg: string;
   ffprobe: string;
   cwebp: string;
+  /** Moves a file to the Trash (deleting a Video with its media). macOS 15's `trash`; tests point it elsewhere. */
+  trash: string;
   openTab: boolean;
   migrationsDir: string;
   webDir: string;
@@ -49,6 +51,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ffmpeg: findBin("ffmpeg"),
     ffprobe: findBin("ffprobe"),
     cwebp: findBin("cwebp"),
+    trash: env.TUVA_TRASH ?? "/usr/bin/trash",
     openTab: env.TUVA_NO_OPEN !== "1",
     migrationsDir: join(import.meta.dir, "..", "..", "migrations"),
     webDir: join(import.meta.dir, "..", "web"),

@@ -14,6 +14,7 @@ import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
 import { AudioPanel } from "./AudioPanel";
+import { DeleteVideoDialog } from "./DeleteVideo";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
@@ -160,6 +161,8 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   };
 
   // The drawer: closed by default; opened by its button or by choosing a Song in the search box (`?lyrics=<song>`).
+  const [deleting, setDeleting] = useState(false);
+  const deleted = useRef(false);
   const [drawer, setDrawer] = useState(!!lyrics);
   const [focusDrawer, setFocusDrawer] = useState(!!lyrics);
   const seenParam = useRef(lyrics);
@@ -239,6 +242,22 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
               youtube.com/watch?v={v.youtubeId}
             </a>
           </div>
+        )}
+        <div class="np-delete">
+          <button class="btn small danger" onClick={() => setDeleting(true)}>
+            Delete from library…
+          </button>
+        </div>
+        {deleting && (
+          <DeleteVideoDialog
+            video={v}
+            onDeleted={() => (deleted.current = true)}
+            onClose={() => {
+              setDeleting(false);
+              if (deleted.current) navigate("/");
+              else ctl.current?.focus();
+            }}
+          />
         )}
       </div>
       {audioOpen && !drawer && audio && (

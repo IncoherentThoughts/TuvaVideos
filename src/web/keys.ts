@@ -1,6 +1,7 @@
 // Global keyboard: `/` focuses the search box from anywhere; `r` plays a random Available Video (again and again from the
 // Player: it never repeats the one on screen); arrows walk focus between grid cards / list rows (`[data-item]`), Enter opens
-// (the items are anchors), `f` toggles the Favorite of the focused item.
+// (the items are anchors), `f` toggles the Favorite of the focused item. On Now playing, `v` gives focus back to the
+// Player from anywhere outside a text field (the lyrics drawer, the Chapter strip, the header buttons).
 import { playRandom, toggleFavorite } from "./data";
 
 export const SEARCH_ID = "q";
@@ -63,6 +64,19 @@ function vertical(all: HTMLElement[], cur: HTMLElement, dir: 1 | -1): HTMLElemen
 }
 
 export function installKeys() {
+  // Capture phase: a focused Chapter card or the lyrics drawer stops its keys from bubbling, and `v` must still work there.
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "v" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      const player = document.querySelector<HTMLElement>("[data-player]");
+      if (!player || document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      player.focus({ preventScroll: true });
+    },
+    true,
+  );
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/" && !isTyping(e.target)) {

@@ -1,4 +1,4 @@
-// Scan defaults from Performances (spec 2.3). A Video still at Type `other`, with no Song, never edited by the user
+// Scan defaults from Performances (spec 2.3). A Video still at its starting Type (`song` since 2026-10-12, `other` before), with no Song, never edited by the user
 // (`suggestion_source IS NULL`: any PATCH of the Type or the Song stamps `manual`), whose YouTube id is on:
 //   - exactly one Song's Performances -> Type `song`, that Song Suggested (source `performance`);
 //   - two or more Songs' Performances -> Type `concert` (the Type is Suggested, no Song).
@@ -19,7 +19,7 @@ export function applyPerformanceDefaults(db: Db, opts: { videoId?: number } = {}
     .query(
       `SELECT v.id AS id, p.song_id AS song_id
          FROM video v JOIN mirror_performance p ON p.youtube_id = v.youtube_id
-        WHERE v.type = 'other' AND v.type_suggested = 0 AND v.song_id IS NULL AND v.suggestion_source IS NULL
+        WHERE v.type IN ('song', 'other') AND v.type_suggested = 0 AND v.song_id IS NULL AND v.suggestion_source IS NULL
           ${opts.videoId != null ? "AND v.id = ?" : ""}
         GROUP BY v.id, p.song_id ORDER BY v.id`,
     )

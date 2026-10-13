@@ -312,12 +312,12 @@ export class Scanner {
       const found = parsed.youtubeId
         ? (this.db.query("SELECT id FROM video WHERE youtube_id = ?").get(parsed.youtubeId) as { id: number } | null)
         : (this.db.query("SELECT id FROM video WHERE content_hash = ?").get(contentHash) as { id: number } | null);
-      // Defaults from the Mirror (spec 2.3): a new Video gets its Type/Song from the Performances of its id, if any.
+      // Defaults (spec 2.3): a new Video starts as Type `song`, then gets its Type/Song from the Performances of its id, if any.
       const videoId =
         found?.id ??
         Number(
           this.db
-            .prepare("INSERT INTO video (youtube_id, content_hash, title, created_at) VALUES (?, ?, ?, ?)")
+            .prepare("INSERT INTO video (youtube_id, content_hash, title, type, created_at) VALUES (?, ?, ?, 'song', ?)")
             .run(parsed.youtubeId, parsed.youtubeId ? null : contentHash, parsed.title, now).lastInsertRowid,
         );
       if (!found) {

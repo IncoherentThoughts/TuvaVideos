@@ -87,17 +87,29 @@ def parse(d):
             r['meta'] = p; continue
         body.append(p)
     # classify body paragraphs: Tuvan vs Russian by letters
-    def is_tuvan(p):
-        t = sum(p.count(c) for c in 'өүңӊӨҮҢӉ')
-        if t: return True
-        # Russian has lots of common Russian words
-        ru = len(re.findall(r'\b(и|в|на|не|с|что|как|мой|моя|меня|мне|ты|он|она|когда|если|же|ли|по|за|от|у|из|к|о|бы|для|это|так|все|то|но|я|ах|ой)\b', p.lower()))
-        words = max(1, len(p.split()))
-        return ru / words < 0.08
+    def tuvan_score(p):
+        low = p.lower()
+        tv = sum(low.count(c) for c in 'өүңӊ') * 2
+        tv += len(re.findall(r'\b(мен|сен|бис|боор|болган|болза|дээр|дег|ышкаш|чер|эжим|карам|аъд\w*|аът\w*|ла|ле|на|не|дыр|дур|оой|ээй|ийин|чораан|турар|бээр|алыйн|кончуг|ырак|чурту\w*|авам|ачам|уруг|кыс\w*|оол\w*)\b', low))
+        ru = sum(low.count(c) for c in 'щцфё') * 2
+        ru += len(re.findall(r'\b(и|в|на|не|с|что|как|мой|моя|моё|меня|мне|ты|он|она|когда|если|же|ли|по|за|от|у|из|к|о|бы|для|это|так|все|то|но|я|ах|ой|ведь|где|словно|такой|такое|такая|говорят|думаю|реки|река|место|моего|своего|быть|разве|наверное|ещё|еще|ещё|будто)\b', low))
+        ru += len(re.findall(r'\w+(ый|ая|ое|ого|ему|ими|ешь|ует|ают|яют|ится|ются|лась|лись|ться)\b', low))
+        return tv - ru
+    lyric = []
     for p in body:
         if (re.search(r'[A-Za-z]{4,}', p) and not re.search(r'[А-яӨүӊң]', p)) or re.search(r'Тирон\s*Е\.\s*Л\.|Новосибирск|Расшифровка|Записано|Институт', p):
             r['other'].append(p); continue
-        (r['tuvan'] if is_tuvan(p) else r['russian']).append(p)
+        lyric.append(p)
+    # Tuvan block first, Russian block second: pick the split that best agrees with per-paragraph scores
+    d = [tuvan_score(p) for p in lyric]
+    best = None
+    for k in range(len(lyric) + 1):
+        score = sum(d[:k]) - sum(d[k:])
+        key = (score, -abs(k - (len(lyric) + 1) // 2))
+        if best is None or key > best[0]: best = (key, k)
+    k = best[1] if best else 0
+    if lyric and k == 0 and all(x == 0 for x in d): k = (len(lyric) + 1) // 2
+    r['tuvan'] = lyric[:k]; r['russian'] = lyric[k:]
     r['has_lyrics'] = bool(r['tuvan'])
     if not r['tuvan_title'] and r['tuvan']:
         r['tuvan_title'] = '[' + r['tuvan'][0].split('\n')[0].strip().rstrip(',;!.…') + ']'

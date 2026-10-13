@@ -98,7 +98,7 @@ Lifecycle in §9.
 
 - At startup and on an explicit rescan, walk each mounted Root; for each new or changed (size/mtime) file run ffprobe once and store the per-Copy facts; compute SHA-256 only for id-less files.
 - Root availability is a 1-byte read of a known Copy, never `readdir` (exFAT over FSKit returned EIO on `readdir` while reads worked).
-- **Triggers**: startup, a "Rescan" button in the top bar, and a remount. No `fs.watch` (unreliable on exFAT). New files appear only on a Rescan or a remount.
+- **Triggers**: startup, a "Rescan" button in the top bar, and a remount. No `fs.watch` (unreliable on exFAT). New files appear only on a Rescan or a remount. A **passive** server — any port other than 4400 on the default data dir, i.e. a test preview sharing the real library — skips the startup and remount scans (and so the Thumbnail pass they start); it still plays everything, shows existing Thumbnails, and scans on its own Rescan button.
 - **Mount poll**: every 10 s the server does the 1-byte read on each Root. An unmounted Root that becomes Available triggers a scan of that Root; a Root that disappears flips its Videos to unavailable (and the Player follows §4.2).
 - **Unmounted at startup**: the Root is skipped, its Videos are unavailable, no error is shown.
 - **Progress**: a small top-bar indicator with files seen / probed while a scan runs.

@@ -450,7 +450,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       const t = v.currentTime;
       r.lastPos = t;
       if (!v.paused) {
-        const tgt = abLoopTarget(r.ab, t);
+        const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : abLoopTarget(r.ab, t);
         if (tgt != null) seekTo(tgt);
         if (clock.current.tick(Date.now(), true)) writeResume();
       }

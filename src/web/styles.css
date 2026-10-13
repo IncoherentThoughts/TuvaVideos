@@ -399,6 +399,9 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .drawer .hd .relink-row .pk-in, .drawer .hd .relink-row .pk-list { width: 100%; }
 /* Odd-sized icons in the 23px inner box leave whole-pixel margins, so the strokes land on the exact centre. */
 .drawer .hd .row .ib svg { display: block; }
+.drawer.audio .hd .row { align-items: center; }
+.drawer.audio .hd .ttl { padding-top: 0; }
+.drawer.audio .hd .row .ib { line-height: 1; padding: 0 0 2px; }
 .drawer .hd .ttl { flex: 1 0 auto; max-width: 100%; font-weight: 600; font-size: 1.05em; line-height: 1.35; padding-top: 3px; }
 .drawer .hd .ttl .en { font-weight: 400; color: var(--fg3); font-size: .9em; margin-left: 5px; }
 .drawer .hd .ttl .localmark { margin-left: 6px; vertical-align: middle; }
@@ -628,3 +631,26 @@ dialog.delconfirm .err { color: var(--t1); }
 dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .np-delete { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); }
 .vmenu .vm-danger { color: var(--t1); }
+
+/* Audio panel: Clean up section, the Auto wand and its report */
+.au-spec { width: 100%; height: 70px; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; }
+.au-notch { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+.au-notch .row { display: flex; align-items: center; gap: 10px; font-size: .85em; }
+.au-notch .row b { flex: 1; color: var(--fg2); font-weight: 500; }
+.au-mini { display: flex; align-items: center; gap: 4px; color: var(--fg2); font-size: .9em; }
+.au-mini input { accent-color: var(--accent); }
+.au-chips button.tag.save:disabled { opacity: .4; cursor: default; }
+.btn.wand { color: var(--accent); display: inline-flex; align-items: center; gap: 5px; }
+.au-report { position: relative; background: var(--bg); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 6px; padding: 6px 10px 8px; font-family: var(--font-mono); font-size: .82em; counter-reset: ln; }
+.au-report .au-rhd { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.au-report .au-rhd .dim { flex: 1; }
+.au-report .kv { font-size: 1em; }
+.au-report .kv > span { white-space: normal; }
+.au-report .arrow { color: var(--fg3); margin: 0 6px; }
+.au-ask p { margin: 2px 0 8px; color: var(--fg2); line-height: 1.4; }
+.au-ask .n { color: var(--t7); } .au-ask .u { color: var(--fg3); }
+.au-report .kv b:empty::before { content: ""; }
+.au-sub { font-size: .85em; }
+.au-sub .dim { margin-left: 6px; }
+.au-dn { align-items: center; font-size: .85em; }
+.au-dn .dn-auto { color: var(--t6); } .au-dn .dn-learning { color: var(--t3); } .au-dn .dn-learned { color: var(--t4); }

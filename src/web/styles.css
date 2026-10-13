@@ -636,6 +636,7 @@ button.st-main:hover { background: var(--bg3); }
 .au-ask p { margin: 2px 0 8px; color: var(--fg2); line-height: 1.4; }
 .au-ask .n { color: var(--t7); } .au-ask .u { color: var(--fg3); }
 .au-report .kv b:empty::before { content: ""; }
-.au-sub { padding-left: 22px; font-size: .85em; }
+.au-sub { font-size: .85em; }
+.au-sub .dim { margin-left: 6px; }
 .au-dn { align-items: center; font-size: .85em; }
 .au-dn .dn-auto { color: var(--t6); } .au-dn .dn-learning { color: var(--t3); } .au-dn .dn-learned { color: var(--t4); }

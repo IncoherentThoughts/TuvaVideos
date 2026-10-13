@@ -7,6 +7,7 @@ import {
   type AudioPreset, type AudioState,
 } from "../shared/audio";
 import { AudioEngine, type Levels } from "./audioEngine";
+import { CleanupSection } from "./prototype/CleanupSection"; // PROTOTYPE
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -108,6 +109,8 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <input type="range" min={0} max={VOL_MAX} step={0.05} value={s.volR} onInput={(e) => onChange({ volR: +e.currentTarget.value })} onDblClick={() => onChange({ volR: 1 })} />
           <b class="mono">{Math.round(s.volR * 100)}</b>
         </label>
+
+        <CleanupSection vid={vid} />{/* PROTOTYPE */}
 
         <h5>Equalizer <span class="dim">{preset?.name ?? "custom"}</span></h5>
         <div class="au-chips">

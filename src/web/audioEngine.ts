@@ -3,6 +3,7 @@
 // One AudioContext for the page; one chain per <video> element (createMediaElementSource is one-shot per element),
 // built only when settings differ from the defaults or the panel is open, so untouched Videos never pass through it.
 import { BANDS, DEFAULT_AUDIO, type AudioState } from "../shared/audio";
+import { CleanupEngine } from "./prototype/cleanup"; // PROTOTYPE
 
 let shared: AudioContext | null = null;
 const context = () => (shared ??= new AudioContext());
@@ -27,6 +28,8 @@ export class AudioEngine {
   private out: GainNode;
   private anaIn: [AnalyserNode, AnalyserNode];
   private anaOut: [AnalyserNode, AnalyserNode];
+  /** PROTOTYPE: cutoffs + notches between the matrix and the EQ */
+  readonly cleanup: CleanupEngine;
   private onPlay: () => void;
   state: AudioState = DEFAULT_AUDIO;
 
@@ -59,7 +62,9 @@ export class AudioEngine {
       f.Q.value = 1;
       return f;
     });
-    let node: AudioNode = merge;
+    this.cleanup = new CleanupEngine(ctx); // PROTOTYPE
+    merge.connect(this.cleanup.input);
+    let node: AudioNode = this.cleanup.output;
     for (const f of this.filters) { node.connect(f); node = f; }
 
     // the leveler: a compressor on a dry/wet pair so switching it is click-free

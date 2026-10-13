@@ -614,3 +614,12 @@ button.st-main:hover { background: var(--bg3); }
 .lyr-ta.fns { min-height: 56px; font-size: .9em; }
 .lyr-edit-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .lyr-edit-confirm { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; font-size: .9em; }
+
+/* PROTOTYPE: Audio panel "Clean up" section */
+.au-spec { width: 100%; height: 70px; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; }
+.au-notch { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+.au-notch .row { display: flex; align-items: center; gap: 10px; font-size: .85em; }
+.au-notch .row b { flex: 1; color: var(--fg2); font-weight: 500; }
+.au-mini { display: flex; align-items: center; gap: 4px; color: var(--fg2); font-size: .9em; }
+.au-mini input { accent-color: var(--accent); }
+.au-chips button.tag.save:disabled { opacity: .4; cursor: default; }

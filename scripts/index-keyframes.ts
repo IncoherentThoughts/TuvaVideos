@@ -7,9 +7,11 @@
 import { loadConfig } from "../src/server/config";
 import { openDb } from "../src/server/db";
 import { KeyframeIndex } from "../src/server/keyframes";
+import { initLog } from "../src/server/log";
 import { Roots } from "../src/server/roots";
 
 const cfg = loadConfig(process.env);
+initLog(cfg.logPath, { quiet: true }); // per-Copy lines go to log.txt; the terminal shows the progress line only
 const db = openDb(cfg.dbPath, cfg.migrationsDir);
 const roots = new Roots(db, cfg);
 roots.seed();

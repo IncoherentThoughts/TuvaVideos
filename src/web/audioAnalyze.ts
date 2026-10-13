@@ -117,6 +117,7 @@ export async function analyzeSampled(video: HTMLMediaElement, engine: AudioEngin
     ? Array.from({ length: places }, (_, i) => margin + (span * (i + 0.5)) / places + (Math.random() - 0.5) * (span / places) * 0.6)
     : [video.currentTime];
   engine.mute(true);
+  engine.measuring = true; // the A-B loop would drag every seek back inside it
   if (video.paused) void video.play();
   const windows: { chDb: [number, number]; frames: Float32Array[] }[] = [];
   let hzPerBin = 0;
@@ -138,6 +139,7 @@ export async function analyzeSampled(video: HTMLMediaElement, engine: AudioEngin
       onProgress((w + 1) / positions.length);
     }
   } finally {
+    engine.measuring = false;
     video.currentTime = was.t;
     engine.mute(false);
     if (was.paused) video.pause();
@@ -147,7 +149,10 @@ export async function analyzeSampled(video: HTMLMediaElement, engine: AudioEngin
   let count = 0;
   for (const w of windows) for (const f of w.frames) { for (let i = 0; i < bins; i++) spectrum[i]! += f[i]!; count++; }
   for (let i = 0; i < bins; i++) spectrum[i]! /= count;
-  const chDb: [number, number] = [median(windows.map((w) => w.chDb[0])), median(windows.map((w) => w.chDb[1]))];
+  // a place that was still seeking reads as silence on both sides; it says nothing about the channels
+  const heard = windows.filter((w) => Math.max(...w.chDb) > -60);
+  const lv = heard.length ? heard : windows;
+  const chDb: [number, number] = [median(lv.map((w) => w.chDb[0])), median(lv.map((w) => w.chDb[1]))];
   // a tone must be the top peak, at the same frequency (±2 %), in at least half the places
   const tops = windows.map((w) => {
     const avg = new Float32Array(bins);

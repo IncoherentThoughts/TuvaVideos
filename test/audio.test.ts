@@ -93,6 +93,12 @@ describe("audio auto", () => {
     expect(lean.volL).toBe(0.5);
     expect(lean.volR).toBe(1);
   });
+  test("a side far behind the other is not worth keeping: the loud side goes to both ears, nothing is cut", () => {
+    const a = autoSettings(measure({ chDb: [-46, -20] })).audio;
+    expect(a.routing).toBe("right");
+    expect([a.volL, a.volR]).toEqual([1, 1]);
+    expect(a.preamp).toBe(0);
+  });
   test("a quiet recording gets preamp toward −20 dBFS and the leveler, per band when it works hard", () => {
     const a = autoSettings(measure({ chDb: [-34, -34] })).audio;
     expect(a.preamp).toBe(14);

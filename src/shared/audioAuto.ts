@@ -61,13 +61,17 @@ export function autoSettings(m: Measure): { audio: AudioState; report: ReportRow
   const report: ReportRow[] = [];
   const avg = m.spectrum;
 
-  // --- channels: one side dead → use the other in both ears; a lean → even it out ---
+  // --- channels: one side dead or far behind → the other in both ears; a small lean → the loud side down ---
   const [L, R] = m.chDb;
   const diff = L - R;
   if (L < -60 && R < -60) report.push({ k: "input", heard: "silence", did: "nothing to measure" });
   else if (R < -55 && L > R + 20) { audio.routing = "left"; report.push({ k: "channels", heard: "right is dead", did: "routing left" }); }
   else if (L < -55 && R > L + 20) { audio.routing = "right"; report.push({ k: "channels", heard: "left is dead", did: "routing right" }); }
-  else if (Math.abs(diff) >= 2) {
+  else if (Math.abs(diff) >= 12) {
+    // cutting the loud side by this much would leave only the quiet one; the loud side is the recording
+    audio.routing = diff > 0 ? "left" : "right";
+    report.push({ k: "channels", heard: `${diff > 0 ? "left" : "right"} ${Math.abs(diff).toFixed(0)} dB louder`, did: `routing ${audio.routing}` });
+  } else if (Math.abs(diff) >= 2) {
     const g = Math.pow(10, -Math.abs(diff) / 20); // bring the loud side down to the quiet one
     if (diff > 0) audio.volL = Math.round(g * 20) / 20; else audio.volR = Math.round(g * 20) / 20;
     report.push({ k: "channels", heard: `${diff > 0 ? "left" : "right"} ${Math.abs(diff).toFixed(1)} dB louder`, did: `${diff > 0 ? "left" : "right"} ${Math.round((diff > 0 ? audio.volL : audio.volR) * 100)}` });

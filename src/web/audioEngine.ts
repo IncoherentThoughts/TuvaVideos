@@ -36,6 +36,8 @@ export class AudioEngine {
   readonly cleanup: CleanupEngine;
   private onPlay: () => void;
   state: AudioState = DEFAULT_AUDIO;
+  /** True while the Auto wand seeks around to listen; the Player's A-B loop leaves the playhead alone meanwhile. */
+  measuring = false;
 
   private constructor(private video: HTMLMediaElement) {
     const ctx = context();

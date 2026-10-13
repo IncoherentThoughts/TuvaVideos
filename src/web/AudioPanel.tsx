@@ -24,10 +24,11 @@ interface Props {
 
 const METER_MS = 70;
 
-// PROTOTYPE: a magic wand, same stroke style as the icons in ui.tsx
+// PROTOTYPE: Lucide "wand-sparkles" (ISC/MIT, lucide.dev), same stroke style as the icons in ui.tsx
 const WandIcon = () => (
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M3 21 13 11" /><path d="M17 2v10M12 7h10" />
+    <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
+    <path d="m14 7 3 3M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9" />
   </svg>
 );
 

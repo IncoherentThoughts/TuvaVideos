@@ -30,6 +30,8 @@ A single-user, offline, macOS-only local player for a personal library of Tuvan 
 
 ~2000 files total (Batch 7 added 2026-10-10: 636 mkv downloads of Performance ids missing from the library, all new ids, plus one `.info.json` per file), 220 YouTube ids with 2+ Copies, 12 ids present in both Roots, ~26 GB redundant (pruned 2026-10-11: 249 duplicate Copies trashed, 21 Videos that were the same footage under a renamed file merged into one, catalogued Video first; `docs/prune-proposal.md`). Containers: webm, mp4, mkv; codecs H.264 / VP9 / AV1 (16 files, Batch 6) with Opus / AAC / Vorbis; one E-AC3 file; ~13 unmerged yt-dlp partials. The external drive was returning I/O errors on 2026-10-10 (#21); v1 must work with it absent.
 
+**Download rule** (2026-10-13): new Copies are at most 1080p and VP9 or H.264, never AV1 (`yt-dlp -S "res:1080,vcodec:vp9"`, as in `scripts/download-missing-youtube.sh`). The M1 decodes H.264, HEVC and VP9 in hardware and AV1 in software, and a 2160p Copy is decoded in full to be shown in a ~1,100 px stage. The existing AV1 (~200) and 2160p / 1440p (~80) Copies are re-downloaded later (#61).
+
 ---
 
 ## 2. Storage and data model
@@ -64,7 +66,7 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 ### 2.3 Rules
 
 - **Identity**: the `[youtubeId]` in the filename; otherwise SHA-256 of the whole file (computed only for id-less files). Several files with one id are Copies of one Video.
-- **Scan** (§3.2): new file → new Copy, new Video unless identity matches. Defaults from the Mirror: id on exactly one Performance → Type `song` with that Song Suggested (source `performance`); id on 2+ Performances → `concert`; else `other`. Skipped: `.fNNN` / `.part` / `.temp` partials, `._*`, non-video files. A rescan never overwrites an edited title, Type, Song or Artists. A file gone from a mounted Root sets `missing_since`; an unmounted Root changes nothing; a Missing Copy whose file returns clears `missing_since`.
+- **Scan** (§3.2): new file → new Copy, new Video unless identity matches. Defaults from the Mirror: id on exactly one Performance → Type `song` with that Song Suggested (source `performance`); id on 2+ Performances → `concert`; else `song` (new Videos start as `song`; before 2026-10-12 they started as `other`). Skipped: `.fNNN` / `.part` / `.temp` partials, `._*`, non-video files. A rescan never overwrites an edited title, Type, Song or Artists. A file gone from a mounted Root sets `missing_since`; an unmounted Root changes nothing; a Missing Copy whose file returns clears `missing_since`.
 - **Delete a Video** (`DELETE /api/videos/:id`, body `{media}`): from the Delete button at the bottom of Now playing or the Library grid's right-click menu, after a confirmation. Removes the Video with its Copies, Chapters, Artists, rejections, audio settings, search rows, Thumbnails and Fallbacks. `media: true` also moves each Copy's file to the Trash (a Copy on an unmounted Root stays). While any file stays on disk the identity goes into `deleted_video` and scans skip it; a Video whose files were all trashed leaves nothing behind.
 - **Song pointers are columns**: one Song/Version per Video or Chapter; every Suggested value records its source. There is no per-Video track link; Studio tracks derive from the Song.
 - **Favorites** are `favorited_at` on Video and Chapter. **Resume** is `resume_s` + `last_played_at` on Video. **View count** is `view_count` on Video (migration 0009): the Player posts one view (`POST /api/videos/:id/view`) the first time playback starts on a Now playing visit; `DELETE` resets it. It is not shown on cards or rows: the State panel reports it, the Library grid, Favorites and the search results page can sort by it, and a right-click on a Video in any list opens a small menu that shows and resets it. Nothing was imported from mpv: it keeps only resume positions, no play history.
@@ -96,9 +98,9 @@ Lifecycle in §9.
 
 ### 3.2 Scan
 
-- At startup and on an explicit rescan, walk each mounted Root; for each new or changed (size/mtime) file run ffprobe once and store the per-Copy facts; compute SHA-256 only for id-less files.
+- On the Rescan button and on a remount, walk each mounted Root; for each new or changed (size/mtime) file run ffprobe once and store the per-Copy facts; compute SHA-256 only for id-less files. A changed file also drops the Copy's keyframe index (§4.1).
 - Root availability is a 1-byte read of a known Copy, never `readdir` (exFAT over FSKit returned EIO on `readdir` while reads worked).
-- **Triggers**: startup, a "Rescan" button in the top bar, and a remount. No `fs.watch` (unreliable on exFAT). New files appear only on a Rescan or a remount. A **passive** server — any port other than 4400 on the default data dir, i.e. a test preview sharing the real library — skips the startup and remount scans (and so the Thumbnail pass they start); it still plays everything, shows existing Thumbnails, and scans on its own Rescan button.
+- **Triggers**: a "Rescan" button in the top bar, and a remount. **Not startup** (since 2026-10-13): a scan and the Thumbnail pass it starts run four ffmpeg processes while the first Video plays, so the Roots found at startup are left as they are until the Rescan button; a Root that mounts later is scanned when it appears. No `fs.watch` (unreliable on exFAT). New files appear only on a Rescan or a remount. A **passive** server — any port other than 4400 on the default data dir, i.e. a test preview sharing the real library — skips the remount scan too; it still plays everything, shows existing Thumbnails, and scans on its own Rescan button.
 - **Mount poll**: every 10 s the server does the 1-byte read on each Root. An unmounted Root that becomes Available triggers a scan of that Root; a Root that disappears flips its Videos to unavailable (and the Player follows §4.2).
 - **Unmounted at startup**: the Root is skipped, its Videos are unavailable, no error is shown.
 - **Progress**: a small top-bar indicator with files seen / probed while a scan runs.
@@ -142,7 +144,15 @@ Decided in #10 and #14 ([playback-architecture.md](playback-architecture.md), AD
 
 ### 4.1 Element and seeking
 
-Plain `<video src>` over the Range server. No MediaSource, no mpv IPC, no transcoding for Chromium-native codecs. Scrub drag is throttled: one seek in flight, latest pointer target wins; click-to-seek is unthrottled.
+Plain `<video src>` over the Range server. No MediaSource, no mpv IPC, no transcoding for Chromium-native codecs.
+
+Setting `currentTime` is always a frame-exact seek: Chromium decodes from the previous keyframe to the target, and keyframes in this library sit ~5 s apart, so an exact seek shows its frame after 0.3–0.6 s. mpv feels instant because its arrows and seek bar snap to keyframes. The Player does the same (2026-10-13):
+
+- **Keyframe index**: per Copy, the keyframe timestamps (`copy.keyframes`, little-endian uint32 ms) from one ffprobe pass over the packets, no decode. Made lazily when a Copy first plays (`GET /api/copies/:id/keyframes` answers 202 while one job at a time runs, then 200 with the times) or ahead of time by `bun run index-keyframes`; dropped when a rescan sees the file changed. A Fallback is indexed in place of its source (same video stream).
+- **Keyframe seeks**: the bar (click and drag release) and the plain arrows land 0.15 s past the keyframe nearest the target (Chromium starts demuxing ~100 ms before the requested time; a request on the keyframe itself decodes the whole previous GOP, measured 2026-10-13: 2.4 s vs 0.1 s on a 4K60 VP9 Copy, 170 vs 20 ms on an AV1 one); a relative step never stays on the keyframe it started from, so a 5 s step over a 5.1 s GOP still moves. Until the index arrives they are exact.
+- **Exact seeks**: Shift-arrows, frame steps, Chapter keys and cards, `?t=`, Resume and the A-B loop.
+- **Dragging the bar seeks nothing**: the strip frame under the pointer covers the stage with its timestamp; one keyframe seek goes out on release. Held arrow keys are throttled: one seek in flight, the latest target wins, each step counted from the seek already requested.
+- Chromium has no `fastSeek()`; AV1 decodes in software on the M1 (hence the download rule in §2).
 
 ### 4.2 Copy selection
 
@@ -166,8 +176,8 @@ Keys are handled only while the Player container has focus. No native `<video co
 | Key | Action |
 |---|---|
 | space, p | pause / play |
-| ← → | ±5 s |
-| ↑ ↓ | ±60 s |
+| ← → | ±5 s, to the nearest keyframe (§4.1) |
+| ↑ ↓ | ±60 s, to the nearest keyframe |
 | ⇧← ⇧→ / ⇧↑ ⇧↓ | exact ±1 s / ±5 s |
 | , . | frame step back / forward (OSD shows the frame number; needs `r_frame_rate`) |
 | [ ] | speed ±0.1 (additive; departs from mpv) |
@@ -189,7 +199,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 
 ### 4.6 Visuals
 
-The video box takes the Copy's own aspect ratio. A poster frame shows before first play. Hovering the bar shows the scrub-strip frame and timestamp above the pointer. Chapter ticks on the timeline; chapter cards use the same strip frames. Volume is an icon; the frame number sits beside the time while paused.
+The video box takes the Copy's own aspect ratio. A poster frame shows before first play. Hovering the bar shows the scrub-strip frame and timestamp above the pointer; dragging it shows that frame over the stage until release (§4.1). Chapter ticks on the timeline; chapter cards use the same strip frames. Volume is an icon; the frame number sits beside the time while paused.
 
 ### 4.7 Audio settings
 
@@ -323,7 +333,7 @@ One bulk JXA read of `{persistentID, name, album, artist, albumArtist, duration,
 
 ### 7.4 Player behaviour
 
-Trigger: a "Studio" button and the key `t`. The Video pauses on its frame; a slim scrubbable Studio bar under the video shows track, album, position/duration and progress. `t` or Esc stops Music.app and returns to the Video, still paused. Inside a Chapter, the Chapter's Song's tracks are used, else the Video's Song's. While the bar is active: space, ← → ±5 s, ↑ ↓ ±60 s and `l` retarget to Music.app; 9/0 and m stay on the browser; everything else is a no-op with an OSD notice. Click seeks, drag is throttled. If polling sees another track or `stopped` after the `once` play ends (2.5 s grace after each play), Studio playback ends silently and the Video stays paused; a pause from outside does not end it. Shift-arrows retarget like the plain arrows. Music.app pauses itself after ~7–10 backward seeks, so the A-B loop resumes a pause that lands within 2 s of its own jump (#27). The launch-time `playerState()` read opens Music.app if it is not running.
+Trigger: a "Studio" button and the key `t`. The Video pauses on its frame; a slim scrubbable Studio bar under the video shows track, album, position/duration and progress. `t` or Esc stops Music.app and returns to the Video, still paused; resuming the Video any other way (a click on the frame, the ⏵ button) also stops Music.app and closes the bar, so the two never play together. Inside a Chapter, the Chapter's Song's tracks are used, else the Video's Song's. While the bar is active: space, ← → ±5 s, ↑ ↓ ±60 s and `l` retarget to Music.app; 9/0 and m stay on the browser; everything else is a no-op with an OSD notice. Click seeks, drag is throttled. If polling sees another track or `stopped` after the `once` play ends (2.5 s grace after each play), Studio playback ends silently and the Video stays paused; a pause from outside does not end it. Shift-arrows retarget like the plain arrows. Music.app pauses itself after ~7–10 backward seeks, so the A-B loop resumes a pause that lands within 2 s of its own jump (#27). The launch-time `playerState()` read opens Music.app if it is not running.
 
 ---
 
@@ -342,7 +352,7 @@ Decided in #16 ([chapter-pipeline.md](chapter-pipeline.md)) on #5.
 
 **Re-runs**: same-source Suggested Chapters on a Video are replaced wholesale; a suggestion within ±10 s of a confirmed or manual Chapter is dropped; a rejection is a tombstone in `chapter_rejection` and never returns.
 
-**Trigger**: CLI only, `bun run suggest-chapters [ids]`; the YouTube-info cache path is `TUVA_YT_CACHE`, defaulting to `~/Library/Application Support/TuvaVideos/youtube-info/`.
+**Trigger**: CLI only, `bun run suggest-chapters [ids]`, and `fetch-youtube-info` runs it on the ids it just fetched unless `--no-suggest`; the YouTube-info cache path is `TUVA_YT_CACHE`, defaulting to `~/Library/Application Support/TuvaVideos/youtube-info/`.
 
 Decided in #26: the parser strips a leading bullet or dash (`- 0:10 Song`), which the #5 reference parser did not; an entry with no title is kept with an empty title. A run replaces every automatic Suggested Chapter (`description`, `comment`, `performance`) of each Video it looks at, not only those of the source it just used, because a run regenerates all three; a Favorite on a replaced Chapter passes to the new one at the same start (±1 s). Rules run before the matcher, so the report counts only Chapters that were written. A merged Chapter keeps the text source (the tombstone and the ±10 s rules use it); a Performance with no text entry within ±15 s is its own `performance` Chapter. The suggest step looks at every Video with cached YouTube info or a Performance carrying `t=`; Videos with cached info and no block are listed in `<cache>/no-block-ids.txt`, which `scripts/fetch-youtube-info.ts --replies` reads (extractor `max_comments=1000,200,800,5`, one marker file per id). Thresholds stay 0.80 / 0.90 / 0.05 (see the #26 comment for the sample numbers); `--linked`, `--mirror` and `--near-tie` override them for tuning runs. Endpoints: `GET|POST /api/videos/:id/chapters`, `PATCH|DELETE /api/chapters/:id`, `POST /api/chapters/:id/confirm|reject`, `POST /api/videos/:id/chapters/confirm-all`.
 
@@ -353,7 +363,7 @@ Decided in #26: the parser strips a leading bullet or dash (`- 0:10 Song`), whic
 - **Start**: `bun run start` (alias `tuva`) starts the server on port **4400** (`TUVA_PORT` overrides, for tests only), then opens `http://localhost:4400` in the default browser. If a TuvaVideos health endpoint already answers on the port, it only opens the tab.
 - **Logs**: stdout and `~/Library/Application Support/TuvaVideos/log.txt`.
 - **Stop**: Ctrl-C. SIGINT lets the ffmpeg job in flight finish, kills the osascript child, checkpoints SQLite, exits.
-- **Startup order**: migrations → Root availability → scan of mounted Roots (in the background) → Music.app `playerState()` read for the Automation prompt → open the tab.
+- **Startup order**: migrations → Root availability → Music.app `playerState()` read for the Automation prompt → open the tab. No scan at startup (§3.2).
 - **UI stack**: Preact + TypeScript bundled by Bun, hand-rolled history routing: `/` Library, `/play/:videoId[?t=]` Now playing, `/favorites`, `/artists`, `/songs`; filters and sort in the query string. Tabs in this order: Now playing, Library, Songs, Artists, Favorites.
 
 ---

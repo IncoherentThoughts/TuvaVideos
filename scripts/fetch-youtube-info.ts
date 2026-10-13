@@ -3,18 +3,22 @@
 // One yt-dlp call per eligible Video writes `<id>.info.json` (YouTube info: description, top comments, metadata) into the
 // cache directory (`TUVA_YT_CACHE`, default `~/Library/Application Support/TuvaVideos/youtube-info/`).
 //
-//   bun scripts/fetch-youtube-info.ts [ids...] [--limit N] [--force] [--dry-run] [--replies]
+//   bun scripts/fetch-youtube-info.ts [ids...] [--limit N] [--force] [--dry-run] [--replies] [--no-suggest]
 //
 // Eligible: Type concert, plus any Video with a YouTube id longer than 20 min, plus the ids given on the command line.
 // Concerts come first, then the longest of the rest; `--limit N` cuts the list (the smoke run uses 20). Resumable: an id
 // that is already cached is skipped unless `--force`. `--replies` is the second pass: only ids that
 // `bun run suggest-chapters` listed in `<cache>/no-block-ids.txt`, fetched again with replies (max-replies-per-thread=5).
-// The library database is opened read-only; nothing under a Root is touched.
+// When at least one info file was written, the run ends with stage 2 (`suggestChapters`) on exactly those ids, so the
+// Suggested Chapters appear without a separate `bun run suggest-chapters`; `--no-suggest` skips that. Until then the
+// library database is opened read-only; nothing under a Root is touched.
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../src/server/config";
 import { eligibleForFetch, type EligibilityRow } from "../src/server/chapters/eligible";
+import { formatReport, suggestChapters } from "../src/server/chapters/suggest";
+import { checkpoint, openDb } from "../src/server/db";
 
 const args = process.argv.slice(2);
 const flag = (n: string) => args.includes(`--${n}`);
@@ -27,6 +31,7 @@ const ids = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--limi
 const force = flag("force");
 const dry = flag("dry-run");
 const replies = flag("replies");
+const suggest = !flag("no-suggest");
 
 const cfg = loadConfig();
 const cache = cfg.ytCacheDir;
@@ -60,6 +65,7 @@ say(`cache ${cache}; ${targets.length} Video(s) selected${dry ? " (dry run)" : "
 const extractor = replies ? "youtube:max_comments=1000,200,800,5;comment_sort=top" : "youtube:max_comments=200,200,0,0;comment_sort=top";
 
 let fetched = 0, skipped = 0, failed = 0;
+const fetchedIds: string[] = [];
 for (const [i, t] of targets.entries()) {
   const id = t.youtubeId!;
   const file = join(cache, `${id}.info.json`);
@@ -86,6 +92,7 @@ for (const [i, t] of targets.entries()) {
     renameSync(got, file);
     if (replies) writeFileSync(join(cache, `${id}.replies`), "");
     fetched++;
+    fetchedIds.push(id);
     let n = "?";
     try {
       n = String((JSON.parse(readFileSync(file, "utf8")).comments ?? []).length);
@@ -99,4 +106,19 @@ for (const [i, t] of targets.entries()) {
   if (i < targets.length - 1) await Bun.sleep(GAP_MS);
 }
 say(`done: ${fetched} fetched, ${skipped} cached, ${failed} failed`);
+
+// Stage 2 on what this run fetched: the cache alone shows nothing in the app until the Chapters are written.
+if (fetchedIds.length && suggest) {
+  const rw = openDb(cfg.dbPath, cfg.migrationsDir);
+  try {
+    const r = suggestChapters(rw, { cacheDir: cache, only: fetchedIds });
+    say(`suggest-chapters on ${fetchedIds.length} fetched id(s):`);
+    console.log(formatReport(r, false));
+  } catch (e) {
+    say(`suggest-chapters FAILED: ${(e as Error).message} (run \`bun run suggest-chapters ${fetchedIds.join(" ")}\` by hand)`);
+  } finally {
+    checkpoint(rw);
+    rw.close();
+  }
+}
 process.exit(failed && !fetched ? 1 : 0);

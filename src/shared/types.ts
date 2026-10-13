@@ -55,6 +55,9 @@ export interface CopyDto {
   path: string;
 }
 
+/** `GET /api/copies/:id/keyframes` (spec 4.1). */
+export type KeyframeStatusDto = { state: "ready"; keyframes: number[] } | { state: "indexing" } | { state: "none" };
+
 export interface VideoDto {
   id: number;
   youtubeId: string | null;

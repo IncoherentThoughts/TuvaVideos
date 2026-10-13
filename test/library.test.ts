@@ -27,6 +27,7 @@ const group = (r: Awaited<ReturnType<typeof search>>, key: string) => r.groups.f
 beforeAll(async () => {
   const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir, TUVA_EXTERNAL_ROOT: extDir });
   app = await startApp(cfg);
+  await app.scanner.requestAll(); // nothing is scanned at startup (spec 3.2)
   url = `http://localhost:${app.server.port}`;
   await app.scanner.whenIdle();
   const db = app.db;

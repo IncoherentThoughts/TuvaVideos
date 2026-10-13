@@ -46,6 +46,7 @@ beforeAll(async () => {
   });
   app = await startApp(cfg);
   base_url = `http://localhost:${app.server.port}`;
+  await app.scanner.requestAll(); // nothing is scanned at startup (spec 3.2)
   await app.scanner.whenIdle();
 }, 60_000);
 
@@ -235,6 +236,27 @@ describe("thumbnails", () => {
     expect(poster.headers.get("content-type")).toBe("image/webp");
     expect((await fetch(base_url + v.thumbnail.strip.url)).status).toBe(200);
   }, 60_000);
+});
+
+describe("Keyframe index (spec 4.1)", () => {
+  test("a Copy is indexed on first ask (202 while ffprobe reads it), then served with its keyframe times", async () => {
+    const v = (await api("/api/videos")).find((x: any) => x.youtubeId === "aaaaaaaaaaa");
+    const c = v.copies.find((c: any) => c.rootKind === "local");
+    const first = await fetch(`${base_url}/api/copies/${c.id}/keyframes`);
+    expect([200, 202]).toContain(first.status);
+    let st: any = await first.json();
+    await waitFor(async () => {
+      st = await api(`/api/copies/${c.id}/keyframes`);
+      return st.state === "ready";
+    });
+    expect(st.keyframes[0]).toBe(0);
+    expect(st.keyframes.length).toBeGreaterThan(0);
+    const blob = app.db.query("SELECT keyframes FROM copy WHERE id = ?").get(c.id) as { keyframes: Uint8Array };
+    expect(blob.keyframes.byteLength).toBe(st.keyframes.length * 4);
+  });
+  test("an unknown Copy has none", async () => {
+    expect(await api("/api/copies/999999/keyframes")).toEqual({ state: "none" });
+  });
 });
 
 describe("Missing and unmounted Roots", () => {

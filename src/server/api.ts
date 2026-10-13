@@ -11,6 +11,7 @@ import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import { deleteVideo } from "./deleteVideo";
 import { serveFile } from "./stream";
+import type { KeyframeIndex } from "./keyframes";
 import { run } from "./proc";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
@@ -34,6 +35,7 @@ export interface Services {
   scanner: Scanner;
   fallback: FallbackQueue;
   thumbs: Thumbnails;
+  keyframes: KeyframeIndex;
   studio: Studio;
   web: WebBundle;
   startedAt: number;
@@ -410,6 +412,12 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/api\/copies\/(\d+)$/))) {
           const c = s.db.query(`${COPY_SQL} WHERE c.id = ?`).get(Number(m[1])) as CopyDbRow | null;
           return c ? json(copyJson(c)) : json({ error: "no such copy" }, 404);
+        }
+        // The Copy's keyframe index (spec 4.1): 200 with the times when it is made, 202 while ffprobe reads the file
+        // (asking queues the job), 200 `none` for a Copy that cannot be indexed now (unavailable, or no keyframes).
+        if ((m = p.match(/^\/api\/copies\/(\d+)\/keyframes$/))) {
+          const st = s.keyframes.status(Number(m[1]));
+          return json(st, st.state === "indexing" ? 202 : 200, st.state === "indexing" ? { "retry-after": "3" } : {});
         }
         if (p === "/api/roots") {
           return json(

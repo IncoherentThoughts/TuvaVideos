@@ -2,6 +2,7 @@ import { createHandler, type Services } from "./api";
 import type { Config } from "./config";
 import { checkpoint, openDb } from "./db";
 import { FallbackQueue } from "./fallback";
+import { KeyframeIndex } from "./keyframes";
 import { initLog, log } from "./log";
 import { Roots } from "./roots";
 import { Studio, type StudioOptions } from "./studio/service";
@@ -16,12 +17,13 @@ export interface App extends Services {
 }
 
 /**
- * Startup order (spec 9): migrations -> Root availability -> scan of mounted Roots (background) ->
- * Music.app playerState() read (launch.ts, via `app.studio.probe()`) -> caller opens the tab.
+ * Startup order (spec 9): migrations -> Root availability -> Music.app playerState() read (launch.ts, via
+ * `app.studio.probe()`) -> caller opens the tab. No scan and no Thumbnail pass at startup (they cost ffmpeg CPU while
+ * the first Video plays): the Rescan button starts them, and a Root mounted later is scanned when it appears.
  */
 export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit?: () => void } = {}): Promise<App> {
   initLog(cfg.logPath);
-  log(`TuvaVideos starting, data dir ${cfg.dataDir}${cfg.passive ? " (passive: no startup or remount scan)" : ""}`);
+  log(`TuvaVideos starting, data dir ${cfg.dataDir}${cfg.passive ? " (passive: no remount scan)" : ""}`);
   const db = openDb(cfg.dbPath, cfg.migrationsDir);
 
   const roots = new Roots(db, cfg);
@@ -34,8 +36,13 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
     thumbs.adoptSeed();
     thumbs.kick(true);
   });
-  // startup, remount; a passive server (a test preview on the real library) scans only on an explicit Rescan
-  if (!cfg.passive) roots.onBecameAvailable((r) => scanner.request(r.id));
+  const keyframes = new KeyframeIndex(db, cfg, (id) => roots.isAvailable(id));
+  // remount only: the Roots found at startup are not scanned (spec 3.2, 9); a passive server (a test preview on
+  // the real library) scans only on an explicit Rescan
+  let started = false;
+  roots.onBecameAvailable((r) => {
+    if (started && !cfg.passive) scanner.request(r.id);
+  });
 
   const web = new WebBundle(cfg);
   await web.build();
@@ -43,14 +50,15 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
   const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
-  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, studio, web, startedAt: Date.now(), quit: opts.quit };
+  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, startedAt: Date.now(), quit: opts.quit };
   const handler = createHandler(services);
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);
 
   // Thumbnails already adopted from the seed cache are browsable before any Root answers.
   thumbs.adoptSeed();
-  await roots.pollAll(); // fires the startup scans through onBecameAvailable (none when passive)
+  await roots.pollAll(); // availability only: nothing is scanned at startup
+  started = true;
   roots.start(10_000);
 
   // The same object the handler reads (`quit` may be set later, e.g. by tests), not a copy.
@@ -61,6 +69,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
       roots.stop();
       studio.shutdown(); // kills the osascript child
       void server.stop();
+      keyframes.shutdown();
       await Promise.all([fallback.shutdown(), thumbs.shutdown()]);
       checkpoint(db);
       db.close();

@@ -13,6 +13,7 @@
     "suggest-chapters": "bun src/server/chapters/cli.ts",
     "suggest-artists": "bun src/server/artistSuggestCli.ts",
     "suggest-songs": "bun src/server/songSuggestCli.ts",
+    "index-keyframes": "bun scripts/index-keyframes.ts",
     "fetch-youtube-info": "bun scripts/fetch-youtube-info.ts",
     "app": "bun scripts/make-app.ts"
   },

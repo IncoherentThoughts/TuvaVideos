@@ -1,6 +1,7 @@
 // The Player's timeline bar (spec 4.6): progress and buffered span, chapter ticks (drawn from a list that is empty until
 // ticket #26), A-B markers, and a hover preview with the scrub-strip frame and timestamp above the pointer.
-// Drag scrubs through the throttled path; a plain press seeks at once.
+// A drag seeks nothing while it lasts (spec 4.1): the Player shows the strip frame under the pointer on the stage and
+// one keyframe seek goes out on release; a plain press seeks on release too.
 import { useRef, useState } from "preact/hooks";
 import { tileForTime } from "../server/stripGeometry";
 import { fmtClock } from "../shared/playerMath";
@@ -19,13 +20,16 @@ interface Props {
   bufferedEnd: number;
   chapters: ChapterMark[];
   ab: { a: number | null; b: number | null };
-  /** `throttled` is true for pointer moves while dragging. */
-  onSeek(t: number, throttled: boolean): void;
+  /** The pointer released on the bar (after a drag or a plain press): one seek. */
+  onSeek(t: number): void;
+  /** The pointer is dragging over `t`; null when the drag ends. */
+  onScrub(t: number | null): void;
 }
 
 const PREVIEW_W = 160;
 
-function Sprite({ video, t }: { video: VideoDto; t: number }) {
+/** One frame of the Video's scrub strip, the tile nearest `t`, at a CSS `width`. Nothing when the Video has no strip. */
+export function StripFrame({ video, t, width = `${PREVIEW_W}px` }: { video: VideoDto; t: number; width?: string }) {
   const strip = video.thumbnail?.strip;
   if (!strip || !video.durationS) return null;
   const tile = tileForTime(t, video.durationS, { frames: strip.frames, columns: strip.columns, rows: strip.rows });
@@ -36,7 +40,7 @@ function Sprite({ video, t }: { video: VideoDto; t: number }) {
     <div
       class="tl-sprite"
       style={{
-        width: `${PREVIEW_W}px`,
+        width,
         aspectRatio: String(ratio),
         backgroundImage: `url(${strip.url})`,
         backgroundSize: `${strip.columns * 100}% ${strip.rows * 100}%`,
@@ -46,7 +50,7 @@ function Sprite({ video, t }: { video: VideoDto; t: number }) {
   );
 }
 
-export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onSeek }: Props) {
+export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onSeek, onScrub }: Props) {
   const bar = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{ x: number; t: number } | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -80,10 +84,8 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
           bar.current!.setPointerCapture(e.pointerId);
         } catch {}
         dragging.current = true;
-        const p = at(e);
         moved.current = false;
-        setDrag(p.t);
-        onSeek(p.t, false); // a click is never throttled
+        setDrag(at(e).t);
       }}
       onPointerMove={(e) => {
         if (!dur) return;
@@ -92,7 +94,7 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
         if (dragging.current) {
           moved.current = true;
           setDrag(p.t);
-          onSeek(p.t, true);
+          onScrub(p.t);
         }
       }}
       onPointerUp={(e) => {
@@ -100,11 +102,13 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
         dragging.current = false;
         const p = at(e);
         setDrag(null);
-        if (moved.current) onSeek(p.t, false); // after a drag the release lands exactly where the pointer is
+        if (moved.current) onScrub(null);
+        onSeek(p.t); // the one seek: where the pointer was released
       }}
       onPointerCancel={() => {
         dragging.current = false;
         setDrag(null);
+        onScrub(null);
       }}
       onPointerLeave={() => setHover(null)}
     >
@@ -121,7 +125,7 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
       </div>
       {hover && dur && (
         <div class="tl-hover" style={{ left: `${hover.x}px` }}>
-          <Sprite video={video} t={hover.t} />
+          <StripFrame video={video} t={hover.t} />
           <span class="mono">{fmtClock(hover.t)}</span>
         </div>
       )}

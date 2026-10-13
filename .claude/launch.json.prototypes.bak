@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "prototypes-static",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-evanwilliams-Desktop-Misc--Projects-TuvaVideos/88e7a339-0ebb-46e7-8bd8-a4f4f13dab95/scratchpad/protos/serve.mjs",
+        "/private/tmp/claude-501/-Users-evanwilliams-Desktop-Misc--Projects-TuvaVideos/88e7a339-0ebb-46e7-8bd8-a4f4f13dab95/scratchpad/protos/lyrics-search/docs/prototypes",
+        "4421"
+      ],
+      "port": 4421
+    },
+    {
+      "name": "prototype-player",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-evanwilliams-Desktop-Misc--Projects-TuvaVideos/88e7a339-0ebb-46e7-8bd8-a4f4f13dab95/scratchpad/protos/lyrics-search/docs/prototypes/player.prototype.mjs"
+      ],
+      "port": 4412
+    }
+  ]
+}

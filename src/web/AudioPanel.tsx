@@ -9,7 +9,7 @@ import {
 import { AudioEngine, type Levels } from "./audioEngine";
 import { CleanupSection } from "./prototype/CleanupSection"; // PROTOTYPE
 import { DEFAULT_CLEANUP, type Cleanup } from "./prototype/cleanup"; // PROTOTYPE
-import { autoSettings, type Measure } from "./prototype/auto"; // PROTOTYPE
+import { autoSettings, type Measure, type ReportRow } from "./prototype/auto"; // PROTOTYPE
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -23,6 +23,15 @@ interface Props {
 }
 
 const METER_MS = 70;
+
+// PROTOTYPE: the "did" half of an Auto report row, coloured like the State panel: numbers pink, words green
+const Did = ({ s }: { s: string }) => (
+  <>
+    {s.split(" ").map((w, i) => (
+      <span key={i} class={/^[+-]?\d/.test(w) ? "n" : "s"}>{i ? " " : ""}{w}</span>
+    ))}
+  </>
+);
 
 // PROTOTYPE: Lucide "audio-lines" (ISC, lucide.dev), same stroke style as the icons in ui.tsx
 const WandIcon = () => (
@@ -82,7 +91,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
   // PROTOTYPE: Clean up state (in memory) and the Auto wand
   const [cleanup, setCleanup] = useState<Cleanup>(DEFAULT_CLEANUP);
   const [auto, setAuto] = useState<"idle" | "listening">("idle");
-  const [autoReport, setAutoReport] = useState<string[] | null>(null);
+  const [autoReport, setAutoReport] = useState<ReportRow[] | null>(null);
   const runAuto = async () => {
     const v = vid.current;
     if (!v) return;
@@ -130,10 +139,16 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       </div>
       <div class="body">
         {autoReport && (
-          <div class="au-report">
-            <b>Auto</b>
-            <ul>{autoReport.map((r) => <li key={r}>{r}</li>)}</ul>
-            <button class="ib" aria-label="Dismiss" onClick={() => setAutoReport(null)}>×</button>
+          <div class="au-report stpanel">
+            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">{autoReport.length} change{autoReport.length === 1 ? "" : "s"}</span><button class="ib" aria-label="Dismiss" onClick={() => setAutoReport(null)}>×</button></div>
+            <div class="kv">
+              {autoReport.map((r) => (
+                <>
+                  <b>{r.k}</b>
+                  <span><span class="u">{r.heard}</span><span class="arrow">→</span><Did s={r.did} /></span>
+                </>
+              ))}
+            </div>
           </div>
         )}
         <h5>Channels</h5>

@@ -624,7 +624,9 @@ button.st-main:hover { background: var(--bg3); }
 .au-mini input { accent-color: var(--accent); }
 .au-chips button.tag.save:disabled { opacity: .4; cursor: default; }
 .btn.wand { color: var(--accent); display: inline-flex; align-items: center; gap: 5px; }
-.au-report { position: relative; border: 1px solid var(--accent); border-radius: 6px; padding: 6px 28px 6px 10px; font-size: .82em; }
-.au-report b { color: var(--accent); font-weight: 600; }
-.au-report ul { margin: 2px 0 0; padding-left: 16px; color: var(--fg2); }
-.au-report .ib { position: absolute; top: 4px; right: 4px; }
+.au-report { position: relative; background: var(--bg); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 6px; padding: 6px 10px 8px; font-family: var(--font-mono); font-size: .82em; counter-reset: ln; }
+.au-report .au-rhd { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.au-report .au-rhd .dim { flex: 1; }
+.au-report .kv { font-size: 1em; }
+.au-report .kv > span { white-space: normal; }
+.au-report .arrow { color: var(--fg3); margin: 0 6px; }

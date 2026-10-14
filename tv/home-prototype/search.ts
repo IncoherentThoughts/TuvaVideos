@@ -1,6 +1,6 @@
 // PROTOTYPE — throwaway (issue #50). Search on the TV: an on-screen keyboard driven by the D-pad (a physical keyboard
-// types too), results from the app's /api/search on the right, grouped Songs / Videos / Artists. Enter on a Song plays
-// its newest Video with the lyrics open; on a Video plays it; on an Artist opens that Artist in the home variant.
+// types too), results from the app's /api/search on the right, grouped Songs / Videos / Artists. Enter on a Song opens
+// the grid of its Videos; on a Video plays it; on an Artist opens that Artist in the home variant.
 import type { SearchResponse } from "../../src/shared/types";
 import { type Ctx, type Screen, api, esc, fmtTime, focus, focusables, getFocused, moveFocus, toast } from "./shared";
 import { activate, idsIn } from "./variants";

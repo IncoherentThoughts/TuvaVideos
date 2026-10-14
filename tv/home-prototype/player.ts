@@ -56,6 +56,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
   let versionIdx = 0;
   let script: ScriptKey = scriptPref;
   let lyricsOn = true;
+  let hasLyrics = false; // a Version with text loaded for the current Song
   let stripOn = false;
   let stripIdx = 0;
   let zone: "video" | "tags" = "video";
@@ -65,7 +66,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
 
   const showMsg = (s: string | null) => { msg.hidden = !s; msg.textContent = s ?? ""; };
   const showOsd = (ms = 3000) => { osd.classList.add("on"); clearTimeout(osdTimer); osdTimer = setTimeout(() => { if (!v.paused && zone === "video") osd.classList.remove("on"); }, ms); };
-  const layout = () => { el.classList.toggle("lyrics", lyricsOn && !!songId); el.classList.toggle("strip", stripOn); };
+  const layout = () => { el.classList.toggle("lyrics", lyricsOn && hasLyrics); el.classList.toggle("strip", stripOn); };
   const setZone = (z: typeof zone) => {
     zone = z;
     osd.classList.toggle("pin", z === "tags");
@@ -127,6 +128,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
   async function loadSong(target: { songId: string; versionId: string | null } | null) {
     songId = target?.songId ?? null;
     song = null;
+    hasLyrics = false;
     layout();
     if (!songId) return;
     $(".hd h2").textContent = "…";
@@ -146,12 +148,14 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
     $(".hd h2").innerHTML = `${esc(song.name)}${song.local ? ' <span class="loc">local</span>' : ""}`;
     $(".en").textContent = song.englishName ?? "";
     $(".pills").innerHTML = song.versions.length > 1 ? song.versions.map((x, i) => `<span class="pill${i === versionIdx ? " on" : ""}">${esc(x.label)}</span>`).join("") : "";
-    if (!ver) { lines.innerHTML = `<p class="none">no lyrics in the archive for this Song</p>`; $(".scripts").innerHTML = ""; pager.textContent = ""; return; }
-    const texts = { cyrillic: ver.scripts.cyrillic.html, transliteration: ver.scripts.transliteration.html, translation: ver.scripts.translation.html };
+    const texts = ver ? { cyrillic: ver.scripts.cyrillic.html, transliteration: ver.scripts.transliteration.html, translation: ver.scripts.translation.html } : {};
     const present = presentScripts(texts);
+    hasLyrics = present.length > 0; // no Version, or a Version with no text: the panel stays hidden
+    layout();
+    if (!hasLyrics) return;
     script = effectiveScript(scriptPref, present);
     $(".scripts").innerHTML = SCRIPTS.map((s) => `<span class="${s.key === script ? "on" : present.includes(s.key) ? "" : "off"}">${s.label}</span>`).join("");
-    const ls = numberedLines(texts[script]);
+    const ls = numberedLines(texts[script] ?? "");
     lines.lang = SCRIPTS.find((s) => s.key === script)!.lang;
     lines.innerHTML = ls.length ? ls.map((l) => (l.blank ? `<div class="sp"></div>` : `<p class="ln"><span class="n mono">${l.n}</span><span class="tx">${l.html}</span></p>`)).join("") : `<p class="none">this Version has no ${script} text</p>`;
     pageTo(page);
@@ -233,7 +237,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
         case "prev": stepVideo(-1); return true;
         case "next": stepVideo(1); return true;
         case "yellow": case "lyrics":
-          if (!songId) return toast("no lyrics: this Video has no Song"), true;
+          if (!hasLyrics) return toast(songId ? "no lyrics in the archive for this Song" : "no lyrics: this Video has no Song"), true;
           lyricsOn = !lyricsOn; layout(); if (lyricsOn) pageTo(page); return true;
         case "blue": case "script": cycleScript(); return true;
         case "green": case "strip": setStrip(!stripOn); return true;

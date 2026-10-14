@@ -29,7 +29,7 @@ export function activate(ctx: Ctx, el: HTMLElement, from: () => From): boolean {
   const d = el.dataset;
   if (d.video) ctx.play(Number(d.video), from(), { t: d.t ? Number(d.t) : null });
   else if (d.artist) ctx.openArtist(d.artist);
-  else if (d.song) ctx.playSong(d.song);
+  else if (d.song) ctx.browse("song", d.song); // a Song opens the grid of its Videos
   else if (d.act === "search") ctx.search();
   else if (d.act === "random") ctx.random();
   else return false;

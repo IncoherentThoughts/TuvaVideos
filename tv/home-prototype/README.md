@@ -12,11 +12,15 @@ bun run start          # the app, 127.0.0.1:4400 (if it is not already running)
 bun run tv-prototype   # http://localhost:4412/?variant=A
 ```
 
-- `?variant=A` Tabs and grid · `B` Rails · `C` List and preview. The yellow bar at the bottom (or `v`, or the red key)
+- `B` Rails is the chosen home and the default; `?variant=A` Tabs and grid and `C` List and preview are the rejected ones. The yellow bar at the bottom (or `v`, or the red key)
   switches; `&bar=0` hides the bar. The browser app's Library query carries over: `?variant=A&type=concert&sort=added`.
 - `i` (or Info on the remote) shows the live state; `r` Random; `/` Search.
-- Player: `← →` ±10 s, Enter pause, `↑ ↓` page the lyrics, `y` lyrics on/off, `s` Script, `c` Chapter strip,
-  `< >` previous/next in Playing from, Backspace back. On the remote: yellow = lyrics, blue = Script, green = Chapters.
+- Home (B): Back, or Left at the start of a rail, opens the side pane (Library, Favorites, Artists, Songs as full grids,
+  Search, Random); Right closes it; Back inside it exits the app.
+- Player: `← →` ±10 s, Enter pause, PageUp/PageDown (Channel ▲▼ on the remote) page the lyrics, `↑` focuses the tags
+  above the scrub bar (Left/Right, Enter opens a grid of that Type / Artist / Song's Videos), `↓` Chapter strip,
+  `y` lyrics on/off, `s` Script, `< >` previous/next in Playing from, Backspace back.
+  On the remote: yellow = lyrics, blue = Script, green = Chapters.
 
 ## Install on the TV
 

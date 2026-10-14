@@ -66,22 +66,30 @@ function cycleChip(chips: Chip[], key: string) {
   syncUrl();
 }
 
-// ---- a full grid as its own screen (Back pops it): "See all", an Artist's Videos, every Song ----
-export function gridScreen(ctx: Ctx, title: string, bodyHtml: string, fromLabel: string, cols = 6): Screen {
+// ---- a full grid as its own screen (Back pops it): "See all", an Artist's Videos, every Song, the side pane's tabs ----
+export function gridScreen(ctx: Ctx, title: string, body: () => string, fromLabel: string, opts: { chips?: boolean } = {}): Screen {
   const el = document.createElement("div");
   el.className = "screen gs";
-  el.innerHTML = `<header class="gs-top"><img class="brand" src="${BASE}/olchey.svg" alt=""><h1>${esc(title)}</h1></header><main class="grid" data-group="g" data-cols="${cols}">${bodyHtml}</main>`;
-  const grid = el.querySelector<HTMLElement>(".grid")!;
+  const chips = opts.chips ? libChips() : null;
+  const render = () => {
+    el.innerHTML = `<header class="gs-top"><img class="brand" src="${BASE}/olchey.svg" alt=""><h1>${esc(title)}</h1><span class="sp"></span><span class="count"></span></header>${chips ? chipsHtml(chips) : ""}<main class="grid" data-group="g" data-cols="6">${body()}</main>`;
+    el.querySelector(".count")!.textContent = `${el.querySelectorAll(".card").length} items${chips ? ` · ${describeLib()}` : ""}`;
+  };
+  render();
+  const grid = () => el.querySelector<HTMLElement>(".grid")!;
   let last: HTMLElement | null = null;
   return {
     name: `grid: ${title}`, el, hints: HINTS_BROWSE,
     onKey(k) {
       if (isArrow(k)) { moveFocus(el, k.key); last = getFocused(); return true; }
-      if (k.key === "enter") { const f = getFocused(); return !!f && activate(ctx, f, () => ({ label: fromLabel, ids: idsIn(grid) })); }
-      return false;
+      if (k.key !== "enter") return false;
+      const f = getFocused();
+      if (!f) return false;
+      if (f.dataset.chip && chips) { cycleChip(chips, f.dataset.chip); render(); focus(el.querySelector<HTMLElement>(`[data-chip="${f.dataset.chip}"]`) ?? focusables(el)[0]!); return true; }
+      return activate(ctx, f, () => ({ label: fromLabel, ids: idsIn(grid()) }));
     },
     onBack: () => false,
-    onShow() { focus(last ?? focusables(grid)[0] ?? null); },
+    onShow() { focus(last ?? focusables(grid())[0] ?? null); },
     state: () => ({ title, focused: last?.dataset }),
   };
 }
@@ -157,7 +165,8 @@ ${tab === "library" ? chipsHtml(chips) : ""}
 }
 
 // =====================================================================================================================
-// Variant B — Rails
+// Variant B — Rails (the chosen one). Back (or Left at the start of a rail) opens a side pane with Library, Favorites,
+// Artists and Songs, each a full grid; Back inside the pane exits the app.
 // =====================================================================================================================
 export function variantB(ctx: Ctx): Home {
   const { data } = ctx;
@@ -169,26 +178,34 @@ export function variantB(ctx: Ctx): Home {
   const recent = sortVideos(data.videos, { ...defaultLibraryState(), sort: "added" });
   const concerts = byViews(data.videos.filter((v) => v.type === "concert"));
   const artists = [...data.artists].sort((a, b) => b.videoCount - a.videoCount);
-  const songs = data.songs.filter((s) => s.versionCount > 0).sort((a, b) => b.videoCount - a.videoCount);
+  const songsWithLyrics = data.songs.filter((s) => s.versionCount > 0).sort((a, b) => b.videoCount - a.videoCount);
 
-  interface Rail { key: string; title: string; tiles: () => string; more?: () => Screen; ids: () => number[] }
+  // the side pane's four grids (also "See all" targets)
+  const grids = {
+    library: () => gridScreen(ctx, "Library", () => libraryAll().map((v) => cardHtml(v)).join(""), "Library", { chips: true }),
+    favorites: () => gridScreen(ctx, "Favorites", () => data.favorites.map(favCard).join(""), "Favorites"),
+    artists: () => gridScreen(ctx, "Artists", () => data.artists.map((a) => artistTileHtml(a, data)).join(""), "Artists"),
+    songs: () => gridScreen(ctx, "Songs", () => data.songs.map((s) => songTileHtml(s, data)).join(""), "Songs"),
+  };
+
+  interface Rail { key: string; title: string; small?: string; tiles: () => string; more?: () => Screen; ids: () => number[] }
   const moreTile = (key: string, n: number) => `<div class="card more" data-f data-more="${key}"><div class="po"><span>See all<br><b>${n}</b></span></div></div>`;
-  const videoRail = (key: string, title: string, all: () => VideoDto[], n = 20): Rail => ({
-    key, title,
+  const videoRail = (key: string, title: string, all: () => VideoDto[], more: () => Screen, n = 20, small?: string): Rail => ({
+    key, title, small,
     tiles: () => { const vs = all(); return vs.slice(0, n).map((v) => cardHtml(v)).join("") + (vs.length > n ? moreTile(key, vs.length) : ""); },
-    more: () => gridScreen(ctx, title, all().map((v) => cardHtml(v)).join(""), title),
-    ids: () => all().map((v) => v.id),
+    more, ids: () => all().map((v) => v.id),
   });
   const rails: Rail[] = [
+    { key: "favorites", title: "Favorites", tiles: () => data.favorites.slice(0, 20).map(favCard).join("") + (data.favorites.length > 20 ? moreTile("favorites", data.favorites.length) : ""), more: grids.favorites, ids: () => data.favorites.map((f) => f.video.id) },
+    videoRail("library", "Library", libraryAll, grids.library, 20, describeLib()),
+    { key: "artists", title: "Artists", tiles: () => artists.slice(0, 24).map((a) => artistTileHtml(a, data)).join("") + moreTile("artists", artists.length), more: grids.artists, ids: () => [] },
     { key: "continue", title: "Continue watching", tiles: () => continueWatching.slice(0, 20).map((v) => cardHtml(v)).join(""), ids: () => continueWatching.map((v) => v.id) },
-    videoRail("library", "Library", libraryAll),
-    { key: "favorites", title: "Favorites", tiles: () => data.favorites.slice(0, 20).map(favCard).join("") + (data.favorites.length > 20 ? moreTile("favorites", data.favorites.length) : ""), more: () => gridScreen(ctx, "Favorites", data.favorites.map(favCard).join(""), "Favorites"), ids: () => data.favorites.map((f) => f.video.id) },
-    videoRail("recent", "Recently added", () => recent),
-    videoRail("concerts", "Concerts", () => concerts),
-    { key: "artists", title: "Artists", tiles: () => artists.slice(0, 24).map((a) => artistTileHtml(a, data)).join("") + moreTile("artists", artists.length), more: () => gridScreen(ctx, "Artists", artists.map((a) => artistTileHtml(a, data)).join(""), "Artists"), ids: () => [] },
-    { key: "songs", title: "Songs with lyrics", tiles: () => songs.slice(0, 24).map((s) => songTileHtml(s, data)).join("") + moreTile("songs", songs.length), more: () => gridScreen(ctx, "Songs with lyrics", songs.map((s) => songTileHtml(s, data)).join(""), "Songs"), ids: () => [] },
+    videoRail("recent", "Recently added", () => recent, () => gridScreen(ctx, "Recently added", () => recent.map((v) => cardHtml(v)).join(""), "Recently added")),
+    videoRail("concerts", "Concerts", () => concerts, () => gridScreen(ctx, "Concerts", () => concerts.map((v) => cardHtml(v)).join(""), "Concerts")),
+    { key: "songs", title: "Songs with lyrics", tiles: () => songsWithLyrics.slice(0, 24).map((s) => songTileHtml(s, data)).join("") + moreTile("songs", songsWithLyrics.length), more: () => gridScreen(ctx, "Songs with lyrics", () => songsWithLyrics.map((s) => songTileHtml(s, data)).join(""), "Songs"), ids: () => [] },
   ].filter((r) => r.key !== "continue" || continueWatching.length);
 
+  const PANE: { key: keyof typeof grids; label: string }[] = [{ key: "library", label: "Library" }, { key: "favorites", label: "Favorites" }, { key: "artists", label: "Artists" }, { key: "songs", label: "Songs" }];
   const render = () => {
     el.innerHTML = `<header class="vb-top" data-group="top" data-linear="h">
   <img class="brand" src="${BASE}/olchey.svg" alt=""><span class="word">TuvaVideos</span>
@@ -196,15 +213,40 @@ export function variantB(ctx: Ctx): Home {
   <button class="tabb ico" data-f data-act="search">⌕ Search</button>
   <button class="tabb ico" data-f data-act="random">⤭ Random</button>
 </header>
-<main class="rails">${rails.map((r) => `<section class="rail" data-rail="${r.key}"><h2>${esc(r.title)}${r.key === "library" ? ` <small>${describeLib()}</small>` : ""}</h2><div class="tiles" data-group="rail" data-linear="h">${r.tiles()}</div></section>`).join("")}</main>`;
+<main class="rails">${rails.map((r) => `<section class="rail" data-rail="${r.key}"><h2>${esc(r.title)}${r.small ? ` <small>${esc(r.small)}</small>` : ""}</h2><div class="tiles" data-group="rail" data-linear="h">${r.tiles()}</div></section>`).join("")}</main>
+<nav class="vb-pane" data-group="pane" data-linear="v" hidden>
+  <img class="brand" src="${BASE}/olchey.svg" alt="">
+  ${PANE.map((p) => `<button class="navb" data-f data-pane="${p.key}">${p.label}</button>`).join("")}
+  <button class="navb" data-f data-act="search">Search</button>
+  <button class="navb" data-f data-act="random">Random</button>
+</nav>`;
   };
   render();
+  const pane = () => el.querySelector<HTMLElement>(".vb-pane")!;
   let last: HTMLElement | null = null;
+  let paneOpen = false;
+  const openPane = () => { paneOpen = true; pane().hidden = false; el.classList.add("pane-open"); focus(pane().querySelector<HTMLElement>("[data-f]"), false); };
+  const closePane = () => { paneOpen = false; pane().hidden = true; el.classList.remove("pane-open"); focus(last ?? focusables(el.querySelector(".rails")!)[0] ?? null); };
   const railOf = (f: HTMLElement) => rails.find((r) => r.key === f.closest<HTMLElement>(".rail")?.dataset.rail);
+  const firstInRail = (f: HTMLElement) => f.closest(".tiles")?.querySelector("[data-f]") === f;
   return {
-    variant: "B", title: "Rails", name: "home B", el, hints: HINTS_BROWSE,
+    variant: "B", title: "Rails", name: "home B", el, hints: HINTS_BROWSE + " · Back / ← at a rail's start: side pane",
     onKey(k) {
-      if (isArrow(k)) { moveFocus(el, k.key); last = getFocused(); return true; }
+      if (paneOpen) {
+        if (k.key === "up" || k.key === "down") { moveFocus(pane(), k.key); return true; }
+        if (k.key === "right") { closePane(); return true; }
+        if (k.key === "enter") {
+          const f = getFocused();
+          if (f?.dataset.pane) { closePane(); ctx.push(grids[f.dataset.pane as keyof typeof grids]()); return true; }
+          if (f) { closePane(); return activate(ctx, f, () => ({ label: "Library", ids: [] })); }
+        }
+        return false; // Back falls through: the app exits
+      }
+      if (isArrow(k)) {
+        const f = getFocused();
+        if (k.key === "left" && f && (firstInRail(f) || f.closest(".vb-top"))) { last = f; openPane(); return true; }
+        moveFocus(el, k.key); last = getFocused(); return true;
+      }
       if (k.key !== "enter") return false;
       const f = getFocused();
       if (!f) return false;
@@ -212,16 +254,17 @@ export function variantB(ctx: Ctx): Home {
       return activate(ctx, f, () => { const r = railOf(f); return { label: r?.title ?? "Library", ids: r && r.ids().length ? r.ids() : idsIn(f.closest(".tiles")!) }; });
     },
     onBack() {
-      const f = getFocused();
-      if (f && !f.closest(".vb-top")) { focus(el.querySelector<HTMLElement>('[data-act="search"]')); return true; }
-      return false;
+      if (paneOpen) return false;
+      last = getFocused();
+      openPane();
+      return true;
     },
-    onShow() { focus(last ?? focusables(el.querySelector(".rails")!)[0] ?? null); },
+    onShow() { if (paneOpen) closePane(); else focus(last ?? focusables(el.querySelector(".rails")!)[0] ?? null); },
     openArtist(name) {
       const vs = byViews(data.videos.filter((v) => hasArtistNamed(v, name)));
-      ctx.push(gridScreen(ctx, name, vs.map((v) => cardHtml(v)).join(""), name));
+      ctx.push(gridScreen(ctx, name, () => vs.map((v) => cardHtml(v)).join(""), name));
     },
-    state: () => ({ rail: last?.closest<HTMLElement>(".rail")?.dataset.rail, focused: last?.dataset, lib: { ...lib } }),
+    state: () => ({ pane: paneOpen, rail: last?.closest<HTMLElement>(".rail")?.dataset.rail, focused: getFocused()?.dataset, lib: { ...lib } }),
   };
 }
 

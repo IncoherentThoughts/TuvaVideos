@@ -2,11 +2,11 @@
 // key / v), on a 1920×1080 stage scaled to fit the window; one shared Player with the lyrics Reader beside the video,
 // one shared Search. Real data from the running app (serve.ts proxies it). Nothing is written to the library.
 import { pickRandomVideo } from "../../src/shared/random";
-import { viewVideos } from "../../src/shared/libraryView";
+import { defaultLibraryState, sortVideos, viewVideos } from "../../src/shared/libraryView";
 import { makePlayer } from "./player";
 import { makeSearch } from "./search";
-import { type Ctx, type Data, type Screen, api, exitApp, lib, registerTizenKeys, toKey, toast } from "./shared";
-import { VARIANTS, VARIANT_KEYS, type Home } from "./variants";
+import { type Ctx, type Data, type Screen, api, cardHtml, exitApp, fmtTime, lib, registerTizenKeys, toKey, toast } from "./shared";
+import { VARIANTS, VARIANT_KEYS, gridScreen, type Home } from "./variants";
 
 const tv = document.getElementById("tv")!;
 const hints = document.getElementById("hints")!;
@@ -62,10 +62,22 @@ const ctx: Ctx = {
     ctx.play(id, { label: "Library", ids: viewVideos(data.videos, lib).map((v) => v.id) });
   },
   openArtist(name) { while (stack.length > 1) pop(); home.openArtist(name); },
+  browse(kind, value, name) {
+    if (topScreen().name === "player") pop(); // leaving the Player, as a tag click leaves Now playing in the browser app
+    if (kind === "artist") return ctx.openArtist(value);
+    if (kind === "type") {
+      const vs = sortVideos(data.videos.filter((v) => v.type === value), defaultLibraryState());
+      return push(gridScreen(ctx, `Type: ${value}`, () => vs.map((v) => cardHtml(v)).join(""), value));
+    }
+    void api.song(value).then((s) => {
+      const rows = s.videos.flatMap((x) => { const v = data.byId.get(x.id); return v ? [{ v, t: x.startS }] : []; });
+      push(gridScreen(ctx, `♪ ${s.name}${s.englishName ? ` · ${s.englishName}` : ""}`, () => rows.map((r) => cardHtml(r.v, r.t != null ? `data-t="${r.t}"` : "", r.t != null ? { sub: `<span class="chap">▸ Chapter at ${fmtTime(r.t)}</span>` } : {})).join(""), s.name));
+    }).catch(() => toast(`${name ?? "the Song"} did not load`));
+  },
 };
 
 function setVariant(key: string) {
-  if (!VARIANTS[key]) key = "A";
+  if (!VARIANTS[key]) key = "B";
   const next = VARIANTS[key]!(ctx);
   if (stack.length) { const old = stack.shift()!; old.el.remove(); }
   stack.unshift(next);
@@ -120,7 +132,7 @@ registerTizenKeys();
     const [videos, artists, songs, favorites] = await Promise.all([api.videos(), api.artists(), api.songs(), api.favorites()]);
     data = { videos, artists, songs, favorites, byId: new Map(videos.map((v) => [v.id, v])) };
     loading.remove();
-    setVariant(params.get("variant") ?? "A");
+    setVariant(params.get("variant") ?? "B");
   } catch (e) {
     loading.innerHTML = `Could not reach the app.<br><small>Is TuvaVideos running on 127.0.0.1:4400? (<code>bun run start</code>)<br>${String(e)}</small>`;
   }

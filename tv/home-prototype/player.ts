@@ -1,7 +1,8 @@
 // PROTOTYPE — throwaway (issue #50). The TV Player: the video on the left and the static lyrics Reader on the right, as
-// on Now playing in the browser app: one Script at a time, numbered lines, no current line; Up/Down page the lines.
-// Green (c) opens a Chapter strip (Down does too while the lyrics are hidden); any key shows the OSD; < > step through
-// Playing from. Resume is read, never written: the prototype changes nothing in the library.
+// on Now playing in the browser app: one Script at a time, numbered lines, no current line; Channel ▲▼ (PageUp/PageDown)
+// page the lines. Up focuses the tag row above the scrub bar (Left/Right across the tags, Enter opens a grid of the
+// matching Videos), Down opens the Chapter strip, any key shows the OSD, < > step through Playing from.
+// Resume is read, never written: the prototype changes nothing in the library.
 import type { ChapterDto, SongDto, VideoDto } from "../../src/shared/types";
 import type { ScriptKey } from "../../src/shared/lyrics/types";
 import { bestCopy } from "../../src/shared/copies";
@@ -10,24 +11,30 @@ import { SCRIPTS, effectiveScript, presentScripts } from "../../src/shared/lyric
 import { chapterAt, lyricsTarget } from "../../src/shared/lyrics/target";
 import { openingVersionIndex } from "../../src/shared/lyrics/trackVersion";
 import { startPosition } from "../../src/shared/resume";
-import { BASE, type Ctx, type From, type Screen, api, esc, fmtTime, stepFrom, tagsHtml, toast } from "./shared";
+import { BASE, type Ctx, type From, type Screen, TYPE_COLOR, api, artistColor, esc, fmtTime, focus, focusables, getFocused, moveFocus, stepFrom, toast } from "./shared";
 
 let scriptPref: ScriptKey = "cyrillic";
 const SEEK_S = 10, SKIP_S = 60;
 
-export const HINTS_PLAYER = "←→ ±10 s · Enter pause · ↑↓ lyrics page · y (yellow) lyrics · s (blue) Script · c (green) Chapters · < > prev/next · Back";
+export const HINTS_PLAYER = "←→ ±10 s · Enter pause · Ch▲▼ (PgUp/PgDn) lyrics page · ↑ tags · ↓ Chapters · y (yellow) lyrics · s (blue) Script · < > prev/next · Back";
 
 export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: number | null; lyricsSong?: string | null } = {}): Screen {
   const video: VideoDto = ctx.data.byId.get(videoId)!;
   const copy = bestCopy(video.copies);
   const pos = from.ids.indexOf(videoId);
+  const osdTags = () => {
+    const t = [`<span class="tag" data-f data-kind="type" data-value="${video.type}" style="--c:${TYPE_COLOR[video.type]}">${video.type}</span>`];
+    for (const a of video.artists) t.push(`<span class="tag" data-f data-kind="artist" data-value="${esc(a.name)}" style="--c:${artistColor(a.name)}">${esc(a.name)}</span>`);
+    if (video.song?.name) t.push(`<span class="tag${video.songSuggested ? " sug" : ""}" data-f data-kind="song" data-value="${video.song.id}" data-name="${esc(video.song.name)}" style="--c:var(--accent)">♪ ${esc(video.song.name)}</span>`);
+    return t.join("");
+  };
   const el = document.createElement("div");
   el.className = "screen pl";
   el.innerHTML = `<div class="pl-stage">
   <video playsinline></video>
   <div class="pl-osd">
     <div class="t1">${esc(video.title)}</div>
-    <div class="tags">${tagsHtml(video, 4)}</div>
+    <div class="tags" data-group="tags" data-linear="h">${osdTags()}</div>
     <div class="tm"><span class="cur mono">0:00</span><div class="bar"><div class="ticks"></div><div class="fill"></div></div><span class="tot mono">${fmtTime(video.durationS)}</span></div>
     <div class="from">Playing from ${esc(from.label)}${pos >= 0 ? ` · ${pos + 1} of ${from.ids.length}` : ""}${copy ? ` · ${copy.container} ${copy.videoCodec}/${copy.audioCodec} ${copy.height ?? "?"}p · ${copy.rootKind}` : ""}</div>
   </div>
@@ -41,7 +48,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
 </aside>`;
   const $ = <T extends HTMLElement>(s: string) => el.querySelector<T>(s)!;
   const v = $<HTMLVideoElement>("video");
-  const osd = $(".pl-osd"), fill = $(".fill"), cur = $(".cur"), strip = $(".pl-strip"), cards = $(".cards"), lines = $(".lines"), pager = $(".pager"), msg = $(".pl-msg");
+  const osd = $(".pl-osd"), tagsEl = $(".pl-osd .tags"), fill = $(".fill"), cur = $(".cur"), strip = $(".pl-strip"), cards = $(".cards"), panel = $(".pl-lyrics"), lines = $(".lines"), pager = $(".pager"), msg = $(".pl-msg");
 
   let chapters: ChapterDto[] = [];
   let song: SongDto | null = null;
@@ -51,13 +58,21 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
   let lyricsOn = true;
   let stripOn = false;
   let stripIdx = 0;
+  let zone: "video" | "tags" = "video";
   let page = 0, pages = 1;
   let osdTimer: ReturnType<typeof setTimeout> | undefined;
   let resumed = false;
 
   const showMsg = (s: string | null) => { msg.hidden = !s; msg.textContent = s ?? ""; };
-  const showOsd = (ms = 3000) => { osd.classList.add("on"); clearTimeout(osdTimer); osdTimer = setTimeout(() => { if (!v.paused) osd.classList.remove("on"); }, ms); };
+  const showOsd = (ms = 3000) => { osd.classList.add("on"); clearTimeout(osdTimer); osdTimer = setTimeout(() => { if (!v.paused && zone === "video") osd.classList.remove("on"); }, ms); };
   const layout = () => { el.classList.toggle("lyrics", lyricsOn && !!songId); el.classList.toggle("strip", stripOn); };
+  const setZone = (z: typeof zone) => {
+    zone = z;
+    osd.classList.toggle("pin", z === "tags");
+    if (z === "tags") focus(focusables(tagsEl)[0] ?? null, false);
+    else focus(null);
+    showOsd();
+  };
 
   // ---- playback ----
   if (copy) {
@@ -142,11 +157,13 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
     pageTo(page);
   }
   function pageTo(n: number) {
+    panel.classList.remove("fits"); // measure with the lines box at full height
     const h = lines.clientHeight || 1;
     pages = Math.max(1, Math.ceil(lines.scrollHeight / h));
     page = Math.max(0, Math.min(pages - 1, n));
     lines.scrollTop = page * h;
-    pager.textContent = pages > 1 ? `page ${page + 1} of ${pages} · ↑ ↓` : "";
+    pager.textContent = pages > 1 ? `page ${page + 1} of ${pages} · Ch ▲ ▼` : "";
+    panel.classList.toggle("fits", pages === 1); // everything fits: the block sits centred, no dead space below
   }
   function cycleScript() {
     if (!song?.versions[versionIdx]) return toast("no lyrics to switch");
@@ -178,18 +195,32 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
     ctx.pop();
     ctx.play(id, from);
   };
+  const openTag = () => {
+    const f = getFocused();
+    if (!f?.dataset.kind) return;
+    ctx.browse(f.dataset.kind as "type" | "artist" | "song", f.dataset.value!, f.dataset.name);
+  };
 
   return {
     name: "player", el, hints: HINTS_PLAYER,
     onKey(k) {
       showOsd();
+      if (zone === "tags") {
+        switch (k.key) {
+          case "left": case "right": moveFocus(tagsEl, k.key); return true;
+          case "enter": openTag(); return true;
+          case "down": case "back": case "up": setZone("video"); return true;
+          case "playpause": case "play": case "pause": break; // fall through to the video keys
+          default: return false;
+        }
+      }
       switch (k.key) {
         case "left": if (stripOn) { stripIdx = Math.max(0, stripIdx - 1); markStrip(); } else seek(-SEEK_S); return true;
         case "right": if (stripOn) { stripIdx = Math.min(chapters.length - 1, stripIdx + 1); markStrip(); } else seek(SEEK_S); return true;
         case "rew": seek(-SKIP_S); return true;
         case "ff": seek(SKIP_S); return true;
-        case "up": if (stripOn) setStrip(false); else if (el.classList.contains("lyrics")) pageTo(page - 1); return true;
-        case "down": if (stripOn) return true; if (el.classList.contains("lyrics")) pageTo(page + 1); else setStrip(true); return true;
+        case "up": if (stripOn) setStrip(false); else setZone("tags"); return true;
+        case "down": if (!stripOn) setStrip(true); return true;
         case "chup": pageTo(page - 1); return true;
         case "chdown": pageTo(page + 1); return true;
         case "enter": case "playpause":
@@ -211,10 +242,10 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
       }
     },
     onBack: () => false,
-    onShow() { layout(); },
+    onShow() { layout(); if (zone === "tags") setZone("tags"); },
     dispose() { v.pause(); v.removeAttribute("src"); v.load(); clearTimeout(osdTimer); },
     state: () => ({
-      videoId, title: video.title, copyId: copy?.id ?? null, t: Math.round(v.currentTime * 10) / 10, paused: v.paused, resumedFrom: resumed ? video.resumeS : null,
+      videoId, title: video.title, copyId: copy?.id ?? null, t: Math.round(v.currentTime * 10) / 10, paused: v.paused, resumedFrom: resumed ? video.resumeS : null, zone,
       from: { label: from.label, position: pos + 1, of: from.ids.length },
       chapters: chapters.length, chapterNow: chapterAt(chapters, v.currentTime)?.title ?? null,
       lyrics: { songId, song: song?.name ?? null, version: song?.versions[versionIdx]?.label ?? null, script, page: page + 1, pages, shown: el.classList.contains("lyrics"), wanted: lyricsOn },

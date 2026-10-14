@@ -291,4 +291,6 @@ export interface Ctx {
   random(): void;
   /** The home variant's own way of showing one Artist's Videos. */
   openArtist(name: string): void;
+  /** A tag pressed in the Player: a grid of the Videos of that Type, Artist or Song. */
+  browse(kind: "type" | "artist" | "song", value: string, name?: string): void;
 }

@@ -1,0 +1,4 @@
+.buildResult/
+*.wgt
+*.log
+server.out

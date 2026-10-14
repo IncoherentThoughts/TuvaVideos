@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tuva Hello</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; background: #111; color: #eee; font: 28px/1.35 sans-serif; overflow: hidden; }
+  #list { position: absolute; left: 60px; top: 60px; width: 760px; }
+  #list h1 { font-size: 44px; margin: 0 0 24px; }
+  .t { padding: 12px 18px; border-radius: 10px; margin-bottom: 8px; background: #222; }
+  .t.on { background: #8b2e1f; }
+  .t small { display: block; color: #aaa; font-size: 22px; }
+  .t .res { color: #ffd479; font-size: 22px; }
+  #stage { position: absolute; left: 860px; top: 60px; width: 1000px; height: 562px; background: #000; }
+  video { width: 100%; height: 100%; }
+  #log { position: absolute; left: 860px; top: 650px; width: 1000px; height: 380px; font: 20px/1.4 monospace; color: #9c9; white-space: pre-wrap; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="list"><h1>Hello, TV</h1><div id="tests">loading tests…</div></div>
+<div id="stage"><video id="v" playsinline></video></div>
+<div id="log"></div>
+<script src="main.js"></script>
+</body>
+</html>

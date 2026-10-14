@@ -155,3 +155,7 @@ _Avoid_: TV client, Tizen app, TV version
 **TV Server**:
 The home-network listener that the TV app talks to, started from a button in the browser app and off at every launch. Runs alongside the localhost app over the same library; the localhost app is unchanged.
 _Avoid_: LAN mode, remote server, second server, TV mode
+
+**Approved TV**:
+A TV whose IP address the user allowed, with one click in the browser, the first time it reached the TV Server. Remembered across launches until removed; only Approved TVs get anything beyond the health check.
+_Avoid_: paired device, trusted client, whitelisted IP

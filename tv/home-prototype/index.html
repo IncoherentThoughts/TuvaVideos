@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- PROTOTYPE — throwaway (issue #50). TV home and remote navigation: three home variants (?variant=A|B|C), one Player
+     with the lyrics Reader beside the video, one Search. Served by serve.ts in the browser; packaged as-is for the TV. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>TuvaVideos TV — home prototype</title>
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="tv">
+  <div id="hints"></div>
+  <div id="toast"></div>
+</div>
+<div id="bar"><button id="prev" aria-label="previous variant">◀</button><span id="lbl">…</span><button id="next" aria-label="next variant">▶</button></div>
+<pre id="state" hidden></pre>
+<script src="main.js"></script>
+</body>
+</html>

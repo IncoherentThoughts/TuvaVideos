@@ -4,9 +4,23 @@
     {
       "name": "tuva",
       "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "start"],
-      "env": { "TUVA_NO_OPEN": "1", "TUVA_PORT": "4411" },
+      "runtimeArgs": [
+        "run",
+        "start"
+      ],
+      "env": {
+        "TUVA_NO_OPEN": "1",
+        "TUVA_PORT": "4411"
+      },
       "port": 4411
+    },
+    {
+      "name": "tv-prototype",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "tv/home-prototype/serve.ts"
+      ],
+      "port": 4412
     }
   ]
 }

@@ -245,6 +245,14 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
             </a>
           </div>
         )}
+        {v.instagramId && (
+          <div class="np-source dim">
+            Instagram:{" "}
+            <a href={`https://www.instagram.com/p/${v.instagramId}/`} target="_blank" rel="noopener noreferrer" title="Open the Instagram post in your browser">
+              instagram.com/p/{v.instagramId}
+            </a>
+          </div>
+        )}
         <div class="np-delete">
           <button class="btn small danger" onClick={() => setDeleting(true)}>
             Delete from library…

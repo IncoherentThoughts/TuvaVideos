@@ -513,3 +513,18 @@ describe("deleting a Video", () => {
     expect((await del(999999, false)).status).toBe(404);
   });
 });
+
+describe("Instagram shortcode (ADR 0005)", () => {
+  test("recorded on the Video, and a re-download of the same post with other bytes joins it", async () => {
+    const clip = (s: number) => ["-f", "lavfi", "-i", `testsrc=size=160x120:rate=25:duration=${s}`, "-c:v", "libx264", "-pix_fmt", "yuv420p"];
+    await ff(...clip(2), join(localDir, "Video by sayus_magas [instagram-DdvnmbnIWMa].mp4"));
+    await ff(...clip(3), join(extDir, "Video by sayus_magas [instagram-DdvnmbnIWMa].mkv"));
+    await app.scanner.requestAll();
+    await app.scanner.whenIdle();
+    const vids = (await api("/api/videos")).filter((v: any) => v.instagramId === "DdvnmbnIWMa");
+    expect(vids.length).toBe(1);
+    expect(vids[0].youtubeId).toBeNull();
+    expect(vids[0].title).toBe("Video by sayus_magas");
+    expect(vids[0].copies.length).toBe(2);
+  }, 60_000);
+});

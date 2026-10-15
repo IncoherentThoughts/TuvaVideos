@@ -166,6 +166,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
       title: video.song?.name ?? undefined,
     },
     video.youtubeId ? { k: "youtube", v: <a class="p" href={`https://www.youtube.com/watch?v=${video.youtubeId}`} target="_blank" rel="noopener noreferrer">{video.youtubeId}</a> } : null,
+    video.instagramId ? { k: "instagram", v: <a class="p" href={`https://www.instagram.com/p/${video.instagramId}/`} target="_blank" rel="noopener noreferrer">{video.instagramId}</a> } : null,
     { k: "duration", v: dur != null ? <Num v={fmtClock(dur)} /> : <Nil /> },
     { k: "chapters", v: <Num v={chapters.length} /> },
     { k: "views", v: <Num v={video.viewCount} />, title: "Right-click the Video in a list to reset" },

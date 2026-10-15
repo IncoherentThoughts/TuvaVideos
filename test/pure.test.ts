@@ -20,10 +20,13 @@ describe("filename identity and skip rules", () => {
   test("instagram: the [instagram-…] tag (and an `Instagram video #…` shortcode) is left out of the title", () => {
     const p = parseFilename("Video by tuva.accord [instagram-CrcH6MHo6Jm].mkv");
     expect(p.youtubeId).toBeNull();
+    expect(p.instagramId).toBe("CrcH6MHo6Jm");
     expect(p.title).toBe("Video by tuva.accord");
     expect(parseFilename("Огбе Тывам [instagram-CZ6ySoaIWro].mp4").title).toBe("Огбе Тывам");
     expect(parseFilename("Instagram video #CdtUBecoRUu [instagram-CdtUBecoRUu].mkv").title).toBe("Instagram video");
     expect(parseFilename("Video by _dalai_damdyn [instagram-ButuhuUAss-].mkv").title).toBe("Video by _dalai_damdyn");
+    expect(parseFilename("Video by _dalai_damdyn [instagram-ButuhuUAss-].mkv").instagramId).toBe("ButuhuUAss-");
+    expect(parseFilename("Alash Ensemble - Ay Daglar [dQw4w9WgXcQ].webm").instagramId).toBeNull();
   });
   test("no id: hash identity, title is the stem", () => {
     const p = parseFilename("Alash w: Radik 2.MP4");

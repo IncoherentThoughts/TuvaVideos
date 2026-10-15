@@ -232,7 +232,7 @@ Top tabs: **Library**, **Now playing**, **Favorites**, **Artists**; a search box
 
 ### 5.2 Library
 
-Full-bleed poster grid. Card: Thumbnail with duration in the corner and a coloured left edge for availability; title with inline favorite badge; tint tags (Type first, then Artists); meta row of availability icon, chapter count and resolution.
+Full-bleed poster grid. Card: Thumbnail with duration in the corner; title with inline favorite badge; tint tags (Type first, then Artists); a smaller second row of quality tags (short side, colour-coded: 4K purple, 1080 green, 720 blue, 480 yellow, lower orange) and the Copy count when above 1; meta row of availability icon (external or unavailable only; a local Copy shows none), chapter count and view count (each only when above 0).
 
 **Filters**: chips for Type (song / concert / interview / other), Availability (available only / all) and Favorites; Artist filter set from the Artists tab or a search filter. **Sort**: views, title, duration, date added, last played; default views, most watched first, with unwatched Videos in date-added order, newest first. Filter and sort state live in the URL query so a reload keeps them. The grid, the Favorites list and the Artists tab are keyboard-walkable: arrows move focus, Enter opens, `f` toggles Favorite on the focused card or row.
 

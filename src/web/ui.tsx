@@ -18,6 +18,28 @@ export function resolutionLabel(height: number | null | undefined): string {
   return `${height}p`;
 }
 
+/** Quality of a frame size, by its short side (a 1080x1920 portrait Video is 1080p, as YouTube labels it); `tier` picks the tag colour. */
+export function quality(width: number | null | undefined, height: number | null | undefined): { label: string; tier: "uhd" | "fhd" | "hd" | "sd" | "low" } | null {
+  const side = width && height ? Math.min(width, height) : height;
+  if (!side) return null;
+  if (side >= 2000) return { label: "4K", tier: "uhd" };
+  const tier = side >= 1000 ? "fhd" : side >= 700 ? "hd" : side >= 460 ? "sd" : "low";
+  return { label: `${side}p`, tier };
+}
+
+/** The small second row under a card's Tags: quality, and the Copy count when there is more than one. */
+export function SpecTags({ video }: { video: Pick<VideoDto, "width" | "height" | "copies"> }) {
+  const q = quality(video.width, video.height);
+  const n = video.copies.length;
+  if (!q && n < 2) return null;
+  return (
+    <div class="tags spec">
+      {q && <span class={`tag q-${q.tier}`} title={video.width && video.height ? `${video.width}×${video.height}` : undefined}>{q.label}</span>}
+      {n > 1 && <span class="tag copies">{n} copies</span>}
+    </div>
+  );
+}
+
 /** Artists hash to a tag slot (t1..t8). */
 export function artistSlot(name: string): number {
   let h = 0;
@@ -146,13 +168,12 @@ export function AvailabilityIcon({ availability }: { availability: "local" | "ex
 const phColor = (id: number) => `var(--t${(id % 8) + 1})`;
 
 /** Poster for a Video; a tinted placeholder when no Thumbnail has been generated or it fails to load. */
-export function Poster({ video, dur, edge }: { video: Pick<VideoDto, "id" | "thumbnail" | "available" | "availability" | "durationS">; dur?: boolean; edge?: boolean }) {
+export function Poster({ video, dur }: { video: Pick<VideoDto, "id" | "thumbnail" | "available" | "durationS">; dur?: boolean }) {
   const [failed, setFailed] = useState(false);
   const has = !!video.thumbnail && !failed;
   return (
     <div class={`thumb${has ? "" : " ph"}${video.available ? "" : " unavail"}`} style={has ? undefined : { "--ph": phColor(video.id) }}>
       {has && <img src={video.thumbnail!.poster} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />}
-      {edge && <i class={`av ${video.availability ?? "none"}`} />}
       {dur && video.durationS != null && <span class="dur">{fmtDuration(video.durationS)}</span>}
     </div>
   );

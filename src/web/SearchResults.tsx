@@ -11,8 +11,10 @@ import type { SearchResponse, SearchRow, VideoDto } from "../shared/types";
 import { hasArtistNamed } from "../shared/libraryView";
 import { Card } from "./Library";
 import { api, useStore } from "./data";
+import { searchEntries } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
-import { Link, navigate, searchHref } from "./router";
+import { startShuffle } from "./playlist";
+import { Link, navigate, playHref, searchHref } from "./router";
 import { fmtDuration } from "./ui";
 import { useWindowed } from "./windowed";
 
@@ -149,6 +151,12 @@ export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }
   const { limit, sentinel } = useWindowed(`${q}|${sort}`, shown.length);
   const loading = !failed && (!res || !videos) && q.trim() !== "";
   const needle = res?.needle ?? "";
+  // "shuffle results" (spec 4.8): the list as shown, capped; a Video reached through a Chapter still starts at its beginning.
+  const shuffleResults = () => {
+    savePlayingFrom("search", ids);
+    const first = startShuffle(searchEntries(ids), "search");
+    if (first) navigate(playHref(first.videoId, null));
+  };
 
   return (
     <div class="page">
@@ -160,6 +168,9 @@ export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }
           <option value="views">Most viewed</option>
         </select>
         <span class="count">{loading ? "searching…" : `${shown.length} Video${shown.length === 1 ? "" : "s"}`}</span>
+        <button class="chip shuffle" disabled={loading || shown.length === 0} title="Play the results in a random order" onClick={shuffleResults}>
+          shuffle results
+        </button>
       </div>
       {failed ? (
         <div class="empty-state">The search failed; try again.</div>

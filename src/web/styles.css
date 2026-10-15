@@ -113,6 +113,10 @@ mark { background: color-mix(in srgb, var(--t3) 35%, transparent); color: var(--
 .chip { padding: 4px 11px; border: 1px solid var(--line); border-radius: calc(var(--r) * .6); color: var(--fg2); background: transparent; }
 .chip:hover { color: var(--fg); border-color: var(--fg3); }
 .chip.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.chip:disabled { opacity: .5; cursor: default; }
+.chip:disabled:hover { color: var(--fg2); border-color: var(--line); }
+/* The shuffle button ends the .controls row (spec 4.8); it wraps with the count on a narrow page. */
+.controls .chip.shuffle { white-space: nowrap; }
 .chip.artist, .chip.song { display: inline-flex; gap: 6px; align-items: center; }
 select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 L6 8 L9.5 4.5' fill='none' stroke='%2393918c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center / 12px 12px; cursor: pointer; padding-right: 28px; }
 

@@ -6,7 +6,9 @@ import {
 import type { FavoriteItem } from "../shared/types";
 import { NameFilter, SortControls } from "./ListControls";
 import { api, useStore } from "./data";
+import { favoriteEntries, favoriteStartS, type FavoriteRow } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
+import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, StripFrame, Tags, fmtDuration } from "./ui";
 
@@ -106,6 +108,13 @@ export function Favorites({ search }: { search: string }) {
   const toggleType = (t: (typeof TYPES)[number]) => go({ types: st.types.includes(t) ? st.types.filter((x) => x !== t) : [...st.types, t] });
   const shown = useMemo(() => (items ? viewFavorites(items, st) : []), [items, st]);
   const snapshot = () => savePlayingFrom("favorites", shown.map((i) => i.video.id));
+  // "shuffle favorites" (spec 4.8): every row as shown; a Chapter row is a Chapter Entry that opens at its Chapter's start.
+  const shuffleFavorites = () => {
+    const rows: FavoriteRow[] = shown.map((i) => (i.kind === "video" ? { kind: "video", videoId: i.video.id } : { kind: "chapter", videoId: i.video.id, chapterId: i.chapter.id, startS: i.chapter.startS }));
+    snapshot();
+    const first = startShuffle(favoriteEntries(rows), "favorites");
+    if (first) navigate(playHref(first.videoId, favoriteStartS(rows, first)));
+  };
 
   return (
     <div class="page">
@@ -129,6 +138,9 @@ export function Favorites({ search }: { search: string }) {
         <span class="sep" />
         <SortControls sorts={FAV_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />
         <span class="count">{items ? `${shown.length} of ${items.length} Favorite${items.length === 1 ? "" : "s"}` : "loading…"}</span>
+        <button class="chip shuffle" disabled={shown.length === 0} title="Play the Favorites shown, in a random order" onClick={shuffleFavorites}>
+          shuffle favorites
+        </button>
       </div>
       {err && <div class="empty-state">Could not load Favorites: {err}</div>}
       {items && items.length === 0 && <div class="empty-state">Nothing starred yet. Press <kbd>f</kbd> on a Video in the Library to add one.</div>}

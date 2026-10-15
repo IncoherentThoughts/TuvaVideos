@@ -81,6 +81,8 @@ interface Props {
   onPlaylistRepeat?(): string;
   /** `q`: the Playlist panel (ticket #68). */
   onPlaylistPanelToggle?(): void;
+  /** Whether the Playlist panel is open (the control-bar button shows it pressed). */
+  playlistPanelOpen?: boolean;
   /** A seek or step went past the end of a Chapter Entry: it becomes a Video Entry. */
   onPlaylistWiden?(): void;
 }
@@ -139,7 +141,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistPanelToggle, onPlaylistWiden }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -674,6 +676,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         say(playlist ? (onPlaylistRepeat?.() ?? "Repeat") : "Repeat: one (this Video loops; shuffle to start a Playlist)", 2000);
         break;
       case "panel":
+        if (!playlist) return say("No Playlist: press x to shuffle the library", 2000);
         onPlaylistPanelToggle?.();
         break;
     }
@@ -938,6 +941,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         </button>
         <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="State: metadata, playback, Copies and key bindings (i while the Player has focus)" onClick={() => (onStateToggle?.(), refocus())}>
           State <kbd>i</kbd>
+        </button>
+        <button class={`cbtn statebtn${playlistPanelOpen && playlist ? " on" : ""}`} tabIndex={-1} disabled={!playlist} aria-pressed={!!playlistPanelOpen && !!playlist} title={playlist ? "Playlist panel (q while the Player has focus)" : "Playlist panel: shuffle (x) to start a Playlist"} onClick={() => (onPlaylistPanelToggle?.(), refocus())}>
+          Playlist <kbd>q</kbd>
         </button>
       </div>
       {studio && <StudioBar key={studio.songId} songId={studio.songId} initial={studio.data} say={(t, ms) => say(t, ms)} onClose={() => (setStudio(null), refocus())} ctl={studioCtl} />}

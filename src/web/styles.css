@@ -393,7 +393,9 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .acceptall:hover:not(:disabled) { background: color-mix(in srgb, var(--ok) 24%, transparent); }
 
 /* ---- lyrics drawer (spec 5.4, variant "Reader") ---- */
-.drawer-wrap { flex: none; width: min(400px, 34vw); min-width: 300px; position: sticky; top: calc(var(--bar-h) + 14px); align-self: flex-start; height: calc(100vh - var(--bar-h) - 28px); }
+.drawer-wrap { flex: none; width: min(400px, 34vw); min-width: 300px; position: sticky; top: calc(var(--bar-h) + 14px); align-self: flex-start; height: calc(100vh - var(--bar-h) - 28px); display: flex; flex-direction: column; gap: 10px; }
+/* Stacked panels (the Playlist panel beneath Audio / State / Lyrics) share the column height; each body scrolls. */
+.drawer-wrap > .drawer { flex: 1 1 0; height: auto; min-height: 0; }
 .drawer { height: 100%; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2); display: flex; flex-direction: column; min-height: 0; outline: none; position: relative; }
 .drawer:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
 .drawer .hd { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
@@ -673,3 +675,23 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .cbtn.plbtn.on { background: var(--bg3); border-color: var(--fg3); }
 .cbtn:disabled { opacity: .55; cursor: default; }
 .cbtn:disabled:hover { background: transparent; }
+
+/* ---- Playlist panel (spec 4.8) ---- */
+.drawer.playlist .hd { gap: 4px; }
+.drawer.playlist .hd .count { font-size: .85em; }
+.drawer.playlist .hd .row .ib { display: inline-flex; align-items: center; justify-content: center; gap: 1px; padding: 0; }
+.drawer.playlist .hd .row .ib.on { background: color-mix(in srgb, var(--c) 24%, transparent); }
+.drawer.playlist .hd .row .ib.rep { width: auto; min-width: 25px; padding: 0 4px; }
+.drawer.playlist .hd .row .ib sup { font-size: .6em; font-family: var(--font-mono); }
+.drawer.playlist .plbody { padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.plrow { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: center; padding: 5px 6px; border-radius: calc(var(--r) * .7); text-align: left; width: 100%; flex: none; }
+.plrow:hover, .plrow:focus-visible { background: var(--bg3); }
+.plrow.current { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.plrow.played { opacity: .6; }
+.plrow.off { opacity: .45; }
+.plrow .pltxt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.plrow .pltitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plrow .pllatin { font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plrow .plchap { font-size: .85em; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plrow .tags { flex-wrap: nowrap; overflow: hidden; }
+.plsentinel { height: 1px; flex: none; }

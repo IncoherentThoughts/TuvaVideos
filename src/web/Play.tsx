@@ -9,9 +9,11 @@ import { Player, type PlayerCtl } from "./Player";
 import { ChapterStrip, catchTyping } from "./Chapters";
 import { api, apiError, replaceVideo, setLastPlayed, toggleFavorite, useStore } from "./data";
 import { loadPlayingFrom, onPlayingFromChange, savePlayingFrom } from "./playingFrom";
-import { current, jumpToVideo, widenToVideo, cycleRepeat, type Playlist } from "../shared/playlist";
+import { current, jumpTo, jumpToVideo, widenToVideo, cycleRepeat, type Playlist } from "../shared/playlist";
 import { entryRange, libraryPlaylist, nextEntry, playlistFor, prevEntry, repeatLabel, shuffleLabel, toggleShuffle, type Move } from "../shared/playlistPlayer";
-import { endPlaylist, loadPlaylist, onPlaylistChange, startPlaylist, updatePlaylist } from "./playlist";
+import { endPlaylist, loadPlaylist, onPlaylistChange, playlistStarts, startPlaylist, updatePlaylist } from "./playlist";
+import { showPlayedFor, toggleShowPlayed, type ShowPlayed } from "../shared/playlistPanel";
+import { PlaylistPanel } from "./PlaylistPanel";
 import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
@@ -22,6 +24,11 @@ import { DeleteVideoDialog } from "./DeleteVideo";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
+
+// The Playlist panel outlives this screen (Play unmounts between Videos of a list page): a new Playlist start opens it
+// once, and it stays as the user left it until the Playlist ends. Not persisted across a reload.
+let panelWanted = false;
+let panelSeenStart = 0;
 
 export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t: number | null; lyrics: string | null; lyricsVersion: string | null }) {
   const { videos } = useStore();
@@ -72,7 +79,22 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   // Opening a Video by any route (r, URL, grid, search, `<` `>`): in the Playlist it moves the cursor there, outside it the
   // Playlist ends and the Player is back to plain Playing from.
   const [, setPlTick] = useState(0);
-  useEffect(() => onPlaylistChange(() => setPlTick((n) => n + 1)), []);
+  const [plOpen, setPlOpenState] = useState(() => {
+    // mounting after a list page's shuffle started a Playlist: the panel opens
+    if (playlistStarts() !== panelSeenStart) (panelSeenStart = playlistStarts(), (panelWanted = true));
+    return panelWanted && !!loadPlaylist();
+  });
+  const setPlOpen = (on: boolean) => (panelWanted = on, setPlOpenState(on));
+  useEffect(
+    () =>
+      onPlaylistChange(() => {
+        setPlTick((n) => n + 1);
+        if (!loadPlaylist()) setPlOpen(false); // the Playlist ended
+        else if (playlistStarts() !== panelSeenStart) (panelSeenStart = playlistStarts(), setPlOpen(true)); // a new one started
+      }),
+    [],
+  );
+  const [shownPlayed, setShownPlayed] = useState<ShowPlayed>({ gen: 0, on: false });
   useEffect(() => {
     const pl = loadPlaylist();
     if (!pl || current(pl)?.videoId === videoId) return;
@@ -135,6 +157,14 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     if (!pl) return "Repeat: one";
     updatePlaylist(cycleRepeat(pl));
     return repeatLabel(loadPlaylist()!);
+  };
+
+  const panelPl = loadPlaylist();
+  const closePanel = () => (setPlOpen(false), ctl.current?.focus());
+  const say = (t: string | null) => t && ctl.current?.say(t, 2000);
+  const jumpEntry = (entryIndex: number) => {
+    const pl = loadPlaylist();
+    if (pl) goTo(jumpTo(pl, entryIndex));
   };
 
   const refresh = () => api.video(videoId).then(setV).catch(() => {});
@@ -269,13 +299,16 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
 
   const entry = playlist ? entryRange(current(playlist), chapters, v?.durationS ?? null) : null;
 
+  const panelOpen = plOpen && !!loadPlaylist();
+  const drawerOpen = (audioOpen && !drawer && !!audio) || (!drawer && stateOpen) || drawer;
+
   if (v === undefined) return <div class="np"><p class="muted">Loading…</p></div>;
   if (v === null || v.id !== videoId) return <div class="empty-state">No such Video.</div>;
 
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistPanelToggle={() => {}} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
+        <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">
@@ -344,35 +377,45 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
           />
         )}
       </div>
-      {audioOpen && !drawer && audio && (
+      {(drawerOpen || panelOpen) && (
         <div class="drawer-wrap">
-          <AudioPanel
-            vid={{ get current() { return ctl.current?.video() ?? null; } }}
-            state={audio}
-            onChange={changeAudio}
-            onReset={() => changeAudio(DEFAULT_AUDIO)}
-            presets={presets}
-            onSavePreset={savePreset}
-            onDeletePreset={deletePreset}
-            onClose={() => (setAudioOpen(false), ctl.current?.focus())}
-            copies={v.copies}
-          />
-        </div>
-      )}
-      {!drawer && stateOpen && (
-        <div class="drawer-wrap">
-          <div class="drawer statehost" ref={stateHost} />
-        </div>
-      )}
-      {drawer && (
-        <div class="drawer-wrap">
-          {target ? (
-            <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={!target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void api.patchVideo(v.id, { versionId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={!target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void api.patchVideo(v.id, { songId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
-          ) : (
-            <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
-              <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>
-              <div class="body"><p class="empty">no lyrics: this Video has no Song. Set one with the Song row, or search for a Song.</p></div>
-            </aside>
+          {audioOpen && !drawer && audio && (
+            <AudioPanel
+              vid={{ get current() { return ctl.current?.video() ?? null; } }}
+              state={audio}
+              onChange={changeAudio}
+              onReset={() => changeAudio(DEFAULT_AUDIO)}
+              presets={presets}
+              onSavePreset={savePreset}
+              onDeletePreset={deletePreset}
+              onClose={() => (setAudioOpen(false), ctl.current?.focus())}
+              copies={v.copies}
+            />
+          )}
+          {!drawer && stateOpen && <div class="drawer statehost" ref={stateHost} />}
+          {drawer &&
+            (target ? (
+              <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={!target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void api.patchVideo(v.id, { versionId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={!target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void api.patchVideo(v.id, { songId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
+            ) : (
+              <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
+                <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>
+                <div class="body"><p class="empty">no lyrics: this Video has no Song. Set one with the Song row, or search for a Song.</p></div>
+              </aside>
+            ))}
+          {panelOpen && panelPl && (
+            <PlaylistPanel
+              playlist={panelPl}
+              gen={playlistStarts()}
+              videos={byId}
+              showPlayed={showPlayedFor(shownPlayed, playlistStarts())}
+              onShowPlayed={() => setShownPlayed((s) => toggleShowPlayed(s, playlistStarts()))}
+              onJump={jumpEntry}
+              onPrev={() => say(playlistPrev())}
+              onNext={() => say(playlistNext("key").label)}
+              onShuffle={() => say(playlistShuffle())}
+              onRepeat={() => say(playlistRepeat())}
+              onClose={closePanel}
+            />
           )}
         </div>
       )}

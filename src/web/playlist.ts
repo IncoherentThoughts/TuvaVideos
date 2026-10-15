@@ -5,6 +5,7 @@ import { current, isPlaylist, startPlaylist as start, type Entry, type Playlist,
 
 const KEY = "tuva.playlist";
 let mem: Playlist | null | undefined; // undefined until the first load
+let starts = 0; // counts Playlist starts in this page session; the panel resets "show played" and opens on a new one
 const subs = new Set<() => void>();
 
 /** Re-render hook for the Player and the Playlist panel. */
@@ -25,9 +26,12 @@ function store(pl: Playlist | null) {
 /** Start a new Playlist, replacing any active one. */
 export function startPlaylist(entries: readonly Entry[], opts: StartOptions): Playlist {
   const pl = start(entries, opts);
+  starts++;
   store(pl);
   return pl;
 }
+
+export const playlistStarts = () => starts;
 
 export function loadPlaylist(): Playlist | null {
   if (mem !== undefined) return mem;

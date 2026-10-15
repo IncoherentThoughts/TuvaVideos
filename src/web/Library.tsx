@@ -8,27 +8,30 @@ import type { SongDto, VideoDto } from "../shared/types";
 import { api, useStore } from "./data";
 import { savePlayingFrom } from "./playingFrom";
 import { Link, navigate, playHref } from "./router";
-import { AvailabilityIcon, FavoriteBadge, Poster, Tags, resolutionLabel } from "./ui";
+import { AvailabilityIcon, FavoriteBadge, Poster, SpecTags, Tags } from "./ui";
 import { useWindowed } from "./windowed";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
 export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpen: () => void; /** Title with <mark>s (search results); plain title otherwise. */ titleHtml?: string; /** Why the search matched: lines under the title. */ why?: ComponentChildren; /** Open the Video at this time (a search that matched a Chapter) instead of its Resume position. */ startS?: number | null }) {
-  const res = resolutionLabel(v.height);
   return (
     <Link href={playHref(v.id, startS)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
-      <Poster video={v} dur edge />
+      <Poster video={v} dur />
       <div class="ttl">
         {v.favoritedAt && <FavoriteBadge />}
         {titleHtml != null ? <span dangerouslySetInnerHTML={{ __html: titleHtml }} /> : v.title}
       </div>
       {why}
       <Tags video={v} />
-      <div class="meta">
-        <AvailabilityIcon availability={v.availability} />
-        <span class={v.chapterCount ? "" : "dim"}>{v.chapterCount} ch</span>
-        {res && <span>{res}</span>}
-      </div>
+      <SpecTags video={v} />
+      {(v.availability !== "local" || v.chapterCount > 0 || v.viewCount > 0) && (
+        <div class="meta">
+          {/* Nearly every Copy is local, so only the exceptions (external, unavailable) get an icon here; Now playing always shows it. */}
+          {v.availability !== "local" && <AvailabilityIcon availability={v.availability} />}
+          {v.chapterCount > 0 && <span>{v.chapterCount} ch</span>}
+          {v.viewCount > 0 && <span>{v.viewCount} {v.viewCount === 1 ? "view" : "views"}</span>}
+        </div>
+      )}
     </Link>
   );
 }

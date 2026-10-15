@@ -216,6 +216,85 @@ The chain runs in the browser (Web Audio on the `<video>` element: preamp → ch
 
 ---
 
+### 4.8 Playlist
+
+Decided in a grilling session on 2026-10-15 ([playlist.md](playlist.md) holds the implementation plan; #65–#69). Terms: Playlist, Entry, Play order, Repeat, Played in `CONTEXT.md`. §4.4 (Playing from) stays as written.
+
+#### Two lists, two behaviours
+
+- **Playing from** is unchanged: `<` `>` step through the snapshot the Video was opened from, the Video loops itself when it ends, no panel. A Video opened from a grid, search, `r` or a URL is only Playing from.
+- A **Playlist** exists only after a shuffle starts one. It carries a Play order, a Repeat mode and a panel. It ends when a Video outside it is opened (grid click, search, `r`, URL) or when another shuffle starts; hiding the panel does not end it. It survives a reload in the same tab (sessionStorage, next to `tuva.playingFrom`).
+
+#### Starting one
+
+| Where | Button label | Entries | First Entry |
+|---|---|---|---|
+| Library grid | "shuffle random" | the grid as filtered and sorted (`shown`); the whole library when unfiltered | random |
+| Search results | "shuffle results" | the result list as filtered (cap 500) | random |
+| Favorites | "shuffle favorites" | every Favorite row as filtered: a Video row is a Video Entry, a Chapter row is a Chapter Entry; a Video and its Chapter both starred give two Entries | random |
+| Player, shuffle icon or `x`, no Playlist active | — | the whole library in library order | the current Video |
+
+The buttons sit at the right end of each page's `.controls` row, after the existing filter and sort controls. A Playlist starts **shuffled**, with Repeat **off**, and opens the panel.
+
+Unavailable Videos are included, shown greyed, and skipped on advance and by `n`/`N`. If their Root mounts later they play without rebuilding.
+
+#### Entries
+
+- A **Video Entry** plays from the start (never the Resume position) to the end.
+- A **Chapter Entry** plays from the Chapter's start to the next Chapter's start, or the Video's end. The Chapter keys `!` `@` still work. Seeking or stepping past the Entry's end turns it into a Video Entry for the rest of that Video (the panel row drops the Chapter title).
+- Playing inside a Playlist **never writes a Resume position** (`resumeOn` stays false for the whole Entry).
+- Opening a Video that is already in the active Playlist (from anywhere) jumps to that Entry instead of ending the Playlist. If it appears more than once, the first upcoming occurrence wins, else the first.
+
+#### Play order
+
+- **Shuffled**: a uniform random permutation (Fisher–Yates) of the upcoming Entries. Turning shuffle on again mid-Playlist reshuffles only the upcoming Entries; Played Entries keep their order. When Repeat list wraps a shuffled Playlist, it reshuffles.
+- **Sequential**: the source list's order from the current Entry on. Turning shuffle off restores it.
+
+#### Repeat
+
+Cycle **off → list → one** on each press.
+
+- **off**: advance on end; at the end of the list, stop paused on the last frame and the panel shows "Playlist ended". `n` does nothing; `N` still goes back.
+- **list**: advance; wrap at the end (reshuffling if shuffled).
+- **one**: play the same Entry again (a Chapter Entry restarts at the Chapter).
+
+A Video that is only Playing from behaves as repeat one; the repeat icon shows "one" and is disabled.
+
+#### Control bar
+
+Right of the A-B label, before the spacer: a **shuffle** icon and a **repeat** icon, always visible, each with its key hint (`x`, `e`) in the same style as "Audio a" and "State i". With no Playlist active, shuffle starts a whole-library Playlist and repeat is disabled showing "one". With one active, shuffle toggles the Play order and repeat cycles.
+
+#### Panel
+
+- Lives in the right-hand drawer column at the same width. Opens beneath whichever of Audio / State / Lyrics is open, or alone in their slot. Those three keep excluding each other; the Playlist panel excludes nothing. Toggle with `q`, the control-bar button, or the panel's close button; closing the panel keeps the Playlist.
+- Header: "Playlist", then prev (`N`), next (`n`), shuffle (`x`), repeat (`e`), a "show played" toggle, close. Count "n of N" under the title.
+- Body: the current Entry highlighted at the top, then upcoming Entries in play order. Played Entries are hidden until "show played" is on, then listed above the current one in the order they were played. "show played" resets to off whenever a new Playlist starts and is not persisted.
+- Each row: Thumbnail poster, Video title (Latin title beneath when present), Chapter title for a Chapter Entry, the Video's Type and Artists as the tag line. Click jumps to that Entry (a Played one too). Unavailable rows are greyed.
+- The list is windowed with the grid's `useWindowed`, about 25 rows at a time, extending on scroll. The Playlist itself holds every id.
+- Fully keyboard-driven for the actions above; no key for "show played" yet.
+
+#### Keys
+
+| Key | Action |
+|---|---|
+| `n` | next Entry (skips unavailable) |
+| `N` | previous Entry |
+| `x` | toggle shuffle; starts a whole-library Playlist when none is active |
+| `e` | cycle Repeat |
+| `q` | toggle the Playlist panel |
+
+`<` `>` keep stepping Playing from when no Playlist is active and step Entries when one is. `r` ends the Playlist (it opens a Video outside it). All five keys go into the State panel's guide list, with any binding the guide is missing today.
+
+#### Out of scope
+
+TV app; persisting a Playlist in the DB or across tabs; a key for "show played"; Chapter Entries for anything other than Favorite Chapters; saved or named playlists.
+
+#### Model
+
+Pure state in `shared/playlist.ts` (#65): a Playlist is `{ source, entries, order, cursor, shuffled, repeat }` where `order` is a permutation of Entry indices and `cursor` points at the current one, so Played is everything before the cursor in Play order and upcoming everything after. The transitions (`startPlaylist`, `setShuffled`, `cycleRepeat`, `advance`, `stepBack`, `jumpTo`, `jumpToVideo`, `widenToVideo`) are pure, take an injectable rng, and are tested; `advance` reports `ended` rather than deciding what the Player does about it, and Repeat one is handled by the Player's end-of-Entry path, not by `advance`. The browser keeps the active Playlist in `web/playlist.ts`, mirrored to sessionStorage `tuva.playlist` and validated on load.
+
+---
+
 ## 5. Screens and design
 
 Decided in #11 and #12 ([design-direction.md](design-direction.md)). Direction "Wall": dark, high-contrast, hard-edged. Tokens and tag style there are normative.

@@ -3,6 +3,7 @@
 // number per row, and values colored by kind (gruvbox: strings green, numbers purple, booleans orange, keys blue).
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { BINDINGS } from "../shared/keyguide";
 import { fmtClock, frameNumber, type AbLoop } from "../shared/playerMath";
 import type { CopyDto, VideoDto } from "../shared/types";
 import type { ChapterMark } from "./Timeline";
@@ -46,22 +47,6 @@ const Str = ({ v }: { v: string }) => <span class="s">{v}</span>;
 const Bool = ({ v }: { v: boolean }) => <span class="b">{String(v)}</span>;
 const Nil = ({ v = "null" }: { v?: string }) => <span class="nil">{v}</span>;
 const Dim = ({ children }: { children: ComponentChildren }) => <span class="u">{children}</span>;
-
-const BINDINGS: [string[], string][] = [
-  [["space", "p"], "pause"], [["←", "→"], "±5 s"],
-  [["↓", "↑"], "±60 s"], [["⇧←", "⇧→"], "±1 s exact"],
-  [[",", "."], "frame step"], [["[", "]"], "speed ∓0.1"],
-  [["{", "}"], "speed ½ / ×2"], [["⌫"], "speed 1.0"],
-  [["9", "0"], "volume ±5"], [["m"], "mute"],
-  [["f"], "fullscreen"], [["l"], "A-B loop (A, B, off)"],
-  [["!", "@"], "chapter prev / next"], [["PgUp", "PgDn"], "chapter prev / next"],
-  [["<", ">"], "prev / next Video"], [["r"], "random Video (works anywhere)"], [["s"], "screenshot"],
-  [["o"], "OSD flash"], [["O"], "OSD always"],
-  [["c"], "add Chapter here"], [["t"], "Studio playback"],
-  [["i"], "this panel"], [["y"], "lyrics drawer"],
-  [["a"], "audio panel"], [["/"], "focus search"],
-  [["Esc"], "back to the Player"], [["v"], "back to the Player (from anywhere)"],
-];
 
 /** Seconds of media buffered past `t` (0 when nothing buffered holds `t`). */
 export function bufferedAhead(r: TimeRanges | undefined, t: number): number {

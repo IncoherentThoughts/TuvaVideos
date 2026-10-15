@@ -9,6 +9,9 @@ import { Player, type PlayerCtl } from "./Player";
 import { ChapterStrip, catchTyping } from "./Chapters";
 import { api, apiError, replaceVideo, setLastPlayed, toggleFavorite, useStore } from "./data";
 import { loadPlayingFrom, onPlayingFromChange, savePlayingFrom } from "./playingFrom";
+import { current, jumpToVideo, widenToVideo, cycleRepeat, type Playlist } from "../shared/playlist";
+import { entryRange, libraryPlaylist, nextEntry, playlistFor, prevEntry, repeatLabel, shuffleLabel, toggleShuffle, type Move } from "../shared/playlistPlayer";
+import { endPlaylist, loadPlaylist, onPlaylistChange, startPlaylist, updatePlaylist } from "./playlist";
 import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
@@ -64,6 +67,75 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     },
     [playingFrom, videoId, byId],
   );
+
+  // ---- Playlist (spec 4.8) ----
+  // Opening a Video by any route (r, URL, grid, search, `<` `>`): in the Playlist it moves the cursor there, outside it the
+  // Playlist ends and the Player is back to plain Playing from.
+  const [, setPlTick] = useState(0);
+  useEffect(() => onPlaylistChange(() => setPlTick((n) => n + 1)), []);
+  useEffect(() => {
+    const pl = loadPlaylist();
+    if (!pl || current(pl)?.videoId === videoId) return;
+    const jumped = jumpToVideo(pl, videoId);
+    if (jumped) updatePlaylist(jumped);
+    else endPlaylist();
+  }, [videoId]);
+  const playlist = playlistFor(loadPlaylist(), videoId);
+  const [nonce, setNonce] = useState(0); // a new Entry of the same Video opens a fresh Player (it opens at the Entry's start)
+  const playable = (id: number) => byId.get(id)?.available ?? true;
+  const title = (id: number) => byId.get(id)?.title ?? `Video ${id}`;
+
+  /** Make `pl`'s current Entry the one on screen: a Chapter Entry opens at its Chapter's start. */
+  const goTo = (pl: Playlist) => {
+    const e = current(pl)!;
+    const open = (at: number | null, next: Playlist) => {
+      updatePlaylist(next);
+      if (e.videoId === videoId) setNonce((n) => n + 1);
+      navigate(playHref(e.videoId, at));
+    };
+    if (e.chapterId === undefined) return open(null, pl);
+    const from = e.videoId === videoId && chaptersRef.current.length ? Promise.resolve(chaptersRef.current) : api.chapters(e.videoId).catch(() => []);
+    void from.then((list) => {
+      const c = list.find((x) => x.id === e.chapterId);
+      open(c ? c.startS : null, c ? pl : widenToVideo(pl)); // a deleted Chapter plays as the Video
+    });
+  };
+  const playlistNext = (via: "end" | "key"): { kind: Move["kind"]; label: string | null } => {
+    const pl = loadPlaylist();
+    if (!pl) return { kind: "none", label: null };
+    const m = nextEntry(pl, via, playable);
+    if (m.kind === "move") {
+      goTo(m.pl);
+      return { kind: "move", label: `Next: ${title(current(m.pl)!.videoId)}` };
+    }
+    if (m.pl !== pl) updatePlaylist(m.pl); // a one-Entry list wrapping reshuffles
+    return { kind: m.kind, label: null };
+  };
+  const playlistPrev = (): string | null => {
+    const pl = loadPlaylist();
+    const back = pl && prevEntry(pl, playable);
+    if (!back) return null;
+    goTo(back);
+    return `Previous: ${title(current(back)!.videoId)}`;
+  };
+  const playlistShuffle = (): string => {
+    const pl = loadPlaylist();
+    if (pl) {
+      updatePlaylist(toggleShuffle(pl));
+      return shuffleLabel(loadPlaylist()!);
+    }
+    if (!videos) return "Library is still loading";
+    const started = libraryPlaylist(videos.map((x) => x.id), videoId);
+    if (!started) return "This Video is not in the library";
+    startPlaylist(started.entries, { source: "library-all", shuffled: true, startAt: started.order[0] });
+    return `Shuffle: on · Playlist of ${started.entries.length}`;
+  };
+  const playlistRepeat = (): string => {
+    const pl = loadPlaylist();
+    if (!pl) return "Repeat: one";
+    updatePlaylist(cycleRepeat(pl));
+    return repeatLabel(loadPlaylist()!);
+  };
 
   const refresh = () => api.video(videoId).then(setV).catch(() => {});
 
@@ -195,13 +267,15 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   const studioSongs = useRef<string[]>([]);
   studioSongs.current = [...new Set([curChapter?.songId, v?.songId].filter((x): x is string => !!x))];
 
+  const entry = playlist ? entryRange(current(playlist), chapters, v?.durationS ?? null) : null;
+
   if (v === undefined) return <div class="np"><p class="muted">Loading…</p></div>;
   if (v === null || v.id !== videoId) return <div class="empty-state">No such Video.</div>;
 
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={v.id} video={v} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
+        <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistPanelToggle={() => {}} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">

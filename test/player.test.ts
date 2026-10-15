@@ -49,6 +49,11 @@ describe("key dispatcher: the table of spec 4.5", () => {
     ["t", {}, { type: "studio" }],
     ["c", {}, { type: "chapterAdd" }],
     ["a", {}, { type: "audio" }],
+    ["n", {}, { type: "playlist", op: "next" }],
+    ["N", { shiftKey: true }, { type: "playlist", op: "prev" }],
+    ["x", {}, { type: "playlist", op: "shuffle" }],
+    ["e", {}, { type: "playlist", op: "repeat" }],
+    ["q", {}, { type: "playlist", op: "panel" }],
   ];
   for (const [key, extra, want] of cases) {
     test(`${extra.shiftKey ? "shift+" : ""}${key === " " ? "space" : key}`, () => {
@@ -59,7 +64,7 @@ describe("key dispatcher: the table of spec 4.5", () => {
   }
 
   test("unbound keys are not handled, so they keep their default", () => {
-    for (const k of ["e", "Tab", "Enter", "Escape", "F5", "/", "1", "x", "d", "F"]) {
+    for (const k of ["Tab", "Enter", "Escape", "F5", "/", "1", "d", "F", "X", "E", "Q"]) {
       expect(dispatchKey({ key: k }, focused)).toEqual({ action: null, handled: false });
     }
   });

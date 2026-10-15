@@ -7,7 +7,7 @@ A single-user local player for a personal library of Tuvan music videos, browsed
 ### The library
 
 **Video**:
-One piece of footage the library knows about, identified by its YouTube id when it has one and by a content hash otherwise. Carries a title, a Type, Artists, Chapters, Links and a Favorite flag. Never identified by its path.
+One piece of footage the library knows about, identified by its YouTube id when it has one and by a content hash otherwise. A Video downloaded from Instagram also records its post's shortcode: not its identity, but a new file with a shortcode the library already knows becomes another Copy of that Video. Carries a title, a Type, Artists, Chapters, Links and a Favorite flag. Never identified by its path.
 _Avoid_: file, clip, media, item
 
 **Copy**:

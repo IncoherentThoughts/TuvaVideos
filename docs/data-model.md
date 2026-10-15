@@ -20,6 +20,7 @@ CREATE TABLE video (
   id INTEGER PRIMARY KEY,
   youtube_id TEXT UNIQUE,                 -- identity when present
   content_hash TEXT UNIQUE,               -- SHA-256 of the file, only for id-less files
+  instagram_id TEXT,                      -- shortcode from `[instagram-<shortcode>]`; provenance, matched on scan (ADR 0005)
   title TEXT NOT NULL,                    -- filename minus [id] at scan; edits are never overwritten
   title_latin TEXT,                       -- Latin title; NULL when title is already Latin
   title_latin_source TEXT CHECK (title_latin_source IN ('archive','table','manual')),

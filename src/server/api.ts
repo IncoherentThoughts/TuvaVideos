@@ -69,6 +69,7 @@ interface CopyDbRow {
 interface VideoDbRow {
   id: number;
   youtube_id: string | null;
+  instagram_id: string | null;
   title: string;
   title_latin: string | null;
   title_latin_source: "archive" | "table" | "manual" | null;
@@ -139,6 +140,7 @@ export function createHandler(s: Services) {
     return {
       id: v.id,
       youtubeId: v.youtube_id,
+      instagramId: v.instagram_id,
       title: v.title,
       titleLatin: v.title_latin,
       titleLatinSource: v.title_latin_source,

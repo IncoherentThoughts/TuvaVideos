@@ -61,6 +61,8 @@ export type KeyframeStatusDto = { state: "ready"; keyframes: number[] } | { stat
 export interface VideoDto {
   id: number;
   youtubeId: string | null;
+  /** Shortcode of the Instagram post the Video was downloaded from, if known (provenance only, ADR 0005). */
+  instagramId: string | null;
   title: string;
   titleLatin: string | null;
   titleLatinSource: "archive" | "table" | "manual" | null;

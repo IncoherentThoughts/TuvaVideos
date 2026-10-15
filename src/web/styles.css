@@ -671,8 +671,6 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .au-dn .dn-auto { color: var(--t6); } .au-dn .dn-learning { color: var(--t3); } .au-dn .dn-learned { color: var(--t4); }
 
 /* ---- Playlist shuffle / repeat buttons in the control bar (spec 4.8) ---- */
-.cbtn.plbtn { gap: 5px; }
-.cbtn.plbtn.on { background: var(--bg3); border-color: var(--fg3); }
 .cbtn:disabled { opacity: .55; cursor: default; }
 .cbtn:disabled:hover { background: transparent; }
 
@@ -681,10 +679,13 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .drawer.playlist .hd .count { font-size: .85em; }
 .drawer.playlist .hd .row .ib { display: inline-flex; align-items: center; justify-content: center; gap: 1px; padding: 0; }
 .drawer.playlist .hd .row .ib.on { background: color-mix(in srgb, var(--c) 24%, transparent); }
-.drawer.playlist .hd .row .ib.rep { width: auto; min-width: 25px; padding: 0 4px; }
+/* header buttons carry their key hint in the same <kbd> look as the control bar's "Audio a" (the .cbtn kbd rule) */
+.drawer.playlist .hd .row .ib.kb { width: auto; min-width: 25px; padding: 0 4px; gap: 4px; }
+.drawer.playlist .hd .row .ib kbd { font-size: .62em; padding: 0 3px; }
+.drawer.playlist .hd .plended { color: var(--accent); font-weight: 600; margin-left: 8px; }
 .drawer.playlist .hd .row .ib sup { font-size: .6em; font-family: var(--font-mono); }
 .drawer.playlist .plbody { padding: 6px; display: flex; flex-direction: column; gap: 2px; }
-.plrow { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: center; padding: 5px 6px; border-radius: calc(var(--r) * .7); text-align: left; width: 100%; flex: none; }
+.plrow { display: grid; grid-template-columns: 96px 1fr; min-height: 66px; /* a 96x54 poster plus padding: a lazy image arriving never moves the rows */ gap: 10px; align-items: center; padding: 5px 6px; border-radius: calc(var(--r) * .7); text-align: left; width: 100%; flex: none; }
 .plrow:hover, .plrow:focus-visible { background: var(--bg3); }
 .plrow.current { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
 .plrow.played { opacity: .6; }

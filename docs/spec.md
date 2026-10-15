@@ -196,6 +196,10 @@ Keys are handled only while the Player container has focus. No native `<video co
 | y | open / close the lyrics drawer (OSD "no lyrics" when neither the Chapter nor the Video has a Song) |
 | a | Audio panel (also an "Audio" button, §4.7): the Video's Audio settings in the drawer slot; opening it closes the State panel and the lyrics drawer, and either of those closes it |
 | i | State panel (also a "State" button): in the drawer slot while no lyrics are shown, under the Player when they are. Four code-styled sections: the Video's metadata (id, title, Latin title, Type, Artists, Song, YouTube id, duration, chapters, views, added, last played, resume, favorite), live playback (state, time, rate, volume, A-B, chapter, frame, dropped frames, buffered ahead, resolution, focus, error), its Copies (root, container, codecs, resolution, fps, size, fallback, and the file's path, which reveals it in the Finder via `POST /api/copies/:id/reveal`) and this key table. Stays on during Studio playback |
+| n / N | next / previous Playlist Entry (§4.8) |
+| x | toggle shuffle; starts a whole-library Playlist when none is active (§4.8) |
+| e | cycle Repeat off / list / one (§4.8) |
+| q | toggle the Playlist panel (§4.8) |
 
 ### 4.6 Visuals
 
@@ -262,7 +266,7 @@ A Video that is only Playing from behaves as repeat one; the repeat icon shows "
 
 #### Control bar
 
-Right of the A-B label, before the spacer: a **shuffle** icon and a **repeat** icon, always visible, each with its key hint (`x`, `e`) in the same style as "Audio a" and "State i". With no Playlist active, shuffle starts a whole-library Playlist and repeat is disabled showing "one". With one active, shuffle toggles the Play order and repeat cycles.
+Right of the A-B label, before the spacer: a **shuffle** icon and a **repeat** icon, always visible, each with its key hint (`x`, `e`) in the same style as "Audio a" and "State i" (the same `cbtn statebtn` classes and `<kbd>`); the panel's header buttons carry their hints (`N n x e`) in that `<kbd>` look. With no Playlist active, shuffle starts a whole-library Playlist and repeat is disabled showing "one". With one active, shuffle toggles the Play order and repeat cycles.
 
 #### Panel
 
@@ -270,7 +274,7 @@ Right of the A-B label, before the spacer: a **shuffle** icon and a **repeat** i
 - Header: "Playlist", then prev (`N`), next (`n`), shuffle (`x`), repeat (`e`), a "show played" toggle, close. Count "n of N" under the title.
 - Body: the current Entry highlighted at the top, then upcoming Entries in play order. Played Entries are hidden until "show played" is on, then listed above the current one in the order they were played. "show played" resets to off whenever a new Playlist starts and is not persisted. The panel opens when a Playlist starts (also from a list page) and closes when the Playlist ends; the open state survives moving between Videos of the Playlist but not a reload.
 - Each row: Thumbnail poster, Video title (Latin title beneath when present), Chapter title for a Chapter Entry, the Video's Type and Artists as the tag line. Click jumps to that Entry (a Played one too). Unavailable rows are greyed.
-- The list is windowed with the grid's `useWindowed` (observing the panel body, not the window), about 25 rows at a time, extending on scroll; the current row is always rendered and scrolled into view when it changes. The Playlist itself holds every id.
+- The list is windowed with the grid's `useWindowed` (observing the panel body, not the window), about 25 rows at a time, extending on scroll; the current row is always rendered and scrolled into view when it changes. With "show played" the Played rows are windowed from the bottom (the last ~25 above the current row, more on scrolling up), so a whole-library history is never rendered at once. Rows are keyed by Entry, posters are lazy at a fixed 16:9 size, and the Chapter title is one map lookup per row. The Playlist itself holds every id.
 - The header buttons are Tab-reachable and `Esc` inside the panel closes it and refocuses the Player; `n N x e q` work while the Player has focus. No key for "show played" yet. The control-bar `Playlist q` button is disabled with no Playlist.
 
 #### Keys
@@ -282,6 +286,8 @@ Right of the A-B label, before the spacer: a **shuffle** icon and a **repeat** i
 | `x` | toggle shuffle; starts a whole-library Playlist when none is active |
 | `e` | cycle Repeat |
 | `q` | toggle the Playlist panel |
+
+OSD (one wording per action, on the Player whichever control triggered it): "Shuffle on" / "Shuffle off"; "Shuffle on · Playlist of N" when `x` starts a Playlist; "Repeat: off" / "Repeat: list" / "Repeat: one"; "Next: <title>"; "Previous: <title>"; "Playlist ended". The panel's header also shows "Playlist ended" next to the title once the list ran out with Repeat off; it clears when the cursor moves, Repeat changes or another Playlist starts.
 
 `<` `>` keep stepping Playing from when no Playlist is active and step Entries when one is. `r` ends the Playlist (it opens a Video outside it). All five keys go into the State panel's guide list, with any binding the guide is missing today.
 

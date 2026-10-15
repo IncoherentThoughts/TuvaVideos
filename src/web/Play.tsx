@@ -10,9 +10,9 @@ import { ChapterStrip, catchTyping } from "./Chapters";
 import { api, apiError, replaceVideo, setLastPlayed, toggleFavorite, useStore } from "./data";
 import { loadPlayingFrom, onPlayingFromChange, savePlayingFrom } from "./playingFrom";
 import { current, jumpTo, jumpToVideo, widenToVideo, cycleRepeat, type Playlist } from "../shared/playlist";
-import { entryRange, libraryPlaylist, nextEntry, playlistFor, prevEntry, repeatLabel, shuffleLabel, toggleShuffle, type Move } from "../shared/playlistPlayer";
+import { entryRange, libraryPlaylist, nextEntry, nextLabel, playlistFor, prevEntry, prevLabel, repeatLabel, shuffleLabel, shuffleStartLabel, toggleShuffle, type Move } from "../shared/playlistPlayer";
 import { endPlaylist, loadPlaylist, onPlaylistChange, playlistStarts, startPlaylist, updatePlaylist } from "./playlist";
-import { showPlayedFor, toggleShowPlayed, type ShowPlayed } from "../shared/playlistPanel";
+import { endedShows, markEnded, showPlayedFor, toggleShowPlayed, type EndedMark, type ShowPlayed } from "../shared/playlistPanel";
 import { PlaylistPanel } from "./PlaylistPanel";
 import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
@@ -94,6 +94,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
       }),
     [],
   );
+  const [ended, setEnded] = useState<EndedMark | null>(null); // the Player reached the end with Repeat off
   const [shownPlayed, setShownPlayed] = useState<ShowPlayed>({ gen: 0, on: false });
   useEffect(() => {
     const pl = loadPlaylist();
@@ -128,7 +129,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     const m = nextEntry(pl, via, playable);
     if (m.kind === "move") {
       goTo(m.pl);
-      return { kind: "move", label: `Next: ${title(current(m.pl)!.videoId)}` };
+      return { kind: "move", label: nextLabel(title(current(m.pl)!.videoId)) };
     }
     if (m.pl !== pl) updatePlaylist(m.pl); // a one-Entry list wrapping reshuffles
     return { kind: m.kind, label: null };
@@ -138,7 +139,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     const back = pl && prevEntry(pl, playable);
     if (!back) return null;
     goTo(back);
-    return `Previous: ${title(current(back)!.videoId)}`;
+    return prevLabel(title(current(back)!.videoId));
   };
   const playlistShuffle = (): string => {
     const pl = loadPlaylist();
@@ -150,7 +151,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
     const started = libraryPlaylist(videos.map((x) => x.id), videoId);
     if (!started) return "This Video is not in the library";
     startPlaylist(started.entries, { source: "library-all", shuffled: true, startAt: started.order[0] });
-    return `Shuffle: on · Playlist of ${started.entries.length}`;
+    return shuffleStartLabel(started.entries.length);
   };
   const playlistRepeat = (): string => {
     const pl = loadPlaylist();
@@ -308,7 +309,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
+        <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">
@@ -407,6 +408,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
               playlist={panelPl}
               gen={playlistStarts()}
               videos={byId}
+              ended={endedShows(ended, panelPl, playlistStarts())}
               showPlayed={showPlayedFor(shownPlayed, playlistStarts())}
               onShowPlayed={() => setShownPlayed((s) => toggleShowPlayed(s, playlistStarts()))}
               onJump={jumpEntry}

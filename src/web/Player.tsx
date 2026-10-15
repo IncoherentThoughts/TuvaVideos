@@ -22,7 +22,7 @@ import { AudioEngine } from "./audioEngine";
 import { isDefaultAudio, type AudioState } from "../shared/audio";
 import { api, apiError, replaceVideo } from "./data";
 import type { Playlist } from "../shared/playlist";
-import { openAt, reachedEnd, repeatIcon, resumeAllowed, seekWidens, type EntryRange, type Move } from "../shared/playlistPlayer";
+import { ENDED_LABEL, openAt, reachedEnd, repeatIcon, resumeAllowed, seekWidens, type EntryRange, type Move } from "../shared/playlistPlayer";
 
 export type { ChapterMark } from "./Timeline";
 
@@ -79,6 +79,8 @@ interface Props {
   onPlaylistShuffle?(): string;
   /** `e` / the repeat icon: cycles Repeat; returns the OSD text. */
   onPlaylistRepeat?(): string;
+  /** The list ended with Repeat off and the Player paused on the last frame: the panel shows "Playlist ended". */
+  onPlaylistEnded?(): void;
   /** `q`: the Playlist panel (ticket #68). */
   onPlaylistPanelToggle?(): void;
   /** Whether the Playlist panel is open (the control-bar button shows it pressed). */
@@ -141,7 +143,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistEnded, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -566,7 +568,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       void v.play().catch(() => {});
     } else if (move.kind === "ended") {
       v.pause();
-      say("Playlist ended", 4000);
+      onPlaylistEnded?.();
+      say(ENDED_LABEL, 4000);
     } else if (move.label) say(move.label, 2200);
   };
 
@@ -911,10 +914,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
             {ab.b != null ? ` – B ${fmtClock(ab.b)}` : ""}
           </span>
         )}
-        <button class={`cbtn statebtn plbtn${playlist?.shuffled ? " on" : ""}`} tabIndex={-1} aria-pressed={!!playlist?.shuffled} title={playlist ? `Shuffle ${playlist.shuffled ? "on" : "off"} (x while the Player has focus)` : "Shuffle the library into a Playlist (x while the Player has focus)"} onClick={() => (say(onPlaylistShuffle?.() ?? "Shuffle"), refocus())}>
+        <button class={`cbtn statebtn${playlist?.shuffled ? " on" : ""}`} tabIndex={-1} aria-pressed={!!playlist?.shuffled} title={playlist ? `Shuffle ${playlist.shuffled ? "on" : "off"} (x while the Player has focus)` : "Shuffle the library into a Playlist (x while the Player has focus)"} onClick={() => (say(onPlaylistShuffle?.() ?? "Shuffle"), refocus())}>
           {SHUFFLE_ICON} <kbd>x</kbd>
         </button>
-        <button class={`cbtn statebtn plbtn${rep.mode !== "off" && !rep.disabled ? " on" : ""}`} tabIndex={-1} disabled={rep.disabled} title={rep.disabled ? "Repeat: one. This Video loops until you pick another; shuffle starts a Playlist (e)" : `Repeat ${rep.mode}: click to cycle off, list, one (e while the Player has focus)`} onClick={() => (say(onPlaylistRepeat?.() ?? "Repeat"), refocus())}>
+        <button class={`cbtn statebtn${rep.mode !== "off" && !rep.disabled ? " on" : ""}`} tabIndex={-1} disabled={rep.disabled} title={rep.disabled ? "Repeat: one. This Video loops until you pick another; shuffle starts a Playlist (e)" : `Repeat ${rep.mode}: click to cycle off, list, one (e while the Player has focus)`} onClick={() => (say(onPlaylistRepeat?.() ?? "Repeat"), refocus())}>
           {REPEAT_ICON} <span class="mono">{rep.mode}</span> <kbd>e</kbd>
         </button>
         <span class="grow" />

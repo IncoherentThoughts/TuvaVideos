@@ -149,3 +149,26 @@ describe("icons and shortcuts", () => {
     expect(playlistFor(null, 1)).toBeNull();
   });
 });
+
+describe("OSD wording", () => {
+  test("one phrasing per action", async () => {
+    const m = await import("../src/shared/playlistPlayer");
+    const { startPlaylist } = await import("../src/shared/playlist");
+    const pl = startPlaylist([{ videoId: 1 }, { videoId: 2 }], { source: "library", shuffled: false, startAt: 0 });
+    expect(m.shuffleLabel(pl)).toBe("Shuffle off");
+    expect(m.shuffleLabel({ ...pl, shuffled: true })).toBe("Shuffle on");
+    expect(m.shuffleStartLabel(2157)).toBe("Shuffle on · Playlist of 2157");
+    for (const r of ["off", "list", "one"] as const) expect(m.repeatLabel({ ...pl, repeat: r })).toBe(`Repeat: ${r}`);
+    expect(m.nextLabel("A")).toBe("Next: A");
+    expect(m.prevLabel("A")).toBe("Previous: A");
+    expect(m.ENDED_LABEL).toBe("Playlist ended");
+  });
+});
+
+describe("README key table", () => {
+  test("lists every key of the State panel guide", async () => {
+    const readme = await Bun.file(new URL("../README.md", import.meta.url)).text();
+    const table = readme.slice(readme.indexOf("## Player keys"), readme.indexOf("## One-off commands"));
+    for (const [keys] of BINDINGS) for (const k of keys) expect(table).toContain(`\`${k}\``);
+  });
+});

@@ -111,8 +111,28 @@ The list of a Copy's keyframe timestamps, read once from the file's packets and 
 _Avoid_: seek table, cue index, GOP map
 
 **Playing from**:
-The ordered list of Videos the Player steps through with previous/next: the list the Video was opened from (grid as filtered and sorted, Favorites, search results), or library order when opened by URL.
-_Avoid_: queue, playlist, context
+The ordered list of Videos the Player steps through with previous/next: the list the Video was opened from (grid as filtered and sorted, Favorites, search results), or library order when opened by URL. A Video opened this way loops itself when it ends. Not a Playlist until a shuffle starts one.
+_Avoid_: queue, playlist (for the plain list), context
+
+**Playlist**:
+The list of Entries the Player plays through on its own, started by a shuffle button on a list page (the grid as filtered, Favorites, search results) or by the shuffle control on a playing Video (then it is the whole library). Has a Play order and a Repeat mode, shown in the Playlist panel. Ends when a Video outside it is opened or another shuffle starts; hiding the panel does not end it. Survives a reload in the same tab. Playing inside a Playlist never writes a Resume position.
+_Avoid_: queue, shuffle (as the noun), session, Playing from (which it is built from)
+
+**Entry (of a Playlist)**:
+One item in a Playlist: a Video, or a Chapter of a Video (from a Favorite Chapter), which plays from the Chapter's start to the next Chapter's start. Seeking past that end turns the Entry into a Video Entry for the rest of the Video. An Entry whose Video is unavailable stays in the Playlist, greyed, and is skipped.
+_Avoid_: item, track, row
+
+**Play order**:
+Whether a Playlist's upcoming Entries run **shuffled** (a random permutation, reshuffled when turned on again or when Repeat wraps the list) or **sequential** (the source list's order from the current Entry on). Played Entries keep the order they were played in.
+_Avoid_: shuffle mode, random mode, order (bare)
+
+**Repeat**:
+What a Playlist does when an Entry ends: **off** (advance; stop at the end of the list), **list** (advance; wrap at the end), or **one** (play the same Entry again). Starts off for a Playlist; a Video that is only Playing from behaves as repeat one.
+_Avoid_: loop (that is the A-B loop), cycle, replay
+
+**Played (an Entry)**:
+An Entry the current Playlist has already finished or skipped past; hidden in the panel unless shown.
+_Avoid_: history, watched, done
 
 **Studio track**:
 A Music.app track, held by its persistent id, that the Player can play for a Song. Either the match found for one of the Song's Mirror Tracks (at most one per Mirror Track; Suggested when found automatically after an import, confirmed when picked by hand) or a Local Studio track. Every Video and Chapter of the Song shows all of them.

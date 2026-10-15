@@ -161,7 +161,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
 
   const panelPl = loadPlaylist();
   const closePanel = () => (setPlOpen(false), ctl.current?.focus());
-  const say = (t: string | null) => t && ctl.current?.say(t, 2000);
+  const say = (t: string | null) => t && ctl.current?.say(t);
   const jumpEntry = (entryIndex: number) => {
     const pl = loadPlaylist();
     if (pl) goTo(jumpTo(pl, entryIndex));

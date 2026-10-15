@@ -18,7 +18,11 @@ export type PlayerAction =
   | { type: "studio" }
   | { type: "state" }
   | { type: "lyrics" }
-  | { type: "audio" };
+  | { type: "audio" }
+  | { type: "playlist"; op: PlaylistOp };
+
+/** The Playlist keys (spec 4.8): `n` next Entry, `N` previous, `x` shuffle, `e` Repeat, `q` panel. */
+export type PlaylistOp = "next" | "prev" | "shuffle" | "repeat" | "panel";
 
 export interface KeyLike {
   key: string;
@@ -101,6 +105,16 @@ export function keyAction(e: KeyLike): PlayerAction | null {
       return { type: "lyrics" };
     case "a":
       return { type: "audio" };
+    case "n":
+      return { type: "playlist", op: "next" };
+    case "N":
+      return { type: "playlist", op: "prev" };
+    case "x":
+      return { type: "playlist", op: "shuffle" };
+    case "e":
+      return { type: "playlist", op: "repeat" };
+    case "q":
+      return { type: "playlist", op: "panel" };
     default:
       return null;
   }

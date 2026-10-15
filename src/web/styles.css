@@ -663,3 +663,9 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .au-sub .dim { margin-left: 6px; }
 .au-dn { align-items: center; font-size: .85em; }
 .au-dn .dn-auto { color: var(--t6); } .au-dn .dn-learning { color: var(--t3); } .au-dn .dn-learned { color: var(--t4); }
+
+/* ---- Playlist shuffle / repeat buttons in the control bar (spec 4.8) ---- */
+.cbtn.plbtn { gap: 5px; }
+.cbtn.plbtn.on { background: var(--bg3); border-color: var(--fg3); }
+.cbtn:disabled { opacity: .55; cursor: default; }
+.cbtn:disabled:hover { background: transparent; }

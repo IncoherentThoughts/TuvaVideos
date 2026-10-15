@@ -21,6 +21,8 @@ import { StatePanel } from "./StatePanel";
 import { AudioEngine } from "./audioEngine";
 import { isDefaultAudio, type AudioState } from "../shared/audio";
 import { api, apiError, replaceVideo } from "./data";
+import type { Playlist } from "../shared/playlist";
+import { openAt, reachedEnd, repeatIcon, resumeAllowed, seekWidens, type EntryRange, type Move } from "../shared/playlistPlayer";
 
 export type { ChapterMark } from "./Timeline";
 
@@ -65,6 +67,22 @@ interface Props {
   stateHost?: { current: HTMLElement | null };
   /** `<` `>`: navigate to the neighbour in Playing from; the returned text goes to the OSD (null: nothing to step to). */
   onStep(dir: 1 | -1): string | null;
+  /** The active Playlist (spec 4.8) or null: Playing from behaviour (the Video loops itself). */
+  playlist?: Playlist | null;
+  /** The part of this Video the current Entry plays; null with no Playlist. */
+  entry?: EntryRange | null;
+  /** The Entry ended (`end`) or `n` / `>` was pressed (`key`): the page advances the Playlist and navigates; the reply says what to do here. */
+  onPlaylistNext?(via: "end" | "key"): { kind: Move["kind"]; label: string | null };
+  /** `N` / `<`: the OSD text, null when there is no earlier Entry. */
+  onPlaylistPrev?(): string | null;
+  /** `x` / the shuffle icon: starts a whole-library Playlist when none is active, else toggles the Play order; returns the OSD text. */
+  onPlaylistShuffle?(): string;
+  /** `e` / the repeat icon: cycles Repeat; returns the OSD text. */
+  onPlaylistRepeat?(): string;
+  /** `q`: the Playlist panel (ticket #68). */
+  onPlaylistPanelToggle?(): void;
+  /** A seek or step went past the end of a Chapter Entry: it becomes a Video Entry. */
+  onPlaylistWiden?(): void;
 }
 
 // Volume and mute survive stepping from one Video to the next within a page session (not persisted).
@@ -98,6 +116,18 @@ const FS_ICON = (
     <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
   </svg>
 );
+const SHUFFLE_ICON = (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+  </svg>
+);
+const REPEAT_ICON = (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m17 2 4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+  </svg>
+);
 const PLAY_ICON = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
     <path d="M8 5v14l11-7z" />
@@ -109,7 +139,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistPanelToggle, onPlaylistWiden }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -141,6 +171,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   // ---- mutable state that handlers read ----
   const V = useRef(video);
   V.current = video;
+  const PL = useRef({ playlist, entry, next: onPlaylistNext, widen: onPlaylistWiden });
+  PL.current = { playlist, entry, next: onPlaylistNext, widen: onPlaylistWiden };
   const R = useRef({
     copyId: null as number | null,
     token: 0, // bumped by every load and on unmount; a stale async load stops when it sees a newer one
@@ -162,6 +194,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     flashTimer: 0 as unknown as ReturnType<typeof setTimeout>,
     seekWrite: 0 as unknown as ReturnType<typeof setTimeout>,
     firstT: true,
+    entryDone: false, // the Entry's end was handled once; cleared when the playhead is back inside it
   });
   const rateRef = useRef(1);
   const alwaysRef = useRef(false);
@@ -255,7 +288,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     const token = ++r.token;
     r.copyId = id;
     r.wasPlaying = play;
-    r.resumeOn = true;
+    r.resumeOn = resumeAllowed(!!PL.current.playlist); // inside a Playlist no Resume position is ever written (spec 4.8)
     setCopyId(id);
     setPhase("loading");
     setPrep(null);
@@ -316,7 +349,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       r.hold = startPosition({ t: startT, resumeS: video.resumeS, durationS: video.durationS });
       setPhase("unavailable");
     } else {
-      void loadCopy(c.id, startPosition({ t: startT, resumeS: video.resumeS, durationS: c.durationS ?? video.durationS }), true);
+      void loadCopy(c.id, openAt({ t: startT, resumeS: video.resumeS, durationS: c.durationS ?? video.durationS }, !!PL.current.playlist), true);
     }
     refocus();
     return () => {
@@ -334,6 +367,11 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     };
   }, []);
 
+  // a Playlist starting (or ending) under a playing Video: no Resume writes from now on (spec 4.8)
+  useEffect(() => {
+    if (R.current.started) R.current.resumeOn = resumeAllowed(!!playlist);
+  }, [!!playlist]);
+
   // `?t=` changed while this Video is open (a Chapter row or result for the same Video): seek there
   useEffect(() => {
     const r = R.current;
@@ -341,7 +379,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       r.firstT = false;
       return;
     }
-    if (startT != null && r.started) seekTo(startT);
+    if (startT != null && r.started) seekTo(startT, "exact", undefined, false, true);
   }, [startT]);
 
   // the library poll: a Root unmounting under the playing Copy, or a Copy coming back after "unavailable"
@@ -365,11 +403,13 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
    * `keyframe` snaps to the Copy's keyframe index when it has arrived (nearest to `t`; for a relative seek `from` is
    * where it started, so it always moves). `throttled`: one seek in flight, the latest target wins (held keys).
    */
-  const seekTo = (t: number, mode: SeekMode = "exact", from?: number, throttled = false) => {
+  const seekTo = (t: number, mode: SeekMode = "exact", from?: number, throttled = false, internal = false) => {
     const v = vid.current;
     if (!v || v.readyState === 0) return;
     const dur = Number.isFinite(v.duration) ? v.duration : null;
     let c = clampTime(t, dur);
+    const pl = PL.current;
+    if (!internal && pl.playlist && pl.entry && seekWidens(pl.entry, c)) pl.widen?.(); // past the Chapter Entry's end: it is a Video Entry now
     if (mode === "keyframe" && R.current.keyframes) c = clampTime(keyframeSeekTarget(c, R.current.keyframes, from), dur);
     R.current.seekTarget = c;
     throttle.current.request(c, throttled);
@@ -403,7 +443,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       if (v.videoWidth && v.videoHeight) setAspect(v.videoWidth / v.videoHeight);
       if (at > 0) v.currentTime = clampTime(at, v.duration);
       r.started = true;
-      r.resumeOn = true;
+      r.resumeOn = resumeAllowed(!!PL.current.playlist);
       r.lastPos = at;
       setTime(at);
       setPhase("ready");
@@ -457,6 +497,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       setVol({ volume: v.volume, muted: v.muted });
     });
     on("ended", () => {
+      if (PL.current.playlist) return void entryEnded();
       // loop by default (as mpv's --loop-file): back to A with an A-B loop set, else to the start
       const t = abLoopTarget(r.ab, v.currentTime, true) ?? 0;
       v.currentTime = t;
@@ -481,7 +522,13 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       r.lastPos = t;
       if (!v.paused) {
         const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : abLoopTarget(r.ab, t);
-        if (tgt != null) seekTo(tgt);
+        if (tgt != null) seekTo(tgt, "exact", undefined, false, true);
+        const pl = PL.current;
+        if (pl.playlist && pl.entry?.end != null) {
+          if (reachedEnd(pl.entry, t)) {
+            if (!r.entryDone && !v.seeking) entryEnded();
+          } else if (t < pl.entry.end - 0.5) r.entryDone = false;
+        }
         if (clock.current.tick(Date.now(), true)) writeResume();
       }
       const now = performance.now();
@@ -502,6 +549,24 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       document.removeEventListener("visibilitychange", vis);
     };
   }, []);
+
+  /** The current Entry is over (the Video ended, or a Chapter Entry reached the next Chapter): Repeat one restarts it, else the Playlist advances (spec 4.8). */
+  const entryEnded = () => {
+    const r = R.current;
+    const v = vid.current;
+    const { playlist: pl, entry: range, next } = PL.current;
+    if (!pl || !v || !next || r.entryDone) return;
+    r.entryDone = true;
+    const move = next("end");
+    if (move.kind === "restart") {
+      seekTo(range?.start ?? 0, "exact", undefined, false, true);
+      r.entryDone = false;
+      void v.play().catch(() => {});
+    } else if (move.kind === "ended") {
+      v.pause();
+      say("Playlist ended", 4000);
+    } else if (move.label) say(move.label, 2200);
+  };
 
   /** The element failed: ask the server why. A Fallback still being made is "preparing"; a gone Copy fails over. */
   const onMediaError = async () => {
@@ -587,6 +652,33 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   };
   closeStudioRef.current = closeStudio;
 
+  /** The Playlist keys (spec 4.8). `n` at the end with Repeat off does nothing; `N` and the rest say what they did. */
+  const playlistOp = (op: Extract<PlayerAction, { type: "playlist" }>["op"]) => {
+    switch (op) {
+      case "next": {
+        if (!playlist) return say("No Playlist: press x to shuffle the library", 2000);
+        const m = onPlaylistNext?.("key");
+        if (m?.label) say(m.label, 2200);
+        break;
+      }
+      case "prev": {
+        if (!playlist) return say("No Playlist: press x to shuffle the library", 2000);
+        const label = onPlaylistPrev?.();
+        if (label) say(label, 2200);
+        break;
+      }
+      case "shuffle":
+        say(onPlaylistShuffle?.() ?? "Shuffle");
+        break;
+      case "repeat":
+        say(playlist ? (onPlaylistRepeat?.() ?? "Repeat") : "Repeat: one (this Video loops; shuffle to start a Playlist)", 2000);
+        break;
+      case "panel":
+        onPlaylistPanelToggle?.();
+        break;
+    }
+  };
+
   const perform = (a: PlayerAction) => {
     const v = vid.current;
     if (!v) return;
@@ -669,10 +761,18 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         if (onAddChapter) onAddChapter(v.currentTime);
         break;
       case "video": {
+        if (playlist) {
+          const label = a.dir > 0 ? onPlaylistNext?.("key").label : onPlaylistPrev?.();
+          say(label ?? "No other Entry in the Playlist", 2200);
+          break;
+        }
         const label = onStep(a.dir);
         say(label ?? "No other Video in Playing from", 2200);
         break;
       }
+      case "playlist":
+        playlistOp(a.op);
+        break;
       case "screenshot":
         void takeScreenshot();
         break;
@@ -718,6 +818,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const volState = vol.muted || vol.volume === 0 ? "off" : vol.volume < 0.5 ? "low" : "high";
   const showStatus = osdAlways || osdFlash;
   const poster = video.thumbnail?.poster;
+  const rep = repeatIcon(playlist);
 
   return (
     <div
@@ -807,6 +908,12 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
             {ab.b != null ? ` – B ${fmtClock(ab.b)}` : ""}
           </span>
         )}
+        <button class={`cbtn statebtn plbtn${playlist?.shuffled ? " on" : ""}`} tabIndex={-1} aria-pressed={!!playlist?.shuffled} title={playlist ? `Shuffle ${playlist.shuffled ? "on" : "off"} (x while the Player has focus)` : "Shuffle the library into a Playlist (x while the Player has focus)"} onClick={() => (say(onPlaylistShuffle?.() ?? "Shuffle"), refocus())}>
+          {SHUFFLE_ICON} <kbd>x</kbd>
+        </button>
+        <button class={`cbtn statebtn plbtn${rep.mode !== "off" && !rep.disabled ? " on" : ""}`} tabIndex={-1} disabled={rep.disabled} title={rep.disabled ? "Repeat: one. This Video loops until you pick another; shuffle starts a Playlist (e)" : `Repeat ${rep.mode}: click to cycle off, list, one (e while the Player has focus)`} onClick={() => (say(onPlaylistRepeat?.() ?? "Repeat"), refocus())}>
+          {REPEAT_ICON} <span class="mono">{rep.mode}</span> <kbd>e</kbd>
+        </button>
         <span class="grow" />
         <button class={`cbtn studiobtn${studio ? " on" : ""}`} tabIndex={-1} aria-pressed={!!studio} title="Studio playback in Music.app (t)" onClick={() => (studio ? void closeStudio() : void openStudio(), refocus())}>
           Studio

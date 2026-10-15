@@ -293,6 +293,8 @@ TV app; persisting a Playlist in the DB or across tabs; a key for "show played";
 
 Pure state in `shared/playlist.ts` (#65): a Playlist is `{ source, entries, order, cursor, shuffled, repeat }` where `order` is a permutation of Entry indices and `cursor` points at the current one, so Played is everything before the cursor in Play order and upcoming everything after. The transitions (`startPlaylist`, `setShuffled`, `cycleRepeat`, `advance`, `stepBack`, `jumpTo`, `jumpToVideo`, `widenToVideo`) are pure, take an injectable rng, and are tested; `advance` reports `ended` rather than deciding what the Player does about it, and Repeat one is handled by the Player's end-of-Entry path, not by `advance`. The browser keeps the active Playlist in `web/playlist.ts`, mirrored to sessionStorage `tuva.playlist` and validated on load.
 
+The Player side (#66) is pure too: `shared/playlistPlayer.ts` holds the Entry's range (a Chapter Entry ends at the next Chapter's start or the Video's end), end and widen detection, the `n` / end-of-Entry move (`nextEntry`: restart, move, ended, none) and the icon states. The Chapter Entry end is checked on the Player's 50 ms tick (a background tab keeps playing), not `timeupdate`. The State panel's key guide is `shared/keyguide.ts`, diffed against `keyAction` by a test.
+
 ---
 
 ## 5. Screens and design

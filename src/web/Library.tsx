@@ -6,7 +6,9 @@ import {
 } from "../shared/libraryView";
 import type { SongDto, VideoDto } from "../shared/types";
 import { api, useStore } from "./data";
+import { libraryFiltered, libraryStart } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
+import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, SpecTags, Tags } from "./ui";
 import { useWindowed } from "./windowed";
@@ -62,6 +64,14 @@ export function Library({ search }: { search: string }) {
 
   const go = (patch: Partial<LibraryState>) => navigate(`/${libraryQuery({ ...st, ...patch })}`, { replace: true });
   const toggleType = (t: (typeof TYPES)[number]) => go({ types: st.types.includes(t) ? st.types.filter((x) => x !== t) : [...st.types, t] });
+  // "shuffle random" (spec 4.8): the grid as shown; the whole library is the "library-all" source.
+  const shuffleRandom = () => {
+    const ids = shown.map((v) => v.id);
+    const { entries, source } = libraryStart(ids, libraryFiltered(st));
+    savePlayingFrom("library", ids);
+    const first = startShuffle(entries, source);
+    if (first) navigate(playHref(first.videoId, null));
+  };
 
   return (
     <div class="page">
@@ -114,6 +124,9 @@ export function Library({ search }: { search: string }) {
           {st.dir === "asc" ? "↑" : "↓"}
         </button>
         <span class="count">{videos ? `${shown.length} of ${videos.length}` : "loading…"}</span>
+        <button class="chip shuffle" disabled={shown.length === 0} title="Play the Videos shown, in a random order" onClick={shuffleRandom}>
+          shuffle random
+        </button>
       </div>
       {videos && shown.length === 0 ? (
         <div class="empty-state">

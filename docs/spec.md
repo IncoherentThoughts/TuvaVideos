@@ -268,10 +268,10 @@ Right of the A-B label, before the spacer: a **shuffle** icon and a **repeat** i
 
 - Lives in the right-hand drawer column at the same width. Opens beneath whichever of Audio / State / Lyrics is open, or alone in their slot. Those three keep excluding each other; the Playlist panel excludes nothing. Toggle with `q`, the control-bar button, or the panel's close button; closing the panel keeps the Playlist.
 - Header: "Playlist", then prev (`N`), next (`n`), shuffle (`x`), repeat (`e`), a "show played" toggle, close. Count "n of N" under the title.
-- Body: the current Entry highlighted at the top, then upcoming Entries in play order. Played Entries are hidden until "show played" is on, then listed above the current one in the order they were played. "show played" resets to off whenever a new Playlist starts and is not persisted.
+- Body: the current Entry highlighted at the top, then upcoming Entries in play order. Played Entries are hidden until "show played" is on, then listed above the current one in the order they were played. "show played" resets to off whenever a new Playlist starts and is not persisted. The panel opens when a Playlist starts (also from a list page) and closes when the Playlist ends; the open state survives moving between Videos of the Playlist but not a reload.
 - Each row: Thumbnail poster, Video title (Latin title beneath when present), Chapter title for a Chapter Entry, the Video's Type and Artists as the tag line. Click jumps to that Entry (a Played one too). Unavailable rows are greyed.
-- The list is windowed with the grid's `useWindowed`, about 25 rows at a time, extending on scroll. The Playlist itself holds every id.
-- Fully keyboard-driven for the actions above; no key for "show played" yet.
+- The list is windowed with the grid's `useWindowed` (observing the panel body, not the window), about 25 rows at a time, extending on scroll; the current row is always rendered and scrolled into view when it changes. The Playlist itself holds every id.
+- The header buttons are Tab-reachable and `Esc` inside the panel closes it and refocuses the Player; `n N x e q` work while the Player has focus. No key for "show played" yet. The control-bar `Playlist q` button is disabled with no Playlist.
 
 #### Keys
 

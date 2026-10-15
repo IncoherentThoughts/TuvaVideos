@@ -86,8 +86,13 @@ export function repeatIcon(pl: Playlist | null): { mode: Repeat; disabled: boole
   return pl ? { mode: pl.repeat, disabled: false } : { mode: "one", disabled: true };
 }
 
-export const shuffleLabel = (pl: Playlist) => `Shuffle: ${pl.shuffled ? "on" : "off"}`;
+// OSD wording for the Playlist actions (spec 4.8): one place so the keys, the control bar and the panel say the same thing.
+export const shuffleLabel = (pl: Playlist) => `Shuffle ${pl.shuffled ? "on" : "off"}`;
+export const shuffleStartLabel = (n: number) => `Shuffle on · Playlist of ${n}`;
 export const repeatLabel = (pl: Playlist) => `Repeat: ${pl.repeat}`;
+export const nextLabel = (title: string) => `Next: ${title}`;
+export const prevLabel = (title: string) => `Previous: ${title}`;
+export const ENDED_LABEL = "Playlist ended";
 
 /** Whether a Playlist is the one this screen is showing: its current Entry is for this Video. */
 export function playlistFor(pl: Playlist | null, videoId: number): Playlist | null {

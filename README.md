@@ -13,6 +13,42 @@ bun run app          # builds ~/Applications/TuvaVideos.app: a double-click laun
 
 Data lives under `~/Library/Application Support/TuvaVideos/` (`library.db`, `thumbs/`, `remux/`, `youtube-info/`, `studio-dump.json`, `log.txt`). `TUVA_PORT`, `TUVA_DATA_DIR` and `TUVA_NO_OPEN=1` override the port, the data dir and the tab for tests. ffmpeg, ffprobe and cwebp are taken from `/opt/homebrew/bin` (native arm64), then `/usr/local/bin`, then `PATH`; `TUVA_BIN_DIR` puts another directory first.
 
+## Player keys
+
+Bare keys, handled while the Player has focus (`Esc` or `v` brings focus back). The State panel (`i`) lists the same keys.
+
+| Key | Does |
+|---|---|
+| `space` `p` | pause / play |
+| `←` `→` | seek ±5 s |
+| `↓` `↑` | seek ±60 s |
+| `⇧←` `⇧→` | exact ±1 s |
+| `,` `.` | frame step back / forward |
+| `[` `]` | speed ∓0.1 |
+| `{` `}` | speed ½ / ×2 |
+| `⌫` | speed 1.0 |
+| `9` `0` | volume ±5 |
+| `m` | mute |
+| `f` | fullscreen |
+| `l` | A-B loop (A, B, off) |
+| `!` `@`, `PgUp` `PgDn` | previous / next Chapter |
+| `<` `>` | previous / next Video (Entry in a Playlist) |
+| `r` | random Video (works anywhere) |
+| `s` | screenshot |
+| `o` `O` | OSD flash / always |
+| `c` | add Chapter here |
+| `t` | Studio playback |
+| `i` | State panel |
+| `y` | lyrics drawer |
+| `a` | Audio panel |
+| `n` `N` | Playlist next / previous Entry |
+| `x` | shuffle (starts a whole-library Playlist) |
+| `e` | Repeat off / list / one |
+| `q` | Playlist panel |
+| `/` | focus search |
+| `Esc` | back to the Player |
+| `v` | back to the Player (from anywhere) |
+
 ## One-off commands
 
 | Command | Does |

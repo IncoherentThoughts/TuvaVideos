@@ -25,6 +25,15 @@ import { openingVersionIndex } from "../../src/shared/lyrics/trackVersion";
 import { startPosition } from "../../src/shared/resume";
 import { BASE, type Ctx, type From, type Screen, TYPE_COLOR, api, artistColor, esc, fmtTime, focus, focusables, getFocused, moveFocus, poster, stepFrom, toast } from "./shared";
 
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min, s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
 export type PlayerVariant = "A" | "B" | "C";
 export const PLAYER_VARIANTS: Record<PlayerVariant, string> = { A: "Reader beside", B: "Overlay", C: "Stage" };
 export const PLAYER_KEYS = Object.keys(PLAYER_VARIANTS) as PlayerVariant[];
@@ -84,7 +93,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
   <div class="pl-msg" hidden></div>
 </div>
 <aside class="pl-lyrics">
-  <div class="glow"><img src="${poster(video)}" alt=""><div class="vig"></div><div class="tint"></div><div class="grain"></div></div>
+  <div class="glow"><img src="${poster(video)}" crossorigin="anonymous" alt=""><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i><div class="vig"></div><div class="tint"></div><div class="grain"></div></div>
   <div class="hd"><h2></h2><div class="scripts"></div></div><div class="lines"></div><div class="pager mono"></div>
 </aside>`,
     C: `<div class="pl-stage">
@@ -148,6 +157,37 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
     layout();
     showOsd();
   };
+
+  // B: the backdrop's colours. A dark poster blurs to black, so the poster is sampled into a 12×12 canvas, its four
+  // most vivid cells (far apart in hue) are lifted to a fixed lightness, and those colours drive the drifting blobs.
+  if (V === "B") {
+    const img = $<HTMLImageElement>(".glow img");
+    const paint = () => {
+      try {
+        const N = 12, c = document.createElement("canvas");
+        c.width = c.height = N;
+        const g = c.getContext("2d")!;
+        g.drawImage(img, 0, 0, N, N);
+        const d = g.getImageData(0, 0, N, N).data;
+        const cells: { h: number; s: number; l: number; score: number }[] = [];
+        for (let i = 0; i < d.length; i += 4) {
+          const [h, sat, l] = rgbToHsl(d[i]!, d[i + 1]!, d[i + 2]!);
+          cells.push({ h, s: sat, l, score: sat * (1 - Math.abs(l - 0.45)) });
+        }
+        cells.sort((a, b) => b.score - a.score);
+        const picked: typeof cells = [];
+        for (const x of cells) {
+          if (picked.length === 4) break;
+          if (picked.every((p) => Math.min(Math.abs(p.h - x.h), 360 - Math.abs(p.h - x.h)) > 25)) picked.push(x);
+        }
+        // a grey poster (black and white footage) gives no hue worth keeping: warm defaults, spread around the wheel
+        const base = picked[0] && picked[0].s > 0.15 ? picked[0].h : 25;
+        while (picked.length < 4) picked.push({ h: (base + 35 * picked.length) % 360, s: .55, l: .4, score: 0 });
+        picked.forEach((x, i) => panel.style.setProperty(`--g${i + 1}`, `hsl(${Math.round(x.h)} ${Math.round(Math.max(65, x.s * 100))}% ${i === 0 ? 56 : 48}%)`));
+      } catch { /* a tainted canvas on the TV: the blobs keep their default warm colours */ }
+    };
+    if (img.complete && img.naturalWidth) paint(); else img.addEventListener("load", paint);
+  }
 
   // ---- playback ----
   if (copy) {

@@ -240,27 +240,38 @@ img { display: block; }
 .pl-B .cr.f { background: var(--accent); color: var(--accent-fg); }
 .pl-B .cr.f .mono { color: var(--accent-fg); }
 .pl-B.strip .pl-top { opacity: 0 !important; }
-.pl-B .pl-lyrics { position: relative; overflow: hidden; width: 720px; min-width: 0; max-width: none; border: 0; background: #0d0c0b; padding: 56px 64px 48px; }
+.pl-B .pl-lyrics { position: relative; isolation: isolate; overflow: hidden; width: 720px; min-width: 0; max-width: none; border: 0; background: #0d0c0b; padding: 56px 64px 48px; }
 .pl-B.lyrics .pl-lyrics { display: flex; }
 .pl-B .pl-lyrics > :not(.glow) { position: relative; z-index: 1; }
 .pl-B .pl-lyrics .hd h2 { font-size: 34px; }
 .pl-B .pl-lyrics .hd h2 .en { display: inline; font-size: 24px; color: var(--fg2); margin-left: 10px; }
 .pl-B .pl-lyrics .scripts { margin-top: 12px; }
 .pl-B .pl-lyrics .scripts span { font-size: 20px; padding: 5px 14px; }
-.pl-B .pl-lyrics .lines { font-size: 44px; line-height: 1.4; text-shadow: 0 2px 8px #000c; margin-top: 26px; }
+/* a tight shadow only: a wide one on dense 44 px text overlaps into a veil that hides the backdrop */
+.pl-B .pl-lyrics .lines { font-size: 44px; line-height: 1.4; text-shadow: 0 1px 2px #000a; margin-top: 26px; }
 .pl-B .pl-lyrics .sp { height: 36px; }
-/* the living backdrop: the poster, blurred and saturated, drifting and breathing slowly; vignette, tint and grain over it */
-.pl-B .glow { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-.pl-B .glow img { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; object-fit: cover; filter: blur(48px) saturate(2.4) brightness(.95); will-change: transform; animation: glow-drift 38s ease-in-out infinite alternate, glow-hum 11s ease-in-out infinite alternate; }
+/* the living backdrop: the poster blurred underneath, four blobs in the poster's sampled colours drifting over it at
+   different speeds, then vignette, tint and grain */
+.pl-B .pl-lyrics { --g1: hsl(25 70% 46%); --g2: hsl(200 60% 38%); --g3: hsl(45 70% 38%); --g4: hsl(330 55% 38%); }
+.pl-B .glow { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #0d0c0b; }
+.pl-B .glow img { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; object-fit: cover; opacity: .7; filter: blur(48px) saturate(2.4) brightness(1.1); will-change: transform; animation: glow-drift 38s ease-in-out infinite alternate; }
 @keyframes glow-drift { from { transform: translate(-4%, -3%) rotate(-3deg) scale(1.05); } to { transform: translate(4%, 3%) rotate(3deg) scale(1.18); } }
-@keyframes glow-hum { from { filter: blur(48px) saturate(2.2) brightness(.85); } to { filter: blur(56px) saturate(2.8) brightness(1.1); } }
+.pl-B .blob { position: absolute; width: 1000px; height: 1000px; border-radius: 50%; filter: blur(50px); opacity: 1; mix-blend-mode: screen; will-change: transform; }
+.pl-B .b1 { background: radial-gradient(circle, var(--g1) 0%, transparent 62%); left: -300px; top: -200px; animation: blob-a 23s ease-in-out infinite alternate; }
+.pl-B .b2 { background: radial-gradient(circle, var(--g2) 0%, transparent 62%); right: -350px; top: 150px; animation: blob-b 29s ease-in-out infinite alternate; }
+.pl-B .b3 { background: radial-gradient(circle, var(--g3) 0%, transparent 62%); left: -200px; bottom: -350px; animation: blob-c 19s ease-in-out infinite alternate; }
+.pl-B .b4 { background: radial-gradient(circle, var(--g4) 0%, transparent 62%); right: -250px; bottom: -250px; animation: blob-d 34s ease-in-out infinite alternate; }
+@keyframes blob-a { from { transform: translate(0, 0) scale(1); opacity: .75; } to { transform: translate(220px, 160px) scale(1.25); opacity: 1; } }
+@keyframes blob-b { from { transform: translate(0, 0) scale(1.1); opacity: .8; } to { transform: translate(-200px, 260px) scale(.9); opacity: .95; } }
+@keyframes blob-c { from { transform: translate(0, 0) scale(.95); opacity: .7; } to { transform: translate(260px, -180px) scale(1.2); opacity: .95; } }
+@keyframes blob-d { from { transform: translate(0, 0) scale(1.15); opacity: .75; } to { transform: translate(-240px, -220px) scale(.95); opacity: .9; } }
 .pl-B .glow .vig { position: absolute; inset: 0; background:
-  radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #0d0c0b55 100%),
-  radial-gradient(ellipse 70% 60% at 50% 100%, transparent 0%, #0d0c0b55 100%),
-  radial-gradient(ellipse 40% 80% at 0% 50%, transparent 0%, #0d0c0b44 100%),
-  radial-gradient(ellipse 40% 80% at 100% 50%, transparent 0%, #0d0c0b44 100%); }
-.pl-B .glow .tint { position: absolute; inset: 0; background: linear-gradient(180deg, #0d0c0b3a, #0d0c0b80); }
-.pl-B .glow .grain { position: absolute; inset: 0; opacity: .28; mix-blend-mode: overlay; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #0d0c0b33 100%),
+  radial-gradient(ellipse 70% 60% at 50% 100%, transparent 0%, #0d0c0b33 100%),
+  radial-gradient(ellipse 40% 80% at 0% 50%, transparent 0%, #0d0c0b28 100%),
+  radial-gradient(ellipse 40% 80% at 100% 50%, transparent 0%, #0d0c0b28 100%); }
+.pl-B .glow .tint { position: absolute; inset: 0; background: linear-gradient(180deg, #0d0c0b22, #0d0c0b60); }
+.pl-B .glow .grain { position: absolute; inset: 0; opacity: .18; mix-blend-mode: overlay; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
 /* C — Stage: a 1240×697 video window, lyrics beside, the band of Chapters and info below; nothing fades */
 .pl-C { display: grid; grid-template-columns: 1240px minmax(0, 1fr) !important; grid-template-rows: 697px minmax(0, 1fr); background: var(--bg); }

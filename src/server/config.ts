@@ -14,6 +14,8 @@ export interface Config {
   /** Cached Music.app library dump (spec 7.2). */
   studioDumpPath: string;
   port: number;
+  /** The TV Server port (tv-spec 2.1); `TUVA_TV_PORT` overrides it, for tests only. */
+  tvPort: number;
   /**
    * A second server on the real library (another port, default data dir), e.g. a test preview: it scans only on an
    * explicit Rescan, never at startup or remount, so starting it does not re-scan and re-thumbnail the library.
@@ -44,6 +46,7 @@ export function findBin(name: string, env: Record<string, string | undefined> = 
 
 /** All paths and knobs in one place. `TUVA_*` env vars exist for tests and the smoke run only. */
 export const DEFAULT_PORT = 4400;
+export const DEFAULT_TV_PORT = 4401;
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const dataDir = env.TUVA_DATA_DIR ?? join(homedir(), "Library", "Application Support", "TuvaVideos");
@@ -58,6 +61,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     logPath: join(dataDir, "log.txt"),
     studioDumpPath: join(dataDir, "studio-dump.json"),
     port,
+    tvPort: Number(env.TUVA_TV_PORT ?? DEFAULT_TV_PORT),
     passive: port !== DEFAULT_PORT && env.TUVA_DATA_DIR === undefined,
     localRoot: env.TUVA_LOCAL_ROOT ?? "/Users/evanwilliams/Desktop/Khoomei/Videos",
     externalRoot: env.TUVA_EXTERNAL_ROOT,

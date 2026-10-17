@@ -11,6 +11,7 @@ import { containerFor, parseFilename } from "./filename";
 import { decidePlayback } from "./playback";
 import { probeFile } from "./probe";
 import type { RootRow } from "./roots";
+import { judgeStaleCopies } from "./tvJudge";
 
 export interface RelocateBody {
   path: string;
@@ -100,8 +101,9 @@ export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxD
     if (target.fallback_file) await unlink(resolve(cfg.remuxDir, target.fallback_file)).catch(() => {});
     db.query(
       `UPDATE copy SET root_id = ?, rel_path = ?, size = ?, mtime = ?, duration_s = ?, container = ?, video_codec = ?, audio_codec = ?, width = ?, height = ?,
-         r_frame_rate = ?, playback = ?, fallback_file = NULL, content_hash = NULL, missing_since = NULL WHERE id = ?`,
+         r_frame_rate = ?, playback = ?, tv_playback = NULL, tv_profile_version = NULL, fallback_file = NULL, content_hash = NULL, missing_since = NULL WHERE id = ?`,
     ).run(root.id, rel, ...facts, target.id);
+    judgeStaleCopies(db);
     return { ok: true, value: { copyId: target.id, rootId: root.id } };
   }
   const id = Number(
@@ -110,5 +112,6 @@ export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxD
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(videoId, root.id, rel, ...facts).lastInsertRowid,
   );
+  judgeStaleCopies(db);
   return { ok: true, value: { copyId: id, rootId: root.id } };
 }

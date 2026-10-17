@@ -1,5 +1,8 @@
 // Shapes of the JSON the server sends and the web UI reads.
 import type { VideoType } from "./filters";
+import type { TvDecision } from "./playbackProfile";
+
+export type { TvDecision };
 
 export interface ArtistRef {
   id: number;
@@ -33,6 +36,13 @@ export interface StripDto {
   intervalS: number | null;
 }
 
+/** The TV Playback profile's result for a Copy and the source the TV plays (docs/tv-spec.md 3.1, 3.2). */
+export interface TvCopyDto {
+  /** Null until the Copy is judged (a moment after a scan or a new profile version). */
+  decision: TvDecision | null;
+  order: "file" | "fallback" | "live";
+}
+
 export interface CopyDto {
   id: number;
   rootKind: "local" | "external";
@@ -49,6 +59,7 @@ export interface CopyDto {
   available: boolean;
   missing: boolean;
   playback: "native" | "remux" | "transcode";
+  tv: TvCopyDto;
   fallback: { state: string; progress?: number | null; error?: string };
   url: string;
   /** Absolute path of the file on disk. */

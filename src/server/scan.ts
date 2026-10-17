@@ -15,6 +15,7 @@ import { isDeleted } from "./deleteVideo";
 import { isIoError, sleep } from "./proc";
 import type { RootRow, Roots } from "./roots";
 import { rebuildSearchIndex } from "./search";
+import { judgeStaleCopies } from "./tvJudge";
 
 const SKIP_DIRS = new Set(["$RECYCLE.BIN", "System Volume Information", "node_modules"]);
 const PROBE_CONCURRENCY = 4;
@@ -255,6 +256,7 @@ export class Scanner {
     });
 
     this.prog.phase = "finishing";
+    judgeStaleCopies(this.db); // new and changed Copies, and any judged under an older TV profile version (tv-spec 3.1)
     await this.markMissing(root, existing, seen, failedDirs, summary);
     applyPerformanceDefaults(this.db); // Videos still at `other` with no Song (spec 2.3); edited ones are skipped
     suggestSongsFromTitles(this.db); // then Songs from titles, for the Videos no Performance gave one
@@ -305,7 +307,7 @@ export class Scanner {
       this.db
         .prepare(
           `UPDATE copy SET size = ?, mtime = ?, duration_s = ?, container = ?, video_codec = ?, audio_codec = ?, width = ?, height = ?,
-             r_frame_rate = ?, playback = ?, fallback_file = NULL, keyframes = NULL, content_hash = COALESCE(?, content_hash), missing_since = NULL WHERE id = ?`,
+             r_frame_rate = ?, playback = ?, tv_playback = NULL, tv_profile_version = NULL, fallback_file = NULL, keyframes = NULL, content_hash = COALESCE(?, content_hash), missing_since = NULL WHERE id = ?`,
         )
         .run(entry.size, mtime, ...facts, contentHash, row.id);
       summary.updatedCopies++;

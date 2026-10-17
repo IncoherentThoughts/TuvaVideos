@@ -39,7 +39,7 @@ A Copy whose Root is mounted but whose file is no longer there. Kept, not delete
 _Avoid_: deleted, gone, orphaned, stale
 
 **Resume position**:
-The timestamp the user last left a Video at; playback reopens there without asking. A position within the last 30 seconds counts as finished and reopens at the start.
+The timestamp the user last left a Video at; playback reopens there without asking. One per Video, shared by every player (the browser and the TV app), the last writer winning. A position within the last 30 seconds counts as finished and reopens at the start.
 _Avoid_: progress, watch position, bookmark
 
 **Preferred Copy**:

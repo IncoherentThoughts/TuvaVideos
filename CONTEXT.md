@@ -189,8 +189,8 @@ The link data every signed-in user sees and Video Editors maintain in the archiv
 _Avoid_: synced, cloud, remote, mirror (which is the retired read-only copy)
 
 **Standalone**:
-Using the app without an account. Everything is local, exactly as the single-user app behaves today; none of the Shared data is visible, and nothing leaves the machine.
-_Avoid_: offline (which is a Member without a connection), guest, anonymous mode, local mode
+Using the app with no session on this machine. Everything is local and nothing leaves the machine; the Shared data it holds is whatever the last Sync left, read-only, and nothing at all on a machine that never signed in.
+_Avoid_: offline (which is a Member without a connection), signed out (as the noun), guest, anonymous mode, local mode
 
 **Member**:
 A person signed in with a Tuvan Lyrics Archive account. Reads the Shared data and browses it with their own Copies, Favorites and Resume positions; cannot change it.
@@ -207,3 +207,11 @@ _Avoid_: private, local video, pending, draft
 **Unverified (a Song, Version or Artist)**:
 A row promoted into the archive from a Video Editor's local additions and not yet checked against a source by an archive moderator. Visible and usable on both sites; cleared by a moderator.
 _Avoid_: local (its old name here), draft, hidden, provisional
+
+**Sync**:
+Refreshing this machine's local copy of the Shared data from the archive. Runs when a sign-in completes, at launch while signed in, after a Video Editor's own write, and from a button; never on a timer. The local copy outlives sign-out, read-only.
+_Avoid_: refresh, pull, download, cache (the copy, not the act)
+
+**Shelved (edits)**:
+The title, Type, Song and Version pointers, Artists and Chapters a Video carried on this machine before sign-in reconciliation replaced them with the Shared row. Kept locally, read-only, never synced; shown in a drawer on the Video, copyable back into the Shared data by a Video Editor as an ordinary edit, and clearable by hand. Made only by reconciliation.
+_Avoid_: backup, history, old tags, overlay, local edits

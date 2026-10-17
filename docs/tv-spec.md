@@ -149,7 +149,7 @@ Specified here, built last and deferrable (§9): no Copy in the library needs it
 - The installed app is a **thin signed shell** (`tv/shell/`, `.wgt`): `config.xml` with `<content src="index.html"/>`, the `internet` and `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>` (a Tizen access origin cannot be `http://*`; the address is only known at run time, so the discovery below is the restriction in practice), a permissive CSP meta tag as jellyfin-tizen ships, `webapis.js` injected, the olchey icon at 512×423 and app id `TuvaVideos.TuvaTV`.
 - At launch it finds the TV Server (§4.2), then loads the UI **live from it**: `index.html` fetches `/tv.js` and `/tv.css` from the TV Server and runs them, so UI updates ship with the Mac code and only the shell needs the certificate. Tizen APIs stay available because the page is packaged, not hosted.
 - The shell registers the media keys (MediaPlayPause, MediaPlay, MediaPause, MediaRewind, MediaFastForward, MediaTrackPrevious, MediaTrackNext), the four colour keys, ChannelUp/Down, Info and the digits 0–9 (the typed-address field needs them) with `registerKeyBatch` (Exit, long Back, stays unregistered and the system handles it), and maps every key through one table (§8) that the UI code shares.
-- The UI is **Preact in `src/tv/`**, sharing `src/shared/` (resume, playingFrom, playlist, fold, filters, libraryView, playerMath, stripGeometry) and bundled by `src/server/web.ts` at start next to the browser bundle. The throwaway prototype in `tv/home-prototype/` and the hello-world in `tv/hello-world/` stay as history and are not shipped.
+- The UI is **Preact in `src/tv/`**, sharing `src/shared/` (resume, playingFrom, playlist, fold, filters, libraryView, playerMath, stripGeometry, the last imported from `src/server/stripGeometry.ts` where it lives) and bundled by `TvBundle` in `src/server/web.ts` at start next to the browser bundle, served as `/tv.js` and `/tv.css`; `/` on the TV listener is a page that loads both, so the UI also runs in a desktop browser at `http://127.0.0.1:4401/` (no `window.tuvaTv`: the base is the page origin and the Player is muted). The throwaway prototype in `tv/home-prototype/` and the hello-world in `tv/hello-world/` stay as history and are not shipped.
 
 ### 4.2 Discovery
 
@@ -181,19 +181,19 @@ Verdict of #50 (variant B "Rails"); the prototype's `tv/home-prototype/variants.
 
 ### 5.1 Home
 
-- **Rails**, in order: **Favorites**, **Library** (most watched, with the browser app's Library filter and sort carried over from its URL state at launch), **Artists**, then **Continue watching** (Videos with a Resume position, most recent first), **Recently added**, **Concerts**, **Songs with lyrics**. Each rail ends in a **See all** tile that opens the full grid for that rail (§5.3). An empty rail is not shown.
+- **Rails**, in order: **Favorites**, **Library** (most watched: sort by view count; the browser app's Library filter and sort live in its URL, which the TV cannot read, so they are not carried over, #99), **Artists**, then **Continue watching** (Videos with a Resume position, most recent first), **Recently added**, **Concerts**, **Songs with lyrics**. Each rail shows its first 24 tiles and ends in a **See all** tile that opens the full grid for that rail (§5.3). An empty rail is not shown. The Artists rail and grid list Artists with Videos, most Videos first; the Songs-with-lyrics rail lists Songs with a lyrics Version, most performed first.
 - **Header**: **Search** and **Random** (plays a random available Video, as the browser's `r`).
 - A **card** is the browser's: poster with the duration in the corner, a Resume progress line when one exists, the favorite star; title; Type and Artist tags. A **Song tile** (Songs with lyrics, Songs grid) shows the poster of its newest Video, the name with its English name dimmed, counts.
 - **Focus** is the browser app's full-entry highlight: an inset accent ring (`--accent`) with a faint tint around the whole card, no scale, no glow. The focused rail scrolls its row; the focused card is kept in view with a margin.
 
 ### 5.2 Side pane
 
-- **Back** on the home, or **Left** at the start of a rail, slides in a Netflix-style pane from the left: **Library** (with filter chips: Type, Favorites, Sort, direction; Enter cycles a chip), **Favorites**, **Artists**, **Songs**, **Search**, **Random**, **Shuffle** (starts a whole-library Playlist, §6.7). Each of the first four opens a full grid in the main area.
-- **Right** closes the pane back to the grid or rails; **Back** inside the pane **exits the app** (Samsung remotes have no Menu key; Back is the convention).
+- **Back** on the home, or **Left** at the start of a rail, slides in a Netflix-style pane from the left: **Library** (with filter chips under it: Type, Favorites, Sort, direction; Enter cycles a chip; the chips are held in memory for the session and are the same ones the Library grid shows in its chip row), **Favorites**, **Artists**, **Songs**, **Search**, **Random**, **Shuffle** (starts a whole-library Playlist, §6.7). Each of the first four opens a full grid in the main area.
+- **Right** closes the pane back to the grid or rails; **Back** inside the pane opened over the home **exits the app** (Samsung remotes have no Menu key; Back is the convention); opened over a grid (Left at the first column) it only closes. Back from a grid that was opened from the pane reopens the pane on the same item.
 
 ### 5.3 Grids
 
-- Six-column poster grids for Library (as filtered), Favorites, Artists, Songs, search results, a Song's Videos, an Artist's Videos, and each rail's See all. Windowed like the browser's grid.
+- Six-column poster grids for Library (as filtered by the chips), Favorites, Artists, Songs, a Song's Videos, an Artist's Videos, and each rail's See all (search results are the list on the Search screen, §7, with a Shuffle row first). Windowed like the browser's grid.
 - The first tile of every Video grid is **Shuffle** (§6.7): it starts a shuffled Playlist of the grid as filtered.
 - **Favorites** mixes **Video tiles and Chapter tiles**: a Chapter tile shows the parent Video's strip frame at the Chapter's time, the Chapter title over the Video's title dimmed, and opens the Video at the Chapter; order is the order starred, as in the browser.
 - **A Song anywhere** (search result, Song tile, the ♪ tag in the Player) opens the grid of its Videos, Chapters included; it never autoplays. An Artist tile opens the grid of their Videos.
@@ -282,6 +282,7 @@ The browser's Playlist (spec §4.8) **without the panel**; the pure state in `sr
 ## 7. Search
 
 - Opened from the header or the side pane. **On-screen keyboard** on the left, driven by the D-pad: Latin, Cyrillic (with ө ү ң) and digits layers, space, backspace, a layer switch; a physical keyboard types too. **Right at the keyboard's right edge** reaches the results.
+- Typing: Enter on a key types it; a physical keyboard types too and so do the remote's digit keys; Backspace deletes. The query is searched 220 ms after the last key.
 - Results on the right from `/api/search`, grouped **Songs / Videos / Artists** (the browser's Tracks and Albums groups are not shown), the matched text marked, lyric line under a Song matched through lyrics, counts per group. The browser's folding and ranking apply unchanged.
 - Enter on a **Video** plays it (Playing from = the results); on a **Song** opens the grid of its Videos; on an **Artist** the grid of theirs. Back from results returns to the keyboard, Back again leaves Search.
 - No voice input, no typed-letter jump list.
@@ -307,7 +308,7 @@ Registered by the shell (§4.1); one map shared by the shell and the UI (`src/tv
 | Green (404) | — | Chapter list (same as Down, Down) |
 | Red (403) | — | unused (the prototype's variant switch) |
 | Info (457) | state overlay (debug; kept, dimmed) | state overlay |
-| Digits (48–57) | typed-address field in the shell; otherwise unused | unused |
+| Digits (48–57) | typed-address field in the shell; typed into the Search keyboard; otherwise unused | unused |
 
 Nothing frequent lives only on a colour key: lyrics (Up, side arrow), Script (Blue), Chapters (Down, Down), shuffle and repeat and Copy (Down).
 

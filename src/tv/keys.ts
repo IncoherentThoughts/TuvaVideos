@@ -43,3 +43,50 @@ export function keyName(keyCode: number): string | undefined {
 export function registeredKeyNames(): string[] {
   return TV_KEYS.filter((k) => k.registered).map((k) => k.name)
 }
+
+// ---- the key dispatch table (docs/tv-spec.md 8) ----
+// One place maps a keydown to an Action; every screen reads Actions, never keyCodes. Pure, so a test walks it.
+
+export type TvAction =
+  | "up" | "down" | "left" | "right" | "enter" | "back" | "exit"
+  | "pageUp" | "pageDown" | "playpause" | "play" | "pause" | "rewind" | "forward" | "prev" | "next"
+  | "red" | "green" | "yellow" | "blue" | "info"
+  | "backspace" // a desktop keyboard's Backspace: deletes in Search, otherwise it is Back
+  | "char" // a digit key or a typed character (`char` on the event)
+
+/** TV_KEYS names -> Actions. Digits are `char`s (the Search keyboard types them). */
+export const KEY_ACTIONS: Readonly<Record<string, TvAction>> = {
+  ArrowLeft: "left", ArrowUp: "up", ArrowRight: "right", ArrowDown: "down", Enter: "enter", Back: "back", Exit: "exit",
+  ChannelUp: "pageUp", ChannelDown: "pageDown",
+  MediaPlayPause: "playpause", MediaPlay: "play", MediaPause: "pause", MediaRewind: "rewind", MediaFastForward: "forward",
+  MediaTrackPrevious: "prev", MediaTrackNext: "next",
+  ColorF0Red: "red", ColorF1Green: "green", ColorF2Yellow: "yellow", ColorF3Blue: "blue", Info: "info",
+}
+
+/** Desktop-browser stand-ins, for running the UI at http://127.0.0.1:4401/ without a remote (by `KeyboardEvent.key`). */
+export const DESKTOP_KEYS: Readonly<Record<string, TvAction>> = {
+  ArrowLeft: "left", ArrowUp: "up", ArrowRight: "right", ArrowDown: "down", Enter: "enter", Escape: "back", Backspace: "backspace",
+  PageUp: "pageUp", PageDown: "pageDown", MediaPlayPause: "playpause", MediaTrackPrevious: "prev", MediaTrackNext: "next",
+  "<": "prev", ">": "next", F1: "red", F2: "green", F3: "yellow", F4: "blue",
+}
+
+export interface TvKeyEvent {
+  action: TvAction
+  /** For `char`: the character typed. */
+  char?: string
+}
+
+/** The Action for a keydown: the remote's codes first, then the desktop stand-ins, then a typed character. */
+export function actionFor(e: { keyCode: number; key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): TvKeyEvent | null {
+  const name = keyName(e.keyCode)
+  if (name) {
+    if (/^\d$/.test(name)) return { action: "char", char: /^\d$/.test(e.key) ? e.key : name }
+    const a = KEY_ACTIONS[name]
+    if (a) return { action: a }
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return null
+  const d = DESKTOP_KEYS[e.key]
+  if (d) return { action: d }
+  if (e.key.length === 1) return { action: "char", char: e.key } // letters, digits, space, punctuation
+  return null
+}

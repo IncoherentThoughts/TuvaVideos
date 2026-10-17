@@ -8,9 +8,10 @@ import { currentVideos, reloadAll, useStore } from "../data";
 import { Link, navigate, playHref } from "../router";
 import { Poster, Tags } from "../ui";
 
-export type Variant = "A";
+export type Variant = "A" | "B";
 export const VARIANTS: { key: Variant; name: string }[] = [
   { key: "A", name: "Grid as today; Now playing explains" },
+  { key: "B", name: "The card says it; popover, no navigation" },
 ];
 
 type Mode = "out" | "member" | "editor";
@@ -32,7 +33,7 @@ try {
   const saved = localStorage.getItem(LS);
   if (saved) st = { ...st, ...(JSON.parse(saved) as Partial<Proto>) };
 } catch {}
-if (fromUrl === "A") st.variant = fromUrl;
+if (fromUrl === "A" || fromUrl === "B") st.variant = fromUrl;
 const subs = new Set<() => void>();
 export const proto = () => st;
 export function setProto(patch: Partial<Proto>) {
@@ -126,6 +127,23 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Variant B: a popover hanging off the Sign in button. */
+function SignInPopover({ onClose }: { onClose: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const on = (e: MouseEvent) => !box.current?.parentElement?.contains(e.target as Node) && onClose();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("mousedown", on);
+    document.addEventListener("keydown", key);
+    return () => (document.removeEventListener("mousedown", on), document.removeEventListener("keydown", key));
+  }, []);
+  return (
+    <div class="proto-pop signin" ref={box}>
+      <SignInForm onDone={onClose} autoFocus compact />
+    </div>
+  );
+}
+
 // ---- the chip (#88: one chip at the header's right; "Sign in" button and nothing else when there is no session) ----
 export function AccountChip() {
   const p = useProto();
@@ -146,6 +164,7 @@ export function AccountChip() {
       <div class="proto-chipwrap" ref={box}>
         <button class="btn proto-signin-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog">Sign in</button>
         {open && p.variant === "A" && <SignInDialog onClose={() => setOpen(false)} />}
+        {open && p.variant === "B" && <SignInPopover onClose={() => setOpen(false)} />}
       </div>
     );
   }
@@ -211,15 +230,51 @@ function CardA({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
   );
 }
 
+/** B: the card carries the fact in a strip under the poster; clicking opens a popover on the spot, the grid stays. */
+function CardB({ v }: { v: VideoDto }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const link = videoLink(v);
+  useEffect(() => {
+    if (!open) return;
+    const on = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", on);
+    document.addEventListener("keydown", key);
+    return () => (document.removeEventListener("mousedown", on), document.removeEventListener("keydown", key));
+  }, [open]);
+  return (
+    <div class={`card proto-b${open ? " open" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" ref={box}>
+      <button class="hit" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <Poster video={v} dur />
+        <div class="strip">{DOWN} not downloaded{link ? <span class="dim"> · {link.site}</span> : null}</div>
+        <div class="ttl">{v.title}</div>
+      </button>
+      <Tags video={v} />
+      {open && (
+        <div class="proto-pop card-pop" role="dialog">
+          <p>{MESSAGE}</p>
+          {link ? <a href={link.href} target="_blank" rel="noopener noreferrer" class="lnk">{link.label}</a> : <p class="dim">No link is known for this Video.</p>}
+          <div class="row">
+            <Link href={playHref(v.id)} class="btn small">Chapters and lyrics</Link>
+            <button class="btn small" onClick={() => setOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** True when the prototype should take over this Video's card and Now playing. */
 export const protoOwns = (v: Pick<VideoDto, "available">) => st.noFiles && !v.available;
 
 export function ProtoCard({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
   const p = useProto();
+  if (p.variant === "B") return <CardB v={v} />;
   return <CardA v={v} onOpen={onOpen} />;
 }
 
-// ---- Now playing when the file is not here ----
+// ---- Now playing when the file is not here (A and C; B sends people here only for Chapters and lyrics) ----
 export function ProtoUnavailable({ v }: { v: VideoDto }) {
   const p = useProto();
   const link = videoLink(v);

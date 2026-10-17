@@ -1,0 +1,14 @@
+/* Tokens from src/web/styles.css (docs/design-direction.md). The shell is a 1920x1080 canvas at dpr 1. */
+:root { --bg: #1f1e1d; --bg2: #262624; --bg3: #30302e; --line: #3d3c3a; --fg: #d9d8d5; --fg2: #93918c; --accent: #d97757; --accent-fg: #1a0f0a; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--fg);
+  font: 40px/1.4 "IBM Plex Sans", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+#shell { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; background: var(--bg); text-align: center; }
+#shell.over { background: rgba(31, 30, 29, .94); }
+#shell[hidden] { display: none; }
+#shell h1 { margin: 0; font-size: 64px; font-weight: 600; }
+#shell .step { color: var(--fg2); font-size: 38px; }
+#shell .hint { color: var(--fg2); font-size: 32px; margin-top: 24px; }
+#shell .hint b { color: var(--fg); font-weight: 600; border: 2px solid var(--line); border-bottom-width: 4px; padding: 0 14px; background: var(--bg3); }
+#shell .field { min-width: 760px; padding: 18px 36px; font: 600 72px/1.2 "JetBrains Mono", ui-monospace, monospace; background: var(--bg2); border: 3px solid var(--accent); letter-spacing: .04em; }
+#shell .field i { display: inline-block; width: 4px; height: 70px; margin-left: 4px; vertical-align: -10px; background: var(--accent); }
+#shell .err { color: var(--accent); font-size: 36px; }

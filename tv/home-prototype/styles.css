@@ -213,11 +213,12 @@ img { display: block; }
 .pl .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
 .pl .ticks i { position: absolute; top: -4px; width: 3px; height: 16px; background: var(--t3); border-radius: 2px; }
 
-/* B — Overlay: everything floats over the full-frame video */
-.pl-B { grid-template-columns: 1fr !important; }
+/* B — Overlay: the OSD, Chapter list and seek badge float over the letterboxed video; the lyrics are a standalone
+   column on the right whose background is the poster, blurred and drifting under a dark tint */
+.pl-B { grid-template-columns: minmax(0, 1fr) auto !important; }
 .pl-B .pl-top { position: absolute; left: 0; right: 0; top: 0; padding: 36px 48px 90px; background: linear-gradient(#000c, transparent); opacity: 0; transition: opacity .2s; }
 .pl-B .pl-top.on, .pl-B .pl-top.pin { opacity: 1; }
-.pl-B .pl-top .t1 { font-size: 36px; font-weight: 600; text-shadow: 0 1px 4px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 1200px; }
+.pl-B .pl-top .t1 { font-size: 36px; font-weight: 600; text-shadow: 0 1px 4px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-B .pl-top .tags { margin-top: 10px; }
 .pl-B .pl-top .from { margin-top: 10px; font-size: 19px; color: var(--fg2); }
 .pl-B .pl-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 60px 48px 28px; background: linear-gradient(transparent, #000c); opacity: 0; transition: opacity .2s; }
@@ -238,19 +239,28 @@ img { display: block; }
 .pl-B .cr.cur { color: var(--t3); }
 .pl-B .cr.f { background: var(--accent); color: var(--accent-fg); }
 .pl-B .cr.f .mono { color: var(--accent-fg); }
-/* the scrim: a long eased feather (about 300 px) instead of a band with an edge, slightly lighter where the text sits,
-   and the video softened behind the text so the lines stay readable over bright frames */
-.pl-B .pl-lyrics { position: absolute; right: 0; top: 0; bottom: 0; width: 900px; min-width: 0; max-width: none; border: 0; padding: 56px 56px 48px 230px;
-  background: linear-gradient(90deg, transparent 0, #0001 6%, #0003 13%, #0006 21%, #0009 30%, #000b 40%, #000c 100%);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 40%); mask-image: linear-gradient(90deg, transparent 0, #000 40%); }
+.pl-B.strip .pl-top { opacity: 0 !important; }
+.pl-B .pl-lyrics { position: relative; overflow: hidden; width: 720px; min-width: 0; max-width: none; border: 0; background: #0d0c0b; padding: 56px 64px 48px; }
 .pl-B.lyrics .pl-lyrics { display: flex; }
+.pl-B .pl-lyrics > :not(.glow) { position: relative; z-index: 1; }
 .pl-B .pl-lyrics .hd h2 { font-size: 34px; }
 .pl-B .pl-lyrics .hd h2 .en { display: inline; font-size: 24px; color: var(--fg2); margin-left: 10px; }
 .pl-B .pl-lyrics .scripts { margin-top: 12px; }
 .pl-B .pl-lyrics .scripts span { font-size: 20px; padding: 5px 14px; }
-.pl-B .pl-lyrics .lines { font-size: 44px; line-height: 1.4; text-shadow: 0 2px 6px #000; margin-top: 26px; }
+.pl-B .pl-lyrics .lines { font-size: 44px; line-height: 1.4; text-shadow: 0 2px 8px #000c; margin-top: 26px; }
 .pl-B .pl-lyrics .sp { height: 36px; }
+/* the living backdrop: the poster, blurred and saturated, drifting and breathing slowly; vignette, tint and grain over it */
+.pl-B .glow { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.pl-B .glow img { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; object-fit: cover; filter: blur(48px) saturate(1.9) brightness(.78); will-change: transform; animation: glow-drift 38s ease-in-out infinite alternate, glow-hum 11s ease-in-out infinite alternate; }
+@keyframes glow-drift { from { transform: translate(-4%, -3%) rotate(-3deg) scale(1.05); } to { transform: translate(4%, 3%) rotate(3deg) scale(1.18); } }
+@keyframes glow-hum { from { filter: blur(48px) saturate(1.9) brightness(.7); } to { filter: blur(56px) saturate(2.3) brightness(.9); } }
+.pl-B .glow .vig { position: absolute; inset: 0; background:
+  radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #0d0c0b55 100%),
+  radial-gradient(ellipse 70% 60% at 50% 100%, transparent 0%, #0d0c0b55 100%),
+  radial-gradient(ellipse 40% 80% at 0% 50%, transparent 0%, #0d0c0b44 100%),
+  radial-gradient(ellipse 40% 80% at 100% 50%, transparent 0%, #0d0c0b44 100%); }
+.pl-B .glow .tint { position: absolute; inset: 0; background: linear-gradient(180deg, #0d0c0b55, #0d0c0b99); }
+.pl-B .glow .grain { position: absolute; inset: 0; opacity: .28; mix-blend-mode: overlay; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
 /* C — Stage: a 1240×697 video window, lyrics beside, the band of Chapters and info below; nothing fades */
 .pl-C { display: grid; grid-template-columns: 1240px minmax(0, 1fr) !important; grid-template-rows: 697px minmax(0, 1fr); background: var(--bg); }

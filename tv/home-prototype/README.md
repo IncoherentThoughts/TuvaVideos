@@ -23,10 +23,12 @@ bun run tv-prototype   # http://localhost:4412/?variant=A
   and leaves second. On the remote: yellow = lyrics, blue = Script, green = Chapters.
   - **A Reader beside**: the video shrinks beside a static numbered lyrics column (Ch▲▼ / PgUp PgDn page it); the
     Chapter strip is a filmstrip over the bottom; the OSD fades; `← →` ±10 s, Rew/FF ±60 s.
-  - **B Overlay**: the video never shrinks; lyrics float on a scrim over its right side, the panel sized to the
-    longest line (900 to 1320 px) and the type shrinking first (44 down to 34 px) when lines are long; `↓` opens a vertical Chapter
-    list over the left edge (Up/Down, Enter); a Netflix-style bar names the current Chapter and "Next:" in the last
-    20 s; `← →` accelerate 10 → 30 → 60 → 120 s when pressed again within a second.
+  - **B Overlay**: the whole video stays visible, letterboxed beside a standalone lyrics column; the column's
+    background is the Video's poster blurred and slowly drifting under a dark tint, vignette and grain (the album
+    page's ambient backdrop on the Lyrics Website, made to move); the column sizes itself to its longest line (720 to
+    1060 px), the type shrinking first (44 down to 34 px); `↓` opens a vertical Chapter list over the video's left
+    edge (Up/Down, Enter); a Netflix-style bar names the current Chapter and "Next:" in the last 20 s; `← →`
+    accelerate 10 → 30 → 60 → 120 s when pressed again within a second.
   - **C Stage**: the video sits in a 1240×697 window; the lyrics column follows an *estimated* current line (position
     in the Chapter mapped onto the lines; no timings exist) with the translation under each line; Chapter cards and
     the info row are always visible in a band below (`↓` focuses the cards); `← →` move a ghost playhead with a strip

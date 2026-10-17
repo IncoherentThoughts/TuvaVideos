@@ -2,9 +2,12 @@
 // ?player=A|B|C and the yellow bar while a Video plays. They disagree about structure, not colour:
 //   A "Reader beside"  the video shrinks to make room for a lyrics column (static Reader, numbered, paged); the Chapter
 //                      strip is a filmstrip over the bottom; OSD fades; ±10 s seeks.
-//   B "Overlay"        the video never shrinks: lyrics float on a scrim over its right third, the Chapters are a vertical
-//                      list over its left edge, a Netflix-style bar with the current Chapter and "Next:"; accelerating
-//                      seeks (10 → 30 → 60 → 120 s when the key is pressed again within a second).
+//   B "Overlay"        the whole video stays visible, letterboxed beside a standalone lyrics column whose background is
+//                      the Video's poster blurred and slowly drifting under a dark tint (the album page's ambient
+//                      backdrop on the Lyrics Website, made to move); the column sizes itself to its longest line, the
+//                      type shrinking first; the Chapters are a vertical list over the video's left edge, a Netflix-style
+//                      bar names the current Chapter and "Next:"; accelerating seeks (10 → 30 → 60 → 120 s when the key
+//                      is pressed again within a second).
 //   C "Stage"          the video sits in a 1240×697 window; the lyrics column follows an *estimated* current line (the
 //                      position inside the Chapter mapped onto the lines; no timings exist) with the translation under
 //                      each line; the Chapter cards and the info row are always visible in a band below; Left/Right
@@ -20,7 +23,7 @@ import { SCRIPTS, effectiveScript, presentScripts } from "../../src/shared/lyric
 import { chapterAt, lyricsTarget } from "../../src/shared/lyrics/target";
 import { openingVersionIndex } from "../../src/shared/lyrics/trackVersion";
 import { startPosition } from "../../src/shared/resume";
-import { BASE, type Ctx, type From, type Screen, TYPE_COLOR, api, artistColor, esc, fmtTime, focus, focusables, getFocused, moveFocus, stepFrom, toast } from "./shared";
+import { BASE, type Ctx, type From, type Screen, TYPE_COLOR, api, artistColor, esc, fmtTime, focus, focusables, getFocused, moveFocus, poster, stepFrom, toast } from "./shared";
 
 export type PlayerVariant = "A" | "B" | "C";
 export const PLAYER_VARIANTS: Record<PlayerVariant, string> = { A: "Reader beside", B: "Overlay", C: "Stage" };
@@ -78,9 +81,12 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
   </div>
   <div class="pl-badge mono" hidden></div>
   <div class="pl-list" hidden><h3>Chapters</h3><div class="rows"></div></div>
-  <aside class="pl-lyrics"><div class="hd"><h2></h2><div class="scripts"></div></div><div class="lines"></div><div class="pager mono"></div></aside>
   <div class="pl-msg" hidden></div>
-</div>`,
+</div>
+<aside class="pl-lyrics">
+  <div class="glow"><img src="${poster(video)}" alt=""><div class="vig"></div><div class="tint"></div><div class="grain"></div></div>
+  <div class="hd"><h2></h2><div class="scripts"></div></div><div class="lines"></div><div class="pager mono"></div>
+</aside>`,
     C: `<div class="pl-stage">
   <video playsinline></video>
   <div class="pl-ghost" hidden><div class="fr"></div><div class="gt mono"></div></div>
@@ -259,7 +265,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
   }
   // B: the panel grows to its longest line (measured unwrapped), and past a comfortable width the type shrinks first
   // (44 px down to 34 px) so a Song with long lines does not take half the screen; lines wrap only beyond both.
-  const B_MIN = 900, B_WIDE = 1080, B_MAX = 1320, B_PAD = 230 + 56, B_FONT = 44, B_FONT_MIN = 34;
+  const B_MIN = 720, B_WIDE = 900, B_MAX = 1060, B_PAD = 64 + 64, B_FONT = 44, B_FONT_MIN = 34;
   function fitPanelB() {
     const widest = () => { let w = 0; for (const tx of lines.querySelectorAll<HTMLElement>(".tx")) w = Math.max(w, tx.scrollWidth); return w; };
     lines.style.whiteSpace = "nowrap";

@@ -7,6 +7,7 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { log } from "./log";
 import { matchTvRoute } from "./tvRoutes";
+import type { TvBundle } from "./web";
 import type { ApprovedTvDto, TvStateDto } from "../shared/types";
 
 type Handler = (req: Request) => Promise<Response>;
@@ -42,6 +43,7 @@ interface Activity {
 export class TvServer {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private handler: Handler | null = null;
+  private bundle: Pick<TvBundle, "serve"> | null = null;
   private pending = new Map<string, string | null>();
   private denied = new Set<string>();
   private seenWritten = new Map<string, number>();
@@ -52,6 +54,11 @@ export class TvServer {
 
   setHandler(h: Handler) {
     this.handler = h;
+  }
+
+  /** The built TV UI (`/tv.js`, `/tv.css`); without one the TV Server serves empty files. */
+  setBundle(b: Pick<TvBundle, "serve">) {
+    this.bundle = b;
   }
 
   /** Called on every hard stop; the Live remux (tv-live-remux) registers its ffmpeg kill here. */
@@ -201,15 +208,18 @@ export class TvServer {
     return res;
   }
 
-  /** Placeholders until the TV shell and UI tickets land (tv-spec 9): the page names the server and the Mac's address. */
+  /** The TV UI files: the bundle built at start (`TvBundle`), the olchey, and the page that loads them for a desktop browser. */
   private ui(path: string): Response {
     const noStore = { "cache-control": "no-store" };
-    if (path === "/tv.js") return new Response("// TuvaVideos TV UI: placeholder until the tv-home ticket\n", { headers: { "content-type": "text/javascript; charset=utf-8", ...noStore } });
-    if (path === "/tv.css") return new Response("/* TuvaVideos TV UI: placeholder until the tv-home ticket */\n", { headers: { "content-type": "text/css; charset=utf-8", ...noStore } });
+    if ((path === "/tv.js" || path === "/tv.css") && this.bundle) return this.bundle.serve(path);
+    if (path === "/tv.js") return new Response("// TuvaVideos TV UI: not built\n", { headers: { "content-type": "text/javascript; charset=utf-8", ...noStore } });
+    if (path === "/tv.css") return new Response("/* TuvaVideos TV UI: not built */\n", { headers: { "content-type": "text/css; charset=utf-8", ...noStore } });
     if (path === "/olchey.svg") return new Response(Bun.file(join(this.deps.cfg.webDir, "olchey.svg")), { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=86400" } });
+    // `/`: what a desktop browser opens (http://127.0.0.1:4401/) to run the UI without the shell. On the TV the shell
+    // loads /tv.css and /tv.js itself; `#boot` (the server's name and address) is removed by the UI when it starts.
     const addrs = lanAddresses().map((a) => `${a}:${this.port}`);
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${TV_APP_NAME}</title><link rel="stylesheet" href="/tv.css"></head>
-<body style="background:#1d2021;color:#ebdbb2;font:28px system-ui;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><img src="/olchey.svg" width="96" height="96" alt=""><h1>${TV_APP_NAME}</h1><p>${addrs.length ? addrs.join(" · ") : "no network address"}</p></div><script src="/tv.js"></script></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${TV_APP_NAME}</title><meta name="viewport" content="width=1920"><link rel="icon" href="/olchey.svg"><link rel="stylesheet" href="/tv.css"></head>
+<body><div id="tv"></div><div id="boot" style="position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:#1f1e1d;color:#d9d8d5;font:28px system-ui"><div><img src="/olchey.svg" width="96" height="96" alt=""><h1>${TV_APP_NAME}</h1><p>${addrs.length ? addrs.join(" · ") : "no network address"}</p></div></div><script src="/tv.js"></script></body></html>`;
     return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...noStore } });
   }
 }

@@ -11,7 +11,7 @@ import { Studio, type StudioOptions } from "./studio/service";
 import { Scanner } from "./scan";
 import { rebuildSearchIndex } from "./search";
 import { Thumbnails } from "./thumbs";
-import { WebBundle } from "./web";
+import { TvBundle, WebBundle } from "./web";
 
 export interface App extends Services {
   server: ReturnType<typeof Bun.serve>;
@@ -53,6 +53,8 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
 
   const web = new WebBundle(cfg);
   await web.build();
+  const tvBundle = new TvBundle(cfg);
+  await tvBundle.build();
   const idx = rebuildSearchIndex(db); // the index is also rebuilt after every scan
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
@@ -61,6 +63,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit };
   const handler = createHandler(services);
   tv.setHandler(handler);
+  tv.setBundle(tvBundle);
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);
 

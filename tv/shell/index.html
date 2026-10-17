@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- The TuvaVideos TV shell (docs/tv-spec.md §4). Packaged and signed; everything it shows after the Mac answers comes
+     live from the TV Server (/tv.css, /tv.js). Plain scripts, no bundler: this file runs exactly as written. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob: gap: file: filesystem: ws: wss:;">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>TuvaVideos</title>
+<link rel="stylesheet" href="shell.css">
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+</head>
+<body>
+<div id="shell"></div>
+<script src="keys.js"></script>
+<script src="discovery.js"></script>
+<script src="shell.js"></script>
+</body>
+</html>

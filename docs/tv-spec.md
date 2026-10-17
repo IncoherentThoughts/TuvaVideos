@@ -144,9 +144,9 @@ Specified here, built last and deferrable (§9): no Copy in the library needs it
 
 ### 4.1 The shell
 
-- The installed app is a **thin signed shell** (`tv/shell/`, `.wgt`): `config.xml` with `<content src="index.html"/>`, the `internet` and `tv.inputdevice` privileges, `<access origin="http://*" />` restricted in practice by the discovery below, a permissive CSP meta tag as jellyfin-tizen ships, `webapis.js` injected, the olchey icon at 512×423 and app id `TuvaVideos.TuvaTV`.
+- The installed app is a **thin signed shell** (`tv/shell/`, `.wgt`): `config.xml` with `<content src="index.html"/>`, the `internet` and `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>` (a Tizen access origin cannot be `http://*`; the address is only known at run time, so the discovery below is the restriction in practice), a permissive CSP meta tag as jellyfin-tizen ships, `webapis.js` injected, the olchey icon at 512×423 and app id `TuvaVideos.TuvaTV`.
 - At launch it finds the TV Server (§4.2), then loads the UI **live from it**: `index.html` fetches `/tv.js` and `/tv.css` from the TV Server and runs them, so UI updates ship with the Mac code and only the shell needs the certificate. Tizen APIs stay available because the page is packaged, not hosted.
-- The shell registers the media keys (MediaPlayPause, MediaPlay, MediaPause, MediaRewind, MediaFastForward, MediaTrackPrevious, MediaTrackNext), the four colour keys, ChannelUp/Down and Info with `registerKeyBatch`, and maps every key through one table (§8) that the UI code shares.
+- The shell registers the media keys (MediaPlayPause, MediaPlay, MediaPause, MediaRewind, MediaFastForward, MediaTrackPrevious, MediaTrackNext), the four colour keys, ChannelUp/Down, Info and the digits 0–9 (the typed-address field needs them) with `registerKeyBatch` (Exit, long Back, stays unregistered and the system handles it), and maps every key through one table (§8) that the UI code shares.
 - The UI is **Preact in `src/tv/`**, sharing `src/shared/` (resume, playingFrom, playlist, fold, filters, libraryView, playerMath, stripGeometry) and bundled by `src/server/web.ts` at start next to the browser bundle. The throwaway prototype in `tv/home-prototype/` and the hello-world in `tv/hello-world/` stay as history and are not shipped.
 
 ### 4.2 Discovery
@@ -155,14 +155,14 @@ In order, each step with a 2 s timeout:
 
 1. the **last address** the shell stored (`localStorage`), `GET http://‹addr›:4401/api/health`;
 2. a **sweep of the TV's own /24** on 4401 (the TV's address from `webapis.network`, else the last address's subnet), 32 requests in flight at a time;
-3. **typed**: the shell shows a D-pad numeric field (digits, dot, Back deletes) for the Mac's address.
+3. **typed**: the shell shows a D-pad numeric field (digits, dot, Back deletes) for the Mac's address. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`) and Up types the dot, since the remote has none. When nothing answers the looking screen sits on this step and offers the field with Enter (§4.3); the sequence keeps retrying every 5 s except while the field is open.
 
 The first health answer naming "TuvaVideos TV Server" wins and is stored. The shell then requests `/api/videos`; a 403 shows "Approve this TV on the Mac" and retries every 3 s until the user clicks Allow.
 
 ### 4.3 Offline states
 
 - No server found: **"Looking for TuvaVideos on the Mac…"** with the step it is on; retries the whole sequence every 5 s; Enter opens the typed field; Back exits the app.
-- Server stops mid-session (a fetch or the stream fails and health stops answering): the loaded UI shows **"TV Server turned off"** over the paused frame or the current screen, keeps the last Resume write, and offers Enter to look again (back to the discovery screen) or Back to exit.
+- Server stops mid-session (health stops answering twice in a row, 5 s apart; the shell watches it after every success and the UI may call `window.tuvaTv.restart()` on a 403 or a dead stream): the shell shows **"TV Server turned off"** over the paused frame or the current screen, keeps the last Resume write, and offers Enter to look again (back to the discovery screen) or Back to exit.
 - Denied (a 403 after an earlier success, or Remove in the menu): the same "Approve this TV on the Mac" screen.
 
 ### 4.4 Install and update

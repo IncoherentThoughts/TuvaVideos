@@ -16,7 +16,8 @@
     "index-keyframes": "bun scripts/index-keyframes.ts",
     "fetch-youtube-info": "bun scripts/fetch-youtube-info.ts",
     "app": "bun scripts/make-app.ts",
-    "tv-prototype": "bun tv/home-prototype/serve.ts"
+    "tv-prototype": "bun tv/home-prototype/serve.ts",
+    "tv-install": "bun scripts/tv-install.ts"
   },
   "bin": {
     "tuva": "src/server/index.ts"

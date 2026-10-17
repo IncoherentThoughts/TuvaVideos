@@ -179,3 +179,31 @@ _Avoid_: LAN mode, remote server, second server, TV mode
 **Approved TV**:
 A TV whose IP address the user allowed, with one click in the browser, the first time it reached the TV Server. Remembered across launches until removed; only Approved TVs get anything beyond the health check.
 _Avoid_: paired device, trusted client, whitelisted IP
+
+### Sharing
+
+Terms settled while charting the sharing map (2026-10-16). They describe the planned shared library; the Mirror terms above describe the app as it is until that map is built.
+
+**Shared (data)**:
+The link data every signed-in user sees and Video Editors maintain in the archive's database: a Video's identity, title, Type, Song and Version pointers, Artists and Chapters, plus the Songs, Versions and Artists promoted from here. Never the files, Copies, Roots, Thumbnails, Audio settings, Resume positions, Favorites or Studio tracks, which stay on each machine.
+_Avoid_: synced, cloud, remote, mirror (which is the retired read-only copy)
+
+**Standalone**:
+Using the app without an account. Everything is local, exactly as the single-user app behaves today; none of the Shared data is visible, and nothing leaves the machine.
+_Avoid_: offline (which is a Member without a connection), guest, anonymous mode, local mode
+
+**Member**:
+A person signed in with a Tuvan Lyrics Archive account. Reads the Shared data and browses it with their own Copies, Favorites and Resume positions; cannot change it.
+_Avoid_: user, viewer, reader, standard account
+
+**Video Editor**:
+A Member who has been granted the right to change the Shared data, set only in the archive's database console and never from either app. A scan by a Video Editor adds unknown Videos to the Shared data for everyone.
+_Avoid_: editor (ambiguous with the archive's roles), admin, moderator, maintainer
+
+**Unshared (a Video)**:
+A Video a Member who is not a Video Editor scanned in that the Shared data does not know. Playable and taggable on that machine only; invisible to everyone else.
+_Avoid_: private, local video, pending, draft
+
+**Unverified (a Song, Version or Artist)**:
+A row promoted into the archive from a Video Editor's local additions and not yet checked against a source by an archive moderator. Visible and usable on both sites; cleared by a moderator.
+_Avoid_: local (its old name here), draft, hidden, provisional

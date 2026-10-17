@@ -14,7 +14,7 @@ A single-user, offline, macOS-only local player for a personal library of Tuvan 
 
 ### Standing constraints
 
-- Single user. No auth. `localhost` only. macOS only.
+- Single user. No auth. `localhost` only. macOS only. (The **TV Server** is the one exception: a second listener on the home network behind an IP allowlist, [ADR 0004](adr/0004-tv-server-on-the-home-network.md), specified in [tv-spec.md](tv-spec.md); the localhost app is unchanged.)
 - The app never touches the network. One-off scripts under `scripts/` may (yt-dlp, YouTube).
 - SQLite is the only store. Mirror entities are read-only and refreshed by importing a newer archive backup.
 - Thumbnails are cached locally so the library can be browsed while every Copy is unavailable.

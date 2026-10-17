@@ -28,6 +28,10 @@ import type { VideoType } from "../shared/filters";
 import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
 
+const THUMB_CACHE = "public, max-age=86400";
+/** `/thumbs/<id>/<which>.webp?v=<generatedAt>`: the query string is the cache key (the route matches the path alone). */
+export const thumbUrl = (videoId: number, which: "poster" | "strip", generatedAt: string) => `/thumbs/${videoId}/${which}.webp?v=${encodeURIComponent(generatedAt)}`;
+
 /** What a theme folder may serve (docs/themes.md), by extension. */
 const THEME_FILE_TYPES: Record<string, string> = { css: "text/css; charset=utf-8", json: "application/json", webp: "image/webp", png: "image/png", svg: "image/svg+xml", woff2: "font/woff2" };
 
@@ -169,14 +173,16 @@ export function createHandler(s: Services) {
       preferredCopyId: preferred?.id ?? null,
       width: (preferred ?? ranked[0])?.width ?? null,
       height: (preferred ?? ranked[0])?.height ?? null,
+      // `?v=` is the generation time: ids are reused after a Video is deleted or renumbered and the files are served
+      // with a day-long cache, so without it a browser keeps showing the previous owner's poster under the same id.
       thumbnail: v.thumbnail_generated_at
         ? {
             generatedAt: v.thumbnail_generated_at,
             copyId: v.thumbnail_copy_id,
-            poster: `/thumbs/${v.id}/poster.webp`,
+            poster: thumbUrl(v.id, "poster", v.thumbnail_generated_at),
             strip: hasStrip
               ? {
-                  url: `/thumbs/${v.id}/strip.webp`,
+                  url: thumbUrl(v.id, "strip", v.thumbnail_generated_at),
                   frames: v.strip_frames!,
                   columns: v.strip_columns ?? 10,
                   rows: v.strip_rows ?? 1,
@@ -291,10 +297,23 @@ export function createHandler(s: Services) {
     return serveFile(req, join(c.root_path, c.rel_path));
   }
 
+  /** A poster or strip: the URL carries `?v=<generatedAt>`, so the file may be cached for a day; `Last-Modified` lets a stale entry revalidate. */
   async function thumbRoute(req: Request, videoId: number, which: "poster" | "strip"): Promise<Response> {
     const path = which === "poster" ? s.thumbs.posterPath(videoId) : s.thumbs.stripPath(videoId);
+    let mtime: Date | null = null;
+    try {
+      mtime = (await stat(path)).mtime;
+    } catch {}
+    const lastModified = mtime ? new Date(Math.floor(mtime.getTime() / 1000) * 1000).toUTCString() : null;
+    const since = req.headers.get("if-modified-since");
+    if (lastModified && since && Date.parse(since) >= Date.parse(lastModified)) {
+      return new Response(null, { status: 304, headers: { "last-modified": lastModified, "cache-control": THUMB_CACHE } });
+    }
     const res = await serveFile(req, path, "image/webp");
-    if (res.status === 200 || res.status === 206) res.headers.set("cache-control", "public, max-age=86400");
+    if (res.status === 200 || res.status === 206) {
+      res.headers.set("cache-control", THUMB_CACHE);
+      if (lastModified) res.headers.set("last-modified", lastModified);
+    }
     return res;
   }
 

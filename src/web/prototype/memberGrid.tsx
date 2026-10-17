@@ -8,10 +8,11 @@ import { currentVideos, reloadAll, useStore } from "../data";
 import { Link, navigate, playHref } from "../router";
 import { Poster, Tags } from "../ui";
 
-export type Variant = "A" | "B";
+export type Variant = "A" | "B" | "C";
 export const VARIANTS: { key: Variant; name: string }[] = [
   { key: "A", name: "Grid as today; Now playing explains" },
   { key: "B", name: "The card says it; popover, no navigation" },
+  { key: "C", name: "Grid states it up front; sign-in page" },
 ];
 
 type Mode = "out" | "member" | "editor";
@@ -33,7 +34,7 @@ try {
   const saved = localStorage.getItem(LS);
   if (saved) st = { ...st, ...(JSON.parse(saved) as Partial<Proto>) };
 } catch {}
-if (fromUrl === "A" || fromUrl === "B") st.variant = fromUrl;
+if (fromUrl === "A" || fromUrl === "B" || fromUrl === "C") st.variant = fromUrl;
 const subs = new Set<() => void>();
 export const proto = () => st;
 export function setProto(patch: Partial<Proto>) {
@@ -144,6 +145,23 @@ function SignInPopover({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Variant C: a page of its own at /signin. */
+export function SignInPage() {
+  const p = useProto();
+  useEffect(() => {
+    if (p.mode !== "out") navigate("/", { replace: true });
+  }, [p.mode]);
+  return (
+    <div class="proto-signin-page">
+      <img src="/olchey.svg?v=2" alt="" width="56" height="56" />
+      <h2>Sign in to the archive</h2>
+      <p class="muted">A Tuvan Lyrics Archive account makes this app a Member of the shared library: every Video's title, Song, Artists and Chapters, kept by the Video Editors, shown here next to the files you have. Nothing on this machine leaves it.</p>
+      <SignInForm onDone={() => navigate("/")} autoFocus />
+      <Link href="/" class="dim">Keep browsing without an account</Link>
+    </div>
+  );
+}
+
 // ---- the chip (#88: one chip at the header's right; "Sign in" button and nothing else when there is no session) ----
 export function AccountChip() {
   const p = useProto();
@@ -160,6 +178,7 @@ export function AccountChip() {
   }, [open]);
 
   if (p.mode === "out") {
+    if (p.variant === "C") return <Link href="/signin" class="btn proto-signin-btn">Sign in</Link>;
     return (
       <div class="proto-chipwrap" ref={box}>
         <button class="btn proto-signin-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog">Sign in</button>
@@ -265,19 +284,62 @@ function CardB({ v }: { v: VideoDto }) {
   );
 }
 
+/** C: dimmed, dashed, with the link shown on the card itself; the click goes to Now playing's poster hero. */
+function CardC({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
+  const link = videoLink(v);
+  return (
+    <Link href={playHref(v.id)} class="card proto-c" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
+      <div class="frame">
+        <Poster video={v} dur />
+        <span class="dl">{DOWN} Download to play</span>
+      </div>
+      <div class="ttl">{v.title}</div>
+      <Tags video={v} />
+      <div class="meta">{link ? <span class="mono">{link.site}</span> : <span class="dim">no link</span>}{v.chapterCount > 0 && <span>{v.chapterCount} ch</span>}</div>
+    </Link>
+  );
+}
+
 /** True when the prototype should take over this Video's card and Now playing. */
 export const protoOwns = (v: Pick<VideoDto, "available">) => st.noFiles && !v.available;
 
 export function ProtoCard({ v, onOpen }: { v: VideoDto; onOpen: () => void }) {
   const p = useProto();
   if (p.variant === "B") return <CardB v={v} />;
+  if (p.variant === "C") return <CardC v={v} onOpen={onOpen} />;
   return <CardA v={v} onOpen={onOpen} />;
+}
+
+/** C only: a line above the grid saying what the grid is. */
+export function ProtoGridNotice({ total }: { total: number }) {
+  const p = useProto();
+  if (p.variant !== "C" || !p.noFiles) return null;
+  return (
+    <div class="proto-notice">
+      {DOWN}
+      <span>
+        <b>None of these {total.toLocaleString()} Videos is on this machine.</b> Each card is the shared link data: title, Song, Artists, Chapters. Open one for its link; download the file into a Root and it plays here.
+      </span>
+    </div>
+  );
 }
 
 // ---- Now playing when the file is not here (A and C; B sends people here only for Chapters and lyrics) ----
 export function ProtoUnavailable({ v }: { v: VideoDto }) {
   const p = useProto();
   const link = videoLink(v);
+  if (p.variant === "C") {
+    return (
+      <div class="proto-hero">
+        <Poster video={v} />
+        <div class="veil">
+          <span class="badge">{DOWN} Not on this machine</span>
+          <p>{MESSAGE}</p>
+          {link ? <a href={link.href} target="_blank" rel="noopener noreferrer" class="btn primary">Open on {link.site}</a> : <span class="dim">No link known</span>}
+        </div>
+      </div>
+    );
+  }
   // A (and B's click-through): the Player's place, a plain panel over the blurred poster
   return (
     <div class="proto-panel">

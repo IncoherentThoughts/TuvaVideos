@@ -12,7 +12,7 @@ import { loadArtists, loadVideos, useStore } from "./data";
 import { installKeys } from "./keys";
 import { matchRoute, useLocation } from "./router";
 import { applyThemeFromUrl } from "./theme";
-import { PrototypeBar } from "./prototype/memberGrid"; // PROTOTYPE #94
+import { PrototypeBar, SignInPage } from "./prototype/memberGrid"; // PROTOTYPE #94
 
 function App() {
   const loc = useLocation();
@@ -31,6 +31,7 @@ function App() {
         {route.name === "search" && <SearchResults q={route.q} sort={route.sort} />}
         {route.name === "play" && <Play videoId={route.videoId} t={route.t} lyrics={route.lyrics} lyricsVersion={route.lyricsVersion} />}
         {route.name === "lyrics" && <LyricsPage songId={route.songId} />}
+        {route.name === "signin" && <SignInPage />}
         {route.name === "notfound" && <div class="empty-state">No such page.</div>}
       </main>
       <PrototypeBar />

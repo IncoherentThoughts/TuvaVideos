@@ -12,7 +12,7 @@ import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, SpecTags, Tags } from "./ui";
 import { useWindowed } from "./windowed";
-import { ProtoCard, protoOwns, useProto } from "./prototype/memberGrid"; // PROTOTYPE #94
+import { ProtoCard, ProtoGridNotice, protoOwns, useProto } from "./prototype/memberGrid"; // PROTOTYPE #94
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
@@ -140,6 +140,7 @@ export function Library({ search }: { search: string }) {
         </div>
       ) : (
         <>
+          <ProtoGridNotice total={shown.length} />
           <div class="wall">
             {shown.slice(0, limit).map((v) => (
               // A Video performing the Song only in a Chapter opens at that Chapter.

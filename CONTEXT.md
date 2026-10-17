@@ -189,7 +189,7 @@ The link data every Member sees and Video Editors maintain in the archive's data
 _Avoid_: synced, cloud, remote, mirror (which is the retired read-only copy)
 
 **Standalone**:
-Using the app with no session on this machine. Everything is local and nothing leaves the machine; the Shared data it holds is whatever the last Sync left, read-only, and nothing at all on a machine that never signed in.
+Using the app with no Member session on this machine (no session at all, or an account without the grant). Everything is local and nothing leaves the machine; the Shared data it holds is whatever the last Sync left, read-only, and nothing at all on a machine that never signed in.
 _Avoid_: offline (which is a Member without a connection), signed out (as the noun), guest, anonymous mode, local mode
 
 **Member**:
@@ -223,6 +223,10 @@ _Avoid_: merge (which deleted the source), alias, redirect
 **Sync**:
 Refreshing this machine's local copy of the Shared data from the archive. Runs when a sign-in completes, at launch while signed in, after a Video Editor's own write, and from a button; never on a timer. The local copy outlives sign-out, read-only.
 _Avoid_: refresh, pull, download, cache (the copy, not the act)
+
+**Session record**:
+The companion's token-free note of who this machine is signed in as and what they may do: user id, email, display name, avatar, grant level, archive role and when it was last verified. Written at each Sync, read by the chip, every tab and the TV Server, and cleared only by Sign out, a dead session or a cancelled sign-in. The machine fact behind the modes; it grants nothing on its own, since the browser's session is what carries the token.
+_Avoid_: profile, login, account cache, token, session (the browser's, which it is not)
 
 **Shelved (edits)**:
 The title, Type, Song and Version pointers, Artists and Chapters a Video carried on this machine before sign-in reconciliation replaced them with the Shared row. Kept locally, read-only, never synced; shown in a drawer on the Video, copyable back into the Shared data by a Video Editor as an ordinary edit, and clearable by hand. Made only by reconciliation.

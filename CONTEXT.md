@@ -221,12 +221,24 @@ Move every Video's link from one Artist to another across the Shared data, logge
 _Avoid_: merge (which deleted the source), alias, redirect
 
 **Sync**:
-Refreshing this machine's local copy of the Shared data from the archive. Runs when a sign-in completes, at launch while signed in, after a Video Editor's own write, and from a button; never on a timer. The local copy outlives sign-out, read-only.
+Refreshing this machine's local copy of the Shared data from the archive. Runs when a sign-in completes, at launch while signed in, after a Video Editor's own write, from a button, and on window focus when the last Sync is older than ten minutes; never on a timer. The local copy outlives sign-out, read-only.
 _Avoid_: refresh, pull, download, cache (the copy, not the act)
 
 **Session record**:
 The companion's token-free note of who this machine is signed in as and what they may do: user id, email, display name, avatar, grant level, archive role and when it was last verified. Written at each Sync, read by the chip, every tab and the TV Server, and cleared only by Sign out, a dead session or a cancelled sign-in. The machine fact behind the modes; it grants nothing on its own, since the browser's session is what carries the token.
 _Avoid_: profile, login, account cache, token, session (the browser's, which it is not)
+
+**Local copy**:
+Every Shared table as it sits in this machine's `library.db`: the archive's Songs, Versions, Artists, performances, tracks and albums, and the video-side tables, filled by Sync and by a Video Editor's own writes. Outlives sign-out, read-only.
+_Avoid_: cache, mirror, snapshot, replica
+
+**Unmounted (a Video)**:
+A Video whose Copies all sit on a Root that is not mounted right now. Shown greyed with the drive mark; the Player waits and resumes when the Root returns.
+_Avoid_: offline, disconnected, unavailable (which also covered the next term)
+
+**Not on this machine (a Video)**:
+A Video with no Copy here at all, or only Copies that have vanished or were trashed. Shown greyed with the download mark; opening it gives the source link and says the content must be downloaded to play. Playable again as soon as a scan finds a Copy.
+_Avoid_: missing, remote, unavailable, no copy
 
 **Shelved (edits)**:
 The title, Type, Song and Version pointers, Artists and Chapters a Video carried on this machine before sign-in reconciliation replaced them with the Shared row. Kept locally, read-only, never synced; shown in a drawer on the Video, copyable back into the Shared data by a Video Editor as an ordinary edit, and clearable by hand. Made only by reconciliation.

@@ -3,6 +3,9 @@
 What it takes to let TuvaVideos wear the palettes of the MigakuEA fork (`MigakuEA-Fork/palettes/`), which this project
 calls **themes**. Written 2026-10-16 with the Lawson Night prototype (`src/web/themes/lawson-night/`); the prototype
 takes the first slice of every step below, by hand, so the shape could be judged before any generator is written.
+The second theme, **Mecha no Onna** (`src/web/themes/mecha-no-onna/`, the same day), is the same shape by hand again:
+the fork's palette with only its first drawing (`mecha-bg1.webp`, the sepia cyborg woman; the geisha and the armoured
+girl, and their per-picture colours, stay in the fork), and the fork's Hyprland look rebuilt on this app's selectors.
 
 ## What the fork does, in its own words
 
@@ -63,7 +66,7 @@ takes the first slice of every step below, by hand, so the shape could be judged
    positioned inside it).
 7. **Generator + validation** (when a second theme arrives): a script that reads every `theme.json`, checks it with the
    fork's rules (contrast, files exist, eight tags), writes the token block of each `theme.css` between markers and the
-   registry `theme.ts` reads. Until then the registry is a hand-kept list of two.
+   registry `theme.ts` reads. The second theme is here; the registry is still a hand-kept list of three.
 8. **Loose ends to make themeable**: the select chevron (use `currentColor` via a mask), the Player's `#fff`/`#000`
    (deliberate on video, leave), `<meta name="color-scheme">` if a light theme ever lands (Lawson Night is dark only,
    like the fork says).
@@ -73,3 +76,16 @@ takes the first slice of every step below, by hand, so the shape could be judged
 `--look-gap 10px`, `--look-radius 16px`, `--look-glass-blur 28px`, `--look-glass-tint .62`, `--look-panel-tint .8`,
 `--look-field-tint .45`, `--look-field-radius 10px`, border `brand 45%`, wallpaper clarity `.92`, focus `40% 70%`
 (from `migaku/skins/overrides/lawson-night.json`: that is where the shop and Fuji sit in the picture).
+
+## Look settings carried over from the fork's Mecha no Onna
+
+From `palettes/mecha-no-onna/look/migaku-core.css` and `migaku/skins/overrides/mecha-no-onna.json`, the first drawing's
+values: `--look-gap 8px`, `--look-radius 5px`, a `2px` frame (`#45413a` at 70% on a window, a cream `#fbf1c7` → black
+fade on the focused one), `--look-glass-tint .8`, `--look-glass-blur 9px` with `brightness(.85) contrast(1.05)
+saturate(1.15)`, `--look-panel-tint .86`, `--look-field-radius 4px`, `--look-field-tint .5` over `#0d0c0a`, wallpaper
+strength `.75` and focus `45% 40%` (her face). The type is JetBrains Mono for the UI (`--font-ui` is pointed at
+`--font-mono`; lyrics keep `--font-lyrics`), tabs in spaced capitals (`.22em`). Accents by job: sand (`brand`) for
+frames of chosen things and focus, amber (`action`, `#e7c07c`) as a solid plate with ink letters for the chosen chip,
+pill, segment and primary button, and vermilion `#d94e38` kept to one mark, the playing line in the search results.
+The focused window (`.page`, `.np-main`) draws its gradient frame on a `::after` kept to the border by a mask; the
+top bar, drawers and floating menus wear the quiet frame as a `box-shadow` ring.

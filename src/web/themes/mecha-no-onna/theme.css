@@ -1,0 +1,258 @@
+/* Mecha no Onna — a theme for TuvaVideos (docs/themes.md). Hand-written, after the Lawson Night prototype.
+ *
+ * Two parts. First the TOKENS: the palette's ten colour roles (theme.json, the MigakuEA fork's schema) turned into the
+ * app's own tokens from styles.css, as formulas of the roles so a generator can write this block later. Then the LOOK:
+ * the Omarchy desktop the theme comes from. Hyprland with every window turned to glass: warm near-black at about four
+ * fifths over a light blur that keeps the ink drawing legible, 5px corners, a 2px frame (a quiet warm grey, or a
+ * cream-to-black fade on the focused window) and a soft warm shadow. Its words are JetBrains Mono, its labels spaced-out
+ * capitals. Accents in the theme's own amounts: cream for text and frames, sand for everyday highlights, amber plates
+ * with ink letters for the chosen thing, and vermilion kept to one mark, the line that is playing.
+ *
+ * One picture: the fork's first drawing, the sepia cyborg woman (the other two stay in the fork). She is bright, so the
+ * desktop shows her at three quarters under heavier frosting than the fork gives its darker drawings.
+ *
+ * Every selector is scoped to html[data-theme="mecha-no-onna"], written by index.html / theme.ts.
+ * Glass goes on a ::before at z-index -1 inside an isolated box, never on a container that holds a menu: a
+ * backdrop-filter re-anchors fixed children and the search dropdown and the context menus live in those containers.
+ */
+
+/* ---- tokens ---- */
+html[data-theme="mecha-no-onna"] {
+  --role-bg: #1c1b19;
+  --role-surface: #2e2b27;
+  --role-text: #f0e4c5;
+  --role-muted: #a89984;
+  --role-brand: #d4bd99;
+  --role-negative: #e8806e;
+  --role-warning: #f7df97;
+  --role-info: #aab6bd;
+  --role-success: #b3bd8a;
+  --role-action: #e7c07c;
+
+  --bg: var(--role-bg);
+  --bg2: color-mix(in srgb, var(--role-bg) 55%, var(--role-surface));
+  --bg3: var(--role-surface);
+  --line: color-mix(in srgb, var(--role-text) 12%, var(--role-bg));
+  --fg: var(--role-text);
+  --fg2: var(--role-muted);
+  --fg3: color-mix(in srgb, var(--role-muted) 70%, var(--role-bg));
+  --accent: var(--role-brand);
+  --accent-fg: #1c1b19;
+  --ok: var(--role-success);
+  --no: var(--role-negative);
+  /* tag slots (theme.json "tags"): the gruvbox slots' hue families, in the drawing's warm sepia */
+  --t1: #e8806e; --t2: #e6a06f; --t3: #f7df97; --t4: #b3bd8a;
+  --t5: #9cc4a8; --t6: #8fb4d6; --t7: #d7a8b0; --t8: #e2cfa6;
+}
+
+/* ---- look settings ---- */
+html[data-theme="mecha-no-onna"] {
+  --look-gap: 8px;                  /* between windows, and to the screen's edge */
+  --look-radius: 5px;
+  --look-frame-width: 2px;
+  --look-glass-blur: 9px;           /* light: the drawing stays legible */
+  --look-glass-tint: .8;            /* how much warm black is laid over the blur */
+  --look-panel-tint: .86;           /* the same, for panels that cannot blur */
+  --look-field-radius: 4px;
+  --look-field-tint: .5;
+  --look-wallpaper-clarity: .75;    /* how much of the picture the desktop shows: she is bright */
+  --look-wallpaper-focus: 45% 40%;  /* her face */
+  --look-label-spacing: .22em;      /* "L I B R A R Y" */
+
+  /* the theme's accents beyond the palette's roles, named by their job */
+  --look-mark: #d94e38;             /* vermilion: the line that is playing */
+  --look-plate: var(--role-action); /* amber: a solid plate with ink letters, the chosen thing */
+  --look-quiet: var(--role-brand);  /* sand: frames of chosen things, focus */
+  --look-cream: #fbf1c7;            /* the theme's white: frames and seams */
+  --look-ink: #120e0a;              /* its shadow colour */
+  --look-deep: #1c1b19;             /* the dark end of the focused window's frame */
+  --look-frame-base: #45413a;       /* an unfocused window's frame */
+  --look-well-base: #0d0c0a;        /* fields and wells */
+
+  --look-glass: color-mix(in srgb, var(--bg) calc(var(--look-glass-tint) * 100%), transparent);
+  --look-panel: color-mix(in srgb, var(--bg) calc(var(--look-panel-tint) * 100%), transparent);
+  --look-float: color-mix(in srgb, var(--bg) 95%, transparent);
+  --look-field: color-mix(in srgb, var(--look-well-base) calc(var(--look-field-tint) * 100%), transparent);
+  --look-frame: color-mix(in srgb, var(--look-frame-base) 70%, transparent);
+  --look-frame-lit: linear-gradient(135deg, color-mix(in srgb, var(--look-cream) 88%, transparent), color-mix(in srgb, var(--look-deep) 88%, transparent));
+  --look-hairline: color-mix(in srgb, var(--look-cream) 11%, transparent);
+  --look-hover: color-mix(in srgb, var(--look-cream) 8%, transparent);
+  --look-glass-filter: blur(var(--look-glass-blur)) brightness(.85) contrast(1.05) saturate(1.15);
+  --look-shadow: 0 6px 18px color-mix(in srgb, var(--look-ink) 60%, transparent);
+  --look-window-shadow: 0 0 0 var(--look-frame-width) var(--look-frame), var(--look-shadow);
+  --look-pane-shadow: inset 0 0 0 1px var(--look-hairline), var(--look-shadow);
+
+  /* the type: the theme's terminal font (styles.css already loads it for --font-mono) */
+  --font-ui: var(--font-mono);
+  font-feature-settings: "zero" 1, "calt" 1;
+}
+
+/* ---- the desktop ---- */
+html[data-theme="mecha-no-onna"] { background: var(--bg); }
+html[data-theme="mecha-no-onna"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url(mecha-bg1.webp) var(--look-wallpaper-focus) / cover no-repeat;
+  opacity: var(--look-wallpaper-clarity);
+}
+html[data-theme="mecha-no-onna"] body { background: transparent; }
+
+/* ---- the top bar: a slim window with the quiet frame ---- */
+html[data-theme="mecha-no-onna"] .topbar {
+  top: var(--look-gap);
+  margin: var(--look-gap) var(--look-gap) 0;
+  padding: 0 14px;
+  background: transparent;
+  border-bottom: 0;
+  border-radius: var(--look-radius);
+}
+html[data-theme="mecha-no-onna"] .topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--look-glass);
+  -webkit-backdrop-filter: var(--look-glass-filter);
+  backdrop-filter: var(--look-glass-filter);
+  box-shadow: var(--look-window-shadow);
+}
+/* the tabs: spaced capitals, like the theme's window titles */
+html[data-theme="mecha-no-onna"] .tab {
+  margin-bottom: 0;
+  border-bottom: 0;
+  border-radius: var(--look-field-radius);
+  align-self: center;
+  padding: 6px 10px;
+  font-size: .78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--look-label-spacing);
+}
+html[data-theme="mecha-no-onna"] .tab:hover { background: var(--look-hover); }
+html[data-theme="mecha-no-onna"] .tab.on {
+  background: color-mix(in srgb, var(--look-cream) 12%, transparent);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--look-quiet) 60%, transparent);
+}
+html[data-theme="mecha-no-onna"] .off-page { background: var(--bg); }
+
+/* ---- each list screen: the focused window, with the cream-to-black frame ----
+ * The glass is the ::before; the frame is the ::after, a gradient kept to the border by a mask. */
+html[data-theme="mecha-no-onna"] main { padding: var(--look-gap); }
+html[data-theme="mecha-no-onna"] .page {
+  position: relative;
+  isolation: isolate;
+  padding: 14px 18px 26px;
+  border-radius: var(--look-radius);
+}
+html[data-theme="mecha-no-onna"] :is(.page, .np-main)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--look-glass);
+  -webkit-backdrop-filter: var(--look-glass-filter);
+  backdrop-filter: var(--look-glass-filter);
+  box-shadow: var(--look-shadow);
+}
+html[data-theme="mecha-no-onna"] :is(.page, .np-main)::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--look-frame-width));
+  z-index: -1;
+  pointer-events: none;
+  border: var(--look-frame-width) solid transparent;
+  border-radius: calc(var(--look-radius) + var(--look-frame-width));
+  background: var(--look-frame-lit) border-box;
+  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+html[data-theme="mecha-no-onna"] .controls .sep { background: var(--look-hairline); }
+
+/* ---- fields: dark wells, sand when focused ---- */
+html[data-theme="mecha-no-onna"] :is(.search, .qin, .merge input, .pk-in, .st-find input, .au-name input, .lyr-ta, .arow .nm-in, .chtime-in, .chtitle-in, .title-edit) {
+  background-color: var(--look-field);
+  border-color: var(--look-hairline);
+  border-radius: var(--look-field-radius);
+}
+html[data-theme="mecha-no-onna"] .search:focus-within,
+html[data-theme="mecha-no-onna"] .qin:focus { border-color: color-mix(in srgb, var(--look-quiet) 65%, transparent); }
+html[data-theme="mecha-no-onna"] select.chip { background-color: var(--look-field); }
+
+/* ---- buttons and chips: square, flat, one hover; the chosen one an amber plate with ink letters ---- */
+html[data-theme="mecha-no-onna"] :is(.btn, .chip, .cbtn, .chbtn, .pill, .seg) {
+  border-color: var(--look-hairline);
+  border-radius: var(--look-field-radius);
+}
+html[data-theme="mecha-no-onna"] .btn { background: color-mix(in srgb, var(--look-cream) 6%, transparent); }
+html[data-theme="mecha-no-onna"] .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--look-cream) 13%, transparent); }
+html[data-theme="mecha-no-onna"] .chip { background: var(--look-field); }
+html[data-theme="mecha-no-onna"] .chip:hover { border-color: color-mix(in srgb, var(--look-cream) 22%, transparent); }
+html[data-theme="mecha-no-onna"] .chip.on,
+html[data-theme="mecha-no-onna"] .pill.on,
+html[data-theme="mecha-no-onna"] .seg button.on,
+html[data-theme="mecha-no-onna"] .lyricsbtn.on,
+html[data-theme="mecha-no-onna"] .cbtn.studiobtn.on,
+html[data-theme="mecha-no-onna"] .relocate-pop .btn.primary {
+  background: var(--look-plate);
+  color: var(--accent-fg);
+  border-color: var(--look-plate);
+}
+html[data-theme="mecha-no-onna"] .relocate-pop .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--look-plate) 82%, var(--look-cream)); }
+html[data-theme="mecha-no-onna"] .pill { border-radius: 999px; }
+html[data-theme="mecha-no-onna"] .chip:disabled:hover { border-color: var(--look-hairline); }
+html[data-theme="mecha-no-onna"] kbd { background: var(--look-field); border-color: var(--look-hairline); }
+
+/* ---- cards and rows ---- */
+html[data-theme="mecha-no-onna"] .thumb { box-shadow: 0 0 0 1px var(--look-hairline); background: var(--look-field); }
+html[data-theme="mecha-no-onna"] .card { border-radius: var(--look-radius); }
+html[data-theme="mecha-no-onna"] .card:focus-visible,
+html[data-theme="mecha-no-onna"] .card:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--look-quiet) 65%, transparent); background: color-mix(in srgb, var(--look-cream) 6%, transparent); }
+html[data-theme="mecha-no-onna"] :is(.frow, .arow):hover,
+html[data-theme="mecha-no-onna"] :is(.frow, .arow):focus-visible { background: var(--look-hover); }
+html[data-theme="mecha-no-onna"] :is(.r.on, .r:hover, .pk-row.on, .pk-row:hover, .menu button:hover, .menu button:focus-visible, .menu button.on, .merge .opt:hover, .copt:hover:not(:disabled), .plrow:hover) { background: var(--look-hover); }
+/* the one vermilion mark: the line that is playing */
+html[data-theme="mecha-no-onna"] .r.on { box-shadow: inset 3px 0 0 var(--look-mark); }
+
+/* ---- things that float over the windows: near-solid, the quiet frame ---- */
+html[data-theme="mecha-no-onna"] :is(.dd, .menu, .vmenu, .cmenu, .merge, .pk-list, .relocate-pop, .chs-pick, .fntip, dialog.delconfirm) {
+  background: var(--look-float);
+  border-color: transparent;
+  border-radius: var(--look-radius);
+  box-shadow: var(--look-window-shadow);
+}
+/* notifications: warm glass with a sand frame, as Mako draws them */
+html[data-theme="mecha-no-onna"] .toast {
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  border-color: transparent;
+  border-radius: var(--look-radius);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--look-quiet) 55%, transparent), var(--look-shadow);
+}
+html[data-theme="mecha-no-onna"] .dd-head { background: var(--look-float); border-bottom-color: var(--look-hairline); }
+html[data-theme="mecha-no-onna"] .dd .note { border-top-color: var(--look-hairline); }
+html[data-theme="mecha-no-onna"] .vmenu .vm-meta { border-bottom-color: var(--look-hairline); }
+html[data-theme="mecha-no-onna"] dialog.delconfirm::backdrop { background: color-mix(in srgb, var(--look-ink) 60%, transparent); }
+
+/* ---- Now playing: the main column is the focused window, the drawers an unfocused one ----
+ * The Player keeps its own box inside the window: its menus are positioned inside it, so no glass on .player itself. */
+html[data-theme="mecha-no-onna"] .np { padding: 0 var(--look-gap) 40px; gap: var(--look-gap); }
+html[data-theme="mecha-no-onna"] .np-main {
+  position: relative;
+  isolation: isolate;
+  padding: 12px 14px 22px;
+  border-radius: var(--look-radius);
+}
+html[data-theme="mecha-no-onna"] .drawer-wrap { top: calc(var(--bar-h) + var(--look-gap) + 12px); height: calc(100vh - var(--bar-h) - var(--look-gap) - 24px); }
+html[data-theme="mecha-no-onna"] :is(.drawer, .chcard, .studio, .stpanel, .player) { border-color: var(--look-hairline); }
+html[data-theme="mecha-no-onna"] .player { border-radius: var(--look-radius); box-shadow: 0 0 0 1px var(--look-hairline); }
+html[data-theme="mecha-no-onna"] .player:focus { box-shadow: 0 0 0 1px color-mix(in srgb, var(--look-quiet) 65%, transparent); }
+html[data-theme="mecha-no-onna"] :is(.drawer, .chcard) { background: var(--look-panel); border-radius: var(--look-radius); box-shadow: var(--look-window-shadow); border-color: transparent; }
+html[data-theme="mecha-no-onna"] .drawer .hd { border-bottom-color: var(--look-hairline); }
+html[data-theme="mecha-no-onna"] :is(.np-delete, .fnh) { border-top-color: var(--look-hairline); }

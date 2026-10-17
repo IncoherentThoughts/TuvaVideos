@@ -15,7 +15,7 @@ One file on disk holding a Video, inside exactly one Root. A Video has one or mo
 _Avoid_: file, path, location, duplicate
 
 **Root**:
-A directory the library scans for Copies. A Root is either **local** (always present, on the laptop) or **external** (on a drive that may be unmounted).
+A directory the library scans for Copies, chosen in the app on first launch (a path field; the control center edits it later) and optional for a Member, who may browse the Shared grid with none. A Root is either **local** (always present, on the laptop) or **external** (on a drive that may be unmounted). No Root is built into the app.
 _Avoid_: folder, source, library path, mount
 
 **Available (a Video)**:

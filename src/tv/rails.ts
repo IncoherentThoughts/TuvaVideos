@@ -4,6 +4,7 @@ import { defaultLibraryState, viewVideos, filterVideos, type LibraryState } from
 import { favoriteEntries, favoriteStartS, libraryFiltered, libraryStart, videoEntries, type FavoriteRow } from "../shared/playlistStart"
 import { startPlaylist, type Entry, type Playlist, type PlaylistSource } from "../shared/playlist"
 import { uniqueIds, type PlayingFrom, type PlayingSource } from "../shared/playingFrom"
+import type { VideoType } from "../shared/filters"
 import type { ArtistDto, ChapterDto, FavoriteItem, SongListDto, VideoDto } from "../shared/types"
 
 export interface TvData {
@@ -124,6 +125,10 @@ export type GridSpec =
   | { kind: "rail"; rail: "continue" | "recent" | "concerts" }
   | { kind: "song"; id: string; name: string }
   | { kind: "artist"; id: number; name: string }
+  /** All Videos of one Type (the Player's Type tag). */
+  | { kind: "type"; type: VideoType }
+
+const TYPE_TITLE: Record<VideoType, string> = { song: "Song Videos", concert: "Concerts", interview: "Interviews", other: "Other Videos" }
 
 export const GRID_TITLE = { library: "Library", favorites: "Favorites", artists: "Artists", continue: "Continue watching", recent: "Recently added", concerts: "Concerts" } as const
 
@@ -131,6 +136,7 @@ export function gridTitle(g: GridSpec): string {
   if (g.kind === "songs") return g.lyricsOnly ? "Songs with lyrics" : "Songs"
   if (g.kind === "rail") return GRID_TITLE[g.rail]
   if (g.kind === "song" || g.kind === "artist") return g.name
+  if (g.kind === "type") return TYPE_TITLE[g.type]
   return GRID_TITLE[g.kind]
 }
 
@@ -179,6 +185,7 @@ export function gridTiles(g: GridSpec, d: TvData, lib: LibraryState, perf: reado
     case "rail": return railTiles(g.rail, d)
     case "song": return songVideoTiles(d.videos, perf, lib)
     case "artist": return artistVideoTiles(d.videos, g.id, lib)
+    case "type": return libraryTiles(d.videos, { ...defaultLibraryState(), types: [g.type] })
   }
 }
 

@@ -18,6 +18,9 @@
   --font-lyrics: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --r: 12px;
+  /* the lyrics column (docs/tv-spec.md 6.1): the type size at 3 m, tuned on the TV. 44 px shrinking to the floor before the column widens. */
+  --lyr-size: 44px;
+  --lyr-size-min: 34px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,6 +33,7 @@ img { display: block; }
 
 #tv { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; background: var(--bg); overflow: hidden; }
 .stage { position: absolute; inset: 0 0 44px 0; transition: opacity .15s; }
+.stage.full { inset: 0; }
 .stage.dim { opacity: .28; }
 .layer { position: absolute; inset: 0; }
 .layer:not(.cur) { visibility: hidden; }
@@ -137,17 +141,97 @@ img { display: block; }
 .res .rr.shuffle .t { color: var(--accent); }
 mark { background: color-mix(in srgb, var(--accent) 35%, transparent); color: inherit; border-radius: 3px; }
 
-/* ---- Player stub (replaced by tv-player) ---- */
-.pl { background: #000; }
-.pl video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
-.plmsg { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; color: var(--fg2); text-align: center; padding: 0 200px; }
+
+/* ---- Player (docs/tv-spec.md 6): the whole video letterboxed on the left, the lyrics column standing on the right ---- */
+.pl { flex-direction: row; background: #000; }
+.pl-vid { position: relative; flex: 1; min-width: 0; background: #000; overflow: hidden; }
+.pl-vid video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.plmsg { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; color: var(--fg2); text-align: center; padding: 0 160px; z-index: 3; }
 .plmsg.over { background: #0008; color: var(--fg); }
-.pl-top { position: absolute; left: 0; right: 0; top: 0; padding: 36px 48px 80px; background: linear-gradient(#000c, transparent); opacity: 0; transition: opacity .2s; }
-.pl-top.on, .pl-bar.on { opacity: 1; }
+.pl-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 72px; font-weight: 600; color: #fff; background: #0008; padding: 12px 40px; border-radius: 22px; z-index: 4; }
+.pl-flash { position: absolute; left: 50%; bottom: 300px; transform: translateX(-50%); max-width: 80%; font-size: 30px; background: #000c; border: 1px solid var(--line); padding: 12px 30px; border-radius: 16px; z-index: 4; text-align: center; }
+
+/* the OSD: a top band (title, tag row, Playing from) and a bottom bar fading after 3 s, pinned while paused or in a zone */
+.pl-top { position: absolute; left: 0; right: 0; top: 0; padding: 36px 48px 80px; background: linear-gradient(#000d, transparent); opacity: 0; transition: opacity .2s; z-index: 2; }
+.pl-top.on, .pl-top.pin { opacity: 1; }
 .pl-top .t1 { font-size: 36px; font-weight: 600; text-shadow: 0 1px 4px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pl-top .tags { margin-top: 10px; }
-.pl-top .from { margin-top: 10px; font-size: 19px; color: var(--fg2); }
-.pl-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 60px 48px 28px; display: flex; align-items: center; gap: 18px; font: 24px var(--font-mono); background: linear-gradient(transparent, #000c); opacity: 0; transition: opacity .2s; }
+.pl-top .tagrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; }
+.pl .tag { font-size: 22px; padding: 6px 13px; max-width: 360px; }
+.pl .tag.sug { border-style: dashed; }
+.pl .tag.f { box-shadow: 0 0 0 3px var(--fg); background: color-mix(in srgb, var(--c) 40%, transparent); color: #fff; }
+.pl-top .info { font-size: 20px; color: var(--fg2); padding: 0 6px; text-shadow: 0 1px 3px #000; }
+.pl-top .from { margin-top: 10px; font-size: 20px; color: var(--fg2); text-shadow: 0 1px 3px #000; }
+.pl-top .lyrband { display: flex; gap: 20px; align-items: baseline; margin-top: 14px; font-size: 24px; color: var(--fg2); }
+.pl-top .lyrband b { color: var(--accent); font-weight: 600; }
+.pl-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 70px 48px 30px; background: linear-gradient(transparent, #000d 55%); opacity: 0; transition: opacity .2s; z-index: 2; }
+.pl-bar.on, .pl-bar.pin { opacity: 1; }
+.pl-bar .row { display: flex; align-items: baseline; gap: 24px; min-height: 36px; font-size: 24px; margin-bottom: 12px; }
+.pl-bar .chap { color: var(--t3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pl-bar .nextup { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 640px; }
+.pl-bar .tm { display: flex; align-items: center; gap: 18px; font: 24px var(--font-mono); }
 .pl-bar .bar { position: relative; flex: 1; height: 8px; background: #fff3; border-radius: 4px; }
-.pl-bar .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
-.pl .toast { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 40px; background: #000a; padding: 10px 30px; border-radius: 16px; }
+.pl-bar .bar i { position: absolute; }
+.pl-bar .fill { left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
+.pl-bar .tick { top: -4px; width: 3px; height: 16px; background: var(--t3); border-radius: 2px; z-index: 1; }
+.pl-bar .rmark { top: -8px; width: 4px; height: 24px; margin-left: -2px; background: var(--fg); border-radius: 2px; z-index: 2; }
+.pl-bar .btns { display: flex; gap: 14px; margin-top: 20px; }
+.pbtn { font-size: 25px; font-weight: 500; padding: 9px 26px; border: 2px solid #fff3; border-radius: 12px; color: var(--fg2); background: #0006; }
+.pbtn.lit { color: var(--t3); border-color: color-mix(in srgb, var(--t3) 55%, transparent); }
+.pbtn.off { opacity: .5; }
+.pbtn.f { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+/* the vertical list over the video's left edge: the Chapters and the Copies */
+.pl-list { position: absolute; left: 0; top: 0; bottom: 0; width: 780px; padding: 44px 40px 28px 48px; background: linear-gradient(90deg, #000f 72%, transparent); z-index: 3; }
+.pl-list h3 { font-size: 24px; font-weight: 600; color: var(--fg2); margin-bottom: 12px; }
+.pl-list .rows { overflow: hidden; }
+.pl-list .rows-in { transition: transform .12s; }
+.pl-list .lh { margin-top: 10px; font-size: 19px; color: var(--fg3); }
+.cr { display: flex; gap: 18px; align-items: center; height: 64px; padding: 0 16px; border-radius: 10px; font-size: 27px; color: var(--fg2); }
+.cr .mono { font: 21px var(--font-mono); color: var(--fg3); width: 96px; flex: none; text-align: right; }
+.cr .ct { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr .sug { flex: none; font-size: 16px; border: 1px dashed; border-radius: 5px; padding: 0 6px; }
+.cr .now { flex: none; font-size: 16px; color: var(--accent); border: 1px solid; border-radius: 5px; padding: 0 6px; }
+.cr.cur { color: var(--t3); }
+.cr.dim { opacity: .45; }
+.cr.f { background: var(--accent); color: var(--accent-fg); opacity: 1; }
+.cr.f .mono, .cr.f .now { color: var(--accent-fg); }
+
+/* the lyrics column: standalone, sized to its longest line (720-1060 px); type 44 px (--lyr-size) shrinking to --lyr-size-min first */
+.pl-lyr { --g1: hsl(25 70% 46%); --g2: hsl(200 60% 38%); --g3: hsl(45 70% 38%); --g4: hsl(330 55% 38%); position: relative; isolation: isolate; overflow: hidden; flex: none; width: 720px; display: flex; flex-direction: column; background: #0d0c0b; padding: 52px 64px 40px; }
+.pl-lyr > :not(.glow) { position: relative; z-index: 1; }
+.pl-lyr .hd h2 { font-size: 34px; font-weight: 600; line-height: 1.2; text-shadow: 0 1px 2px #000a; }
+.pl-lyr .hd h2 .en { font-size: 24px; font-weight: 400; color: var(--fg2); margin-left: 10px; }
+.pl-lyr .hd h2 .loc { font-size: 18px; font-weight: 600; color: var(--accent); margin-left: 8px; }
+.pl-lyr .pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.pl-lyr .pill { font-size: 20px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 14px; color: var(--fg2); }
+.pl-lyr .pill.on { border-color: var(--accent); color: var(--fg); }
+.pl-lyr .scripts { display: inline-flex; margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0006; }
+.pl-lyr .scripts span { font-size: 20px; font-weight: 600; padding: 5px 14px; color: var(--fg2); }
+.pl-lyr .scripts span.on { background: var(--bg3); color: var(--fg); }
+.pl-lyr .scripts span.off { color: var(--fg3); opacity: .5; }
+.pl-lyr .lines { flex: 1; min-height: 0; overflow: hidden; position: relative; margin-top: 24px; font-family: var(--font-lyrics); font-size: var(--lyr-size); line-height: 1.4; text-shadow: 0 1px 2px #000a; }
+.pl-lyr .ln { display: block; }
+.pl-lyr .tx { display: inline-block; vertical-align: top; }
+.pl-lyr .sp { height: 36px; }
+.pl-lyr .none { color: var(--fg3); font-size: 24px; }
+.pl-lyr .pager { margin-top: 10px; height: 1.4em; font: 22px var(--font-mono); color: var(--fg3); text-align: right; }
+/* the living backdrop: the poster blurred and drifting, four blobs in its sampled hues, then vignette, tint and grain */
+.pl-lyr .glow { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #0d0c0b; }
+.pl-lyr .glow img { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; object-fit: cover; opacity: .7; filter: blur(48px) saturate(2.4) brightness(1.1); will-change: transform; animation: glow-drift 38s ease-in-out infinite alternate; }
+@keyframes glow-drift { from { transform: translate(-4%, -3%) rotate(-3deg) scale(1.05); } to { transform: translate(4%, 3%) rotate(3deg) scale(1.18); } }
+.pl-lyr .blob { position: absolute; width: 1000px; height: 1000px; border-radius: 50%; filter: blur(50px); mix-blend-mode: screen; will-change: transform; }
+.pl-lyr .b1 { background: radial-gradient(circle, var(--g1) 0%, transparent 62%); left: -300px; top: -200px; animation: blob-a 23s ease-in-out infinite alternate; }
+.pl-lyr .b2 { background: radial-gradient(circle, var(--g2) 0%, transparent 62%); right: -350px; top: 150px; animation: blob-b 29s ease-in-out infinite alternate; }
+.pl-lyr .b3 { background: radial-gradient(circle, var(--g3) 0%, transparent 62%); left: -200px; bottom: -350px; animation: blob-c 19s ease-in-out infinite alternate; }
+.pl-lyr .b4 { background: radial-gradient(circle, var(--g4) 0%, transparent 62%); right: -250px; bottom: -250px; animation: blob-d 34s ease-in-out infinite alternate; }
+@keyframes blob-a { from { transform: translate(0, 0) scale(1); opacity: .75; } to { transform: translate(220px, 160px) scale(1.25); opacity: 1; } }
+@keyframes blob-b { from { transform: translate(0, 0) scale(1.1); opacity: .8; } to { transform: translate(-200px, 260px) scale(.9); opacity: .95; } }
+@keyframes blob-c { from { transform: translate(0, 0) scale(.95); opacity: .7; } to { transform: translate(260px, -180px) scale(1.2); opacity: .95; } }
+@keyframes blob-d { from { transform: translate(0, 0) scale(1.15); opacity: .75; } to { transform: translate(-240px, -220px) scale(.95); opacity: .9; } }
+.pl-lyr .glow .vig { position: absolute; inset: 0; background:
+  radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #0d0c0b33 100%),
+  radial-gradient(ellipse 70% 60% at 50% 100%, transparent 0%, #0d0c0b33 100%),
+  radial-gradient(ellipse 40% 80% at 0% 50%, transparent 0%, #0d0c0b28 100%),
+  radial-gradient(ellipse 40% 80% at 100% 50%, transparent 0%, #0d0c0b28 100%); }
+.pl-lyr .glow .tint { position: absolute; inset: 0; background: linear-gradient(180deg, #0d0c0b22, #0d0c0b60); }
+.pl-lyr .glow .grain { position: absolute; inset: 0; opacity: .18; mix-blend-mode: overlay; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }

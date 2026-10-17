@@ -9,6 +9,7 @@ import { Grid } from "./Grid"
 import { Home } from "./Home"
 import { Pane } from "./Pane"
 import { Player } from "./Player"
+import { setActivePlaylist } from "./playlistOps"
 import { Search } from "./Search"
 import { api, exitApp } from "./data"
 import { focusEl, keyOf } from "./focus"
@@ -76,6 +77,7 @@ function App() {
       setPane({ open: false, focusKey: null })
       paneReturn.current = null
     }
+    if (route.kind === "player" && route.playlist) setActivePlaylist(route.playlist) // a Shuffle started a Playlist (spec 6.7)
     setStack((s) => push(s, makeEntry(route, fromPane)))
   }
 
@@ -86,6 +88,10 @@ function App() {
         setLib,
         openGrid: (grid) => openRoute({ kind: "grid", grid }),
         openSearch: () => openRoute({ kind: "search" }),
+        swapToGrid: (grid) => {
+          setStack((s) => replaceTop(s, makeEntry({ kind: "grid", grid })))
+          void reload() // the Player wrote Resume on the way out
+        },
         play: (videoId, o) => openRoute({ kind: "player", videoId, startS: o.startS ?? null, playingFrom: o.playingFrom, playlist: o.playlist ?? null }),
         random: () => {
           const id = pickRandomVideo(data.videos)
@@ -127,6 +133,18 @@ function App() {
     [],
   )
 
+  // Desktop development only (no shell): `?play=<videoId>[&t=<seconds>]` opens that Video once the library has loaded.
+  const autoPlayed = useRef(false)
+  useEffect(() => {
+    if (!nav || autoPlayed.current || window.tuvaTv) return
+    const q = new URLSearchParams(location.search)
+    const id = Number(q.get("play"))
+    autoPlayed.current = true
+    if (!Number.isInteger(id) || id <= 0) return
+    const t = q.get("t")
+    nav.play(id, { startS: t != null && t !== "" ? Number(t) : null, playingFrom: { source: "library", ids: libraryOrder(nav.data.videos).map((v) => v.id) } })
+  }, [!!nav])
+
   const topEntry = top(stack)
   const stepPlayer = (e: Entry, videoId: number, o: { startS: number | null; playlist: import("../shared/playlist").Playlist | null }) => {
     if (e.route.kind !== "player") return
@@ -149,7 +167,7 @@ function App() {
 
   return (
     <>
-      <div class={pane.open ? "stage dim" : "stage"}>
+      <div class={`stage${pane.open ? " dim" : ""}${topEntry.route.kind === "player" ? " full" : ""}`}>
         {stack.map((e) => {
           const active = e === topEntry && !pane.open
           return (
@@ -175,7 +193,7 @@ function App() {
         {toast}
       </div>
       {info && <pre id="state">{JSON.stringify({ stack: stack.map((e) => e.route.kind), pane: pane.open, focus: keyOf(document.activeElement), lib }, null, 1)}</pre>}
-      <Hints route={topEntry.route} pane={pane.open} />
+      {(topEntry.route.kind !== "player" || pane.open) && <Hints route={topEntry.route} pane={pane.open} />}
     </>
   )
 }
@@ -195,7 +213,7 @@ const HINTS: Record<Route["kind"], string> = {
   home: "◀▶▲▼ move · Enter open · Back or ◀ at the start: menu",
   grid: "◀▶▲▼ move · Enter open · Ch▲▼ page · Back returns",
   search: "◀▶▲▼ keys · Enter type or open · ▶ results · Back",
-  player: "Enter pause · ◀▶ ±10 s · ‹ › Playing from · Back leaves",
+  player: "",
 }
 
 function Hints({ route, pane }: { route: Route; pane: boolean }) {

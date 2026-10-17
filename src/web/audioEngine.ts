@@ -124,6 +124,24 @@ export class AudioEngine {
     return v.__tuvaAudio;
   }
 
+  /**
+   * Is the page's AudioContext actually running? Resumes it, waits up to `timeoutMs`, then checks that its clock moves.
+   * The TV Player asks before routing an element through the context (an element routed into a context stuck
+   * `suspended` plays silence for good) and again once the chain is built (docs/tv-spec.md 6.8). False on any throw.
+   */
+  static async probe(timeoutMs = 1500): Promise<boolean> {
+    try {
+      const ctx = context();
+      await Promise.race([ctx.resume(), new Promise<void>((r) => setTimeout(r, timeoutMs))]);
+      if (ctx.state !== "running") return false;
+      const t0 = ctx.currentTime;
+      await new Promise<void>((r) => setTimeout(r, 300));
+      return ctx.currentTime > t0;
+    } catch {
+      return false;
+    }
+  }
+
   static has(video: HTMLMediaElement): boolean {
     return !!(video as HTMLMediaElement & { __tuvaAudio?: AudioEngine }).__tuvaAudio;
   }

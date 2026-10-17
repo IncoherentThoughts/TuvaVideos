@@ -9,6 +9,9 @@ import { rankCopies } from "./ranking";
 import type { Roots } from "./roots";
 import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
+import type { TvServer } from "./tv";
+import { factsOfRow, parseDecision } from "./tvJudge";
+import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
 import { deleteVideo } from "./deleteVideo";
 import { serveFile } from "./stream";
 import type { KeyframeIndex } from "./keyframes";
@@ -26,7 +29,7 @@ import { relocateCopy } from "./relocate";
 import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } from "./audio";
 import type { VideoType } from "../shared/filters";
 import { storedLoop, type StoredLoop } from "../shared/playerMath";
-import type { ArtistRef, ChapterDto, FavoriteItem, SongDto } from "../shared/types";
+import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "../shared/types";
 
 const THUMB_CACHE = "public, max-age=86400";
 /** `/thumbs/<id>/<which>.webp?v=<generatedAt>`: the query string is the cache key (the route matches the path alone). */
@@ -45,6 +48,8 @@ export interface Services {
   keyframes: KeyframeIndex;
   studio: Studio;
   web: WebBundle;
+  /** The second listener for the TV (docs/tv-spec.md 2): off until the TV button turns it on. */
+  tv: TvServer;
   startedAt: number;
   /** Set by the launcher: stops the server (the power button). Absent under tests and the smoke runs. */
   quit?: () => void;
@@ -71,6 +76,7 @@ interface CopyDbRow {
   playback: Playback;
   fallback_file: string | null;
   missing_since: string | null;
+  tv_playback: string | null;
 }
 
 interface VideoDbRow {
@@ -103,10 +109,16 @@ interface VideoDbRow {
 }
 
 const COPY_SQL = `SELECT c.id, c.video_id, c.root_id, r.kind AS root_kind, c.rel_path, c.size, c.mtime, c.duration_s, c.container,
-  c.video_codec, c.audio_codec, c.width, c.height, c.r_frame_rate, c.playback, c.fallback_file, c.missing_since
+  c.video_codec, c.audio_codec, c.width, c.height, c.r_frame_rate, c.playback, c.fallback_file, c.missing_since, c.tv_playback
   FROM copy c JOIN root r ON r.id = c.root_id`;
 
 export function createHandler(s: Services) {
+  const tvJson = (c: CopyDbRow): TvCopyDto => {
+    const decision = parseDecision(c.tv_playback);
+    const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
+    return { decision, order: tvOrder(decision, fb) };
+  };
+
   const copyJson = (c: CopyDbRow) => ({
     id: c.id,
     rootId: c.root_id,
@@ -127,6 +139,8 @@ export function createHandler(s: Services) {
     missing: !!c.missing_since,
     missingSince: c.missing_since,
     available: !c.missing_since && s.roots.isAvailable(c.root_id),
+    /** The TV Playback profile's decision for this Copy and which source the TV plays (tv-spec 3.1, 3.2). */
+    tv: tvJson(c),
     url: `/copy/${c.id}`,
     /** Where the file is on disk (the Root's path joined with the Copy's path inside it). */
     path: join(s.roots.get(c.root_id)?.path ?? "", c.rel_path),
@@ -380,6 +394,7 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/copy\/(\d+)\/pcm$/))) return pcmRoute(req, Number(m[1]));
         if ((m = p.match(/^\/thumbs\/(\d+)\/(poster|strip)\.webp$/))) return thumbRoute(req, Number(m[1]), m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
+        if (p === "/api/tv") return json(s.tv.state());
         if (p === "/api/videos") return json(allVideos());
         if ((m = p.match(/^\/api\/videos\/(\d+)$/))) {
           const v = s.db.query("SELECT * FROM video WHERE id = ?").get(Number(m[1])) as VideoDbRow | null;
@@ -467,6 +482,21 @@ export function createHandler(s: Services) {
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {
+        if (p === "/api/tv/on") {
+          const r = s.tv.start();
+          return r.ok ? json(s.tv.state()) : json({ error: r.error }, r.status);
+        }
+        if (p === "/api/tv/off") {
+          s.tv.stop();
+          return json(s.tv.state());
+        }
+        if (p === "/api/tv/approve" || p === "/api/tv/deny") {
+          const b = await readJson(req);
+          if (!b || typeof b.ip !== "string" || !b.ip.trim()) return json({ error: "ip is required" }, 400);
+          if (p === "/api/tv/approve") s.tv.approve(b.ip);
+          else s.tv.deny(b.ip);
+          return json(s.tv.state());
+        }
         if ((m = p.match(/^\/api\/(videos|chapters)\/(\d+)\/favorite$/))) {
           const table = m[1] === "videos" ? "video" : "chapter";
           let want: boolean | undefined;
@@ -556,6 +586,10 @@ export function createHandler(s: Services) {
           rebuildSearchIndex(s.db);
           return json({ merged: true, moved: r.moved });
         }
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/tv\/approved\/([^/]+)$/))) {
+        if (!s.tv.remove(decodeURIComponent(m[1]!))) return json({ error: "no such Approved TV" }, 404);
+        return json(s.tv.state());
       }
       if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/(\d+)\/audio$/))) {
         const body = (await req.json().catch(() => ({}))) as { state?: unknown };

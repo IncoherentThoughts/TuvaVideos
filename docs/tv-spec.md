@@ -53,7 +53,7 @@ Decided in #49 and written as [ADR 0004](adr/0004-tv-server-on-the-home-network.
 ### 2.2 Approved TVs and the allowlist
 
 - Every request's **source IP** is checked. `GET /api/health` answers anyone with `{ app: "TuvaVideos TV Server" }` and nothing else, so the TV app can find the Mac (§4.2).
-- Any other route from an unknown IP gets **403** with `{ error: "approve" }`; the TV shows "Approve this TV on the Mac". The browser's top bar raises **"Allow TV at ‹IP›? Allow / Deny"**.
+- Any other **listed** route from an unknown IP gets **403** with `{ error: "approve" }`; the TV shows "Approve this TV on the Mac" (a route not on the §2.3 list is a **404** for everyone, strangers included, and raises no prompt). The browser's top bar raises **"Allow TV at ‹IP›? Allow / Deny"**.
 - **Allow** adds an **Approved TV** (`approved_tv(ip, model, approved_at, last_seen_at)`, a new migration) that persists across launches. A DHCP change costs one more click. **Deny** silences that IP until the TV Server is next turned on (in memory only).
 - The TV identifies itself with a `X-Tuva-TV: <model>` header (the shell sets it from `webapis.productinfo` when available, else the user agent), stored as the Approved TV's model and shown in the indicator.
 - No token, no pairing code: on a single-user home network, inheriting the TV's address is the only threat and it costs one click to notice.
@@ -108,9 +108,11 @@ Decided in #52 from #45, #46 and #47, confirmed on the TV by #48.
   | mkv, mp4, mov, m4v | h264, hevc, vp9, av1 | aac, ac3, eac3, opus, vorbis, mp3 | long edge ≤ 4096, ≤ 60 fps for h264, ≤ 120 fps for hevc/av1, 10-bit allowed |
   | webm | vp9, av1 | opus, vorbis | as above |
 
+  Notes from the build (#97): the table gives no fps limit for vp9, so the profile uses 60 (as h264); the limit is skipped when ffprobe's `r_frame_rate` is above 240 (a time base, not a rate); 10-bit needs no rule because the profile allows it and the stored facts carry no pixel format. A video `copy` decision covers every reason the video is not played as-is (unlisted extension or codec, long edge or fps over the limit); the Live remux can only fix the container.
+
   Everything in the 2026-10-11 census direct-plays (the E-AC3 mkv included). A combination that fails on the TV later is fixed by editing this table and bumping the version, never by re-encoding video.
 - A **pure decision** `(copyFacts, profile) → { video: directplay | copy | transcode, audio: directplay | copy | transcode, reason }` in `src/shared/`, shaped like Plex's. Video `transcode` is never produced for the TV and is not supported; audio `transcode` means AAC.
-- **When**: every Copy is judged against every profile **once, at scan time**, stored per Copy (`copy.tv_playback` and `copy.tv_profile_version`, migration), and judged again on the next scan when a profile's version changes (a startup check marks stale rows). Nothing is decided at play time. `bun run index-keyframes`-style ahead-of-time runs are not needed: the scan is the only trigger.
+- **When**: every Copy is judged against every profile **once, at scan time**, stored per Copy (`copy.tv_playback` and `copy.tv_profile_version`, migration), and judged again when a profile's version changes. The judging reads only the facts already stored (no re-probe), so it is cheap: it runs at the end of every scan (new and changed Copies have their result cleared when their row is written) and **at every startup**, which also fills the column after its migration and re-judges rows made under an older version at once (the build does not wait for a scan, as this section first said). Nothing is decided at play time except the order of §3.2, which is derived from the stored result and the Fallback file. `bun run index-keyframes`-style ahead-of-time runs are not needed.
 
 ### 3.2 Order on the TV
 

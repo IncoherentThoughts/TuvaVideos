@@ -1,5 +1,8 @@
 // Shapes of the JSON the server sends and the web UI reads.
 import type { VideoType } from "./filters";
+import type { TvDecision } from "./playbackProfile";
+
+export type { TvDecision };
 
 export interface ArtistRef {
   id: number;
@@ -33,6 +36,13 @@ export interface StripDto {
   intervalS: number | null;
 }
 
+/** The TV Playback profile's result for a Copy and the source the TV plays (docs/tv-spec.md 3.1, 3.2). */
+export interface TvCopyDto {
+  /** Null until the Copy is judged (a moment after a scan or a new profile version). */
+  decision: TvDecision | null;
+  order: "file" | "fallback" | "live";
+}
+
 export interface CopyDto {
   id: number;
   rootKind: "local" | "external";
@@ -49,6 +59,7 @@ export interface CopyDto {
   available: boolean;
   missing: boolean;
   playback: "native" | "remux" | "transcode";
+  tv: TvCopyDto;
   fallback: { state: string; progress?: number | null; error?: string };
   url: string;
   /** Absolute path of the file on disk. */
@@ -238,4 +249,25 @@ export interface VideoPatch {
 export interface LocalSongCreate {
   name: string;
   englishName?: string | null;
+}
+
+export interface ApprovedTvDto {
+  ip: string;
+  model: string | null;
+  approvedAt: string;
+  lastSeenAt: string | null;
+}
+
+/** `GET /api/tv` (localhost listener only). */
+export interface TvStateDto {
+  /** False on a passive server: the TV Server never starts there. */
+  available: boolean;
+  on: boolean;
+  port: number | null;
+  /** The Mac's LAN IPv4 addresses. */
+  addresses: string[];
+  pending: { ip: string; model: string | null }[];
+  approved: ApprovedTvDto[];
+  /** An Approved TV that made a request in the last 60 s; `title` is the Video whose stream it asked for last. */
+  playing: { ip: string; model: string | null; title: string | null } | null;
 }

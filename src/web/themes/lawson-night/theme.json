@@ -1,0 +1,26 @@
+{
+  "id": "lawson-night",
+  "label": "Lawson Night",
+  "description": "Deep indigo with pale lavender text and pastel blue accents, over a dusk view of Mount Fuji behind a lit corner shop. Dark only. From phuclh's Omarchy theme, by way of the MigakuEA fork's palette of the same name.",
+  "addons": [
+    { "id": "wallpaper", "images": ["wallhaven-1k6ljv.webp"], "default": { "dark": "wallhaven-1k6ljv.webp" } }
+  ],
+  "dark": {
+    "bg": "#1e1e2e",
+    "surface": "#353543",
+    "text": "#cdd6f4",
+    "muted": "#9aa1b7",
+    "brand": "#89b4fa",
+    "negative": "#f78e82",
+    "warning": "#f9e2af",
+    "info": "#c7a0ea",
+    "success": "#a6e3a1",
+    "action": "#8fe1e6",
+    "tags": ["#f38ba8", "#fab387", "#f9e2af", "#a6e3a1", "#94e2d5", "#89b4fa", "#cba6f7", "#b4befe"]
+  },
+  "source": {
+    "commit": "28dfc0086cabb3c7a9032880bdd027e35dd968a0",
+    "credit": "phuclh",
+    "repo": "https://github.com/phuclh/omarchy-lawson-night-theme"
+  }
+}

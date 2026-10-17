@@ -3,6 +3,7 @@ import type { ScanDto } from "../shared/types";
 import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { Link, type Route } from "./router";
+import { THEMES, useTheme } from "./theme";
 
 function ScanIndicator({ scan }: { scan: ScanDto }) {
   if (!scan.running) return null;
@@ -80,6 +81,7 @@ export function TopBar({ route }: { route: Route }) {
     window.close();
   };
 
+  const [theme, setTheme] = useTheme();
   const last = route.name === "play" ? route.videoId : getLastPlayed();
   const tab = (name: Route["name"], href: string | null, label: string) => (
     <Link href={href ?? "/"} class={`tab${route.name === name ? " on" : ""}${href === null ? " off" : ""}`} aria-current={route.name === name ? "page" : undefined} tabIndex={href === null ? -1 : undefined}>
@@ -105,6 +107,13 @@ export function TopBar({ route }: { route: Route }) {
         <button class="btn" onClick={() => playRandom()} disabled={!anyAvailable} title="Play a random available Video (r)">
           Random
         </button>
+        <select class="btn theme" aria-label="Theme" title="Theme (docs/themes.md)" value={theme} onChange={(e) => setTheme((e.target as HTMLSelectElement).value)}>
+          {THEMES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
         <button class="btn" onClick={rescan} disabled={busy || !!scan?.running} title="Scan the Roots for new files">
           Rescan
         </button>

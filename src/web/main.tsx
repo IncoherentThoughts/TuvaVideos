@@ -11,6 +11,7 @@ import { VideoMenu } from "./VideoMenu";
 import { loadArtists, loadVideos, useStore } from "./data";
 import { installKeys } from "./keys";
 import { matchRoute, useLocation } from "./router";
+import { applyThemeFromUrl } from "./theme";
 
 function App() {
   const loc = useLocation();
@@ -35,6 +36,7 @@ function App() {
   );
 }
 
+applyThemeFromUrl();
 installKeys();
 void loadVideos();
 void loadArtists();

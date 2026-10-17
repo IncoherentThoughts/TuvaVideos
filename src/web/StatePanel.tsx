@@ -8,7 +8,7 @@ import { fmtClock, frameNumber, type AbLoop } from "../shared/playerMath";
 import type { CopyDto, VideoDto } from "../shared/types";
 import type { ChapterMark } from "./Timeline";
 import { api } from "./data";
-import { artistSlot, resolutionLabel } from "./ui";
+import { FavoriteBadge, artistSlot, resolutionLabel } from "./ui";
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -158,7 +158,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
     { k: "added", v: fmtDate(video.addedAt) ? <Num v={fmtDate(video.addedAt)!} /> : <Nil /> },
     { k: "last played", v: fmtWhen(video.lastPlayedAt) ? <Num v={fmtWhen(video.lastPlayedAt)!} /> : <Nil v="never" /> },
     video.resumeS != null ? { k: "resume", v: <Num v={fmtClock(video.resumeS)} /> } : null,
-    { k: "favorite", v: video.favoritedAt ? <span class="warn">★ {fmtDate(video.favoritedAt)}</span> : <Bool v={false} /> },
+    { k: "favorite", v: video.favoritedAt ? <span class="stfav"><FavoriteBadge /><span class="warn">{fmtDate(video.favoritedAt)}</span></span> : <Bool v={false} /> },
   ];
 
   let live: Row[] = [];

@@ -71,7 +71,16 @@ export function CopyPicker({ copies, playingId, onPick, refocus }: Props) {
         {playing ? (
           <>
             <RootIcon c={playing} />
-            <span class="mono">{copyLabel(playing)}</span>
+            <span class="mono">
+              {playing.container && playing.height ? (
+                <>
+                  <span class="cfmt">{playing.container} · </span>
+                  {resolutionLabel(playing.height)}
+                </>
+              ) : (
+                copyLabel(playing)
+              )}
+            </span>
           </>
         ) : (
           <span class="mono">no Copy</span>

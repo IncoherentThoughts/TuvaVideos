@@ -906,21 +906,36 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         <span class="mono clock">
           {fmtClock(time)} <span class="dim">/ {fmtClock(duration)}</span>
         </span>
-        {paused && fps != null && phase === "ready" && <span class="mono dim" title="Frame number">#{frameNumber(time, fps)}</span>}
         {rate !== 1 && <span class="mono rate">{rate.toFixed(2)}×</span>}
         {ab.a != null && (
           <span class="mono ablbl">
-            A {fmtClock(ab.a)}
-            {ab.b != null ? ` – B ${fmtClock(ab.b)}` : ""}
+            <span class="abl">A </span>
+            {fmtClock(ab.a)}
+            {ab.b != null && (
+              <>
+                {" – "}
+                <span class="abl">B </span>
+                {fmtClock(ab.b)}
+              </>
+            )}
           </span>
         )}
         <button class={`cbtn statebtn${playlist?.shuffled ? " on" : ""}`} tabIndex={-1} aria-pressed={!!playlist?.shuffled} title={playlist ? `Shuffle ${playlist.shuffled ? "on" : "off"} (x while the Player has focus)` : "Shuffle the library into a Playlist (x while the Player has focus)"} onClick={() => (say(onPlaylistShuffle?.() ?? "Shuffle"), refocus())}>
           {SHUFFLE_ICON} <kbd>x</kbd>
         </button>
         <button class={`cbtn statebtn${rep.mode !== "off" && !rep.disabled ? " on" : ""}`} tabIndex={-1} disabled={rep.disabled} title={rep.disabled ? "Repeat: one. This Video loops until you pick another; shuffle starts a Playlist (e)" : `Repeat ${rep.mode}: click to cycle off, list, one (e while the Player has focus)`} onClick={() => (say(onPlaylistRepeat?.() ?? "Repeat"), refocus())}>
-          {REPEAT_ICON} <span class="mono">{rep.mode}</span> <kbd>e</kbd>
+          {REPEAT_ICON} <span class="mono repmode">{rep.mode}</span> <kbd>e</kbd>
         </button>
         <span class="grow" />
+        <button class={`cbtn statebtn${audioOpen ? " on" : ""}`} tabIndex={-1} aria-pressed={!!audioOpen} title="Audio: channels, equalizer, level (a while the Player has focus)" onClick={() => (onAudioToggle?.(), refocus())}>
+          Audio <kbd>a</kbd>
+        </button>
+        <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="State: metadata, playback, Copies and key bindings (i while the Player has focus)" onClick={() => (onStateToggle?.(), refocus())}>
+          State <kbd>i</kbd>
+        </button>
+        <button class={`cbtn statebtn${playlistPanelOpen && playlist ? " on" : ""}`} tabIndex={-1} disabled={!playlist} aria-pressed={!!playlistPanelOpen && !!playlist} title={playlist ? "Playlist panel (q while the Player has focus)" : "Playlist panel: shuffle (x) to start a Playlist"} onClick={() => (onPlaylistPanelToggle?.(), refocus())}>
+          Playlist <kbd>q</kbd>
+        </button>
         <button class={`cbtn studiobtn${studio ? " on" : ""}`} tabIndex={-1} aria-pressed={!!studio} title="Studio playback in Music.app (t)" onClick={() => (studio ? void closeStudio() : void openStudio(), refocus())}>
           Studio
         </button>
@@ -938,15 +953,6 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         </button>
         <button class="ib" tabIndex={-1} title="Fullscreen (f)" onClick={() => (toggleFullscreen(), refocus())}>
           {FS_ICON}
-        </button>
-        <button class={`cbtn statebtn${audioOpen ? " on" : ""}`} tabIndex={-1} aria-pressed={!!audioOpen} title="Audio: channels, equalizer, level (a while the Player has focus)" onClick={() => (onAudioToggle?.(), refocus())}>
-          Audio <kbd>a</kbd>
-        </button>
-        <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="State: metadata, playback, Copies and key bindings (i while the Player has focus)" onClick={() => (onStateToggle?.(), refocus())}>
-          State <kbd>i</kbd>
-        </button>
-        <button class={`cbtn statebtn${playlistPanelOpen && playlist ? " on" : ""}`} tabIndex={-1} disabled={!playlist} aria-pressed={!!playlistPanelOpen && !!playlist} title={playlist ? "Playlist panel (q while the Player has focus)" : "Playlist panel: shuffle (x) to start a Playlist"} onClick={() => (onPlaylistPanelToggle?.(), refocus())}>
-          Playlist <kbd>q</kbd>
         </button>
       </div>
       {studio && <StudioBar key={studio.songId} songId={studio.songId} initial={studio.data} say={(t, ms) => say(t, ms)} onClose={() => (setStudio(null), refocus())} ctl={studioCtl} />}

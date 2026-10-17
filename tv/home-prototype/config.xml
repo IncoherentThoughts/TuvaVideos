@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PROTOTYPE — throwaway (issue #50). Tizen package for the TV home prototype; same certificate profile as the hello-world app (#48). -->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://tuvavideos.local/tvproto" version="0.1.0" viewmodes="maximized">
+    <tizen:application id="TuvaProto1.TuvaTV" package="TuvaProto1" required_version="6.0"/>
+    <tizen:profile name="tv-samsung"/>
+    <content src="index.html"/>
+    <icon src="icon.png"/>
+    <name>TuvaVideos</name>
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <access origin="http://192.168.4.83:4412" subdomains="false"/>
+    <access origin="https://fonts.googleapis.com" subdomains="false"/>
+    <access origin="https://fonts.gstatic.com" subdomains="false"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>

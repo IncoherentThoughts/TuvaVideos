@@ -254,7 +254,17 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
       return;
     }
     lines.innerHTML = ls.length ? ls.map((l) => (l.blank ? `<div class="sp"></div>` : `<p class="ln">${V === "A" ? `<span class="n mono">${l.n}</span>` : ""}<span class="tx">${l.html}</span></p>`)).join("") : `<p class="none">this Version has no ${script} text</p>`;
+    if (V === "B") fitPanelB();
     pageTo(page);
+  }
+  // B: the panel grows to its longest line (measured unwrapped) so lines wrap only past the widest the video can spare
+  const B_MIN = 900, B_MAX = 1320, B_PAD = 230 + 56;
+  function fitPanelB() {
+    lines.style.whiteSpace = "nowrap";
+    let w = 0;
+    for (const tx of lines.querySelectorAll<HTMLElement>(".tx")) w = Math.max(w, tx.scrollWidth);
+    lines.style.whiteSpace = "";
+    panel.style.width = `${Math.max(B_MIN, Math.min(B_MAX, w + B_PAD + 8))}px`;
   }
   function pageTo(n: number) {
     panel.classList.remove("fits");

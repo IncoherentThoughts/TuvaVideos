@@ -1,4 +1,6 @@
 import { createHandler, type Services } from "./api";
+import { TvServer } from "./tv";
+import { judgeStaleCopies } from "./tvJudge";
 import type { Config } from "./config";
 import { checkpoint, openDb } from "./db";
 import { FallbackQueue } from "./fallback";
@@ -44,14 +46,21 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
     if (started && !cfg.passive) scanner.request(r.id);
   });
 
+  // The TV Playback profile result per Copy, from the stored ffprobe facts (no re-probe): fills the column after its
+  // migration and re-judges rows made under an older profile version (tv-spec 3.1).
+  const judged = judgeStaleCopies(db);
+  if (judged) log(`TV profile: judged ${judged} Copies`);
+
   const web = new WebBundle(cfg);
   await web.build();
   const idx = rebuildSearchIndex(db); // the index is also rebuilt after every scan
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
   const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
-  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, startedAt: Date.now(), quit: opts.quit };
+  const tv = new TvServer({ cfg, db }); // off at every launch: only POST /api/tv/on binds the port
+  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit };
   const handler = createHandler(services);
+  tv.setHandler(handler);
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);
 
@@ -67,6 +76,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
     async stop() {
       log("shutting down: letting the in-flight ffmpeg job finish");
       roots.stop();
+      tv.stop();
       studio.shutdown(); // kills the osascript child
       void server.stop();
       keyframes.shutdown();

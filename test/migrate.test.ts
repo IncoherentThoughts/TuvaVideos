@@ -16,11 +16,11 @@ const version = (db: Database) => (db.query("PRAGMA user_version").get() as { us
 describe("migrate", () => {
   test("a fresh database gets every file, recorded by name, user_version at the highest number", () => {
     const db = new Database(":memory:");
-    expect(migrate(db, MIGRATIONS)).toBe(13);
+    expect(migrate(db, MIGRATIONS)).toBe(14);
     expect(recorded(db)).toEqual([...names()].sort());
-    expect(version(db)).toBe(13);
+    expect(version(db)).toBe(14);
     expect(cols(db, "video")).toEqual(expect.arrayContaining(["loop_a_s", "view_count"]));
-    expect(migrate(db, MIGRATIONS)).toBe(13); // idempotent
+    expect(migrate(db, MIGRATIONS)).toBe(14); // idempotent
   });
 
   test("bootstrap: a database at 8 with only 0008_local_songs applied gets 0008_loop and everything after", () => {
@@ -33,10 +33,10 @@ describe("migrate", () => {
     expect(version(db)).toBe(8);
     expect(cols(db, "video")).not.toContain("loop_a_s");
 
-    expect(migrate(db, MIGRATIONS)).toBe(13);
+    expect(migrate(db, MIGRATIONS)).toBe(14);
     expect(cols(db, "video")).toEqual(expect.arrayContaining(["loop_a_s", "view_count"]));
     expect(recorded(db)).toEqual([...names()].sort());
-    expect(version(db)).toBe(13);
+    expect(version(db)).toBe(14);
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -48,7 +48,7 @@ describe("migrate", () => {
     db.exec("DROP TABLE migration");
     expect(version(db)).toBe(9);
     expect(cols(db, "video")).not.toContain("loop_a_s");
-    expect(migrate(db, MIGRATIONS)).toBe(13);
+    expect(migrate(db, MIGRATIONS)).toBe(14);
     expect(cols(db, "video")).toContain("loop_a_s");
     expect(recorded(db)).toEqual([...names()].sort());
     rmSync(dir, { recursive: true, force: true });
@@ -65,7 +65,7 @@ describe("migrate", () => {
       INSERT INTO copy (video_id, root_id, rel_path, size, mtime, playback) VALUES (7, 1, 'a.mkv', 1, 'x', 'native');
       INSERT INTO chapter (video_id, start_s, title, source) VALUES (7, 0, 'c', 'manual');`);
     expect(() => db.exec("UPDATE video SET suggestion_source = 'title'")).toThrow();
-    expect(migrate(db, MIGRATIONS)).toBe(13);
+    expect(migrate(db, MIGRATIONS)).toBe(14);
     expect(db.query("SELECT view_count, loop_a_s, suggestion_source FROM video WHERE id = 7").get()).toEqual({ view_count: 3, loop_a_s: 1.5, suggestion_source: "performance" });
     db.exec("UPDATE video SET suggestion_source = 'title'");
     expect(() => db.exec("UPDATE video SET suggestion_source = 'bogus'")).toThrow();
@@ -85,7 +85,7 @@ describe("migrate", () => {
     add.run(3, "h3", "Instagram video #CdtUBecoRUu [instagram-CdtUBecoRUu]", null);
     add.run(4, "h4", "Artery Media Project #58", null);
     add.run(5, "h5", "[instagram-ButuhuUAss-]", null);
-    expect(migrate(db, MIGRATIONS)).toBe(13);
+    expect(migrate(db, MIGRATIONS)).toBe(14);
     expect(db.query("SELECT title, title_latin FROM video ORDER BY id").all()).toEqual([
       { title: "Video by tuva.accord", title_latin: null },
       { title: "Огбе Тывам", title_latin: "Ogbe Tyvam" },
@@ -106,7 +106,7 @@ describe("migrate", () => {
         (1, 1, 'Batch 10/Video by sayus_magas [instagram-DdvnmbnIWMa].mkv', 1, 'x', 'native'),
         (2, 1, 'Chas-Adyr.mp4', 1, 'x', 'native'),
         (3, 1, 'c [aaaaaaaaaaa].webm', 1, 'x', 'native');`);
-    expect(migrate(db, MIGRATIONS)).toBe(13);
+    expect(migrate(db, MIGRATIONS)).toBe(14);
     expect(db.query("SELECT id, instagram_id FROM video ORDER BY id").all()).toEqual([
       { id: 1, instagram_id: "DdvnmbnIWMa" },
       { id: 2, instagram_id: null },

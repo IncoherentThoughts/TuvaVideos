@@ -1,0 +1,9 @@
+---
+status: accepted
+date: 2026-10-17
+amends: 0006 (Proposed rows add a second, video-side foreign key target beside the archive's tables)
+---
+
+# Video library access is a grant apart from the archive role, and new Songs stay Proposed on the video side until a moderator elevates them
+
+The video library shares the Tuvan Lyrics Archive's accounts so that one person has one icon, name, email and password, but it does not share the archive's roles. Who may read or change the Shared data is a separate, console-only grant (`video_access`, levels member and editor) that no archive role implies and that implies no archive role: a Video Editor holds nothing on the lyrics website, and an archive moderator with no grant sees no video data. The obvious path, making collaborators archive reviewers so they could read the hidden Songs that 351 Videos point at, and promoting their new Songs straight into the archive's tables as Unverified rows (as #89 first decided), was rejected because it would hand lyrics-website permissions to people chosen only to tag videos and would show their additions on the lyrics website. Instead the archive's admin **Exposes** individual hidden Songs to Members through one allowlist and one policy arm, and a Video Editor's new Song, Version or Artist is a **Proposed** row in a video-side table that Videos and Chapters point at through a second nullable foreign key; it enters the archive only when someone who is both an archive moderator and a Video Editor **elevates** it, keeping its id, landing hidden and Exposed. The cost is two pointer columns per reference and a second place a Song can live; the gain is that nothing a Video Editor does is ever visible on, or a permission on, the lyrics website. Decided in [issue #90](https://github.com/IncoherentThoughts/TuvaVideos/issues/90), 2026-10-17.

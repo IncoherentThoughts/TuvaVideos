@@ -236,6 +236,20 @@ describe("thumbnails", () => {
     expect(poster.headers.get("content-type")).toBe("image/webp");
     expect((await fetch(base_url + v.thumbnail.strip.url)).status).toBe(200);
   }, 60_000);
+
+  test("poster and strip URLs are versioned by generation time and revalidate with Last-Modified", async () => {
+    const v = (await api("/api/videos")).find((x: any) => x.youtubeId === "aaaaaaaaaaa");
+    expect(v.thumbnail.poster).toBe(`/thumbs/${v.id}/poster.webp?v=${encodeURIComponent(v.thumbnail.generatedAt)}`);
+    expect(v.thumbnail.strip.url).toBe(`/thumbs/${v.id}/strip.webp?v=${encodeURIComponent(v.thumbnail.generatedAt)}`);
+    const poster = await fetch(base_url + v.thumbnail.poster);
+    const lastModified = poster.headers.get("last-modified");
+    expect(lastModified).toBeTruthy();
+    expect(poster.headers.get("cache-control")).toBe("public, max-age=86400");
+    const again = await fetch(base_url + v.thumbnail.poster, { headers: { "if-modified-since": lastModified! } });
+    expect(again.status).toBe(304);
+    const older = await fetch(base_url + v.thumbnail.poster, { headers: { "if-modified-since": new Date(Date.parse(lastModified!) - 60_000).toUTCString() } });
+    expect(older.status).toBe(200);
+  });
 });
 
 describe("Keyframe index (spec 4.1)", () => {

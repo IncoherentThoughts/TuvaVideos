@@ -5,6 +5,7 @@ import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from ".
 import { TvButton } from "./TvButton";
 import { Link, type Route } from "./router";
 import { THEMES, useTheme } from "./theme";
+import { AccountChip } from "./prototype/memberGrid"; // PROTOTYPE #94
 
 function ScanIndicator({ scan }: { scan: ScanDto }) {
   if (!scan.running) return null;
@@ -125,6 +126,7 @@ export function TopBar({ route }: { route: Route }) {
             <path d="M4.9 3.9a5.2 5.2 0 1 0 6.2 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
           </svg>
         </button>
+        <AccountChip />
       </div>
       {off && (
         <div class="off-page" role="status">

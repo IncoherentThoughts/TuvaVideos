@@ -6,6 +6,7 @@ import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio
 import type { VersionInput } from "../shared/lyrics/types";
 import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { navigate, playHref } from "./router";
+import { protoVideo, protoVideos } from "./prototype/memberGrid"; // PROTOTYPE #94
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { signal });
@@ -110,8 +111,8 @@ export const api = {
   addLocal: (songId: string, persistentId: string) => post<{ id: number }>(`/api/songs/${songId}/studio`, { persistentId }),
   confirmStudio: (id: number) => post<{ id: number }>(`/api/studio-tracks/${id}/confirm`),
   removeStudio: (id: number) => send<{ removed: true; tombstoned: boolean }>("DELETE", `/api/studio-tracks/${id}`),
-  videos: () => get<VideoDto[]>("/api/videos"),
-  video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
+  videos: () => get<VideoDto[]>("/api/videos").then(protoVideos), // PROTOTYPE #94: the fake sits here
+  video: (id: number) => get<VideoDto>(`/api/videos/${id}`).then(protoVideo),
   artists: () => get<ArtistDto[]>("/api/artists"),
   songs: () => get<SongListDto[]>("/api/songs"),
   favorites: () => get<FavoriteItem[]>("/api/favorites"),

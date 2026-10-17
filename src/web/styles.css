@@ -714,3 +714,62 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .tvmenu .tvnone { color: var(--fg3); font-size: .9em; padding: 2px 4px; }
 .tvmenu .tvrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px; font-size: .92em; }
 .tvmenu .tvname .dim { color: var(--fg2); font-family: var(--font-mono); font-size: .9em; }
+
+/* ---- PROTOTYPE #94 (branch prototype/member-grid, throwaway): Member's grid, sign-in, account chip ---- */
+.proto-bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; border-radius: 999px; background: #0d0d0c; color: #eee; border: 1px solid #555; box-shadow: 0 8px 30px rgba(0,0,0,.6); font-size: .86em; white-space: nowrap; font-family: var(--font-mono); }
+.proto-bar > button { width: 26px; height: 26px; border-radius: 50%; background: #2a2a28; color: #fff; }
+.proto-bar > button:hover { background: #3c3c3a; }
+.proto-bar .lbl { min-width: 300px; text-align: center; }
+.proto-bar .lbl b { color: #ffb86b; }
+.proto-bar .sep { width: 1px; height: 18px; background: #444; }
+.proto-bar label { display: inline-flex; align-items: center; gap: 5px; color: #bbb; cursor: pointer; }
+.proto-bar select { background: #2a2a28; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 2px 6px; font: inherit; }
+
+/* chip, after the archive's UserMenu: a circle, image or initials, almond tint */
+.proto-chipwrap { position: relative; display: flex; align-items: center; }
+.proto-signin-btn { white-space: nowrap; }
+.proto-chip { --almond: #c4844a; position: relative; width: 34px; height: 34px; border-radius: 50%; overflow: visible; display: grid; place-items: center; background: color-mix(in srgb, var(--almond) 20%, transparent); border: 1px solid color-mix(in srgb, var(--almond) 30%, transparent); color: var(--fg); font-weight: 600; font-size: .85em; padding: 0; transition: border-color .15s, background .15s; }
+.proto-chip:hover { background: color-mix(in srgb, var(--almond) 30%, transparent); border-color: color-mix(in srgb, var(--almond) 50%, transparent); }
+.proto-chip img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.proto-chip .off { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 50%; background: var(--fg3); box-shadow: 0 0 0 2px var(--bg); }
+.proto-chip .off::after { content: ""; position: absolute; left: 2px; top: 5px; width: 7px; height: 1.5px; background: var(--bg); transform: rotate(-45deg); }
+.proto-pop { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 14px 40px rgba(0,0,0,.55); }
+.proto-pop.acct { width: 240px; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.proto-pop.acct .who { padding: 8px 10px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.proto-pop.acct .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proto-pop.acct .role { display: inline-block; margin-top: 5px; padding: 1px 8px; border-radius: 999px; font-size: .78em; letter-spacing: .04em; text-transform: uppercase; background: color-mix(in srgb, #c4844a 14%, transparent); color: #e0a66e; }
+.proto-pop.acct .sync { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; font-size: .9em; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.proto-pop.acct > button[role=menuitem] { text-align: left; padding: 7px 10px; border-radius: 6px; }
+.proto-pop.acct > button[role=menuitem]:hover, .proto-pop.acct > button[role=menuitem]:focus-visible { background: var(--bg3); }
+.proto-pop.acct > button[role=menuitem]:disabled { opacity: .45; cursor: default; }
+
+/* sign-in form, three housings */
+.proto-signin { display: flex; flex-direction: column; gap: 10px; }
+.proto-signin label { display: flex; flex-direction: column; gap: 4px; font-size: .9em; color: var(--fg2); }
+.proto-signin input { padding: 7px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--fg); }
+.proto-signin input:focus { border-color: var(--accent); outline: none; }
+.proto-signin .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; align-self: flex-start; }
+.proto-signin p.dim { font-size: .85em; line-height: 1.4; }
+.proto-signin.compact { gap: 8px; }
+.proto-pop.signin { width: 300px; padding: 14px; }
+dialog.proto-dialog { margin: auto; width: min(460px, calc(100vw - 32px)); padding: 22px 24px; color: var(--fg); background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 14px 40px rgba(0,0,0,.55); }
+dialog.proto-dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog.proto-dialog h3 { margin-bottom: 6px; font-size: 1.15em; }
+dialog.proto-dialog > p { margin-bottom: 16px; line-height: 1.45; }
+.proto-signin-page { max-width: 440px; margin: 60px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
+.proto-signin-page h2 { font-size: 1.4em; }
+.proto-signin-page > p { line-height: 1.5; }
+.proto-signin-page > a.dim { font-size: .9em; text-decoration: underline; margin-top: 6px; }
+
+/* A: the card as today, greyed by .thumb.unavail; one corner mark */
+.card.proto-a { position: relative; }
+.card.proto-a .proto-mark { position: absolute; left: 14px; top: 14px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; background: rgba(0,0,0,.7); color: var(--fg2); }
+.card.proto-a .ttl, .card.proto-a .tags { opacity: .8; }
+
+/* A's Now playing panel: where the Player would be */
+.proto-panel { position: relative; aspect-ratio: 16 / 7; min-height: 260px; border-radius: var(--r); overflow: hidden; background: #000; box-shadow: 0 0 0 1px var(--line); display: grid; place-items: center; }
+.proto-panel .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(22px) brightness(.3) saturate(.6); transform: scale(1.1); }
+.proto-panel .box { position: relative; max-width: 480px; padding: 22px 26px; text-align: center; background: rgba(20,19,18,.78); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; gap: 10px; }
+.proto-panel h3 { font-size: 1.15em; }
+.proto-panel p { color: var(--fg2); line-height: 1.45; }
+.proto-panel a { color: var(--accent); text-decoration: underline; font-family: var(--font-mono); font-size: .92em; }

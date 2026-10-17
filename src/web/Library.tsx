@@ -12,10 +12,13 @@ import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, SpecTags, Tags } from "./ui";
 import { useWindowed } from "./windowed";
+import { ProtoCard, protoOwns, useProto } from "./prototype/memberGrid"; // PROTOTYPE #94
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
 export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpen: () => void; /** Title with <mark>s (search results); plain title otherwise. */ titleHtml?: string; /** Why the search matched: lines under the title. */ why?: ComponentChildren; /** Open the Video at this time (a search that matched a Chapter) instead of its Resume position. */ startS?: number | null }) {
+  useProto();
+  if (protoOwns(v) && titleHtml == null) return <ProtoCard v={v} onOpen={onOpen} />; // PROTOTYPE #94
   return (
     <Link href={playHref(v.id, startS)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <Poster video={v} dur />

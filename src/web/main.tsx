@@ -12,6 +12,7 @@ import { loadArtists, loadVideos, useStore } from "./data";
 import { installKeys } from "./keys";
 import { matchRoute, useLocation } from "./router";
 import { applyThemeFromUrl } from "./theme";
+import { PrototypeBar } from "./prototype/memberGrid"; // PROTOTYPE #94
 
 function App() {
   const loc = useLocation();
@@ -32,6 +33,7 @@ function App() {
         {route.name === "lyrics" && <LyricsPage songId={route.songId} />}
         {route.name === "notfound" && <div class="empty-state">No such page.</div>}
       </main>
+      <PrototypeBar />
     </>
   );
 }

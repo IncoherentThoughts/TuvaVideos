@@ -8,7 +8,7 @@
 //   C "Stage"          the video sits in a 1240×697 window; the lyrics column follows an *estimated* current line (the
 //                      position inside the Chapter mapped onto the lines; no timings exist) with the translation under
 //                      each line; the Chapter cards and the info row are always visible in a band below; Left/Right
-//                      move a ghost playhead with a strip frame and commit after a pause (or Enter); ⏪ ⏩ jump Chapters.
+//                      move a ghost playhead with a strip frame and commit after a pause (or Enter); Rew/FF jump Chapters.
 // Shared in all three: Up = the tag row (Enter opens a grid of that Type / Artist / Song), Down = Chapters, yellow =
 // lyrics on/off, blue = Script, Ch▲▼ = page, < > = Playing from, Back closes an overlay first and leaves second.
 // Resume is read, never written: the prototype changes nothing in the library.
@@ -29,9 +29,9 @@ export const PLAYER_KEYS = Object.keys(PLAYER_VARIANTS) as PlayerVariant[];
 let scriptPref: ScriptKey = "cyrillic";
 
 const HINTS: Record<PlayerVariant, string> = {
-  A: "A · ←→ ±10 s · ⏪⏩ ±60 s · Enter pause · ↑ tags · ↓ Chapters (filmstrip) · Ch▲▼ page · y lyrics · s Script · < > prev/next · Back",
+  A: "A · ←→ ±10 s · Rew/FF ±60 s · Enter pause · ↑ tags · ↓ Chapters (filmstrip) · Ch▲▼ page · y lyrics · s Script · < > prev/next · Back",
   B: "B · ←→ seek, again within 1 s: 10→30→60→120 s · Enter pause · ↑ tags · ↓ Chapter list · Ch▲▼ page · y lyrics · s Script · < > · Back",
-  C: "C · ←→ move the ghost ±5 s, Enter or a pause commits · ⏪⏩ prev/next Chapter · ↑ tags · ↓ Chapter cards · s Script · < > · Back",
+  C: "C · ←→ move the ghost ±5 s, Enter or a pause commits · Rew/FF prev/next Chapter · ↑ tags · ↓ Chapter cards · s Script · < > · Back",
 };
 
 type Zone = "video" | "tags" | "strip";

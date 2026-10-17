@@ -238,7 +238,12 @@ img { display: block; }
 .pl-B .cr.cur { color: var(--t3); }
 .pl-B .cr.f { background: var(--accent); color: var(--accent-fg); }
 .pl-B .cr.f .mono { color: var(--accent-fg); }
-.pl-B .pl-lyrics { position: absolute; right: 0; top: 0; bottom: 0; width: 760px; min-width: 0; max-width: none; border: 0; background: linear-gradient(270deg, #000d 75%, transparent); padding: 56px 56px 48px 120px; }
+/* the scrim: a long eased feather (about 300 px) instead of a band with an edge, slightly lighter where the text sits,
+   and the video softened behind the text so the lines stay readable over bright frames */
+.pl-B .pl-lyrics { position: absolute; right: 0; top: 0; bottom: 0; width: 900px; min-width: 0; max-width: none; border: 0; padding: 56px 56px 48px 230px;
+  background: linear-gradient(90deg, transparent 0, #0001 6%, #0003 13%, #0006 21%, #0009 30%, #000b 40%, #000c 100%);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 40%); mask-image: linear-gradient(90deg, transparent 0, #000 40%); }
 .pl-B.lyrics .pl-lyrics { display: flex; }
 .pl-B .pl-lyrics .hd h2 { font-size: 34px; }
 .pl-B .pl-lyrics .hd h2 .en { display: inline; font-size: 24px; color: var(--fg2); margin-left: 10px; }

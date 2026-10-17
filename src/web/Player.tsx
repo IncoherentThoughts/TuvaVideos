@@ -182,7 +182,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     token: 0, // bumped by every load and on unmount; a stale async load stops when it sees a newer one
     started: false, // metadata loaded and the start position applied: only then may Resume be written
     resumeOn: true, // false while no Copy plays, so the Resume position is kept as it was
-    viewed: false, // a view is counted once per Now playing visit, the first time playback starts (spec 4.3)
+    viewed: false, // a view is counted when playback first starts on a Now playing visit, and again on each loop back from the end (spec 2.3)
     pending: { at: 0, play: true },
     failed: new Set<number>(),
     retries: new Map<number, number>(),
@@ -469,7 +469,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       setBuffering(false);
       if (!r.viewed) {
         r.viewed = true;
-        api.recordView(V.current.id).then((fresh) => (replaceVideo(fresh), onVideo?.(fresh))).catch(() => {});
+        countView();
       }
     });
     on("pause", () => {
@@ -505,6 +505,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       // loop by default (as mpv's --loop-file): back to A with an A-B loop set, else to the start
       const t = abLoopTarget(r.ab, v.currentTime, true) ?? 0;
       v.currentTime = t;
+      countView(); // each loop back from the end is another view
       void v.play().catch(() => {});
     });
     on("error", () => void onMediaError());
@@ -554,6 +555,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     };
   }, []);
 
+  const countView = () => void api.recordView(V.current.id).then((fresh) => (replaceVideo(fresh), onVideo?.(fresh))).catch(() => {});
+
   /** The current Entry is over (the Video ended, or a Chapter Entry reached the next Chapter): Repeat one restarts it, else the Playlist advances (spec 4.8). */
   const entryEnded = () => {
     const r = R.current;
@@ -565,6 +568,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     if (move.kind === "restart") {
       seekTo(range?.start ?? 0, "exact", undefined, false, true);
       r.entryDone = false;
+      countView(); // Repeat one: each restart is another view, as a lone Video's loop is
       void v.play().catch(() => {});
     } else if (move.kind === "ended") {
       v.pause();

@@ -1,6 +1,7 @@
 // The TV UI's way to the TV Server: every fetch and media URL goes through `base` (docs/tv-spec.md 4.1). In the
 // shell `window.tuvaTv.base` names the Mac; standalone in a desktop browser it is the page origin.
-import type { ArtistDto, FavoriteItem, SearchResponse, SongDto, SongListDto, VideoDto } from "../shared/types"
+import type { AudioState } from "../shared/audio"
+import type { ArtistDto, ChapterDto, FavoriteItem, KeyframeStatusDto, SearchResponse, SongDto, SongListDto, VideoDto } from "../shared/types"
 
 export interface TuvaTvShell {
   base: string
@@ -43,6 +44,10 @@ export const api = {
   songs: () => get<SongListDto[]>("/api/songs"),
   favorites: () => get<FavoriteItem[]>("/api/favorites"),
   song: (id: string) => get<SongDto>(`/api/songs/${encodeURIComponent(id)}`),
+  video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
+  chapters: (id: number) => get<ChapterDto[]>(`/api/videos/${id}/chapters`),
+  keyframes: (copyId: number) => get<KeyframeStatusDto>(`/api/copies/${copyId}/keyframes`),
+  audio: (id: number) => get<{ state: AudioState | null }>(`/api/videos/${id}/audio`),
   search: (q: string, signal?: AbortSignal, limit = 20) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`, signal),
 }
 
@@ -51,4 +56,21 @@ export function exitApp(): boolean {
   if (!s) return false // a desktop browser has nothing to exit
   s.exit()
   return true
+}
+
+/**
+ * The two writes the TV makes (docs/tv-spec.md 2.5). Fire and forget, `keepalive` so leaving the Player still sends
+ * them; `text/plain` keeps the request "simple" (no preflight from the shell's origin), the server reads the body as
+ * JSON whatever the content type.
+ */
+function post(path: string, body: unknown): void {
+  try {
+    void fetch(url(path), { method: "POST", headers: { "content-type": "text/plain" }, body: body === undefined ? undefined : JSON.stringify(body), keepalive: true }).catch(() => {})
+  } catch {
+    /* a write that cannot be sent is lost; Resume is rewritten every 5 s */
+  }
+}
+export const writes = {
+  resume: (videoId: number, resumeS: number, copyId: number | null) => post(`/api/videos/${videoId}/resume`, { resumeS, copyId }),
+  view: (videoId: number) => post(`/api/videos/${videoId}/view`, undefined),
 }

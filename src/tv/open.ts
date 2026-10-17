@@ -2,6 +2,7 @@
 import type { PlayingSource } from "../shared/playingFrom"
 import type { Nav } from "./screen"
 import { playingFromTiles, railGrid, type Tile } from "./rails"
+import { tagGrid, type TagItem } from "./tags"
 
 /**
  * Open `tile`: a Video or Chapter plays (Playing from = `list`, the grid or rail it sits in, snapshotted now), an
@@ -24,4 +25,9 @@ export function openTile(tile: Tile, nav: Nav, list: readonly Tile[], source: Pl
     case "shuffle":
       return
   }
+}
+
+/** Enter on a tag in the Player's tag row (docs/tv-spec.md 6.4): the grid of that Type / Artist / Song's Videos replaces the Player. */
+export function openTag(tag: TagItem, nav: Pick<Nav, "swapToGrid">): void {
+  nav.swapToGrid(tagGrid(tag))
 }

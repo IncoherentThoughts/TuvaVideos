@@ -79,6 +79,7 @@ _Avoid_: title matcher, fuzzy match, auto-link
 **Mirror**:
 The read-only copy of the Tuvan Lyrics Archive's entities (Song, Artist, Album, Track, Version, Footnote, Performance) imported from a backup. Edited only on the archive and re-imported; never edited here.
 _Avoid_: sync, cache, import (the act), upstream data
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 **Latin title**:
 The Latin-script form of a Cyrillic title on a Video, Chapter or Local Artist, used so the library can be searched from a Latin keyboard. Generated once, editable afterwards, empty when the title is already Latin. Uses the archive's spelling where the archive has one, otherwise the project's transliteration table.
@@ -87,14 +88,17 @@ _Avoid_: transliteration (the act), romanized title, english title (the archive'
 **Local Artist**:
 An Artist created here because the Mirror has no row for them. Never exported to the archive.
 _Avoid_: custom artist, unknown artist, extra artist
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 **Local Song**:
 A Song created here because the Mirror has none, pointed at by Videos and Chapters exactly like a Mirror Song. Renamable and deletable here (while nothing points at it); never exported. Its Versions are all Local Versions. Marked "local" wherever it is shown.
 _Avoid_: custom song, user song, unknown song (that is a dangling uuid)
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 **Local Version**:
 A lyrics Version written here, attached to a Mirror Song or a Local Song, with the same three Scripts and Footnotes as a Mirror Version. Listed after the Song's Mirror Versions; editable and deletable; survives an import; never exported. The lyrics pane marks it "local" on its pill and above its lines.
 _Avoid_: custom lyrics, user lyrics, local lyrics (as the noun), override
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 ### Playback
 

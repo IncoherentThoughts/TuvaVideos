@@ -1,11 +1,11 @@
-// PROTOTYPE — throwaway (issue #50). Three variants of the TV home screen, switchable via ?variant=A|B|C (and the red
-// key / v), on a 1920×1080 stage scaled to fit the window; one shared Player with the lyrics Reader beside the video,
-// one shared Search. Real data from the running app (serve.ts proxies it). Nothing is written to the library.
+// PROTOTYPE — throwaway (issues #50, #51). Three variants of the TV home screen, switchable via ?variant=A|B|C (and the
+// red key / v), on a 1920×1080 stage scaled to fit the window; three variants of the Player (?player=A|B|C, the same
+// bar or key while a Video plays, which replays it at the same time); one shared Search. Real data from the running app (serve.ts proxies it). Nothing is written to the library.
 import { pickRandomVideo } from "../../src/shared/random";
 import { defaultLibraryState, sortVideos, viewVideos } from "../../src/shared/libraryView";
-import { makePlayer } from "./player";
+import { PLAYER_KEYS, PLAYER_VARIANTS, type PlayerVariant, makePlayer } from "./player";
 import { makeSearch } from "./search";
-import { type Ctx, type Data, type Screen, api, cardHtml, exitApp, fmtTime, lib, registerTizenKeys, toKey, toast } from "./shared";
+import { type Ctx, type Data, type From, type Screen, api, cardHtml, exitApp, fmtTime, lib, registerTizenKeys, toKey, toast } from "./shared";
 import { VARIANTS, VARIANT_KEYS, gridScreen, type Home } from "./variants";
 
 const tv = document.getElementById("tv")!;
@@ -38,6 +38,8 @@ function pop() {
   s.dispose?.();
   s.el.remove();
   show(topScreen());
+  setBarLabel();
+  if (topScreen().name !== "player") setUrl("play", null);
 }
 
 let home!: Home;
@@ -45,7 +47,7 @@ let data!: Data;
 const ctx: Ctx = {
   get data() { return data; },
   push, pop,
-  play(videoId, from, opts) { push(makePlayer(ctx, videoId, from, opts)); },
+  play(videoId, from, opts) { lastFrom = from; push(makePlayer(ctx, videoId, from, { ...opts, variant: playerVariant })); setBarLabel(); setUrl("play", String(videoId)); },
   playSong(songId) {
     void api.song(songId).then((s) => {
       const first = s.videos.find((x) => x.available && x.pointed) ?? s.videos.find((x) => x.available);
@@ -76,6 +78,30 @@ const ctx: Ctx = {
   },
 };
 
+let playerVariant: PlayerVariant = PLAYER_KEYS.includes(params.get("player") as PlayerVariant) ? (params.get("player") as PlayerVariant) : "A";
+/** ?play=<id>&t=<s> reopens a Video on reload (and when the Player variant switches); a prototype convenience. */
+function setUrl(k: string, val: string | null) {
+  const p = new URLSearchParams(location.search);
+  if (val == null) p.delete(k); else p.set(k, val);
+  history.replaceState(null, "", `?${p.toString().replace(/%2C/g, ",")}`);
+}
+function setBarLabel() {
+  const t = topScreen();
+  bar.querySelector("#lbl")!.textContent = t?.name === "player" ? `Player ${playerVariant} — ${PLAYER_VARIANTS[playerVariant]}` : `${home.variant} — ${home.title}`;
+}
+function setPlayerVariant(key: PlayerVariant) {
+  playerVariant = key;
+  const p = new URLSearchParams(location.search);
+  p.set("player", key);
+  history.replaceState(null, "", `?${p.toString().replace(/%2C/g, ",")}`);
+  const t = topScreen();
+  if (t.name !== "player") return setBarLabel();
+  // replay the same Video at the same time in the new variant
+  const st = t.state() as { videoId: number; t: number; from: { label: string } };
+  pop();
+  ctx.play(st.videoId, lastFrom ?? { label: st.from.label, ids: [st.videoId] }, { t: st.t });
+}
+let lastFrom: From | null = null;
 function setVariant(key: string) {
   if (!VARIANTS[key]) key = "B";
   const next = VARIANTS[key]!(ctx);
@@ -87,11 +113,13 @@ function setVariant(key: string) {
   home = next;
   const p = new URLSearchParams(location.search);
   p.set("variant", key);
+  p.set("player", playerVariant);
   history.replaceState(null, "", `?${p.toString().replace(/%2C/g, ",")}`);
-  bar.querySelector("#lbl")!.textContent = `${key} — ${next.title}`;
+  setBarLabel();
 }
 const cycleVariant = (d: number) => {
-  if (stack.length > 1) return toast("variants switch on the home screen (Back first)");
+  if (topScreen().name === "player") return setPlayerVariant(PLAYER_KEYS[(PLAYER_KEYS.indexOf(playerVariant) + d + PLAYER_KEYS.length) % PLAYER_KEYS.length]!);
+  if (stack.length > 1) return toast("variants switch on the home screen or in the Player (Back first)");
   setVariant(VARIANT_KEYS[(VARIANT_KEYS.indexOf(home.variant) + d + VARIANT_KEYS.length) % VARIANT_KEYS.length]!);
 };
 bar.querySelector("#prev")!.addEventListener("click", () => cycleVariant(-1));
@@ -133,6 +161,8 @@ registerTizenKeys();
     data = { videos, artists, songs, favorites, byId: new Map(videos.map((v) => [v.id, v])) };
     loading.remove();
     setVariant(params.get("variant") ?? "B");
+    const playId = Number(params.get("play"));
+    if (playId && data.byId.has(playId)) ctx.play(playId, { label: "Library", ids: viewVideos(data.videos, lib).map((v) => v.id) }, { t: params.get("t") ? Number(params.get("t")) : null });
   } catch (e) {
     loading.innerHTML = `Could not reach the app.<br><small>Is TuvaVideos running on 127.0.0.1:4400? (<code>bun run start</code>)<br>${String(e)}</small>`;
   }

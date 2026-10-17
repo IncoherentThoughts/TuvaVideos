@@ -20,6 +20,9 @@
       "runtimeArgs": [
         "tv/home-prototype/serve.ts"
       ],
+      "env": {
+        "TUVA_URL": "http://127.0.0.1:4411"
+      },
       "port": 4412
     }
   ]

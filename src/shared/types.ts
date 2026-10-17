@@ -250,3 +250,24 @@ export interface LocalSongCreate {
   name: string;
   englishName?: string | null;
 }
+
+export interface ApprovedTvDto {
+  ip: string;
+  model: string | null;
+  approvedAt: string;
+  lastSeenAt: string | null;
+}
+
+/** `GET /api/tv` (localhost listener only). */
+export interface TvStateDto {
+  /** False on a passive server: the TV Server never starts there. */
+  available: boolean;
+  on: boolean;
+  port: number | null;
+  /** The Mac's LAN IPv4 addresses. */
+  addresses: string[];
+  pending: { ip: string; model: string | null }[];
+  approved: ApprovedTvDto[];
+  /** An Approved TV that made a request in the last 60 s; `title` is the Video whose stream it asked for last. */
+  playing: { ip: string; model: string | null; title: string | null } | null;
+}

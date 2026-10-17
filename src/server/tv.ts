@@ -7,6 +7,7 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { log } from "./log";
 import { matchTvRoute } from "./tvRoutes";
+import type { ApprovedTvDto, TvStateDto } from "../shared/types";
 
 type Handler = (req: Request) => Promise<Response>;
 
@@ -16,26 +17,7 @@ export const ACTIVE_WINDOW_MS = 60_000;
 /** `last_seen_at` is written at most this often per TV. */
 const SEEN_WRITE_MS = 5_000;
 
-export interface ApprovedTvDto {
-  ip: string;
-  model: string | null;
-  approvedAt: string;
-  lastSeenAt: string | null;
-}
-
-/** `GET /api/tv` (localhost listener only). */
-export interface TvStateDto {
-  /** False on a passive server: the TV Server never starts there. */
-  available: boolean;
-  on: boolean;
-  port: number | null;
-  /** The Mac's LAN IPv4 addresses. */
-  addresses: string[];
-  pending: { ip: string; model: string | null }[];
-  approved: ApprovedTvDto[];
-  /** An Approved TV that made a request in the last 60 s; `title` is the Video whose stream it asked for last. */
-  playing: { ip: string; model: string | null; title: string | null } | null;
-}
+export type { ApprovedTvDto, TvStateDto };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 

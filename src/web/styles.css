@@ -44,7 +44,7 @@ kbd { font-family: var(--font-mono); font-size: .85em; background: var(--bg3); b
 .tab:hover { color: var(--fg); }
 .tab.on { color: var(--fg); border-bottom-color: var(--accent); }
 .tab.off { opacity: .45; pointer-events: none; }
-.topright { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topright { min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .scan { font-family: var(--font-mono); font-size: .82em; color: var(--fg2); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .scan .bar { width: 90px; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
 .scan .bar i { display: block; height: 100%; background: var(--accent); }
@@ -60,10 +60,10 @@ select.btn.theme { appearance: none; -webkit-appearance: none; padding-right: 26
 .off-page img { border-radius: 14px; }
 
 /* ---- search ---- */
-.sbox { position: relative; width: 340px; }
+.sbox { position: relative; width: 340px; min-width: 120px; }
 .search { width: 100%; display: flex; align-items: center; gap: 4px; overflow: hidden; background: var(--bg2); border: 1px solid var(--line); border-radius: calc(var(--r) * .6); padding: 0 30px 0 6px; color: var(--fg); cursor: text; }
 .search:focus-within { border-color: var(--accent); }
-.search input { flex: 1; min-width: 70px; background: none; border: 0; outline: none; padding: 6px 4px; color: var(--fg); }
+.search input { flex: 1; min-width: 20px; background: none; border: 0; outline: none; padding: 6px 4px; color: var(--fg); }
 .search input::-webkit-search-cancel-button { cursor: pointer; }
 .fpill { --c: var(--accent); flex: none; display: inline-flex; align-items: center; gap: 2px; font-family: var(--font-mono); font-size: .8em; font-weight: 600; line-height: 1; padding: 3px 2px 3px 7px; border-radius: 999px; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); border: 1px solid color-mix(in srgb, var(--c) 50%, transparent); cursor: default; }
 .fpill button { color: inherit; line-height: 1; padding: 0 4px; opacity: .75; }
@@ -701,3 +701,16 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .plrow .plchap { font-size: .85em; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plrow .tags { flex-wrap: nowrap; overflow: hidden; }
 .plsentinel { height: 1px; flex: none; }
+
+/* The TV button (TvButton.tsx, docs/tv-spec.md 2.4): the indicator, the inline Allow/Deny prompt and its menu. */
+.tvwrap { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.btn.tv.on { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+.btn.tv { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn.tv.live { color: var(--accent); }
+.tvprompt { display: inline-flex; align-items: center; gap: 8px; padding: 2px 4px 2px 10px; border: 1px solid var(--accent); border-radius: calc(var(--r) * .6); background: var(--bg2); font-size: .92em; white-space: nowrap; }
+.tvprompt .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.tvmenu { left: auto; right: 0; min-width: 240px; padding: 6px 8px; }
+.tvmenu .tvhd { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: .8em; color: var(--fg2); text-transform: uppercase; letter-spacing: .04em; }
+.tvmenu .tvnone { color: var(--fg3); font-size: .9em; padding: 2px 4px; }
+.tvmenu .tvrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px; font-size: .92em; }
+.tvmenu .tvname .dim { color: var(--fg2); font-family: var(--font-mono); font-size: .9em; }

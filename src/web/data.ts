@@ -4,7 +4,7 @@ import type { AudioPreset, AudioState } from "../shared/audio";
 import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { VersionInput } from "../shared/lyrics/types";
-import type { ArtistDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
+import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { navigate, playHref } from "./router";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -41,6 +41,13 @@ const songCache = new Map<string, Promise<SongDto>>();
 export const forgetSong = (id: string) => void songCache.delete(id);
 
 export const api = {
+  /** The TV Server (docs/tv-spec.md 2): state, turn on/off, and the Approved TVs prompt. */
+  tv: () => get<TvStateDto>("/api/tv"),
+  tvOn: () => post<TvStateDto>("/api/tv/on"),
+  tvOff: () => post<TvStateDto>("/api/tv/off"),
+  tvApprove: (ip: string) => post<TvStateDto>("/api/tv/approve", { ip }),
+  tvDeny: (ip: string) => post<TvStateDto>("/api/tv/deny", { ip }),
+  tvRemove: (ip: string) => send<TvStateDto>("DELETE", `/api/tv/approved/${encodeURIComponent(ip)}`),
   /** A Song with its Versions. Cached for the page's life: the Mirror only changes through the CLI import, and the
    *  local edits call forgetSong. */
   song: (id: string): Promise<SongDto> => {

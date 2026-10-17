@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { ScanDto } from "../shared/types";
 import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
+import { TvButton } from "./TvButton";
 import { Link, type Route } from "./router";
 import { THEMES, useTheme } from "./theme";
 
@@ -114,6 +115,7 @@ export function TopBar({ route }: { route: Route }) {
             </option>
           ))}
         </select>
+        <TvButton />
         <button class="btn" onClick={rescan} disabled={busy || !!scan?.running} title="Scan the Roots for new files">
           Rescan
         </button>

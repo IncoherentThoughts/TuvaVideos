@@ -185,7 +185,7 @@ _Avoid_: paired device, trusted client, whitelisted IP
 Terms settled while charting the sharing map (2026-10-16). They describe the planned shared library; the Mirror terms above describe the app as it is until that map is built.
 
 **Shared (data)**:
-The link data every signed-in user sees and Video Editors maintain in the archive's database: a Video's identity, title, Type, Song and Version pointers, Artists and Chapters, plus the Songs, Versions and Artists promoted from here. Never the files, Copies, Roots, Thumbnails, Audio settings, Resume positions, Favorites or Studio tracks, which stay on each machine.
+The link data every Member sees and Video Editors maintain in the archive's database: a Video's identity, title, Type, Song and Version pointers, Artists and Chapters, plus the Proposed Songs, Versions and Artists added from here. Never the files, Copies, Roots, Thumbnails, Audio settings, Resume positions, Favorites or Studio tracks, which stay on each machine.
 _Avoid_: synced, cloud, remote, mirror (which is the retired read-only copy)
 
 **Standalone**:
@@ -193,20 +193,32 @@ Using the app with no session on this machine. Everything is local and nothing l
 _Avoid_: offline (which is a Member without a connection), signed out (as the noun), guest, anonymous mode, local mode
 
 **Member**:
-A person signed in with a Tuvan Lyrics Archive account. Reads the Shared data and browses it with their own Copies, Favorites and Resume positions; cannot change it.
-_Avoid_: user, viewer, reader, standard account
+A person signed in with a Tuvan Lyrics Archive account that has been granted access to the video library, set only in the archive's database console and never from either app. Reads the Shared data and browses it with their own Copies, Favorites and Resume positions; cannot change it. The grant is independent of the archive's own roles: an archive moderator with no grant is not a Member, and a Member need hold no archive role at all.
+_Avoid_: user, viewer, reader, standard account, authenticated user (an archive account alone)
 
 **Video Editor**:
-A Member who has been granted the right to change the Shared data, set only in the archive's database console and never from either app. A scan by a Video Editor adds unknown Videos to the Shared data for everyone.
+A Member whose grant also allows changing the Shared data, set only in the archive's database console and never from either app. A scan by a Video Editor adds unknown Videos to the Shared data for everyone. Holds no permission on the lyrics website by virtue of the grant.
 _Avoid_: editor (ambiguous with the archive's roles), admin, moderator, maintainer
 
 **Unshared (a Video)**:
 A Video a Member who is not a Video Editor scanned in that the Shared data does not know. Playable and taggable on that machine only; invisible to everyone else.
 _Avoid_: private, local video, pending, draft
 
-**Unverified (a Song, Version or Artist)**:
-A row promoted into the archive from a Video Editor's local additions and not yet checked against a source by an archive moderator. Visible and usable on both sites; cleared by a moderator.
-_Avoid_: local (its old name here), draft, hidden, provisional
+**Proposed (a Song, Version or Artist)**:
+A Song, Version or Artist a Video Editor added to the Shared data that the archive does not yet hold. Marked as Proposed wherever its name appears in the app, pointable by Videos and Chapters like any archive row, editable by every Video Editor, and never visible on the lyrics website. Becomes an archive row only when someone who is both an archive moderator and a Video Editor elevates it.
+_Avoid_: unverified (the retired name), local, draft, pending, staged
+
+**Elevate (a Proposed row)**:
+Move a Proposed Song, Version or Artist into the archive's own tables, keeping its id and repointing every Video and Chapter in the same step. Done by an archive moderator who is also a Video Editor; the new archive row starts hidden and Exposed.
+_Avoid_: promote (the retired name), publish, verify, approve
+
+**Exposed (a hidden Song)**:
+A hidden archive Song that the archive's admin has made readable to Members inside the video library, lyrics included, without changing who may read it on the lyrics website. The only hidden content a Member ever sees.
+_Avoid_: shared song, unlocked, published, synced
+
+**Repoint (Artist links)**:
+Move every Video's link from one Artist to another across the Shared data, logged per Video and undoable. Deletes nothing in the archive; replaces what the app used to call merging.
+_Avoid_: merge (which deleted the source), alias, redirect
 
 **Sync**:
 Refreshing this machine's local copy of the Shared data from the archive. Runs when a sign-in completes, at launch while signed in, after a Video Editor's own write, and from a button; never on a timer. The local copy outlives sign-out, read-only.

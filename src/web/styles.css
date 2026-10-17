@@ -692,7 +692,7 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .drawer.playlist .plbody { padding: 6px; display: flex; flex-direction: column; gap: 2px; }
 .plrow { display: grid; grid-template-columns: 96px 1fr; min-height: 66px; /* a 96x54 poster plus padding: a lazy image arriving never moves the rows */ gap: 10px; align-items: center; padding: 5px 6px; border-radius: calc(var(--r) * .7); text-align: left; width: 100%; flex: none; }
 .plrow:hover, .plrow:focus-visible { background: var(--bg3); }
-.plrow.current { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.plrow.current { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .plrow.played { opacity: .6; }
 .plrow.off { opacity: .45; }
 .plrow .pltxt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }

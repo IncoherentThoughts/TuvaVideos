@@ -1,0 +1,203 @@
+/* Lawson Night — a theme for TuvaVideos (docs/themes.md). PROTOTYPE, hand-written.
+ *
+ * Two parts. First the TOKENS: the palette's ten colour roles (theme.json, the MigakuEA fork's schema) turned into the
+ * app's own tokens from styles.css, as formulas of the roles so a generator can write this block later. Then the LOOK:
+ * the Omarchy desktop the theme comes from. The wallpaper is the desktop and every pane is a tiled window over it: a
+ * gap all round, rounded corners, a hairline border, dark glass. No glows. Flat surfaces and hairlines only.
+ *
+ * Every selector is scoped to html[data-theme="lawson-night"], written by index.html / theme.ts.
+ * Glass goes on a ::before at z-index -1 inside an isolated box, never on a container that holds a menu: a
+ * backdrop-filter re-anchors fixed children and the search dropdown and the context menus live in those containers.
+ */
+
+/* ---- tokens ---- */
+html[data-theme="lawson-night"] {
+  --role-bg: #1e1e2e;
+  --role-surface: #353543;
+  --role-text: #cdd6f4;
+  --role-muted: #9aa1b7;
+  --role-brand: #89b4fa;
+  --role-negative: #f78e82;
+  --role-warning: #f9e2af;
+  --role-info: #c7a0ea;
+  --role-success: #a6e3a1;
+  --role-action: #8fe1e6;
+
+  --bg: var(--role-bg);
+  --bg2: color-mix(in srgb, var(--role-bg) 55%, var(--role-surface));
+  --bg3: var(--role-surface);
+  --line: color-mix(in srgb, var(--role-text) 12%, var(--role-bg));
+  --fg: var(--role-text);
+  --fg2: var(--role-muted);
+  --fg3: color-mix(in srgb, var(--role-muted) 70%, var(--role-bg));
+  --accent: var(--role-brand);
+  --accent-fg: #11111b;
+  --ok: var(--role-success);
+  --no: var(--role-negative);
+  /* tag slots (theme.json "tags"): the gruvbox slots' hue families, in catppuccin */
+  --t1: #f38ba8; --t2: #fab387; --t3: #f9e2af; --t4: #a6e3a1;
+  --t5: #94e2d5; --t6: #89b4fa; --t7: #cba6f7; --t8: #b4befe;
+}
+
+/* ---- look settings ---- */
+html[data-theme="lawson-night"] {
+  --look-gap: 10px;                 /* between windows, and to the screen's edge */
+  --look-radius: 16px;
+  --look-border-colour: color-mix(in srgb, var(--accent) 45%, transparent);
+  --look-glass-blur: 28px;
+  --look-glass-tint: .62;           /* how much night-blue is laid over the blur */
+  --look-panel-tint: .8;            /* the same, for panels that cannot blur */
+  --look-field-radius: 10px;
+  --look-field-tint: .45;
+  --look-wallpaper-clarity: .92;    /* how much of the picture the desktop shows */
+  --look-wallpaper-focus: 40% 70%;  /* where the shop and Fuji sit */
+
+  --look-glass: color-mix(in srgb, var(--bg) calc(var(--look-glass-tint) * 100%), transparent);
+  --look-panel: color-mix(in srgb, var(--bg) calc(var(--look-panel-tint) * 100%), transparent);
+  --look-float: color-mix(in srgb, var(--bg) 94%, transparent);
+  --look-field: color-mix(in srgb, #0b0b16 calc(var(--look-field-tint) * 100%), transparent);
+  --look-hairline: color-mix(in srgb, #fff 9%, transparent);
+  --look-hover: color-mix(in srgb, #fff 8%, transparent);
+  --look-window-shadow: 0 0 0 1px var(--look-border-colour), 0 18px 40px rgb(0 0 0 / .45);
+  --look-pane-shadow: 0 0 0 1px var(--look-hairline), 0 18px 40px rgb(0 0 0 / .35);
+}
+
+/* ---- the desktop ---- */
+html[data-theme="lawson-night"] { background: var(--bg); }
+html[data-theme="lawson-night"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url(wallhaven-1k6ljv.webp) var(--look-wallpaper-focus) / cover no-repeat;
+  opacity: var(--look-wallpaper-clarity);
+}
+html[data-theme="lawson-night"] body { background: transparent; }
+
+/* ---- the top bar: a slim window ---- */
+html[data-theme="lawson-night"] .topbar {
+  top: var(--look-gap);
+  margin: var(--look-gap) var(--look-gap) 0;
+  padding: 0 16px;
+  background: transparent;
+  border-bottom: 0;
+  border-radius: var(--look-radius);
+}
+html[data-theme="lawson-night"] .topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--look-glass);
+  -webkit-backdrop-filter: blur(var(--look-glass-blur)) saturate(1.3);
+  backdrop-filter: blur(var(--look-glass-blur)) saturate(1.3);
+  box-shadow: var(--look-pane-shadow);
+}
+html[data-theme="lawson-night"] .tab { margin-bottom: 0; border-bottom: 0; border-radius: var(--look-field-radius); align-self: center; padding: 6px 12px; }
+html[data-theme="lawson-night"] .tab:hover { background: var(--look-hover); }
+html[data-theme="lawson-night"] .tab.on { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
+html[data-theme="lawson-night"] .off-page { background: var(--bg); }
+
+/* ---- each list screen: one window ---- */
+html[data-theme="lawson-night"] main { padding: var(--look-gap); }
+html[data-theme="lawson-night"] .page {
+  position: relative;
+  isolation: isolate;
+  padding: 16px 20px 28px;
+  border-radius: var(--look-radius);
+}
+html[data-theme="lawson-night"] .page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--look-glass);
+  -webkit-backdrop-filter: blur(var(--look-glass-blur)) saturate(1.3);
+  backdrop-filter: blur(var(--look-glass-blur)) saturate(1.3);
+  box-shadow: var(--look-pane-shadow);
+}
+html[data-theme="lawson-night"] .controls .sep { background: var(--look-hairline); }
+
+/* ---- fields: inset wells ---- */
+html[data-theme="lawson-night"] :is(.search, .qin, .merge input, .pk-in, .st-find input, .au-name input, .lyr-ta, .arow .nm-in, .chtime-in, .chtitle-in, .title-edit) {
+  background-color: var(--look-field);
+  border-color: var(--look-hairline);
+  border-radius: var(--look-field-radius);
+}
+html[data-theme="lawson-night"] .search:focus-within,
+html[data-theme="lawson-night"] .qin:focus { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+html[data-theme="lawson-night"] select.chip { background-color: var(--look-field); }
+
+/* ---- buttons and chips: squared, flat, one hover ---- */
+html[data-theme="lawson-night"] :is(.btn, .chip, .cbtn, .chbtn, .pill, .seg) {
+  border-color: var(--look-hairline);
+  border-radius: var(--look-field-radius);
+}
+html[data-theme="lawson-night"] .btn { background: color-mix(in srgb, #fff 7%, transparent); }
+html[data-theme="lawson-night"] .btn:hover:not(:disabled) { background: color-mix(in srgb, #fff 14%, transparent); }
+html[data-theme="lawson-night"] .chip { background: var(--look-field); }
+html[data-theme="lawson-night"] .chip:hover { border-color: color-mix(in srgb, #fff 20%, transparent); }
+html[data-theme="lawson-night"] .chip.on,
+html[data-theme="lawson-night"] .pill.on,
+html[data-theme="lawson-night"] .seg button.on,
+html[data-theme="lawson-night"] .lyricsbtn.on,
+html[data-theme="lawson-night"] .cbtn.studiobtn.on {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, #fff);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+html[data-theme="lawson-night"] .pill { border-radius: 999px; }
+html[data-theme="lawson-night"] .chip:disabled:hover { border-color: var(--look-hairline); }
+html[data-theme="lawson-night"] kbd { background: var(--look-field); border-color: var(--look-hairline); }
+
+/* ---- cards ---- */
+html[data-theme="lawson-night"] .thumb { box-shadow: 0 0 0 1px var(--look-hairline); background: var(--look-field); }
+html[data-theme="lawson-night"] .card:focus-visible,
+html[data-theme="lawson-night"] .card:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+html[data-theme="lawson-night"] :is(.frow, .arow):hover,
+html[data-theme="lawson-night"] :is(.frow, .arow):focus-visible { background: var(--look-hover); }
+html[data-theme="lawson-night"] :is(.r.on, .r:hover, .pk-row.on, .pk-row:hover, .menu button:hover, .menu button:focus-visible, .menu button.on, .merge .opt:hover, .copt:hover:not(:disabled), .plrow:hover) { background: var(--look-hover); }
+
+/* ---- things that float over the windows: near-solid, with the window's border ---- */
+html[data-theme="lawson-night"] :is(.dd, .menu, .vmenu, .cmenu, .merge, .pk-list, .relocate-pop, .chs-pick, .toast, .fntip, dialog.delconfirm) {
+  background: var(--look-float);
+  border-color: transparent;
+  border-radius: var(--look-radius);
+  box-shadow: var(--look-window-shadow);
+}
+html[data-theme="lawson-night"] :is(.toast, .fntip) { border-radius: 12px; }
+html[data-theme="lawson-night"] .dd-head { background: var(--look-float); border-bottom-color: var(--look-hairline); }
+html[data-theme="lawson-night"] .dd .note { border-top-color: var(--look-hairline); }
+html[data-theme="lawson-night"] .vmenu .vm-meta { border-bottom-color: var(--look-hairline); }
+html[data-theme="lawson-night"] dialog.delconfirm::backdrop { background: rgb(8 8 20 / .55); }
+
+/* ---- Now playing: the main column (Player, title, Chapters, source) is one window, the drawers another ----
+ * The Player keeps its own box inside the window: its menus are positioned inside it, so no glass on .player itself. */
+html[data-theme="lawson-night"] .np { padding: 0 var(--look-gap) 40px; gap: var(--look-gap); }
+html[data-theme="lawson-night"] .np-main {
+  position: relative;
+  isolation: isolate;
+  padding: 14px 16px 24px;
+  border-radius: var(--look-radius);
+}
+html[data-theme="lawson-night"] .np-main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--look-glass);
+  -webkit-backdrop-filter: blur(var(--look-glass-blur)) saturate(1.3);
+  backdrop-filter: blur(var(--look-glass-blur)) saturate(1.3);
+  box-shadow: var(--look-pane-shadow);
+}
+html[data-theme="lawson-night"] .drawer-wrap { top: calc(var(--bar-h) + var(--look-gap) + 14px); height: calc(100vh - var(--bar-h) - var(--look-gap) - 28px); }
+html[data-theme="lawson-night"] :is(.drawer, .chcard, .studio, .stpanel, .player) { border-color: var(--look-hairline); }
+html[data-theme="lawson-night"] .player { box-shadow: 0 0 0 1px var(--look-hairline); }
+html[data-theme="lawson-night"] .player:focus { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+html[data-theme="lawson-night"] :is(.drawer, .chcard) { background: var(--look-panel); border-radius: var(--look-radius); }
+html[data-theme="lawson-night"] .drawer .hd { border-bottom-color: var(--look-hairline); }
+html[data-theme="lawson-night"] :is(.np-delete, .fnh) { border-top-color: var(--look-hairline); }

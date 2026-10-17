@@ -52,6 +52,8 @@ kbd { font-family: var(--font-mono); font-size: .85em; background: var(--bg3); b
 .btn:hover:not(:disabled) { background: var(--bg3); }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.small { padding: 2px 9px; font-size: .92em; }
+/* The Theme select (docs/themes.md): a .btn with the chip select's chevron. */
+select.btn.theme { appearance: none; -webkit-appearance: none; padding-right: 26px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 L6 8 L9.5 4.5' fill='none' stroke='%2393918c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; background-size: 12px 12px; cursor: pointer; }
 .btn.power { display: grid; place-items: center; width: 32px; height: 30px; padding: 0; color: var(--fg2); }
 .btn.power:hover:not(:disabled) { color: var(--t1); border-color: color-mix(in srgb, var(--t1) 50%, var(--line)); }
 .off-page { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: var(--bg); color: var(--fg2); font-size: 1.1em; }

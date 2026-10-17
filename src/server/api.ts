@@ -32,6 +32,9 @@ const THUMB_CACHE = "public, max-age=86400";
 /** `/thumbs/<id>/<which>.webp?v=<generatedAt>`: the query string is the cache key (the route matches the path alone). */
 export const thumbUrl = (videoId: number, which: "poster" | "strip", generatedAt: string) => `/thumbs/${videoId}/${which}.webp?v=${encodeURIComponent(generatedAt)}`;
 
+/** What a theme folder may serve (docs/themes.md), by extension. */
+const THEME_FILE_TYPES: Record<string, string> = { css: "text/css; charset=utf-8", json: "application/json", webp: "image/webp", png: "image/png", svg: "image/svg+xml", woff2: "font/woff2" };
+
 export interface Services {
   cfg: Config;
   db: Db;
@@ -430,6 +433,14 @@ export function createHandler(s: Services) {
         }
         if (p === "/app.js" || p === "/app.css") return s.web.serve(p);
         if (p === "/olchey.svg") return new Response(Bun.file(join(s.cfg.webDir, "olchey.svg")), { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=86400" } });
+        // A theme's files (docs/themes.md): `src/web/themes/<id>/<file>`, stylesheet, palette and wallpaper alike.
+        if ((m = p.match(/^\/themes\/([a-z0-9-]+)\/([a-z0-9._-]+)$/i)) && !m[2]!.startsWith(".")) {
+          const f = Bun.file(join(s.cfg.webDir, "themes", m[1]!, m[2]!));
+          if (!(await f.exists())) return json({ error: "no such theme file" }, 404);
+          const type = THEME_FILE_TYPES[extensionOf(m[2]!)];
+          if (!type) return json({ error: "not a theme file type" }, 404);
+          return new Response(f, { headers: { "content-type": type, "cache-control": type.startsWith("text/css") ? "no-store" : "max-age=86400" } });
+        }
         if ((m = p.match(/^\/api\/copies\/(\d+)$/))) {
           const c = s.db.query(`${COPY_SQL} WHERE c.id = ?`).get(Number(m[1])) as CopyDbRow | null;
           return c ? json(copyJson(c)) : json({ error: "no such copy" }, 404);

@@ -155,7 +155,7 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
     v.addEventListener("error", () => showMsg(`This Copy did not play (${copy.container} ${copy.videoCodec}/${copy.audioCodec})`));
     v.addEventListener("ended", () => { toast(`Finished · > plays the next in ${from.label}`); showOsd(10000); });
     v.addEventListener("pause", () => { osd?.classList.add("on"); top?.classList.add("on"); });
-    v.addEventListener("play", () => showOsd());
+    v.addEventListener("play", () => { if (msg.textContent === "Press Enter to play") showMsg(null); showOsd(); });
   } else showMsg("No Available Copy");
 
   v.addEventListener("timeupdate", () => {
@@ -257,12 +257,19 @@ export function makePlayer(ctx: Ctx, videoId: number, from: From, opts: { t?: nu
     if (V === "B") fitPanelB();
     pageTo(page);
   }
-  // B: the panel grows to its longest line (measured unwrapped) so lines wrap only past the widest the video can spare
-  const B_MIN = 900, B_MAX = 1320, B_PAD = 230 + 56;
+  // B: the panel grows to its longest line (measured unwrapped), and past a comfortable width the type shrinks first
+  // (44 px down to 34 px) so a Song with long lines does not take half the screen; lines wrap only beyond both.
+  const B_MIN = 900, B_WIDE = 1080, B_MAX = 1320, B_PAD = 230 + 56, B_FONT = 44, B_FONT_MIN = 34;
   function fitPanelB() {
+    const widest = () => { let w = 0; for (const tx of lines.querySelectorAll<HTMLElement>(".tx")) w = Math.max(w, tx.scrollWidth); return w; };
     lines.style.whiteSpace = "nowrap";
-    let w = 0;
-    for (const tx of lines.querySelectorAll<HTMLElement>(".tx")) w = Math.max(w, tx.scrollWidth);
+    lines.style.fontSize = `${B_FONT}px`;
+    let w = widest();
+    if (w + B_PAD > B_WIDE) {
+      const px = Math.max(B_FONT_MIN, Math.min(B_FONT, Math.floor((B_FONT * (B_WIDE - B_PAD)) / w)));
+      lines.style.fontSize = `${px}px`;
+      w = widest();
+    }
     lines.style.whiteSpace = "";
     panel.style.width = `${Math.max(B_MIN, Math.min(B_MAX, w + B_PAD + 8))}px`;
   }

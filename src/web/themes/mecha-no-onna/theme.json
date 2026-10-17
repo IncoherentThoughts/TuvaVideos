@@ -1,0 +1,26 @@
+{
+  "id": "mecha-no-onna",
+  "label": "Mecha no Onna",
+  "description": "Warm near-black glass with cream text over a sepia ink drawing of a cyborg woman, her hands in her hair. The fork's palette carries three drawings; TuvaVideos takes the first alone, the theme's own colours. Dark only. From HANCORE-linux's Omarchy theme, by way of the MigakuEA fork's palette of the same name.",
+  "addons": [
+    { "id": "wallpaper", "images": ["mecha-bg1.webp"], "default": { "dark": "mecha-bg1.webp" } }
+  ],
+  "dark": {
+    "bg": "#1c1b19",
+    "surface": "#2e2b27",
+    "text": "#f0e4c5",
+    "muted": "#a89984",
+    "brand": "#d4bd99",
+    "negative": "#e8806e",
+    "warning": "#f7df97",
+    "info": "#aab6bd",
+    "success": "#b3bd8a",
+    "action": "#e7c07c",
+    "tags": ["#e8806e", "#e6a06f", "#f7df97", "#b3bd8a", "#9cc4a8", "#8fb4d6", "#d7a8b0", "#e2cfa6"]
+  },
+  "source": {
+    "commit": "1e241448ff6f91376769b0eb41c96141f2072f23",
+    "credit": "HANCORE-linux",
+    "repo": "https://github.com/HANCORE-linux/omarchy-mechanoonna-theme"
+  }
+}

@@ -9,10 +9,11 @@ export const DEFAULT_THEME = "wall";
 const LINK_ID = "theme-css";
 const EVT = "tuva:theme";
 
-/** The hand-kept registry; a generator will write it once a second theme exists. */
+/** The hand-kept registry (docs/themes.md step 7: a generator should write it now that there are two themes). */
 export const THEMES: readonly { id: string; label: string }[] = [
   { id: DEFAULT_THEME, label: "Wall" },
   { id: "lawson-night", label: "Lawson Night" },
+  { id: "mecha-no-onna", label: "Mecha no Onna" },
 ];
 
 const known = (id: string | null | undefined): id is string => !!id && THEMES.some((t) => t.id === id);

@@ -7,7 +7,7 @@ A single-user local player for a personal library of Tuvan music videos, browsed
 ### The library
 
 **Video**:
-One piece of footage the library knows about, identified by its YouTube id when it has one and by a content hash otherwise. A Video downloaded from Instagram also records its post's shortcode: not its identity, but a new file with a shortcode the library already knows becomes another Copy of that Video. Carries a title, a Type, Artists, Chapters, Links and a Favorite flag. Never identified by its path.
+One piece of footage the library knows about, identified by its YouTube id when it has one and by a content hash otherwise. A Video downloaded from Instagram or Rutube also records the post's shortcode or the Rutube id: not its identity, but a new file carrying one the library already knows becomes another Copy of that Video. Carries a title, a Type, Artists, Chapters, Links and a Favorite flag. Never identified by its path.
 _Avoid_: file, clip, media, item
 
 **Copy**:
@@ -15,7 +15,7 @@ One file on disk holding a Video, inside exactly one Root. A Video has one or mo
 _Avoid_: file, path, location, duplicate
 
 **Root**:
-A directory the library scans for Copies. A Root is either **local** (always present, on the laptop) or **external** (on a drive that may be unmounted).
+A directory the library scans for Copies, chosen in the app on first launch (a path field; the control center edits it later) and optional for a Member, who may browse the Shared grid with none. A Root is either **local** (always present, on the laptop) or **external** (on a drive that may be unmounted). No Root is built into the app.
 _Avoid_: folder, source, library path, mount
 
 **Available (a Video)**:
@@ -79,6 +79,7 @@ _Avoid_: title matcher, fuzzy match, auto-link
 **Mirror**:
 The read-only copy of the Tuvan Lyrics Archive's entities (Song, Artist, Album, Track, Version, Footnote, Performance) imported from a backup. Edited only on the archive and re-imported; never edited here.
 _Avoid_: sync, cache, import (the act), upstream data
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 **Latin title**:
 The Latin-script form of a Cyrillic title on a Video, Chapter or Local Artist, used so the library can be searched from a Latin keyboard. Generated once, editable afterwards, empty when the title is already Latin. Uses the archive's spelling where the archive has one, otherwise the project's transliteration table.
@@ -87,14 +88,17 @@ _Avoid_: transliteration (the act), romanized title, english title (the archive'
 **Local Artist**:
 An Artist created here because the Mirror has no row for them. Never exported to the archive.
 _Avoid_: custom artist, unknown artist, extra artist
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 **Local Song**:
 A Song created here because the Mirror has none, pointed at by Videos and Chapters exactly like a Mirror Song. Renamable and deletable here (while nothing points at it); never exported. Its Versions are all Local Versions. Marked "local" wherever it is shown.
 _Avoid_: custom song, user song, unknown song (that is a dangling uuid)
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 **Local Version**:
 A lyrics Version written here, attached to a Mirror Song or a Local Song, with the same three Scripts and Footnotes as a Mirror Version. Listed after the Song's Mirror Versions; editable and deletable; survives an import; never exported. The lyrics pane marks it "local" on its pill and above its lines.
 _Avoid_: custom lyrics, user lyrics, local lyrics (as the noun), override
+_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 ### Playback
 
@@ -189,7 +193,7 @@ The link data every Member sees and Video Editors maintain in the archive's data
 _Avoid_: synced, cloud, remote, mirror (which is the retired read-only copy)
 
 **Standalone**:
-Using the app with no session on this machine. Everything is local and nothing leaves the machine; the Shared data it holds is whatever the last Sync left, read-only, and nothing at all on a machine that never signed in.
+Using the app with no Member session on this machine (no session at all, or an account without the grant). Everything is local and nothing leaves the machine; the Shared data it holds is whatever the last Sync left, read-only, and nothing at all on a machine that never signed in.
 _Avoid_: offline (which is a Member without a connection), signed out (as the noun), guest, anonymous mode, local mode
 
 **Member**:
@@ -221,8 +225,24 @@ Move every Video's link from one Artist to another across the Shared data, logge
 _Avoid_: merge (which deleted the source), alias, redirect
 
 **Sync**:
-Refreshing this machine's local copy of the Shared data from the archive. Runs when a sign-in completes, at launch while signed in, after a Video Editor's own write, and from a button; never on a timer. The local copy outlives sign-out, read-only.
+Refreshing this machine's local copy of the Shared data from the archive. Runs when a sign-in completes, at launch while signed in, after a Video Editor's own write, from a button, and on window focus when the last Sync is older than ten minutes; never on a timer. The local copy outlives sign-out, read-only.
 _Avoid_: refresh, pull, download, cache (the copy, not the act)
+
+**Session record**:
+The companion's token-free note of who this machine is signed in as and what they may do: user id, email, display name, avatar, grant level, archive role and when it was last verified. Written at each Sync, read by the chip, every tab and the TV Server, and cleared only by Sign out, a dead session or a cancelled sign-in. The machine fact behind the modes; it grants nothing on its own, since the browser's session is what carries the token.
+_Avoid_: profile, login, account cache, token, session (the browser's, which it is not)
+
+**Local copy**:
+Every Shared table as it sits in this machine's `library.db`: the archive's Songs, Versions, Artists, performances, tracks and albums, and the video-side tables, filled by Sync and by a Video Editor's own writes. Outlives sign-out, read-only.
+_Avoid_: cache, mirror, snapshot, replica
+
+**Unmounted (a Video)**:
+A Video whose Copies all sit on a Root that is not mounted right now. Shown greyed with the drive mark; the Player waits and resumes when the Root returns.
+_Avoid_: offline, disconnected, unavailable (which also covered the next term)
+
+**Not on this machine (a Video)**:
+A Video with no Copy here at all, or only Copies that have vanished or were trashed. Shown greyed with the download mark; opening it gives the source link and says the content must be downloaded to play. Playable again as soon as a scan finds a Copy.
+_Avoid_: missing, remote, unavailable, no copy
 
 **Shelved (edits)**:
 The title, Type, Song and Version pointers, Artists and Chapters a Video carried on this machine before sign-in reconciliation replaced them with the Shared row. Kept locally, read-only, never synced; shown in a drawer on the Video, copyable back into the Shared data by a Video Editor as an ordinary edit, and clearable by hand. Made only by reconciliation.

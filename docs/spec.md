@@ -16,6 +16,7 @@ A single-user, offline, macOS-only local player for a personal library of Tuvan 
 
 - Single user. No auth. `localhost` only. macOS only. (The **TV Server** is the one exception: a second listener on the home network behind an IP allowlist, [ADR 0004](adr/0004-tv-server-on-the-home-network.md), specified in [tv-spec.md](tv-spec.md); the localhost app is unchanged.)
 - The app never touches the network. One-off scripts under `scripts/` may (yt-dlp, YouTube).
+  (**Superseded for the Shared link data** by [ADR 0010](adr/0010-shared-link-data-lives-in-the-archive-written-through-rpcs.md) and the sharing spec, [sharing-spec.md](sharing-spec.md): the browser reads and writes the Shared tables in the archive's Supabase project and the companion Syncs a Local copy; the Mirror retires per [ADR 0009](adr/0009-the-mirror-retires-archive-rows-arrive-by-sync.md). Files and playback state still never leave the machine.)
 - SQLite is the only store. Mirror entities are read-only and refreshed by importing a newer archive backup.
 - Thumbnails are cached locally so the library can be browsed while every Copy is unavailable.
 - Local Copy always wins when both Roots are available.

@@ -18,6 +18,7 @@ A sideloaded app on the living-room TV that browses and plays the library with t
 - The TV Server is **off at every launch** and only runs while the user has turned it on.
 - The TV **never creates cached files** on the Mac (64 GB free on a 93 % full disk): conversion for the TV is live or not at all.
 - One person, one library: the TV and the browser share one Resume position per Video, last writer wins.
+- Under the sharing spec ([sharing-spec.md](sharing-spec.md) §7.6) the TV Server reads the Local copy as a Member through the same handle; its video lists exclude Not on this machine Videos and keep Unmounted ones as today. Nothing else here changes.
 - Themes stay in the browser. The TV UI wears the default tokens of `docs/design-direction.md`.
 
 ### The TV (facts from #47 and #48)

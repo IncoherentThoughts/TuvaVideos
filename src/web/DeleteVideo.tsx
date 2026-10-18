@@ -10,7 +10,7 @@ import { useSession } from "./session";
 import { writeLink } from "./writeLink";
 
 const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-const fmtSize = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
+const fmtSize = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 
 export function DeleteVideoDialog(props: { video: VideoDto; onClose: () => void; onDeleted?: () => void }) {
   return props.video.shared ? <SharedDeleteDialog {...props} /> : <LocalDeleteDialog {...props} />;

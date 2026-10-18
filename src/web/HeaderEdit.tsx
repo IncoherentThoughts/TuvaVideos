@@ -9,7 +9,7 @@ import { api, apiError, loadArtists, replaceVideo } from "./data";
 import { TypeTag, artistSlot, artistTitle } from "./ui";
 import { Link } from "./router";
 import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
-import { writeLink } from "./writeLink";
+import { writeLink, WriteLinkError } from "./writeLink";
 
 type Change = (v: VideoDto) => void;
 export type SongRow = Extract<SearchRow, { kind: "song" }>;
@@ -143,7 +143,8 @@ function useEdit(v: VideoDto, onChange: Change) {
       setErr(null);
       return true;
     } catch (e) {
-      setErr(String((e as Error).message ?? e).replace(/^\/api\/\S+: /, ""));
+      // a conflict is the conflict notice's (ConflictNotice.tsx), not an inline error
+      setErr(e instanceof WriteLinkError && e.word === "conflict" ? null : String((e as Error).message ?? e).replace(/^\/api\/\S+: /, ""));
       return false;
     }
   };

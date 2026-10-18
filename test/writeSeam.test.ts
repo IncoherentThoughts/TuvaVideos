@@ -172,6 +172,8 @@ describe("op -> function, payload, stamp and Edits (§4.1)", () => {
     expect(add.fn).toBe("write_video_chapters");
     expect(add.args).toMatchObject({ p_op: "add", p_target: U(1), p_expected_updated_at: null });
     expect(add.args.p_payload).toEqual({ id: U(77), start_s: 12.5, title: "Ыры", title_latin: "Yry", song_id: "S1", proposed_song_id: null, version_id: null, proposed_version_id: null, suggested: false, source: "manual" });
+    // an untitled Chapter is "" (the Local copy keeps title NOT NULL; null would fail the apply)
+    expect(spec(video(), { kind: "chapter.add", chapter: { startS: 3 } }).args.p_payload).toMatchObject({ title: "", title_latin: null });
     const c = chapter({ suggested: true });
     const up = spec(video(), { kind: "chapter.update", chapter: c, patch: { title: "Новое", startS: 31 } });
     wellFormed(up);
@@ -245,6 +247,8 @@ describe("the conflict notice's reducer (§4.2)", () => {
     expect(conflictLines(detail, "u1", now)).toEqual({ who: "Another Video Editor", when: "3 min ago", change: "title: A → B" });
     expect(conflictLines(detail, "u2", now).who).toContain("You");
     expect(conflictLines(null, "u1", now)).toEqual({ who: "Someone", when: null, change: null });
+    // JSON-encoded history values read as their text
+    expect(conflictLines({ ...detail, last_edit: { ...detail.last_edit!, old_value: '"A"', new_value: '"B"' } }, "u1", now).change).toBe("title: A → B");
   });
 });
 

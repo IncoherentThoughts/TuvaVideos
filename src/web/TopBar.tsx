@@ -34,6 +34,7 @@ export function TopBar({ route }: { route: Route }) {
   const [scan, setScan] = useState<ScanDto | null>(null);
   const [busy, setBusy] = useState(false);
   const wasRunning = useRef(false);
+  const lastFinished = useRef<string | null | undefined>(undefined);
 
   // Poll GET /api/scan: quickly while a scan runs, lazily otherwise. A scan that just finished reloads the library.
   useEffect(() => {
@@ -47,7 +48,12 @@ export function TopBar({ route }: { route: Route }) {
         setScan(s);
         if (s.running) next = 1000;
         // a scan that finished: reload, the deleted-match warning, and the matchers on Shared Videos (sharing-spec §4.3, §4.5)
-        if (wasRunning.current && !s.running) void reloadAll().then(() => refreshDeletedMatches()).then(() => drainSharedSuggestions()).then((n) => void (n && reloadAll()));
+        if (wasRunning.current && !s.running) void reloadAll();
+        // a scan finished (even one too quick to be seen running): the deleted-match warning, then the matchers on
+        // Shared Videos written through the archive (sharing-spec §4.3, §4.5)
+        if (lastFinished.current !== undefined && s.lastFinishedAt !== lastFinished.current && !s.running)
+          void refreshDeletedMatches().then(() => drainSharedSuggestions()).then((n) => void (n && reloadAll()));
+        lastFinished.current = s.lastFinishedAt;
         wasRunning.current = s.running;
       } catch {}
       if (alive) timer = setTimeout(tick, next);

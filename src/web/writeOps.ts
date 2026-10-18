@@ -302,7 +302,7 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
       const id = opts.newId ?? null;
       const title = cleanTitle(c.title ?? "");
       const payload: Record<string, unknown> = {
-        ...(id ? { id } : {}), start_s: c.startS, title: title || null, title_latin: latinOf(title).title_latin,
+        ...(id ? { id } : {}), start_s: c.startS, title, title_latin: latinOf(title).title_latin,
         ...songPair(kinds, c.songId ?? null, c.versionId ?? null), suggested: false, source: "manual",
       };
       const spec = call("write_video_chapters", "add", video.id, payload, null, [{ event_type: "chapter.added", field_name: "start_s", new_value: c.startS, description: `Chapter added at ${c.startS}s` }]);
@@ -315,7 +315,7 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
       const edits: EditInput[] = [];
       if (p.title !== undefined && cleanTitle(p.title) !== ch.title) {
         const t = cleanTitle(p.title);
-        Object.assign(payload, { title: t || null, title_latin: latinOf(t).title_latin });
+        Object.assign(payload, { title: t, title_latin: latinOf(t).title_latin }); // "" not null: the Local copy keeps title NOT NULL
         edits.push({ event_type: "chapter.changed", field_name: "title", old_value: ch.title, new_value: t, description: `Chapter title: ${ch.title} → ${t}` });
       }
       if (p.startS !== undefined && p.startS !== ch.startS) {
@@ -435,7 +435,15 @@ export function conflictLines(detail: ConflictDetail | null, me: string | null, 
   const who = last.editor_id && me && last.editor_id === me ? "You (in another tab or on another machine)" : "Another Video Editor";
   const mins = Math.round((now - Date.parse(last.created_at)) / 60000);
   const when = !Number.isFinite(mins) ? null : mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 60 * 24 ? `${Math.round(mins / 60)} h ago` : new Date(last.created_at).toLocaleDateString();
-  const show = (v: unknown) => (v == null ? "—" : typeof v === "string" ? v : JSON.stringify(v));
+  // history values are JSON; a string may arrive still encoded ("\"A\"")
+  const show = (v: unknown): string => {
+    if (typeof v === "string" && v.startsWith('"')) {
+      try {
+        return show(JSON.parse(v));
+      } catch {}
+    }
+    return v == null ? "—" : typeof v === "string" ? v : JSON.stringify(v);
+  };
   const change = last.field_name ? `${last.field_name}: ${show(last.old_value)} → ${show(last.new_value)}` : last.event_type;
   return { who, when, change };
 }

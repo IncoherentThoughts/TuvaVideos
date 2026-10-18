@@ -10,7 +10,7 @@ import { Picker, createSongRow, rowsOf, songPickerRow, type SongRow } from "./He
 import { TRASH } from "./ui";
 import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
-import { RELOADED_EVENT, writeLink } from "./writeLink";
+import { RELOADED_EVENT, writeLink, WriteLinkError } from "./writeLink";
 import { FavoriteBadge, StripFrame } from "./ui";
 
 interface StripProps {
@@ -88,7 +88,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
       await reload();
       return true;
     } catch (e) {
-      setNote(apiError(e));
+      setNote(e instanceof WriteLinkError && e.word === "conflict" ? null : apiError(e));
       return false;
     }
   };

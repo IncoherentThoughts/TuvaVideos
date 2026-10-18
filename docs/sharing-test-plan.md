@@ -102,7 +102,7 @@ Machine B, signed in as the test Member, holding the Standalone library of S13.
 | M8 | Sign in again and confirm. | Sync runs (sign-in trigger, full refetch on the empty watermark). The three known Videos match by YouTube id, Rutube id and content hash and now carry the Shared title, Type, pointers, Artists and Chapters: **Shared wins**. The re-encoded clip joins its Shared Video as a new Copy. | §2.3, §6.4 |
 | M9 | Open a reconciled Video. | A small Shelved marker; the drawer lists the old title, Type, pointers, Artists and Chapters, read-only; no "copy back" for a Member. | §2.3, §7.4 |
 | M10 | Open Favorites. | The starred Chapter that was shelved has left the list; the Video Favorite is untouched. | §2.3 |
-| M11 | Open `zz-test unknown B1` and `B2`. | Still Unshared with their local tags; the `local_song` of S3 stays local if B1 points at it, and is shelved if only reconciled Videos did. | §2.3, §6.6 |
+| M11 | Open B1 and `zz-test unknown B2`. Find B1 by the local title S3 gave it, not by its file name `zz-test unknown B1`. | Still Unshared with their local tags; the `local_song` of S3 stays local if B1 points at it, and is shelved if only reconciled Videos did. | §2.3, §6.6 |
 | M12 | Inspect the network during sign-in. | No write of link data at all; nothing pushed for Videos the Shared set already knows. | §2.3 |
 | M13 | Open the chip menu. | 34 px profile icon (avatar or initials) with the almond-tinted border; display name; Member role pill; "Last Sync …" with a Sync button; no "Share n new Videos…"; Edits; Sign out; Clear Shelved edits with the count. | §2.2 |
 
@@ -112,7 +112,7 @@ Machine B, signed in as the test Member, holding the Standalone library of S13.
 |---|---|---|---|
 | M14 | Scroll the grid. | Every seeded Shared Video is listed; those with no clip in B's Root are **Not on this machine**: greyed poster, one small download mark, title and tags kept, no "n copies" or availability icons. The soft-deleted seeded Video is absent. | §7.1, §6.3 |
 | M15 | Open a Not on this machine Video of each source kind. | A panel over the blurred poster: "Not on this machine", the message, and the source link (YouTube watch URL, Instagram post, `rutube.ru/video/<id>/`). Title, tags, Chapters, the history tab and the Lyrics drawer below as usual. | §7.1 |
-| M16 | Copy that Video's clip from A's Root into B's Root and scan, with the Video open. | The panel gives way live; the Video plays. | §7.1 |
+| M16 | Copy that Video's clip from A's Root into B's Root and scan, with the Video open. | The panel gives way live; the Video becomes playable (no autoplay is expected). | §7.1 |
 | M17 | Toggle "On this machine". | Now shown; Not on this machine Videos drop out; `#available` gives the same set. | §7.2 |
 | M18 | Look for edit controls on a Shared Video. | `+ add`, Relocate, Delete from library, Rescan of Shared rows, confirm and reject are **hidden**. Trashing this machine's Copies, Favorites, Resume, Audio, Playlists and Studio still work. | §7.3, §2.5 |
 | M19 | Tag an Unshared Video. | Allowed, locally. | §2.5 |
@@ -134,7 +134,7 @@ Machine B, signed in as the test Member, holding the Standalone library of S13.
 | M30 | Client behind: lower `SHARED_SCHEMA` in the checkout (local edit, reverted after), restart, Sync. | Sync stops; a persistent banner above the grid, "Update TuvaVideos: git pull, then restart"; browsing and playback continue from the Local copy. | §6.4 |
 | M31 | Client ahead: raise it instead, restart, Sync; then revert and Sync. | Sync stops with a banner naming the mismatch; the reverted client's next successful Sync clears it. | §6.4 |
 | M32 | Feed `/api/cache/apply` a batch with a different `shared_schema`. | Refused whole; nothing applied. | §6.2 |
-| M33 | Settings, "Refresh all Shared data". | A full refetch; the Local copy matches the pre-refetch state; watermark is the server's. | §6.4, §6.2 |
+| M33 | Chip menu, "Refresh all Shared data" (one confirm: "Re-download all Shared data from the archive? Your local tags and Favorites are kept."). | A full refetch; the Local copy matches the pre-refetch state; watermark is the server's. | §6.4, §6.2 |
 
 ### 3.4 Member offline
 

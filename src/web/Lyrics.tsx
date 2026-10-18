@@ -321,8 +321,10 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
               </>
             ) : version.proposed ? (
               <>
-                <ProposedMark />
-                <span>A Proposed Version: Member-readable, never on the lyrics website.</span>
+                <span class="vsrc-stack">
+                  <ProposedMark />
+                  <span>Member readable, not on the lyrics website</span>
+                </span>
                 <RowActions key={`v${version.id}${reload}`} table="version" id={version.id} compact onChanged={() => (setPick(null), setReload((n) => n + 1))} />
               </>
             ) : (

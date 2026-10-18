@@ -130,11 +130,11 @@ export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }
   const shown = useMemo(() => {
     if (!res || !videos) return [] as { v: VideoDto; m: ResultMatch }[];
     const byId = new Map(videos.map((v) => [v.id, v]));
-    // Video filters (#fav #available #type: #artist:) hold for every card, however the Video was reached.
+    // Video filters (#fav #available #unshared #type: #artist:) hold for every card, however the Video was reached.
     const p = parseQuery(q);
     // A matching Chapter already passed them on the server (#fav there means the Chapter itself is a Favorite).
     const passes = (v: VideoDto, m: ResultMatch) =>
-      (!p.available || v.available) && (!p.fav || !!v.favoritedAt || m.chapters.length > 0) && (!p.types.length || p.types.includes(v.type)) && p.artists.every((a) => hasArtistNamed(v, a));
+      (!p.available || v.available) && (!p.unshared || !v.shared) && (!p.fav || !!v.favoritedAt || m.chapters.length > 0) && (!p.types.length || p.types.includes(v.type)) && p.artists.every((a) => hasArtistNamed(v, a));
     return resultMatches(res, videos).flatMap((m) => {
       const v = byId.get(m.id);
       if (!v || !passes(v, m)) return [];

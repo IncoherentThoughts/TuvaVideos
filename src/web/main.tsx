@@ -14,6 +14,7 @@ import { matchRoute, useLocation } from "./router";
 import { applyThemeFromUrl } from "./theme";
 import { startSession } from "./session";
 import { EndedBanner } from "./Account";
+import { SchemaBanner } from "./SchemaBanner";
 import { ConflictNotice, DeletedMatchNotice } from "./ConflictNotice";
 import { ShareQuestion } from "./ShareQuestion";
 import { RowPromptHost } from "./ProposedRows";
@@ -29,6 +30,7 @@ function App() {
       <VideoMenu />
       <main>
         <EndedBanner />
+        <SchemaBanner />
         <ConflictNotice />
         <DeletedMatchNotice />
         <ShareQuestion />

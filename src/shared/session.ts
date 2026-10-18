@@ -128,6 +128,12 @@ export type SessionAction =
   | { type: "auth"; session: BrowserSession | null }
   | { type: "settled" }
   | { type: "reach"; reachable: boolean }
+  /**
+   * The browser's own `offline`/`online` events (#158, MO1). Offline is an answer: unreachable at once, no probe
+   * needed. Online is not: the archive may still be down, so the reading stays until the next probe or Sync (and
+   * §6.4 has no network-return Sync).
+   */
+  | { type: "network"; online: boolean }
   | { type: "sync-start"; full?: boolean; at?: number }
   | { type: "sync-phase"; phase: SyncProgress["phase"] }
   | {
@@ -151,6 +157,8 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
       return s.authSettled ? s : { ...s, authSettled: true };
     case "reach":
       return { ...s, reachable: a.reachable };
+    case "network":
+      return a.online || s.reachable === false ? s : { ...s, reachable: false };
     case "sync-start":
       return { ...s, syncing: true, progress: { phase: "checking", full: a.full === true, startedAt: a.at ?? Date.now() } };
     case "sync-phase":

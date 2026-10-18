@@ -10,8 +10,8 @@ import { libraryFiltered, libraryStart } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
-import { AvailabilityIcon, FavoriteBadge, NotHereMark, Poster, SpecTags, Tags } from "./ui";
-import { isNotHere, showOnThisMachineChip } from "../shared/presence";
+import { AvailabilityIcon, FavoriteBadge, NotHereMark, Poster, SpecTags, Tags, UnsharedMark } from "./ui";
+import { isNotHere, sharingMark, showOnThisMachineChip } from "../shared/presence";
 import { useWindowed } from "./windowed";
 import { FirstLaunchPanel, NoRootBar, useOnboarding } from "./Onboarding";
 import { openSignIn } from "./Account";
@@ -23,10 +23,13 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
   // §7.1: Not on this machine is the greyed poster plus one corner mark; title and tags stay, "n copies" and the
   // availability icon go. The click-through is the ordinary card link (Now playing explains).
   const notHere = isNotHere(v);
+  // #158: with the grant, the Unshared exceptions carry one corner mark (opposite §7.1's); Shared cards stay plain.
+  const unshared = sharingMark(v, !!useSession().record?.grantLevel) === "unshared";
   return (
-    <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
+    <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}${unshared ? " unshared" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <Poster video={v} dur />
       {notHere && <NotHereMark />}
+      {unshared && <UnsharedMark />}
       <div class="ttl">
         {v.favoritedAt && <FavoriteBadge />}
         {titleHtml != null ? <span dangerouslySetInnerHTML={{ __html: titleHtml }} /> : v.title}

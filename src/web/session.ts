@@ -83,6 +83,11 @@ export function startSession(): Promise<SupabaseClient | null> {
   });
   if (typeof window !== "undefined") {
     window.addEventListener("focus", () => void onFocus());
+    // #158 (MO1): the slashed dot reacts to the browser's own network flag at once; going back online neither
+    // Syncs (§6.4) nor probes (§5.3: focus and Sync only), so the dot clears at the next probe or Sync.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) dispatch({ type: "network", online: false });
+    window.addEventListener("offline", () => dispatch({ type: "network", online: false }));
+    window.addEventListener("online", () => dispatch({ type: "network", online: true }));
     window.addEventListener("storage", (e) => {
       if (e.key !== TAB_KEY) return;
       const m = decodeTab(e.newValue, TAB);
@@ -218,7 +223,7 @@ export function afterWrite(): Promise<SyncResponse | null> {
   return trigger("after-write");
 }
 
-/** Settings' "Refresh all Shared data" (§6.4): the companion wipes the Shared rows and pulls them whole. */
+/** The chip menu's "Refresh all Shared data" (§6.4): the companion wipes the Shared rows and pulls them whole. */
 export function refreshAll(): Promise<SyncResponse | null> {
   return trigger("refresh-all");
 }
@@ -500,7 +505,7 @@ export interface UseSession {
   dismissEnded: typeof dismissEnded;
   /** Call after a Video Editor's own write (#116). */
   afterWrite: typeof afterWrite;
-  /** Settings' "Refresh all Shared data". */
+  /** The chip menu's "Refresh all Shared data". */
   refreshAll: typeof refreshAll;
   /** §6.6: the `pending_share` queue's counts (null until read). The chip row shows while `count` > 0. */
   pendingShare: PendingShareSummary | null;

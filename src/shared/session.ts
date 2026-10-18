@@ -3,6 +3,7 @@
 // rule (the one rule later tickets ask), the multi-tab messages, and the readings of supabase-js outcomes (a sign-in
 // error, a revocation probe, a SIGNED_OUT event). No I/O; src/web/session.ts wires them to supabase-js and the companion.
 import type { ArchiveEndpoint } from "./archive";
+import type { PosterDownloadResult } from "./posters";
 import type { ApplySharedResult } from "./sharedRows";
 
 export type GrantLevel = "member" | "editor";
@@ -59,6 +60,8 @@ export interface SyncResponse {
   full?: boolean;
   /** What `applyShared` did, when a pull was applied. */
   applied?: ApplySharedResult | null;
+  /** The poster download, the second half of the job (§6.5); absent when the pull failed or no thumbs folder is set. */
+  posters?: PosterDownloadResult | null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

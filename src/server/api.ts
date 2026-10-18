@@ -15,6 +15,7 @@ import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/
 import { deleteVideo } from "./deleteVideo";
 import { serveFile } from "./stream";
 import type { KeyframeIndex } from "./keyframes";
+import { NO_TRASH_NOTICE, resolveTrash } from "./platform";
 import { run } from "./proc";
 import type { Thumbnails } from "./thumbs";
 import type { WebBundle } from "./web";
@@ -274,6 +275,10 @@ export function createHandler(s: Services) {
     return videos.map((v) => videoJson(v, byVideo.get(v.id) ?? [], ex.get(v.id)));
   };
 
+  const trashInfo = () => {
+    const t = resolveTrash(s.cfg.trash);
+    return t ? { available: true, command: t.label } : { available: false, notice: NO_TRASH_NOTICE };
+  };
   const health = () => {
     const n = (sql: string) => (s.db.query(sql).get() as { n: number }).n;
     const videos = allVideos();
@@ -289,6 +294,8 @@ export function createHandler(s: Services) {
       roots: s.roots.list().map((r) => ({ id: r.id, kind: r.kind, available: s.roots.isAvailable(r.id) })),
       scan: s.scanner.progress(),
       thumbWork: s.thumbs.stats,
+      // Sharing-spec §8.2: with no trash command, deleting offers only the entry-only delete, with this notice.
+      trash: trashInfo(),
     };
   };
 

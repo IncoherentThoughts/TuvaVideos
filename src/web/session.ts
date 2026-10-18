@@ -8,10 +8,10 @@ import { createClient, type AuthChangeEvent, type Session, type SupabaseClient }
 import { useEffect, useState } from "preact/hooks";
 import type { RpcClient } from "../shared/archive";
 import {
-  AUTH_SETTLE_MS, classifySignedOut, decodeTab, editAccess, encodeTab, focusWantsSync, INITIAL_SESSION_STATE, probeOutcome,
-  SIGN_IN_ERRORS, signInFailure, sessionReducer, tabAction, TAB_KEY,
-  type BrowserSession, type EndedReason, type ProbeOutcome, type SessionAction, type SessionRecord, type SessionResponse,
-  type SessionState, type SyncResponse, type TabMessage,
+  AUTH_SETTLE_MS, classifySignedOut, decodeTab, editAccess, encodeTab, INITIAL_SESSION_STATE, probeOutcome,
+  SIGN_IN_ERRORS, signInFailure, sessionReducer, syncWanted, tabAction, TAB_KEY,
+  type BrowserSession, type EndedReason, type ProbeOutcome, type SchemaMismatch, type SessionAction, type SessionRecord, type SessionResponse,
+  type SessionState, type SyncProgress, type SyncRequest, type SyncResponse, type SyncTrigger, type TabMessage,
 } from "../shared/session";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -94,7 +94,7 @@ async function onAuth(event: AuthChangeEvent, session: Session | null, settle: R
     clearTimeout(settle);
     dispatch({ type: "settled" });
     // §6.4: launch while signed in Syncs.
-    if (session && state.record?.userId === session.user.id) void requestSync();
+    void trigger("launch");
     return;
   }
   if (event === "SIGNED_IN") return;
@@ -141,48 +141,80 @@ async function onFocus() {
   const r = await readSession();
   if (r) dispatch({ type: "record", record: r.record });
   if (!state.browser) return;
-  if (focusWantsSync(state.record, state.browser, Date.now())) void requestSync();
+  // §6.4: focus Syncs when the last successful Sync is older than 10 minutes (after failures, once the back-off passed).
+  if (syncWanted("focus", state, Date.now())) void runSync(false);
   else void probe();
 }
 
 /**
- * One Sync from this tab at a time (a second call while one runs gets the same promise; the companion coalesces
- * across tabs). Probes first; hands the access token, and only it, to `POST /api/sync`. Null when nothing ran.
+ * A §6.4 trigger: Syncs when the pure rule (`syncWanted`) says so, else resolves null. No timer ever calls this.
  */
-export function requestSync(): Promise<SyncResponse | null> {
-  if (syncInFlight) return syncInFlight;
+function trigger(t: SyncTrigger): Promise<SyncResponse | null> {
+  if (!syncWanted(t, state, Date.now())) return Promise.resolve(null);
+  return runSync(t === "refresh-all");
+}
+
+/**
+ * One Sync from this tab at a time (a second call while one runs gets the same promise; the companion coalesces
+ * across tabs). Probes first; hands the access token, and only it, to `POST /api/sync`. Null when nothing ran. A full
+ * refetch asked for during an incremental Sync runs after it.
+ */
+function runSync(full: boolean): Promise<SyncResponse | null> {
+  if (syncInFlight) return full ? syncInFlight.then(() => runSync(true)) : syncInFlight;
   syncInFlight = (async () => {
     await clientReady;
     if (!client) return null;
-    dispatch({ type: "sync-start" });
+    dispatch({ type: "sync-start", full, at: Date.now() });
     const p = await probe();
     if (p !== "ok") {
       if (p === "revoked") return null;
-      dispatch({ type: "sync-end", reachable: p === "unreachable" ? false : state.reachable === true, error: p === "unreachable" ? "The archive can't be reached" : "Not signed in" });
+      dispatch({ type: "sync-end", reachable: p === "unreachable" ? false : state.reachable === true, error: p === "unreachable" ? "The archive can't be reached" : "Not signed in", at: Date.now() });
       return null;
     }
     const { data } = await client.auth.getSession();
     const token = data.session?.access_token;
     if (!token) {
-      dispatch({ type: "sync-end", reachable: true, error: "Not signed in" });
+      dispatch({ type: "sync-end", reachable: true, error: "Not signed in", at: Date.now() });
       return null;
     }
+    dispatch({ type: "sync-phase", phase: "pulling" });
     let res: SyncResponse;
     try {
-      const r = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ access_token: token }) });
+      const body: SyncRequest = full ? { access_token: token, full: true } : { access_token: token };
+      const r = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${r.status}`);
       res = (await r.json()) as SyncResponse;
     } catch (e) {
-      dispatch({ type: "sync-end", reachable: state.reachable === true, error: `Sync failed: ${(e as Error).message}` });
+      dispatch({ type: "sync-end", reachable: state.reachable === true, error: `Sync failed: ${(e as Error).message}`, at: Date.now() });
       return null;
     }
-    dispatch({ type: "sync-end", record: res.record, reachable: res.reachable, error: res.error });
+    dispatch({ type: "sync-end", record: res.record, reachable: res.reachable, error: res.error, schema: res.schema, at: Date.now() });
     broadcast({ kind: "record", record: res.record });
+    // §6.2: a 401 runs the revocation probe (a revoked session ends here; an expired token just refreshes).
+    if (res.unauthorized) void probe();
     return res;
   })().finally(() => {
     syncInFlight = null;
   });
   return syncInFlight;
+}
+
+/** The chip's Sync button (§6.4): always runs while a session is held. Also the hook's `requestSync`. */
+export function requestSync(): Promise<SyncResponse | null> {
+  return runSync(false);
+}
+
+/**
+ * §6.4: after a Video Editor's own write (already applied to the Local copy through `/api/cache/apply`), Sync to pick
+ * up what others changed meanwhile. For the write path (#116); does nothing unless this browser is the record's user.
+ */
+export function afterWrite(): Promise<SyncResponse | null> {
+  return trigger("after-write");
+}
+
+/** Settings' "Refresh all Shared data" (§6.4): the companion wipes the Shared rows and pulls them whole. */
+export function refreshAll(): Promise<SyncResponse | null> {
+  return trigger("refresh-all");
 }
 
 export interface SignInResult {
@@ -209,7 +241,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   expectSignedOut = false;
   dispatch({ type: "auth", session: toBrowser(result.data.session) });
   dispatch({ type: "reach", reachable: true });
-  const sync = await requestSync();
+  const sync = await runSync(false); // §6.4: sign-in completes (the record may not name this user yet)
   return { ok: true, error: null, sync, mustChangePassword: sync?.mustChangePassword === true };
 }
 
@@ -260,10 +292,20 @@ export interface UseSession {
   lastSyncError: string | null;
   /** §5.4: set when the session dropped; the banner shows it until `dismissEnded()`. */
   ended: EndedReason | null;
+  /** The running Sync's phase for the chip's Sync row ("checking" the session, then "pulling"); null when idle. */
+  progress: SyncProgress | null;
+  /** The last successful Sync (the record's `lastSyncAt`), ISO; null before the first. */
+  lastSyncAt: string | null;
+  /** §6.4's schema gate: set while this checkout and the archive disagree; the banner (#131) reads `line`. */
+  schemaMismatch: SchemaMismatch | null;
   signIn: typeof signIn;
   signOut: typeof signOut;
   requestSync: typeof requestSync;
   dismissEnded: typeof dismissEnded;
+  /** Call after a Video Editor's own write (#116). */
+  afterWrite: typeof afterWrite;
+  /** Settings' "Refresh all Shared data". */
+  refreshAll: typeof refreshAll;
 }
 
 export function useSession(): UseSession {
@@ -279,6 +321,7 @@ export function useSession(): UseSession {
   return {
     record: s.record, recordLoaded: s.recordLoaded, authSettled: s.authSettled, canEdit: access.enabled, editorView: access.shown,
     browserSignedIn: !!s.browser, reachable: s.reachable, syncing: s.syncing, lastSyncError: s.lastSyncError, ended: s.ended,
-    signIn, signOut, requestSync, dismissEnded,
+    progress: s.progress, lastSyncAt: s.record?.lastSyncAt ?? null, schemaMismatch: s.schemaMismatch,
+    signIn, signOut, requestSync, dismissEnded, afterWrite, refreshAll,
   };
 }

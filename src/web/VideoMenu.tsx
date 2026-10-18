@@ -8,7 +8,7 @@ import { api, replaceVideo, useStore } from "./data";
 import { DeleteVideoDialog } from "./DeleteVideo";
 
 interface Open {
-  id: number;
+  id: string;
   x: number;
   y: number;
   /** Opened on a card of the Library grid, where Delete is offered. */
@@ -29,7 +29,7 @@ export function VideoMenu() {
       if (!el) return;
       e.preventDefault();
       setErr(null);
-      setOpen({ id: Number(el.dataset.id), x: e.clientX, y: e.clientY, grid: !!el.closest(".wall") });
+      setOpen({ id: el.dataset.id!, x: e.clientX, y: e.clientY, grid: !!el.closest(".wall") });
     };
     const close = () => setOpen(null);
     const onDown = (e: MouseEvent) => {

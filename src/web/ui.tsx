@@ -165,7 +165,8 @@ export function AvailabilityIcon({ availability }: { availability: "local" | "ex
   );
 }
 
-const phColor = (id: number) => `var(--t${(id % 8) + 1})`;
+/** A placeholder tint from a Video id: its last 8 hex digits (a legacy id keeps its old integer's tint). */
+export const phColor = (id: string) => `var(--t${((parseInt(id.slice(-8), 16) || 0) % 8) + 1})`;
 
 /** Poster for a Video; a tinted placeholder when no Thumbnail has been generated or it fails to load. */
 export function Poster({ video, dur }: { video: Pick<VideoDto, "id" | "thumbnail" | "available" | "durationS">; dur?: boolean }) {

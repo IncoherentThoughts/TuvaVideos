@@ -4,6 +4,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Db } from "../db";
+import { newUuid } from "../localCopy/ids";
+import { nowIso, setChapterFavorite, songPointers } from "../localCopy/rows";
 import { fillLatinTitles } from "../latin";
 import { hasTable, rebuildSearchIndex } from "../search";
 import {
@@ -22,7 +24,7 @@ export const AUTO_SOURCES: ChapterSource[] = ["description", "comment", "perform
 export interface SuggestOptions {
   /** YouTube info cache directory. */
   cacheDir: string;
-  /** Limit to these Videos: numeric library ids or YouTube ids. */
+  /** Limit to these Videos: library ids (uuids) or YouTube ids. */
   only?: string[];
   dryRun?: boolean;
   thresholds?: { linked: number; mirror: number; nearTie: number };
@@ -39,7 +41,7 @@ export interface MatchReportRow {
 }
 
 export interface VideoReport {
-  videoId: number;
+  videoId: string;
   youtubeId: string;
   title: string;
   hasInfo: boolean;
@@ -71,7 +73,7 @@ export interface SuggestReport {
 }
 
 interface VideoRow {
-  id: number;
+  id: string;
   youtube_id: string;
   title: string;
   copy_duration: number | null;
@@ -88,7 +90,6 @@ export function readInfo(cacheDir: string, youtubeId: string): YtInfo | null {
 }
 
 function loadSongs(db: Db) {
-  if (!hasTable(db, "mirror_song")) return { all: [] as PreparedSong[], byId: new Map<string, PreparedSong>(), names: new Map<string, string>() };
   const rows = db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all").all() as any[];
   const all = prepareSongs(rows);
   return { all, byId: new Map(all.map((s) => [s.id, s])), names: new Map<string, string>(rows.map((r) => [r.id, r.name])) };
@@ -98,16 +99,17 @@ function loadSongs(db: Db) {
 export function suggestChapters(db: Db, opts: SuggestOptions): SuggestReport {
   const th = opts.thresholds ?? { linked: TIER_LINKED, mirror: TIER_MIRROR, nearTie: NEAR_TIE };
   const songs = loadSongs(db);
-  const hasPerf = hasTable(db, "mirror_performance");
+  const hasPerf = hasTable(db, "archive_performance");
 
+  // Unshared Videos only: on a Shared Video the matchers write through the archive (sharing-spec §4.3, ticket #116).
   const vids = db
-    .query("SELECT v.id, v.youtube_id, v.title, (SELECT MAX(duration_s) FROM copy c WHERE c.video_id = v.id) AS copy_duration FROM video v WHERE v.youtube_id IS NOT NULL ORDER BY v.id")
+    .query("SELECT v.id, v.youtube_id, v.title, (SELECT MAX(duration_s) FROM copy c WHERE c.video_id = v.id) AS copy_duration FROM video_full v WHERE v.youtube_id IS NOT NULL AND v.shared = 0 ORDER BY v.created_at, v.id")
     .all() as VideoRow[];
   const only = opts.only?.length ? new Set(opts.only) : null;
   const perfByYt = new Map<string, PerformanceOffset[]>();
   const linkedByYt = new Map<string, Set<string>>();
   if (hasPerf) {
-    for (const p of db.query("SELECT youtube_id, song_id, start_s FROM mirror_performance WHERE youtube_id IS NOT NULL").all() as { youtube_id: string; song_id: string; start_s: number | null }[]) {
+    for (const p of db.query("SELECT youtube_id, song_id, start_s FROM archive_performance WHERE youtube_id IS NOT NULL").all() as { youtube_id: string; song_id: string; start_s: number | null }[]) {
       (linkedByYt.get(p.youtube_id) ?? linkedByYt.set(p.youtube_id, new Set()).get(p.youtube_id)!).add(p.song_id);
       if (p.start_s != null) (perfByYt.get(p.youtube_id) ?? perfByYt.set(p.youtube_id, []).get(p.youtube_id)!).push({ songId: p.song_id, startS: p.start_s, songName: songs.names.get(p.song_id) ?? "" });
     }
@@ -132,10 +134,10 @@ export function suggestChapters(db: Db, opts: SuggestOptions): SuggestReport {
     const block: TextBlock | null = info ? selectBlock(info, duration) : null;
     const cands = mergePerformances(block, perfs);
 
-    const existing = db.query("SELECT id, start_s, suggested, source, favorited_at FROM chapter WHERE video_id = ?").all(v.id) as { id: number; start_s: number; suggested: number; source: string; favorited_at: string | null }[];
+    const existing = db.query("SELECT id, start_s, suggested, source, favorited_at FROM chapter_full WHERE video_id = ?").all(v.id) as { id: string; start_s: number; suggested: number; source: string; favorited_at: string | null }[];
     const kept = existing.filter((c) => !c.suggested).map((c) => c.start_s);
     const replaceable = existing.filter((c) => c.suggested && (AUTO_SOURCES as string[]).includes(c.source));
-    const tombs = db.query("SELECT source, start_s AS startS FROM chapter_rejection WHERE video_id = ?").all(v.id) as { source: string; startS: number }[];
+    const tombs = db.query("SELECT source, start_s AS startS FROM video_chapter_rejections WHERE video_id = ?").all(v.id) as { source: string; startS: number }[];
     const rules = applyRerunRules(cands, kept, tombs);
 
     // Song matcher on the text Chapters that survived the rules and that no Performance supplied a Song for
@@ -204,14 +206,20 @@ export function suggestChapters(db: Db, opts: SuggestOptions): SuggestReport {
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
 /** Replaces the Video's automatic Suggested Chapters with `keep`. A Favorite among the replaced ones passes to the new Chapter at the same start (±1 s). */
-function writeVideo(db: Db, videoId: number, keep: Candidate[], replaced: { id: number; start_s: number; favorited_at: string | null }[]) {
+function writeVideo(db: Db, videoId: string, keep: Candidate[], replaced: { id: string; start_s: number; favorited_at: string | null }[]) {
   db.transaction(() => {
     const favs = replaced.filter((r) => r.favorited_at);
-    for (const r of replaced) db.query("DELETE FROM chapter WHERE id = ?").run(r.id);
-    const ins = db.prepare("INSERT INTO chapter (video_id, start_s, title, song_id, suggested, source, favorited_at) VALUES (?, ?, ?, ?, 1, ?, ?)");
+    for (const r of replaced) db.query("DELETE FROM video_chapters WHERE id = ?").run(r.id);
+    const ins = db.prepare(
+      `INSERT INTO video_chapters (id, video_id, start_s, title, song_id, proposed_song_id, suggested, source, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    );
     for (const c of keep) {
       const fav = favs.find((f) => Math.abs(f.start_s - c.startS) <= 1)?.favorited_at ?? null;
-      ins.run(videoId, c.startS, c.title, c.songId, c.source, fav);
+      const id = newUuid();
+      const p = songPointers(db, c.songId ?? null, null);
+      ins.run(id, videoId, c.startS, c.title, p.song_id, p.proposed_song_id, c.source, nowIso());
+      if (fav) setChapterFavorite(db, id, fav);
     }
   })();
 }

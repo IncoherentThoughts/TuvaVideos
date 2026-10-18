@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 export interface Config {
   dataDir: string;
@@ -48,8 +48,20 @@ export function findBin(name: string, env: Record<string, string | undefined> = 
 export const DEFAULT_PORT = 4400;
 export const DEFAULT_TV_PORT = 4401;
 
-export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
-  const dataDir = env.TUVA_DATA_DIR ?? join(homedir(), "Library", "Application Support", "TuvaVideos");
+/**
+ * The data directory per platform (docs/sharing-spec.md §8.2): `~/Library/Application Support/TuvaVideos` on macOS,
+ * `$XDG_DATA_HOME/TuvaVideos` (default `~/.local/share/TuvaVideos`) on Linux and the other Unixes,
+ * `%APPDATA%\TuvaVideos` on Windows. `TUVA_DATA_DIR` overrides it everywhere. Pure given its arguments.
+ */
+export function dataDirFor(platform: NodeJS.Platform, env: Record<string, string | undefined>, home: string): string {
+  if (env.TUVA_DATA_DIR) return env.TUVA_DATA_DIR;
+  if (platform === "darwin") return join(home, "Library", "Application Support", "TuvaVideos");
+  if (platform === "win32") return win32.join(env.APPDATA || win32.join(home, "AppData", "Roaming"), "TuvaVideos");
+  return join(env.XDG_DATA_HOME || join(home, ".local", "share"), "TuvaVideos");
+}
+
+export function loadConfig(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform): Config {
+  const dataDir = dataDirFor(platform, env, homedir());
   const port = Number(env.TUVA_PORT ?? DEFAULT_PORT);
   return {
     dataDir,

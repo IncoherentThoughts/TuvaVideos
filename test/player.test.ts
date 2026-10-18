@@ -248,44 +248,44 @@ describe("resume rules", () => {
 });
 
 describe("Playing from", () => {
-  const pf: PlayingFrom = { source: "favorites", ids: [5, 9, 2, 7] };
+  const pf: PlayingFrom = { source: "favorites", ids: ["5", "9", "2", "7"] };
   test("position n of N", () => {
-    expect(positionIn(pf, 9)).toEqual({ n: 2, total: 4 });
-    expect(positionIn(pf, 5)).toEqual({ n: 1, total: 4 });
-    expect(positionIn(pf, 99)).toBeNull();
+    expect(positionIn(pf, "9")).toEqual({ n: 2, total: 4 });
+    expect(positionIn(pf, "5")).toEqual({ n: 1, total: 4 });
+    expect(positionIn(pf, "99")).toBeNull();
   });
   test("steps next and previous", () => {
-    expect(stepFrom(pf, 9, 1)).toBe(2);
-    expect(stepFrom(pf, 9, -1)).toBe(5);
+    expect(stepFrom(pf, "9", 1)).toBe("2");
+    expect(stepFrom(pf, "9", -1)).toBe("5");
   });
   test("wraps at both ends", () => {
-    expect(stepFrom(pf, 7, 1)).toBe(5);
-    expect(stepFrom(pf, 5, -1)).toBe(7);
+    expect(stepFrom(pf, "7", 1)).toBe("5");
+    expect(stepFrom(pf, "5", -1)).toBe("7");
   });
   test("skips Videos that cannot be played, and wraps past them", () => {
-    const playable = (id: number) => id !== 2 && id !== 7;
-    expect(stepFrom(pf, 9, 1, playable)).toBe(5); // 2 and 7 skipped, wrapped to 5
-    expect(stepFrom(pf, 5, -1, playable)).toBe(9);
+    const playable = (id: string) => id !== "2" && id !== "7";
+    expect(stepFrom(pf, "9", 1, playable)).toBe("5"); // 2 and 7 skipped, wrapped to 5
+    expect(stepFrom(pf, "5", -1, playable)).toBe("9");
   });
   test("nothing else playable, one-item list, or current not in the list", () => {
-    expect(stepFrom(pf, 5, 1, (id) => id === 5)).toBeNull();
-    expect(stepFrom({ source: "search", ids: [3] }, 3, 1)).toBeNull();
-    expect(stepFrom(pf, 100, 1)).toBeNull();
-    expect(stepFrom({ source: "library", ids: [] }, 1, 1)).toBeNull();
+    expect(stepFrom(pf, "5", 1, (id) => id === "5")).toBeNull();
+    expect(stepFrom({ source: "search", ids: ["3"] }, "3", 1)).toBeNull();
+    expect(stepFrom(pf, "100", 1)).toBeNull();
+    expect(stepFrom({ source: "library", ids: [] }, "1", 1)).toBeNull();
   });
   test("a snapshot is a snapshot: stepping does not depend on later list changes", () => {
-    const ids = [1, 2, 3];
+    const ids = ["1", "2", "3"];
     const snap: PlayingFrom = { source: "library", ids: [...ids] };
-    ids.push(4);
-    expect(stepFrom(snap, 3, 1)).toBe(1);
+    ids.push("4");
+    expect(stepFrom(snap, "3", 1)).toBe("1");
   });
   test("resolve: keep a snapshot that holds the Video (reload, stepping), else library order", () => {
-    expect(resolvePlayingFrom(pf, 2, [1, 2, 3])).toBe(pf);
-    expect(resolvePlayingFrom(pf, 100, [100, 101])).toEqual({ source: "library", ids: [100, 101] });
-    expect(resolvePlayingFrom(null, 1, [1, 2])).toEqual({ source: "library", ids: [1, 2] });
+    expect(resolvePlayingFrom(pf, "2", ["1", "2", "3"])).toBe(pf);
+    expect(resolvePlayingFrom(pf, "100", ["100", "101"])).toEqual({ source: "library", ids: ["100", "101"] });
+    expect(resolvePlayingFrom(null, "1", ["1", "2"])).toEqual({ source: "library", ids: ["1", "2"] });
   });
   test("uniqueIds keeps the first occurrence (Favorites chapters of one Video)", () => {
-    expect(uniqueIds([4, 8, 4, 8, 1])).toEqual([4, 8, 1]);
+    expect(uniqueIds(["4", "8", "4", "8", "1"])).toEqual(["4", "8", "1"]);
   });
 });
 

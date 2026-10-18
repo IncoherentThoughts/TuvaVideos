@@ -10,13 +10,13 @@ import { eligibleForFetch } from "../src/server/chapters/eligible";
 import { suggestChapters } from "../src/server/chapters/suggest";
 import { loadConfig } from "../src/server/config";
 import { openDb } from "../src/server/db";
-import { runImport } from "../src/server/import";
-import { importMirror } from "../src/server/mirror";
+import { runArchiveFollowUps } from "../src/server/localCopy/followUps";
 import { rebuildSearchIndex } from "../src/server/search";
 import { foldForMatch, jaroWinkler, matchSong, prepareSongs } from "../src/shared/songMatch";
 import { clampStart, formatStart, nudgeStart, parseTimeField, parseTimestampBlock } from "../src/shared/timestamps";
+import { loadArchiveFixture } from "./helpers/archive";
+import { C, insertChapter, insertChapterRejection, insertVideo, V } from "./helpers/seed";
 
-const FIXTURE = join(import.meta.dir, "fixtures", "backup");
 const YT = join(import.meta.dir, "fixtures", "yt");
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
 const S = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -238,12 +238,12 @@ describe("Song matcher", () => {
 describe("eligible Videos (fetch)", () => {
   test("concerts first, then Videos over 20 min with an id, then explicit ids; id-less Videos never", () => {
     const rows = [
-      { id: 1, youtubeId: "a", type: "song", durationS: 300 },
-      { id: 2, youtubeId: "b", type: "other", durationS: 1300 },
-      { id: 3, youtubeId: "c", type: "concert", durationS: 100 },
-      { id: 4, youtubeId: null, type: "concert", durationS: 9000 },
-      { id: 5, youtubeId: "e", type: "song", durationS: 7200 },
-      { id: 6, youtubeId: "f", type: "other", durationS: 1200 },
+      { id: V(1), youtubeId: "a", type: "song", durationS: 300 },
+      { id: V(2), youtubeId: "b", type: "other", durationS: 1300 },
+      { id: V(3), youtubeId: "c", type: "concert", durationS: 100 },
+      { id: V(4), youtubeId: null, type: "concert", durationS: 9000 },
+      { id: V(5), youtubeId: "e", type: "song", durationS: 7200 },
+      { id: V(6), youtubeId: "f", type: "other", durationS: 1200 },
     ];
     expect(eligibleForFetch(rows).map((r) => r.youtubeId)).toEqual(["c", "e", "b"]);
     expect(eligibleForFetch(rows, ["a", "zzz", "c"]).map((r) => r.youtubeId)).toEqual(["c", "e", "b", "a", "zzz"]);
@@ -256,17 +256,19 @@ describe("suggest step against a library (re-runs, tombstones)", () => {
   const cache = join(base, "yt");
   mkdirSync(cache, { recursive: true });
   const db = openDb(":memory:", MIGRATIONS);
-  importMirror(db, FIXTURE);
+  loadArchiveFixture(db);
   // Video 1: bbbbbbbbbbb has Performances of Song 1 @95 and Song 2 @3723; Video 2: no info, no Performance with t
-  db.exec("INSERT INTO video (id, youtube_id, title, created_at) VALUES (1, 'bbbbbbbbbbb', 'Concert', 'x'), (2, 'aaaaaaaaaaa', 'Plain', 'x'), (3, 'nnnnnnnnnnn', 'NoBlock', 'x')");
+  insertVideo(db, { id: 1, youtube_id: "bbbbbbbbbbb", title: "Concert" });
+  insertVideo(db, { id: 2, youtube_id: "aaaaaaaaaaa", title: "Plain" });
+  insertVideo(db, { id: 3, youtube_id: "nnnnnnnnnnn", title: "NoBlock" });
   writeFileSync(join(cache, "bbbbbbbbbbb.info.json"), readFileSync(join(YT, "bbbbbbbbbbb.info.json")));
   writeFileSync(join(cache, "nnnnnnnnnnn.info.json"), JSON.stringify({ id: "nnnnnnnnnnn", description: "just words", comments: [{ text: "nice", like_count: 1 }] }));
-  const rows = () => db.query("SELECT * FROM chapter WHERE video_id = 1 ORDER BY start_s").all() as any[];
+  const rows = () => db.query("SELECT * FROM chapter_full WHERE video_id = ? ORDER BY start_s").all(V(1)) as any[];
   afterAll(() => rmSync(base, { recursive: true, force: true }));
 
   test("first run: description block, Performance merge, matcher; no Chapter invented at 0:00; every Chapter Suggested", () => {
     const r = suggestChapters(db, { cacheDir: cache });
-    const v = r.videos.find((x) => x.videoId === 1)!;
+    const v = r.videos.find((x) => x.videoId === V(1))!;
     expect(v.textSource).toBe("description");
     expect(rows().map((c) => [c.start_s, c.title, c.song_id, c.suggested, c.source])).toEqual([
       [90, "Aa-shuu dekei-oo", S(1), 1, "description"], // merged with the Performance at 95 s
@@ -277,7 +279,7 @@ describe("suggest step against a library (re-runs, tombstones)", () => {
     expect(v.match.map((m) => m.verdict)).toEqual(["hit", "miss"]);
     expect(v.hits).toBe(1);
     expect(v.misses).toBe(1);
-    expect(r.videos.find((x) => x.videoId === 2)).toBeUndefined(); // nothing to suggest from
+    expect(r.videos.find((x) => x.videoId === V(2))).toBeUndefined(); // nothing to suggest from
     expect(r.noBlockIds).toEqual(["nnnnnnnnnnn"]);
     expect(readFileSync(join(cache, "no-block-ids.txt"), "utf8")).toBe("nnnnnnnnnnn\n");
     // search rows for the new Chapter titles
@@ -285,7 +287,7 @@ describe("suggest step against a library (re-runs, tombstones)", () => {
   });
 
   test("dry run writes nothing", () => {
-    db.exec("DELETE FROM chapter WHERE video_id = 1");
+    db.query("DELETE FROM video_chapters WHERE video_id = ?").run(V(1));
     const r = suggestChapters(db, { cacheDir: cache, dryRun: true });
     expect(r.totals.chapters).toBeGreaterThan(0);
     expect(rows()).toHaveLength(0);
@@ -295,15 +297,14 @@ describe("suggest step against a library (re-runs, tombstones)", () => {
 
   test("re-run: confirmed Chapter untouched, rejected one never returns, Suggested ones replaced wholesale", () => {
     const before = rows();
-    const confirmed = before.find((c) => c.start_s === 600)!;
     const rejected = before.find((c) => c.start_s === 1800)!;
     const keepSuggested = before.find((c) => c.start_s === 90)!;
-    db.query("UPDATE chapter SET suggested = 0 WHERE id = ?").run(confirmed.id);
-    Object.assign(confirmed, { suggested: 0 });
-    db.query("UPDATE chapter SET favorited_at = 'T' WHERE id = ?").run(keepSuggested.id);
+    db.query("UPDATE video_chapters SET suggested = 0 WHERE id = ?").run(before.find((c) => c.start_s === 600)!.id);
+    const confirmed = rows().find((c) => c.start_s === 600)!; // re-read: the update stamped updated_at
+    db.query("INSERT INTO chapter_local (chapter_id, favorited_at) VALUES (?, 'T')").run(keepSuggested.id);
     // reject = tombstone + delete (what the endpoint does)
-    db.query("INSERT INTO chapter_rejection (video_id, source, start_s) VALUES (1, ?, ?)").run(rejected.source, rejected.start_s);
-    db.query("DELETE FROM chapter WHERE id = ?").run(rejected.id);
+    insertChapterRejection(db, { video_id: 1, source: rejected.source, start_s: rejected.start_s });
+    db.query("DELETE FROM video_chapters WHERE id = ?").run(rejected.id);
 
     const r = suggestChapters(db, { cacheDir: cache });
     const after = rows();
@@ -311,34 +312,34 @@ describe("suggest step against a library (re-runs, tombstones)", () => {
     expect(after.find((c) => c.start_s === 600)).toEqual(confirmed); // byte-for-byte untouched, same id
     expect(after.find((c) => c.start_s === 90)!.id).not.toBe(keepSuggested.id); // replaced
     expect(after.find((c) => c.start_s === 90)!.favorited_at).toBe("T"); // a Favorite carries over
-    const v = r.videos.find((x) => x.videoId === 1)!;
+    const v = r.videos.find((x) => x.videoId === V(1))!;
     expect(v.droppedTombstoned).toBe(1);
     expect(v.droppedNearKept).toBe(1);
     expect(v.replaced).toBe(2);
   });
 
   test("a tombstone matches the same source only, +-10 s; a manual Chapter near a suggestion drops it", () => {
-    db.query("INSERT INTO chapter (video_id, start_s, title, suggested, source) VALUES (1, 3725, 'by hand', 0, 'manual')").run();
+    insertChapter(db, { video_id: 1, start_s: 3725, title: "by hand", suggested: 0, source: "manual" });
     suggestChapters(db, { cacheDir: cache });
     expect(rows().map((c) => c.start_s)).toEqual([90, 600, 3725]); // 3720 is within 10 s of the manual one
-    db.query("DELETE FROM chapter WHERE video_id = 1 AND start_s = 3725").run();
-    db.query("INSERT INTO chapter_rejection (video_id, source, start_s) VALUES (1, 'comment', 3721)").run(); // other source
+    db.query("DELETE FROM video_chapters WHERE video_id = ? AND start_s = 3725").run(V(1));
+    insertChapterRejection(db, { video_id: 1, source: "comment", start_s: 3721 }); // other source
     suggestChapters(db, { cacheDir: cache });
     expect(rows().map((c) => c.start_s)).toEqual([90, 600, 3720]);
-    db.query("INSERT INTO chapter_rejection (video_id, source, start_s) VALUES (1, 'description', 3715)").run(); // same source, 5 s away
+    insertChapterRejection(db, { video_id: 1, source: "description", start_s: 3715 }); // same source, 5 s away
     suggestChapters(db, { cacheDir: cache });
     expect(rows().map((c) => c.start_s)).toEqual([90, 600]);
   });
 
   test("only[] restricts the run to those Videos (library id or YouTube id)", () => {
     const r = suggestChapters(db, { cacheDir: cache, only: ["nnnnnnnnnnn"], dryRun: true });
-    expect(r.videos.map((v) => v.videoId)).toEqual([3]);
-    expect(suggestChapters(db, { cacheDir: cache, only: ["1"], dryRun: true }).videos.map((v) => v.videoId)).toEqual([1]);
+    expect(r.videos.map((v) => v.videoId)).toEqual([V(3)]);
+    expect(suggestChapters(db, { cacheDir: cache, only: [V(1)], dryRun: true }).videos.map((v) => v.videoId)).toEqual([V(1)]);
   });
 
   test("a Video with Performance offsets and no cached info gets Performance Chapters titled with the Song", () => {
-    db.exec("DELETE FROM chapter");
-    db.exec("DELETE FROM chapter_rejection");
+    db.exec("DELETE FROM video_chapters");
+    db.exec("DELETE FROM video_chapter_rejections");
     rmSync(join(cache, "bbbbbbbbbbb.info.json"));
     suggestChapters(db, { cacheDir: cache });
     expect(rows().map((c) => [c.start_s, c.title, c.song_id, c.source])).toEqual([[95, "Aa-shuu, dekei-oo", S(1), "performance"], [3723, "Chaŋgys baglaash", S(2), "performance"]]);
@@ -356,19 +357,20 @@ describe("Chapter endpoints", () => {
     const r = await fetch(url + path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: r.status, body: (await r.json()) as any };
   };
-  const list = async (v = 1) => (await call("GET", `/api/videos/${v}/chapters`)).body as any[];
-  const cnt = async (v = 1) => (await call("GET", `/api/videos/${v}`)).body.chapterCount as number;
-  const tombs = () => app.db.query("SELECT source, start_s FROM chapter_rejection WHERE video_id = 1 ORDER BY start_s").all() as any[];
-  const suggested = (start: number, title: string, source = "comment") =>
-    app.db.query("INSERT INTO chapter (video_id, start_s, title, suggested, source) VALUES (1, ?, ?, 1, ?)").run(start, title, source).lastInsertRowid as number;
+  const list = async (v = V(1)) => (await call("GET", `/api/videos/${v}/chapters`)).body as any[];
+  const cnt = async (v = V(1)) => (await call("GET", `/api/videos/${v}`)).body.chapterCount as number;
+  const tombs = () => app.db.query("SELECT source, start_s FROM video_chapter_rejections WHERE video_id = ? ORDER BY start_s").all(V(1)) as any[];
+  const suggested = (start: number, title: string, source = "comment") => insertChapter(app.db, { video_id: 1, start_s: start, title, suggested: 1, source });
 
   beforeAll(async () => {
     app = await startApp(loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: join(base, "local"), TUVA_EXTERNAL_ROOT: join(base, "ext") }));
     url = `http://localhost:${app.server.port}`;
     await app.scanner.requestAll(); // nothing is scanned at startup (spec 3.2)
     await app.scanner.whenIdle();
-    app.db.exec("INSERT INTO video (id, youtube_id, title, created_at) VALUES (1, 'bbbbbbbbbbb', 'Concert', 'x'), (2, 'eeeeeeeeeee', 'Other', 'x')");
-    await runImport(app.db, FIXTURE);
+    insertVideo(app.db, { id: 1, youtube_id: "bbbbbbbbbbb", title: "Concert" });
+    insertVideo(app.db, { id: 2, youtube_id: "eeeeeeeeeee", title: "Other" });
+    loadArchiveFixture(app.db);
+    await runArchiveFollowUps(app.db);
   }, 30_000);
   afterAll(async () => {
     await app.stop();
@@ -377,25 +379,25 @@ describe("Chapter endpoints", () => {
 
   test("empty list, 404 for no such Video", async () => {
     expect(await list()).toEqual([]);
-    expect((await call("GET", "/api/videos/99/chapters")).status).toBe(404);
+    expect((await call("GET", `/api/videos/${V(99)}/chapters`)).status).toBe(404);
     expect(await cnt()).toBe(0);
   });
 
   test("POST adds a confirmed manual Chapter (an empty title is allowed); chapterCount follows", async () => {
-    const r = await call("POST", "/api/videos/1/chapters", { startS: 30.0004 });
+    const r = await call("POST", `/api/videos/${V(1)}/chapters`, { startS: 30.0004 });
     expect(r.status).toBe(201);
-    expect(r.body).toMatchObject({ videoId: 1, startS: 30, title: "", suggested: false, source: "manual", songId: null, song: null });
+    expect(r.body).toMatchObject({ videoId: V(1), startS: 30, title: "", suggested: false, source: "manual", songId: null, song: null });
     expect(await cnt()).toBe(1);
-    expect((await call("POST", "/api/videos/1/chapters", { startS: -1 })).status).toBe(400);
-    expect((await call("POST", "/api/videos/1/chapters", { title: "x" })).status).toBe(400);
-    expect((await call("POST", "/api/videos/1/chapters", { startS: 5, songId: "nope" })).status).toBe(404);
+    expect((await call("POST", `/api/videos/${V(1)}/chapters`, { startS: -1 })).status).toBe(400);
+    expect((await call("POST", `/api/videos/${V(1)}/chapters`, { title: "x" })).status).toBe(400);
+    expect((await call("POST", `/api/videos/${V(1)}/chapters`, { startS: 5, songId: "nope" })).status).toBe(404);
   });
 
   test("UNIQUE (video_id, start_s): a taken start is refused with a message, on add and on edit", async () => {
-    const dup = await call("POST", "/api/videos/1/chapters", { startS: 30 });
+    const dup = await call("POST", `/api/videos/${V(1)}/chapters`, { startS: 30 });
     expect(dup.status).toBe(409);
     expect(dup.body.error).toContain("0:30");
-    const other = (await call("POST", "/api/videos/1/chapters", { startS: 60, title: "Second" })).body;
+    const other = (await call("POST", `/api/videos/${V(1)}/chapters`, { startS: 60, title: "Second" })).body;
     const clash = await call("PATCH", `/api/chapters/${other.id}`, { startS: 30 });
     expect(clash.status).toBe(409);
     expect((await list()).map((c) => c.startS)).toEqual([30, 60]);
@@ -461,20 +463,20 @@ describe("Chapter endpoints", () => {
     const c2 = suggested(500, "Move me");
     expect((await call("PATCH", `/api/chapters/${c2}`, { startS: 520 })).body).toMatchObject({ suggested: false, startS: 520 });
     expect(tombs().pop()).toEqual({ source: "comment", start_s: 500 }); // the old spot is remembered
-    expect((await call("POST", "/api/chapters/9999/confirm")).status).toBe(404);
+    expect((await call("POST", `/api/chapters/${C(9999)}/confirm`)).status).toBe(404);
   });
 
   test("confirm-all confirms every Suggested Chapter of the Video and only that Video", async () => {
-    app.db.exec("DELETE FROM chapter");
+    app.db.exec("DELETE FROM video_chapters");
     suggested(10, "x");
     suggested(20, "y", "performance");
-    app.db.query("INSERT INTO chapter (video_id, start_s, title, suggested, source) VALUES (2, 10, 'other video', 1, 'comment')").run();
-    const r = await call("POST", "/api/videos/1/chapters/confirm-all");
+    insertChapter(app.db, { video_id: 2, start_s: 10, title: "other video", suggested: 1, source: "comment" });
+    const r = await call("POST", `/api/videos/${V(1)}/chapters/confirm-all`);
     expect(r.body.confirmed).toBe(2);
     expect(r.body.chapters.every((c: any) => !c.suggested)).toBe(true);
-    expect((await list(2))[0].suggested).toBe(true);
-    expect((await call("POST", "/api/videos/1/chapters/confirm-all")).body.confirmed).toBe(0);
-    expect((await call("POST", "/api/videos/99/chapters/confirm-all")).status).toBe(404);
+    expect((await list(V(2)))[0].suggested).toBe(true);
+    expect((await call("POST", `/api/videos/${V(1)}/chapters/confirm-all`)).body.confirmed).toBe(0);
+    expect((await call("POST", `/api/videos/${V(99)}/chapters/confirm-all`)).status).toBe(404);
   });
 
   test("a Favorite Chapter carries its Song in /api/favorites", async () => {
@@ -486,13 +488,13 @@ describe("Chapter endpoints", () => {
   });
 
   test("a deleted Chapter leaves no search row, and a rebuild indexes the titled Chapters", async () => {
-    const r = await call("POST", "/api/videos/2/chapters", { startS: 12, title: "Findable-title" });
+    const r = await call("POST", `/api/videos/${V(2)}/chapters`, { startS: 12, title: "Findable-title" });
     const find = async () => JSON.stringify((await call("GET", `/api/search?q=${encodeURIComponent("#videos findable")}`)).body);
     expect(await find()).toContain("Findable-title");
     await call("DELETE", `/api/chapters/${r.body.id}`);
     expect(await find()).not.toContain("Findable-title");
     rebuildSearchIndex(app.db);
-    const n = (app.db.query("SELECT COUNT(*) n FROM chapter WHERE title <> ''").get() as any).n;
+    const n = (app.db.query("SELECT COUNT(*) n FROM chapter_full WHERE title <> ''").get() as any).n;
     expect((app.db.query("SELECT COUNT(*) n FROM search WHERE kind = 'chapter'").get() as any).n).toBe(n);
   });
 });

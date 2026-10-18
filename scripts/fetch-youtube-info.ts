@@ -43,7 +43,7 @@ const db = new Database(cfg.dbPath, { readonly: true });
 const rows = db
   .query(
     `SELECT v.id, v.youtube_id AS youtubeId, v.type, (SELECT MAX(duration_s) FROM copy c WHERE c.video_id = v.id) AS durationS
-       FROM video v WHERE v.youtube_id IS NOT NULL`,
+       FROM video_full v WHERE v.youtube_id IS NOT NULL`,
   )
   .all() as EligibilityRow[];
 db.close();

@@ -49,6 +49,8 @@ export const RAIL_TITLE: Record<RailId, string> = {
 
 const added = (v: VideoDto) => v.addedAt ?? v.createdAt
 const newestFirst = (a: string | null, b: string | null) => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : a < b ? 1 : a > b ? -1 : 0)
+/** The tie-break: the newer row first (created later, then the larger id; ids are uuids since migration 0015). */
+const newerRow = (a: VideoDto, b: VideoDto) => newestFirst(a.createdAt, b.createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
 
 /** Favorites in the order starred, newest first (the browser's default), a Video row and a Chapter row alike. */
 export function favoriteTiles(items: readonly FavoriteItem[]): Tile[] {
@@ -64,11 +66,11 @@ export const libraryOrder = (videos: readonly VideoDto[]): VideoDto[] => viewVid
 
 /** Videos with a Resume position, the most recently played first. */
 export function continueWatching(videos: readonly VideoDto[]): VideoDto[] {
-  return videos.filter((v) => (v.resumeS ?? 0) > 0).sort((a, b) => newestFirst(a.lastPlayedAt, b.lastPlayedAt) || b.id - a.id)
+  return videos.filter((v) => (v.resumeS ?? 0) > 0).sort((a, b) => newestFirst(a.lastPlayedAt, b.lastPlayedAt) || newerRow(a, b))
 }
 
 export function recentlyAdded(videos: readonly VideoDto[]): VideoDto[] {
-  return [...videos].sort((a, b) => newestFirst(added(a), added(b)) || b.id - a.id)
+  return [...videos].sort((a, b) => newestFirst(added(a), added(b)) || newerRow(a, b))
 }
 
 export const concerts = (videos: readonly VideoDto[]): VideoDto[] => recentlyAdded(videos.filter((v) => v.type === "concert"))
@@ -124,7 +126,7 @@ export type GridSpec =
   | { kind: "songs"; lyricsOnly: boolean }
   | { kind: "rail"; rail: "continue" | "recent" | "concerts" }
   | { kind: "song"; id: string; name: string }
-  | { kind: "artist"; id: number; name: string }
+  | { kind: "artist"; id: string; name: string }
   /** All Videos of one Type (the Player's Type tag). */
   | { kind: "type"; type: VideoType }
 
@@ -149,7 +151,7 @@ export function railGrid(id: RailId): GridSpec {
 
 /** What a Song's grid knows about its Videos: `GET /api/songs/:uuid` `videos`. */
 export interface SongVideo {
-  id: number
+  id: string
   pointed: boolean
   startS: number | null
 }
@@ -166,7 +168,7 @@ export function songVideoTiles(videos: readonly VideoDto[], perf: readonly SongV
   })
 }
 
-export function artistVideoTiles(videos: readonly VideoDto[], artistId: number, lib: LibraryState = defaultLibraryState()): Tile[] {
+export function artistVideoTiles(videos: readonly VideoDto[], artistId: string, lib: LibraryState = defaultLibraryState()): Tile[] {
   return viewVideos(videos.filter((v) => v.artists.some((a) => a.id === artistId)), lib).map((v) => videoTile(v))
 }
 
@@ -198,12 +200,12 @@ export const isVideoGrid = (tiles: readonly Tile[]) => tiles.some(isVideoTile)
 
 export interface OpenList {
   source: PlayingSource
-  ids: number[]
+  ids: string[]
 }
 
 /** The list a Video opened from `tiles` steps through (Playing from, spec 4.4): Favorites stay Favorites, the rest are library lists. */
 export function playingFromTiles(tiles: readonly Tile[], source: PlayingSource = "library"): PlayingFrom {
-  const ids: number[] = []
+  const ids: string[] = []
   for (const t of tiles) if (t.kind === "video" || t.kind === "chapter") ids.push(t.video.id)
   return { source, ids: uniqueIds(ids) }
 }
@@ -212,7 +214,7 @@ export interface ShuffleStart {
   playlist: Playlist
   playingFrom: PlayingFrom
   /** Where the Player opens: the first Entry's Video, at the Chapter's start for a Chapter Entry. */
-  videoId: number
+  videoId: string
   startS: number | null
 }
 

@@ -24,7 +24,7 @@ type ChapterRow = Extract<SearchRow, { kind: "chapter" }>;
 type SongRow = Extract<SearchRow, { kind: "song" }>;
 
 export interface ResultMatch {
-  id: number;
+  id: string;
   chapters: ChapterRow[];
   songs: SongRow[];
   /** The Latin title, when the match is there and not in the title itself. */
@@ -38,9 +38,9 @@ export interface ResultMatch {
  *  (its name or its lyrics) follow, in the Songs group's order; then, given the Library's Videos, those by a matching
  *  Artist (#artists) and those performing a matching Track's Song (#tracks). */
 export function resultMatches(res: SearchResponse, library: VideoDto[] = []): ResultMatch[] {
-  const byId = new Map<number, ResultMatch>();
+  const byId = new Map<string, ResultMatch>();
   const order: ResultMatch[] = [];
-  const at = (id: number) => {
+  const at = (id: string) => {
     let m = byId.get(id);
     if (!m) {
       m = { id, chapters: [], songs: [] };

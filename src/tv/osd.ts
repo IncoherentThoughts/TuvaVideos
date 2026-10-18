@@ -8,7 +8,7 @@ export const OSD_FADE_MS = 3000
 export const NEXT_WITHIN_S = 20
 
 export interface OsdChapter {
-  id: number
+  id: string
   startS: number
   title: string
 }

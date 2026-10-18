@@ -11,20 +11,20 @@ export function libraryFiltered(st: LibraryState): boolean {
   return st.types.length > 0 || st.availableOnly || st.fav || st.artist != null || st.song != null;
 }
 
-export const videoEntries = (videoIds: readonly number[]): Entry[] => videoIds.map((videoId) => ({ videoId }));
+export const videoEntries = (videoIds: readonly string[]): Entry[] => videoIds.map((videoId) => ({ videoId }));
 
 /** The Library grid as shown: Video Entries; the whole library is "library-all", anything narrower is "library". */
-export function libraryStart(videoIds: readonly number[], filtered: boolean): { entries: Entry[]; source: PlaylistSource } {
+export function libraryStart(videoIds: readonly string[], filtered: boolean): { entries: Entry[]; source: PlaylistSource } {
   return { entries: videoEntries(videoIds), source: filtered ? "library" : "library-all" };
 }
 
 /** The search result list as shown, capped. */
-export function searchEntries(videoIds: readonly number[]): Entry[] {
+export function searchEntries(videoIds: readonly string[]): Entry[] {
   return videoEntries(videoIds.slice(0, SEARCH_ENTRY_CAP));
 }
 
 /** A Favorites row: a Video row is a Video Entry, a Chapter row a Chapter Entry (both starred give two Entries). */
-export type FavoriteRow = { kind: "video"; videoId: number } | { kind: "chapter"; videoId: number; chapterId: number; startS: number };
+export type FavoriteRow = { kind: "video"; videoId: string } | { kind: "chapter"; videoId: string; chapterId: string; startS: number };
 
 export const favoriteEntries = (rows: readonly FavoriteRow[]): Entry[] =>
   rows.map((r) => (r.kind === "video" ? { videoId: r.videoId } : { videoId: r.videoId, chapterId: r.chapterId }));

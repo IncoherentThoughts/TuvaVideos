@@ -16,6 +16,8 @@ import { isIoError, sleep } from "./proc";
 import type { RootRow, Roots } from "./roots";
 import { rebuildSearchIndex } from "./search";
 import { judgeStaleCopies } from "./tvJudge";
+import { newUuid } from "./localCopy/ids";
+import { machineMode, readSessionRecord } from "./localCopy/meta";
 
 const SKIP_DIRS = new Set(["$RECYCLE.BIN", "System Volume Information", "node_modules"]);
 const PROBE_CONCURRENCY = 4;
@@ -30,7 +32,7 @@ interface Entry {
 
 interface CopyRow {
   id: number;
-  video_id: number;
+  video_id: string;
   rel_path: string;
   size: number;
   mtime: string;
@@ -316,23 +318,29 @@ export class Scanner {
 
     const now = new Date().toISOString();
     this.db.transaction(() => {
-      // No YouTube id: the same bytes, else (ADR 0005) another download of the same Instagram post.
+      // No YouTube id: the same bytes, else (ADR 0005, ADR 0008) another download of the same Instagram post or Rutube video.
+      type Found = { id: string; deleted_at: string | null; delete_reason: string | null };
+      const one = (sql: string, v: string) => this.db.query(`SELECT id, deleted_at, delete_reason FROM videos WHERE ${sql}`).get(v) as Found | null;
       const found = parsed.youtubeId
-        ? (this.db.query("SELECT id FROM video WHERE youtube_id = ?").get(parsed.youtubeId) as { id: number } | null)
-        : ((this.db.query("SELECT id FROM video WHERE content_hash = ?").get(contentHash) as { id: number } | null) ??
-          (parsed.instagramId
-            ? (this.db.query("SELECT id FROM video WHERE instagram_id = ? ORDER BY id LIMIT 1").get(parsed.instagramId) as { id: number } | null)
-            : null));
+        ? one("youtube_id = ?", parsed.youtubeId)
+        : ((contentHash ? one("content_hash = ?", contentHash) : null) ??
+          (parsed.instagramId ? one("instagram_id = ? ORDER BY created_at, id LIMIT 1", parsed.instagramId) : null) ??
+          (parsed.rutubeId ? one("rutube_id = ? ORDER BY created_at, id LIMIT 1", parsed.rutubeId) : null));
+      // A soft-deleted Shared Video (sharing-spec §4.5): the file joins it and stays unlisted; a Video Editor may restore it.
+      if (found?.deleted_at) log(`scan: ${entry.rel} belongs to a deleted Video (${found.delete_reason ?? "no reason"}); kept unlisted`);
       // Defaults (spec 2.3): a new Video starts as Type `song`, then gets its Type/Song from the Performances of its id, if any.
-      const videoId =
-        found?.id ??
-        Number(
-          this.db
-            .prepare("INSERT INTO video (youtube_id, content_hash, instagram_id, title, type, created_at) VALUES (?, ?, ?, ?, 'song', ?)")
-            .run(parsed.youtubeId, parsed.youtubeId ? null : contentHash, parsed.instagramId, parsed.title, now).lastInsertRowid,
-        );
-      if (found && parsed.instagramId) {
-        this.db.prepare("UPDATE video SET instagram_id = ? WHERE id = ? AND instagram_id IS NULL").run(parsed.instagramId, videoId);
+      const videoId = found?.id ?? newUuid();
+      if (!found) {
+        this.db
+          .prepare("INSERT INTO videos (id, youtube_id, content_hash, instagram_id, rutube_id, title, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'song', ?, ?)")
+          .run(videoId, parsed.youtubeId, parsed.youtubeId ? null : contentHash, parsed.instagramId, parsed.rutubeId, parsed.title, now, now);
+        // On a Video Editor's machine a Video the Local copy does not know waits to be shared (§6.6); elsewhere it is Unshared.
+        const editor = machineMode(readSessionRecord(this.db)) === "editor";
+        this.db.prepare("INSERT INTO video_local (video_id, pending_share) VALUES (?, ?)").run(videoId, editor ? 1 : 0);
+      } else {
+        // A provenance id the held Video lacks is picked up from the file (ADR 0005, ADR 0008); on a Shared Video through the archive (#116).
+        if (parsed.instagramId) this.db.prepare("UPDATE videos SET instagram_id = ? WHERE id = ? AND instagram_id IS NULL AND id NOT IN (SELECT video_id FROM video_local WHERE shared = 1)").run(parsed.instagramId, videoId);
+        if (parsed.rutubeId) this.db.prepare("UPDATE videos SET rutube_id = ? WHERE id = ? AND rutube_id IS NULL AND id NOT IN (SELECT video_id FROM video_local WHERE shared = 1)").run(parsed.rutubeId, videoId);
       }
       if (!found) {
         applyPerformanceDefaults(this.db, { videoId });

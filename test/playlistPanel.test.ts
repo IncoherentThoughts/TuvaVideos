@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { advance, startPlaylist } from "../src/shared/playlist";
 import { panelRows, showPlayedFor, toggleShowPlayed } from "../src/shared/playlistPanel";
 
-const entries = [1, 2, 3, 4].map((videoId) => ({ videoId }));
+const entries = [1, 2, 3, 4].map((n) => ({ videoId: String(n) }));
 const seq = () => startPlaylist(entries, { source: "library", shuffled: false, startAt: 0 });
 
 describe("panelRows", () => {
@@ -40,7 +40,7 @@ describe("show played", () => {
 import { cycleRepeat, jumpTo } from "../src/shared/playlist";
 import { endedShows, markEnded, panelWindow } from "../src/shared/playlistPanel";
 
-const big = (n: number) => startPlaylist(Array.from({ length: n }, (_, i) => ({ videoId: i + 1 })), { source: "library-all", shuffled: false, startAt: 0 });
+const big = (n: number) => startPlaylist(Array.from({ length: n }, (_, i) => ({ videoId: String(i + 1) })), { source: "library-all", shuffled: false, startAt: 0 });
 
 describe("panelWindow", () => {
   test("renders a window of upcoming rows below the current one, and says how many are hidden", () => {

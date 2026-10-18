@@ -16,7 +16,7 @@ export type ResultRow =
   | (Base & { kind: "song"; id: string; name: string; englishName: string | null; /** The matching lyric line, when the Song matched through its lyrics. */ lyric: string | null; videoCount: number })
   | (Base & {
       kind: "video"
-      videoId: number
+      videoId: string
       title: string
       type: string
       durationS: number | null
@@ -26,7 +26,7 @@ export type ResultRow =
       startS: number | null
       chapterTitle: string | null
     })
-  | (Base & { kind: "artist"; id: number; name: string; videoCount: number; local: boolean })
+  | (Base & { kind: "artist"; id: string; name: string; videoCount: number; local: boolean; proposed: boolean })
 
 export const SHOWN_GROUPS = ["songs", "videos", "artists"] as const
 
@@ -45,7 +45,7 @@ export function resultRows(res: SearchResponse | null, videos: readonly VideoDto
       else if (r.kind === "chapter") {
         const v = byId.get(r.videoId)
         out.push({ ...base, kind: "video", key: `c${r.id}`, videoId: r.videoId, title: r.videoTitle, type: v?.type ?? "other", durationS: v?.durationS ?? null, available: r.available, songs: [], startS: r.startS, chapterTitle: r.title })
-      } else if (r.kind === "artist") out.push({ ...base, kind: "artist", key: `a${r.id}`, id: r.id, name: r.name, videoCount: r.videoCount, local: r.local })
+      } else if (r.kind === "artist") out.push({ ...base, kind: "artist", key: `a${r.id}`, id: r.id, name: r.name, videoCount: r.videoCount, local: r.local, proposed: r.proposed })
     }
   }
   return out
@@ -53,7 +53,7 @@ export function resultRows(res: SearchResponse | null, videos: readonly VideoDto
 
 /** Playing from for a Video opened from the results: the Videos listed, once each, in order (spec 5.4). */
 export function playingFromRows(rows: readonly ResultRow[]): PlayingFrom {
-  const ids: number[] = []
+  const ids: string[] = []
   for (const r of rows) if (r.kind === "video" && !ids.includes(r.videoId)) ids.push(r.videoId)
   return { source: "search", ids }
 }
@@ -61,7 +61,7 @@ export function playingFromRows(rows: readonly ResultRow[]): PlayingFrom {
 export interface RowsShuffle {
   playlist: Playlist
   playingFrom: PlayingFrom
-  videoId: number
+  videoId: string
 }
 
 /** The results' Shuffle row: a shuffled Playlist of the listed Videos (capped), starting at a random Available one. */

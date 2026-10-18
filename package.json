@@ -7,7 +7,6 @@
     "start": "bun src/server/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "import": "bun src/server/import.ts",
     "latin-titles": "bun src/server/latinTitles.ts",
     "studio-match": "bun src/server/studio/cli.ts",
     "suggest-chapters": "bun src/server/chapters/cli.ts",

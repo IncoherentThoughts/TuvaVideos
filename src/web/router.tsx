@@ -2,6 +2,7 @@
 // the query string. No router library.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { UUID_PATTERN } from "../shared/ids";
 
 export interface Loc {
   path: string;
@@ -33,9 +34,12 @@ export function useLocation(): Loc {
   return loc;
 }
 
+/** A Now playing path: `/play/<uuid>` (the Video id). */
+export const PLAY_PATH = new RegExp(`^\\/play\\/(${UUID_PATTERN})$`);
+
 export type Route =
   | { name: "library" }
-  | { name: "play"; videoId: number; t: number | null; lyrics: string | null; lyricsVersion: string | null }
+  | { name: "play"; videoId: string; t: number | null; lyrics: string | null; lyricsVersion: string | null }
   | { name: "lyrics"; songId: string }
   | { name: "favorites" }
   | { name: "artists" }
@@ -53,19 +57,19 @@ export function matchRoute(loc: Loc): Route {
     const sp = new URLSearchParams(loc.search);
     return { name: "search", q: sp.get("q") ?? "", sort: sp.get("sort") === "views" ? "views" : "rank" };
   }
-  const m = p.match(/^\/play\/(\d+)$/);
+  const m = p.match(PLAY_PATH);
   if (m) {
     const q = new URLSearchParams(loc.search);
     const t = q.get("t");
     const n = t == null ? NaN : Number(t);
-    return { name: "play", videoId: Number(m[1]), t: Number.isFinite(n) && n >= 0 ? n : null, lyrics: q.get("lyrics") || null, lyricsVersion: q.get("lv") || null };
+    return { name: "play", videoId: m[1]!, t: Number.isFinite(n) && n >= 0 ? n : null, lyrics: q.get("lyrics") || null, lyricsVersion: q.get("lv") || null };
   }
   const l = p.match(/^\/lyrics\/([0-9a-fA-F-]+)$/);
   if (l) return { name: "lyrics", songId: l[1]! };
   return { name: "notfound" };
 }
 
-export const playHref = (videoId: number, t?: number | null, lyrics?: { songId: string; versionId?: string | null } | null) => {
+export const playHref = (videoId: string, t?: number | null, lyrics?: { songId: string; versionId?: string | null } | null) => {
   const q: string[] = [];
   if (t != null && t > 0) q.push(`t=${+t.toFixed(2)}`);
   if (lyrics) q.push(`lyrics=${lyrics.songId}`, ...(lyrics.versionId ? [`lv=${lyrics.versionId}`] : []));

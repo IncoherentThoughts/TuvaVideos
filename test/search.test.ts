@@ -7,6 +7,10 @@ import { defaultLibraryState, libraryQuery, parseLibrarySearch, viewVideos } fro
 import { htmlToLines, splitAlternates } from "../src/server/search";
 import type { VideoDto } from "../src/shared/types";
 import { resultStart } from "../src/web/SearchResults";
+import { legacyIdOf } from "../src/server/localCopy/ids";
+import { V } from "./helpers/seed";
+
+const num = (v: { id: string }) => legacyIdOf(v.id)!.id;
 
 describe("folding", () => {
   test("Latin specials", () => {
@@ -116,7 +120,7 @@ describe("html to lyric lines and alternates", () => {
 });
 
 const vid = (id: number, o: Partial<VideoDto> = {}): VideoDto => ({
-  id, youtubeId: null, instagramId: null, title: `V${id}`, titleLatin: null, titleLatinSource: null, type: "other", typeSuggested: false, songId: null, versionId: null, song: null, songSuggested: false, suggestionSource: null, favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, loop: null,
+  id: V(id), youtubeId: null, instagramId: null, rutubeId: null, shared: false, title: `V${id}`, titleLatin: null, titleLatinSource: null, type: "other", typeSuggested: false, songId: null, versionId: null, song: null, songSuggested: false, suggestionSource: null, favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, loop: null,
   createdAt: "2026-01-01T00:00:00Z", addedAt: `2026-01-0${id}T00:00:00Z`, chapterCount: 0, artists: [], availability: null,
   durationS: id * 100, available: false, preferredCopyId: null, width: null, height: null, thumbnail: null, copies: [], ...o,
 });
@@ -136,18 +140,18 @@ describe("library view state", () => {
   });
   test("default sort is views, most watched first; unwatched Videos fall back to date added, newest first", () => {
     const out = viewVideos([vid(1), vid(3), vid(2, { viewCount: 1 })], defaultLibraryState());
-    expect(out.map((v) => v.id)).toEqual([2, 3, 1]);
+    expect(out.map(num)).toEqual([2, 3, 1]);
     expect(libraryQuery(defaultLibraryState())).toBe("");
     expect(parseLibrarySearch("").sort).toBe("views");
   });
   test("filters: type, availability, favorites, artist (folded names)", () => {
-    const radik = { id: 1, name: "Radik Tyulyush", nameLatin: null, local: true, suggested: false };
+    const radik = { id: "61727400-0000-8000-8000-000000000001", name: "Radik Tyulyush", nameLatin: null, local: true, proposed: false, suggested: false };
     const vs = [
       vid(1, { type: "song", available: true, artists: [radik] }),
       vid(2, { type: "concert", available: true, favoritedAt: "2026-02-01" }),
       vid(3, { type: "song", available: false, favoritedAt: "2026-02-02", artists: [radik] }),
     ];
-    const run = (p: Partial<ReturnType<typeof defaultLibraryState>>) => viewVideos(vs, { ...defaultLibraryState(), ...p }).map((v) => v.id);
+    const run = (p: Partial<ReturnType<typeof defaultLibraryState>>) => viewVideos(vs, { ...defaultLibraryState(), ...p }).map(num);
     expect(run({ types: ["song"] })).toEqual([3, 1]);
     expect(run({ availableOnly: true })).toEqual([2, 1]);
     expect(run({ fav: true })).toEqual([3, 2]);
@@ -157,28 +161,28 @@ describe("library view state", () => {
   });
   test("sorts: title asc, duration desc, last played with nulls last", () => {
     const vs = [vid(1, { title: "b", lastPlayedAt: "2026-05-01" }), vid(2, { title: "A" }), vid(3, { title: "c", lastPlayedAt: "2026-06-01" })];
-    const run = (sort: any) => viewVideos(vs, { ...defaultLibraryState(), sort, dir: sort === "title" ? "asc" : "desc" }).map((v) => v.id);
+    const run = (sort: any) => viewVideos(vs, { ...defaultLibraryState(), sort, dir: sort === "title" ? "asc" : "desc" }).map(num);
     expect(run("title")).toEqual([2, 1, 3]);
     expect(run("duration")).toEqual([3, 2, 1]);
     expect(run("played")).toEqual([3, 1, 2]);
     const seen = [vid(1, { viewCount: 2 }), vid(2, { viewCount: 0 }), vid(3, { viewCount: 5 })];
-    expect(viewVideos(seen, { ...defaultLibraryState(), sort: "views", dir: "desc" }).map((v) => v.id)).toEqual([3, 1, 2]);
-    expect(viewVideos(vs, { ...defaultLibraryState(), sort: "played", dir: "asc" }).map((v) => v.id)).toEqual([1, 3, 2]);
+    expect(viewVideos(seen, { ...defaultLibraryState(), sort: "views", dir: "desc" }).map(num)).toEqual([3, 1, 2]);
+    expect(viewVideos(vs, { ...defaultLibraryState(), sort: "played", dir: "asc" }).map(num)).toEqual([1, 3, 2]);
   });
 });
 
 describe("search results: where a card opens", () => {
-  const ch = (id: number, videoId: number, startS: number) => ({ kind: "chapter" as const, id, videoId, videoTitle: "", title: "t", startS, available: true });
-  const song = (videos: { id: number; startS: number | null }[]) => ({ kind: "song" as const, id: "s", name: "n", englishName: null, hidden: false, local: false, viaLyrics: false, lyric: null, videos });
+  const ch = (id: number, videoId: number, startS: number) => ({ kind: "chapter" as const, id: `c${id}`, videoId: V(videoId), videoTitle: "", title: "t", startS, available: true });
+  const song = (videos: { id: number; startS: number | null }[]) => ({ kind: "song" as const, id: "s", name: "n", englishName: null, hidden: false, local: false, proposed: false, viaLyrics: false, lyric: null, videos: videos.map((v) => ({ ...v, id: V(v.id) })) });
 
   test("a Video reached only through a Chapter opens at that Chapter", () => {
-    expect(resultStart({ id: 1, chapters: [ch(9, 1, 125.5), ch(10, 1, 300)], songs: [] }, false)).toBe(125.5);
+    expect(resultStart({ id: V(1), chapters: [ch(9, 1, 125.5), ch(10, 1, 300)], songs: [] }, false)).toBe(125.5);
   });
   test("a Video whose title matched opens at the start even when a Chapter also matched", () => {
-    expect(resultStart({ id: 1, chapters: [ch(9, 1, 125.5)], songs: [] }, true)).toBeNull();
+    expect(resultStart({ id: V(1), chapters: [ch(9, 1, 125.5)], songs: [] }, true)).toBeNull();
   });
   test("a Song performed in a Chapter opens at that Chapter; a Song pointer without a time does not", () => {
-    expect(resultStart({ id: 1, chapters: [], songs: [song([{ id: 2, startS: 7 }, { id: 1, startS: 42 }])] }, false)).toBe(42);
-    expect(resultStart({ id: 1, chapters: [], songs: [song([{ id: 1, startS: null }])] }, false)).toBeNull();
+    expect(resultStart({ id: V(1), chapters: [], songs: [song([{ id: 2, startS: 7 }, { id: 1, startS: 42 }])] }, false)).toBe(42);
+    expect(resultStart({ id: V(1), chapters: [], songs: [song([{ id: 1, startS: null }])] }, false)).toBeNull();
   });
 });

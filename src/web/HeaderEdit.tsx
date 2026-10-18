@@ -108,6 +108,7 @@ export const songPickerRow = (r: SongRow) => (
     <span>{r.name}</span>
     {r.englishName && <span class="dim"> · {r.englishName}</span>}
     {r.local && <span class="dim"> · local</span>}
+    {r.proposed && <span class="dim"> · proposed</span>}
   </>
 );
 
@@ -352,7 +353,7 @@ export function SongPicker({ onPick, onClose }: { onPick: (songId: string) => vo
 
 function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<VideoDto>) => Promise<boolean> }) {
   const [adding, setAdding] = useState(false);
-  const save = async (ids: number[]) => {
+  const save = async (ids: string[]) => {
     if (await apply(() => api.setVideoArtists(v.id, ids))) void loadArtists();
   };
   const ids = v.artists.map((a) => a.id);
@@ -389,7 +390,7 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
           row={(r) => (
             <>
               <span>{r.name}</span>
-              <span class="dim"> · {r.local ? "local" : "archive"}</span>
+              <span class="dim"> · {r.local ? "local" : r.proposed ? "proposed" : "archive"}</span>
             </>
           )}
           onPick={(r) => (setAdding(false), void save([...confirmed, ...ids.filter((i) => !confirmed.includes(i)), r.id]))}

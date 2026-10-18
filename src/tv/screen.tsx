@@ -18,7 +18,7 @@ export interface Nav {
   /** The Player's tag row: the grid replaces the Player (it is left; Back from the grid returns to where the Video was opened from). */
   swapToGrid: (g: GridSpec) => void
   /** Play `videoId`, snapshotting `playingFrom` (spec 5.4); `playlist` when a Shuffle started one. */
-  play: (videoId: number, o: { startS?: number | null; playingFrom: PlayingFrom; playlist?: Playlist | null }) => void
+  play: (videoId: string, o: { startS?: number | null; playingFrom: PlayingFrom; playlist?: Playlist | null }) => void
   random: () => void
   /** Whole-library Shuffle (the side pane's). */
   shuffleLibrary: () => void

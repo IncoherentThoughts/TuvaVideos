@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 import { sleep } from "../src/server/proc";
+import { insertChapter, V } from "./helpers/seed";
 
 const base = mkdtempSync(join(tmpdir(), "tuva-it-"));
 const dataDir = join(base, "data");
@@ -83,7 +84,7 @@ describe("scan and API", () => {
     expect(live.copies[0].fallback.state).toBe("none"); // lazy: not made until played
     expect(noId.title).toBe("No Id Concert");
     expect(noId.copies[0].playback).toBe("transcode");
-    const db = app.db.query("SELECT content_hash FROM video WHERE youtube_id IS NULL").get() as { content_hash: string };
+    const db = app.db.query("SELECT content_hash FROM videos WHERE youtube_id IS NULL").get() as { content_hash: string };
     expect(db.content_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -143,7 +144,7 @@ describe("audio settings and presets", () => {
     expect((await put({ state: { eq: [1, 2] } })).error).toMatch(/eq/);
     expect(await put({ state: { ...older, routing: "stereo", balance: 0, volR: 1, preamp: 0, eq: [0, 0, 0, 0, 0, 0, 0], compress: false } })).toEqual({ state: null });
     expect(await api(`/api/videos/${id}/audio`)).toEqual({ state: null });
-    expect((await api(`/api/videos/999999/audio`)).error).toBe("no such video");
+    expect((await api(`/api/videos/${V(999999)}/audio`)).error).toBe("no such video");
   });
   test("custom presets: save, overwrite, list after the built-ins, delete; built-in names reserved", async () => {
     const builtIns = await api("/api/audio-presets");
@@ -302,7 +303,7 @@ describe("Missing and unmounted Roots", () => {
     app.db.query("UPDATE copy SET rel_path = ? WHERE id = ?").run(nfc.normalize("NFD"), row.id);
     await app.scanner.requestAll();
     await app.scanner.whenIdle();
-    const rows = app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE root_id = 2 AND video_id = (SELECT id FROM video WHERE youtube_id = 'ccccccccccc')").all() as any[];
+    const rows = app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE root_id = 2 AND video_id = (SELECT id FROM videos WHERE youtube_id = 'ccccccccccc')").all() as any[];
     expect(rows.length).toBe(1);
     expect(rows[0].id).toBe(row.id);
     expect(rows[0].rel_path).toBe(nfc);
@@ -325,16 +326,16 @@ describe("Missing and unmounted Roots", () => {
   });
 
   test("a rescan never overwrites an edited title", async () => {
-    app.db.exec("UPDATE video SET title = 'Edited' WHERE youtube_id = 'aaaaaaaaaaa'");
+    app.db.exec("UPDATE videos SET title = 'Edited' WHERE youtube_id = 'aaaaaaaaaaa'");
     await app.scanner.requestAll();
     await app.scanner.whenIdle();
-    expect((app.db.query("SELECT title FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as any).title).toBe("Edited");
+    expect((app.db.query("SELECT title FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as any).title).toBe("Edited");
   });
 });
 
 describe("view count (migration 0009)", () => {
-  const id = () => (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
-  const count = () => (app.db.query("SELECT view_count n FROM video WHERE id = ?").get(id()) as { n: number }).n;
+  const id = () => (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
+  const count = () => (app.db.query("SELECT view_count n FROM video_full WHERE id = ?").get(id()) as { n: number }).n;
   test("POST /api/videos/:id/view counts one, DELETE resets, /api/videos reports it", async () => {
     expect(count()).toBe(0);
     const r1 = await fetch(`${base_url}/api/videos/${id()}/view`, { method: "POST" });
@@ -346,21 +347,21 @@ describe("view count (migration 0009)", () => {
     const r2 = await fetch(`${base_url}/api/videos/${id()}/view`, { method: "DELETE" });
     expect(((await r2.json()) as any).viewCount).toBe(0);
     expect(count()).toBe(0);
-    expect((await fetch(`${base_url}/api/videos/999999/view`, { method: "POST" })).status).toBe(404);
-    expect((await fetch(`${base_url}/api/videos/999999/view`, { method: "DELETE" })).status).toBe(404);
+    expect((await fetch(`${base_url}/api/videos/${V(999999)}/view`, { method: "POST" })).status).toBe(404);
+    expect((await fetch(`${base_url}/api/videos/${V(999999)}/view`, { method: "DELETE" })).status).toBe(404);
   });
 });
 
 describe("resume endpoint", () => {
-  const post = (id: number, body: unknown, raw = false) =>
+  const post = (id: string, body: unknown, raw = false) =>
     fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", headers: { "content-type": raw ? "text/plain" : "application/json" }, body: JSON.stringify(body) });
-  const row = (id: number) => app.db.query("SELECT resume_s, last_played_at FROM video WHERE id = ?").get(id) as { resume_s: number | null; last_played_at: string | null };
-  const songId = () => (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+  const row = (id: string) => app.db.query("SELECT resume_s, last_played_at FROM video_local WHERE video_id = ?").get(id) as { resume_s: number | null; last_played_at: string | null };
+  const songId = () => (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
 
   test("stores resume_s and last_played_at and the API reports them", async () => {
     const id = songId();
     expect(row(id).last_played_at).toBeNull();
-    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = ${id}`); // the 6 s fixture would count as finished at once
+    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = '${id}'`); // the 6 s fixture would count as finished at once
     const r = await post(id, { resumeS: 2.5 });
     expect(r.status).toBe(200);
     expect(await r.json()).toMatchObject({ id, resumeS: 2.5, finished: false });
@@ -373,7 +374,7 @@ describe("resume endpoint", () => {
 
   test("a position within 30 s of the end is stored as finished (this fixture is 6 s long: always)", async () => {
     const id = songId();
-    app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = ${id}`);
+    app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = '${id}'`);
     const r = await (await post(id, { resumeS: 5.9 })).json();
     expect(r).toMatchObject({ resumeS: 0, finished: true });
     expect(row(id).resume_s).toBe(0);
@@ -381,39 +382,39 @@ describe("resume endpoint", () => {
 
   test("the 30 s rule on a long Video, with the Copy's own duration", async () => {
     const id = songId();
-    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = ${id}`);
+    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = '${id}'`);
     try {
       expect(await (await post(id, { resumeS: 569 })).json()).toMatchObject({ resumeS: 569, finished: false });
       expect(await (await post(id, { resumeS: 570 })).json()).toMatchObject({ resumeS: 0, finished: true });
-      const copyId = (app.db.query(`SELECT id FROM copy WHERE video_id = ${id} ORDER BY id LIMIT 1`).get() as { id: number }).id;
+      const copyId = (app.db.query(`SELECT id FROM copy WHERE video_id = '${id}' ORDER BY id LIMIT 1`).get() as { id: number }).id;
       app.db.exec(`UPDATE copy SET duration_s = 100 WHERE id = ${copyId}`);
       expect(await (await post(id, { resumeS: 80, copyId })).json()).toMatchObject({ resumeS: 0, finished: true });
       expect(await (await post(id, { resumeS: 80 })).json()).toMatchObject({ resumeS: 80 }); // longest Copy decides without copyId
     } finally {
-      app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = ${id}`);
+      app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = '${id}'`);
     }
   });
 
   test("a sendBeacon style body (any content type) works; bad input and unknown Videos are refused", async () => {
     const id = songId();
-    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = ${id}`);
+    app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = '${id}'`);
     expect((await post(id, { resumeS: 33 }, true)).status).toBe(200);
     expect(row(id).resume_s).toBe(33);
     expect((await post(id, { resumeS: -1 })).status).toBe(400);
     expect((await post(id, { resumeS: "12" })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
     expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", body: "not json" })).status).toBe(400);
-    expect((await post(999999, { resumeS: 1 })).status).toBe(404);
+    expect((await post(V(999999), { resumeS: 1 })).status).toBe(404);
     expect(row(id).resume_s).toBe(33);
-    app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = ${id}`);
+    app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = '${id}'`);
   });
 });
 
 describe("loop endpoint", () => {
-  const post = (id: number, body: unknown) =>
+  const post = (id: string, body: unknown) =>
     fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const row = (id: number) => app.db.query("SELECT loop_a_s, loop_b_s FROM video WHERE id = ?").get(id) as { loop_a_s: number | null; loop_b_s: number | null };
-  const songId = () => (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+  const row = (id: string) => app.db.query("SELECT loop_a_s, loop_b_s FROM video_local WHERE video_id = ?").get(id) as { loop_a_s: number | null; loop_b_s: number | null };
+  const songId = () => (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
 
   test("a complete loop is stored per Video and reported until cleared", async () => {
     const id = songId();
@@ -437,7 +438,7 @@ describe("loop endpoint", () => {
     expect((await post(id, { loop: { a: "1", b: 2 } })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
     expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", body: "not json" })).status).toBe(400);
-    expect((await post(999999, { loop: null })).status).toBe(404);
+    expect((await post(V(999999), { loop: null })).status).toBe(404);
     expect(row(id)).toEqual({ loop_a_s: null, loop_b_s: null });
   });
 });
@@ -448,12 +449,12 @@ describe("screenshot endpoint", () => {
     await ff("-f", "lavfi", "-i", "testsrc=size=64x48:rate=1:duration=1", "-frames:v", "1", out);
     return new Uint8Array(await Bun.file(out).arrayBuffer());
   };
-  const shot = (id: number, t: string | null, body: BodyInit) =>
+  const shot = (id: string, t: string | null, body: BodyInit) =>
     fetch(`${base_url}/api/videos/${id}/screenshot${t == null ? "" : `?t=${t}`}`, { method: "POST", headers: { "content-type": "image/png" }, body });
 
   test("writes <title> @ <seconds>s.png into the screenshot folder", async () => {
-    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
-    app.db.exec(`UPDATE video SET title = 'Edited' WHERE id = ${id}`);
+    const id = (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
+    app.db.query("UPDATE videos SET title = 'Edited' WHERE id = ?").run(id);
     const bytes = await png();
     const r = await shot(id, "12.3", bytes);
     expect(r.status).toBe(200);
@@ -463,35 +464,35 @@ describe("screenshot endpoint", () => {
   });
 
   test("a hostile title cannot leave the folder", async () => {
-    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
-    app.db.exec(`UPDATE video SET title = '../../evil/../x' WHERE id = ${id}`);
+    const id = (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
+    app.db.query("UPDATE videos SET title = '../../evil/../x' WHERE id = ?").run(id);
     const j: any = await (await shot(id, "1", await png())).json();
     expect(j.saved.startsWith(shotsDir + "/")).toBe(true);
     expect(readdirSync(shotsDir).some((f) => f.includes("evil"))).toBe(true);
     expect(existsSync(join(base, "evil"))).toBe(false);
-    app.db.exec(`UPDATE video SET title = 'Edited' WHERE id = ${id}`);
+    app.db.query("UPDATE videos SET title = 'Edited' WHERE id = ?").run(id);
   });
 
   test("refuses a non-PNG body, a bad t, and an unknown Video", async () => {
-    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+    const id = (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
     expect((await shot(id, "5", new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))).status).toBe(415);
     expect((await shot(id, null, await png())).status).toBe(400);
     expect((await shot(id, "-3", await png())).status).toBe(400);
     expect((await shot(id, "abc", await png())).status).toBe(400);
-    expect((await shot(999999, "5", await png())).status).toBe(404);
+    expect((await shot(V(999999), "5", await png())).status).toBe(404);
   });
 });
 
 describe("deleting a Video", () => {
-  const del = (id: number, media: boolean) => fetch(`${base_url}/api/videos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ media }) });
+  const del = (id: string, media: boolean) => fetch(`${base_url}/api/videos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ media }) });
   const rescan = async () => {
     await app.scanner.requestAll();
     await app.scanner.whenIdle();
   };
 
   test("entry only: the file stays on disk and a rescan does not bring the Video back (content-hash identity)", async () => {
-    const v = app.db.query("SELECT id, content_hash FROM video WHERE youtube_id IS NULL AND title = 'No Id Concert'").get() as { id: number; content_hash: string };
-    app.db.query("INSERT INTO chapter (video_id, start_s, title, source) VALUES (?, 1, 'x', 'manual')").run(v.id);
+    const v = app.db.query("SELECT id, content_hash FROM videos WHERE youtube_id IS NULL AND title = 'No Id Concert'").get() as { id: string; content_hash: string };
+    insertChapter(app.db, { video_id: v.id, start_s: 1, title: "x", source: "manual" });
     const r = await del(v.id, false);
     expect(r.status).toBe(200);
     const j: any = await r.json();
@@ -499,13 +500,13 @@ describe("deleting a Video", () => {
     expect(j.tombstoned).toBe(true);
     expect(existsSync(join(localDir, "No Id Concert.mkv"))).toBe(true);
     expect((await fetch(`${base_url}/api/videos/${v.id}`)).status).toBe(404);
-    expect(app.db.query("SELECT COUNT(*) n FROM chapter WHERE video_id = ?").get(v.id)).toEqual({ n: 0 });
+    expect(app.db.query("SELECT COUNT(*) n FROM video_chapters WHERE video_id = ?").get(v.id)).toEqual({ n: 0 });
     await rescan();
-    expect(app.db.query("SELECT COUNT(*) n FROM video WHERE content_hash = ?").get(v.content_hash)).toEqual({ n: 0 });
+    expect(app.db.query("SELECT COUNT(*) n FROM videos WHERE content_hash = ?").get(v.content_hash)).toEqual({ n: 0 });
   });
 
   test("with media: the file goes to the Trash and no tombstone is kept", async () => {
-    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'bbbbbbbbbbb'").get() as { id: number }).id;
+    const id = (app.db.query("SELECT id FROM videos WHERE youtube_id = 'bbbbbbbbbbb'").get() as { id: string }).id;
     const j: any = await (await del(id, true)).json();
     expect(j.trashed).toEqual([join(localDir, "Live [bbbbbbbbbbb].webm")]);
     expect(j.kept).toEqual([]);
@@ -516,15 +517,15 @@ describe("deleting a Video", () => {
   });
 
   test("entry only, YouTube id: skipped by later scans", async () => {
-    const id = (app.db.query("SELECT id FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: number }).id;
+    const id = (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
     expect((await del(id, false)).status).toBe(200);
     await rescan();
-    expect(app.db.query("SELECT COUNT(*) n FROM video WHERE youtube_id = 'aaaaaaaaaaa'").get()).toEqual({ n: 0 });
+    expect(app.db.query("SELECT COUNT(*) n FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get()).toEqual({ n: 0 });
     expect(app.db.query("SELECT COUNT(*) n FROM copy WHERE rel_path LIKE '%aaaaaaaaaaa%'").get()).toEqual({ n: 0 });
   });
 
   test("an unknown Video is a 404", async () => {
-    expect((await del(999999, false)).status).toBe(404);
+    expect((await del(V(999999), false)).status).toBe(404);
   });
 });
 
@@ -541,4 +542,37 @@ describe("Instagram shortcode (ADR 0005)", () => {
     expect(vids[0].title).toBe("Video by sayus_magas");
     expect(vids[0].copies.length).toBe(2);
   }, 60_000);
+});
+
+describe("Rutube id (ADR 0008)", () => {
+  test("parsed from the suffix, kept out of the title, and a re-download with other bytes joins the Video as another Copy", async () => {
+    const rt = "bb61c508e432598c4b7fe4542b5ee204";
+    const clip = (s: number) => ["-f", "lavfi", "-i", `testsrc=size=160x120:rate=25:duration=${s}`, "-c:v", "libx264", "-pix_fmt", "yuv420p"];
+    // durations no other test uses: identical bytes would join that Video by content hash instead
+    await ff(...clip(4), join(localDir, `Межегей - исп. А.С. Сам [rutube-${rt}].mp4`));
+    await ff(...clip(5), join(extDir, `Межегей (again) [rutube-${rt}].mkv`));
+    await app.scanner.requestAll();
+    await app.scanner.whenIdle();
+    const vids = (await api("/api/videos")).filter((v: any) => v.rutubeId === rt);
+    expect(vids.length).toBe(1);
+    expect(vids[0].youtubeId).toBeNull();
+    expect(vids[0].title).not.toContain("[rutube-");
+    expect(vids[0].copies.length).toBe(2);
+  }, 60_000);
+});
+
+describe("POST /api/cache/apply (sharing-spec §4.9, §6.2)", () => {
+  const SV = "33333333-3333-4333-8333-333333333333";
+  const row = { id: SV, content_hash: "cache-apply-hash", title: "From the archive", type: "song", created_at: "2026-10-17T00:00:00Z", updated_at: "2026-10-17T00:00:00Z" };
+  const post = (headers: Record<string, string>) => fetch(base_url + "/api/cache/apply", { method: "POST", headers, body: JSON.stringify({ videos: [row] }) });
+  test("refused without this companion's Origin; applied with it, and the Video is Shared", async () => {
+    expect((await post({})).status).toBe(403);
+    expect((await post({ origin: "https://evil.example" })).status).toBe(403);
+    const ok = await post({ origin: base_url });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ applied: { videos: 1 }, reindex: "rows" });
+    expect(await api(`/api/videos/${SV}`)).toMatchObject({ id: SV, title: "From the archive", shared: true });
+    const bad = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ videos: [{ id: V(999998) }] }) });
+    expect(bad.status).toBe(422);
+  });
 });

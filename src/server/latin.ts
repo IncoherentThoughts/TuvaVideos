@@ -3,7 +3,6 @@
 // Latin name field (never `english_name`, which is a translation). Otherwise `table`. A title with no Cyrillic stays
 // NULL. `manual` is never touched.
 import type { Db } from "./db";
-import { hasTable } from "./search";
 import { allSongNames, latinSpelling, type SongNameSource } from "../shared/songNames";
 import { foldText } from "../shared/fold";
 import { hasCyrillic, transliterate } from "../shared/translit";
@@ -48,45 +47,76 @@ export interface LatinFillStats {
 
 function loadSongs(db: Db): Map<string, SongNames> {
   const out = new Map<string, SongNames>();
-  if (!hasTable(db, "mirror_song")) return out;
   for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all").all() as any[]) out.set(s.id, songNames(s));
   return out;
 }
 
+type Cur = { id: string; text: string; latin: string | null; source: string | null; song: string | null };
+
 /**
  * Recomputes every Latin title whose source is not `manual`. Only changed rows are written. `videoId` limits the pass to
- * one Video (after its title was edited); Chapters and Artists are skipped then.
+ * one Video (after its title was edited), `chapterId` to one Chapter; Chapters and Artists are skipped then.
+ * Shared Videos and Chapters are left alone: their Latin titles are Shared (§4.3), computed by whoever wrote them.
  */
-export function fillLatinTitles(db: Db, opts: { videoId?: number; chapterId?: number } = {}): LatinFillStats {
+export function fillLatinTitles(db: Db, opts: { videoId?: string; chapterId?: string } = {}): LatinFillStats {
   const stats: LatinFillStats = { videos: 0, chapters: 0, artists: 0, archive: 0, table: 0, cleared: 0 };
   const songs = loadSongs(db);
-  const apply = (table: "video" | "chapter" | "artist", cur: { id: number; text: string; latin: string | null; source: string | null; song: string | null }) => {
+  const apply = (table: "videos" | "video_chapters" | "artist", cur: Cur) => {
     if (cur.source === "manual") return;
     const next = latinFor(cur.text, cur.song ? songs.get(cur.song) : null);
     if (next.latin === cur.latin && next.source === cur.source) return;
-    const [latinCol, srcCol] = table === "artist" ? ["name_latin", "name_latin_source"] : ["title_latin", "title_latin_source"];
-    db.prepare(`UPDATE ${table} SET ${latinCol} = ?, ${srcCol} = ? WHERE id = ?`).run(next.latin, next.source, cur.id);
-    if (table === "video") stats.videos++;
-    else if (table === "chapter") stats.chapters++;
+    if (table === "artist") setArtistLatin(db, cur.id, next.latin, next.source);
+    else db.prepare(`UPDATE ${table} SET title_latin = ?, title_latin_source = ? WHERE id = ?`).run(next.latin, next.source, cur.id);
+    if (table === "videos") stats.videos++;
+    else if (table === "video_chapters") stats.chapters++;
     else stats.artists++;
     if (next.source === "archive") stats.archive++;
     else if (next.source === "table") stats.table++;
     else stats.cleared++;
   };
+  const CH = "SELECT id, title, title_latin, title_latin_source, song_id FROM chapter_full WHERE video_id IN (SELECT id FROM video_full WHERE shared = 0)";
+  const VQ = "SELECT id, title, title_latin, title_latin_source, song_id FROM video_full WHERE shared = 0";
   db.transaction(() => {
     if (opts.chapterId != null) {
-      for (const r of db.query("SELECT id, title, title_latin, title_latin_source, song_id FROM chapter WHERE id = ?").all(opts.chapterId) as any[])
-        apply("chapter", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
+      for (const r of db.query(`${CH} AND id = ?`).all(opts.chapterId) as any[])
+        apply("video_chapters", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
       return;
     }
-    const vq = opts.videoId != null ? "SELECT id, title, title_latin, title_latin_source, song_id FROM video WHERE id = ?" : "SELECT id, title, title_latin, title_latin_source, song_id FROM video";
+    const vq = opts.videoId != null ? `${VQ} AND id = ?` : VQ;
     for (const r of db.query(vq).all(...(opts.videoId != null ? [opts.videoId] : [])) as any[])
-      apply("video", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
+      apply("videos", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
     if (opts.videoId != null) return;
-    for (const r of db.query("SELECT id, title, title_latin, title_latin_source, song_id FROM chapter").all() as any[])
-      apply("chapter", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
-    for (const r of db.query("SELECT id, name, name_latin, name_latin_source FROM artist").all() as any[])
-      apply("artist", { id: r.id, text: r.name, latin: r.name_latin, source: r.name_latin_source, song: null });
+    for (const r of db.query(CH).all() as any[])
+      apply("video_chapters", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
+    stats.artists += fillArtistLatin(db, undefined, stats);
   })();
   return stats;
+}
+
+function setArtistLatin(db: Db, id: string, latin: string | null, source: string | null) {
+  if (latin == null && source == null) db.prepare("DELETE FROM artist_latin WHERE artist_id = ?").run(id);
+  else
+    db.prepare("INSERT INTO artist_latin (artist_id, name_latin, name_latin_source) VALUES (?, ?, ?) ON CONFLICT(artist_id) DO UPDATE SET name_latin = excluded.name_latin, name_latin_source = excluded.name_latin_source")
+      .run(id, latin, source);
+}
+
+/** The derived Latin names of Artists of every kind (`artist_latin`), all or the given ones; `manual` is kept. Returns how many changed. */
+export function fillArtistLatin(db: Db, ids?: string[], stats?: LatinFillStats): number {
+  let n = 0;
+  const rows = (ids ? ids.flatMap((id) => db.query("SELECT id, name, name_latin, name_latin_source FROM artist_all WHERE id = ?").all(id)) : db.query("SELECT id, name, name_latin, name_latin_source FROM artist_all").all()) as any[];
+  for (const r of rows) {
+    if (r.name_latin_source === "manual") continue;
+    const next = latinFor(r.name, null);
+    if (next.latin === r.name_latin && next.source === r.name_latin_source) continue;
+    setArtistLatin(db, r.id, next.latin, next.source);
+    n++;
+    if (stats) {
+      if (next.source === "archive") stats.archive++;
+      else if (next.source === "table") stats.table++;
+      else stats.cleared++;
+    }
+  }
+  // a gone Artist leaves no Latin row behind
+  if (!ids) db.prepare("DELETE FROM artist_latin WHERE artist_id NOT IN (SELECT id FROM artist_all) AND name_latin_source IS NOT 'manual'").run();
+  return n;
 }

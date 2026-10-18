@@ -61,12 +61,12 @@ export function rebuildSearchIndex(db: Db): IndexStats {
     db.exec("DELETE FROM search");
     // A Video's row carries its linked Song's names (confirmed or Suggested) after the titles, so a Song search finds its Videos.
     for (const r of db.query(VIDEO_INDEX_SQL).all() as VideoIndexRow[]) add("video", r.id, videoSegments(r));
-    for (const r of db.query("SELECT id, title, title_latin FROM chapter").all() as { id: number; title: string; title_latin: string | null }[])
+    for (const r of db.query("SELECT id, title, title_latin FROM chapter_full").all() as { id: string; title: string; title_latin: string | null }[])
       add("chapter", r.id, [r.title, r.title_latin]);
-    for (const r of db.query("SELECT id, name, name_latin FROM artist").all() as { id: number; name: string; name_latin: string | null }[])
+    for (const r of db.query("SELECT id, name, name_latin FROM artist_all").all() as { id: string; name: string; name_latin: string | null }[])
       add("artist", r.id, [r.name, r.name_latin]);
 
-    // Mirror sections: tables exist only after the import (#25). A schema mismatch skips the section, never the scan.
+    // Archive sections (the Local copy, filled by Sync). A schema mismatch skips the section, never the scan.
     const section = (table: string, fn: () => void) => {
       if (!hasTable(db, table)) return;
       try {
@@ -75,20 +75,20 @@ export function rebuildSearchIndex(db: Db): IndexStats {
         log(`search index: skipping ${table}: ${e}`);
       }
     };
-    // Songs and Versions come through the song_all / version_all views: Mirror rows and Local ones together.
-    section("mirror_song", () => {
+    // Songs and Versions come through the song_all / version_all views: archive, Proposed and local rows together.
+    section("archive_song", () => {
       for (const s of db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all").all() as any[]) add("song", s.id, songSegments(s));
     });
-    section("mirror_version", () => {
+    section("archive_version", () => {
       for (const v of db.query("SELECT id, cyrillic, transliteration, translation FROM version_all").all() as any[]) {
         for (const [ref, line] of lyricSegments(v)) add("lyric", ref, [line]);
       }
     });
-    section("mirror_track", () => {
-      for (const t of db.query("SELECT id, name FROM mirror_track").all() as any[]) add("track", t.id, [t.name]);
+    section("archive_track", () => {
+      for (const t of db.query("SELECT id, name FROM archive_track").all() as any[]) add("track", t.id, [t.name]);
     });
-    section("mirror_album", () => {
-      for (const a of db.query("SELECT id, name FROM mirror_album").all() as any[]) add("album", a.id, [a.name]);
+    section("archive_album", () => {
+      for (const a of db.query("SELECT id, name FROM archive_album").all() as any[]) add("album", a.id, [a.name]);
     });
   })();
   stats.total = stats.video + stats.chapter + stats.artist + stats.song + stats.lyric + stats.track + stats.album;
@@ -126,39 +126,33 @@ export function indexVersion(db: Db, id: string) {
 }
 
 /** One Video's index row, replaced in place (a title edit does not need a rebuild of the lyrics). */
-interface VideoIndexRow { id: number; title: string; title_latin: string | null; song_name: string | null; song_en: string | null }
+interface VideoIndexRow { id: string; title: string; title_latin: string | null; song_name: string | null; song_en: string | null }
 const VIDEO_INDEX_SQL = `SELECT v.id, v.title, v.title_latin, s.name AS song_name, s.english_name AS song_en
-  FROM video v LEFT JOIN song_all s ON s.id = v.song_id`;
+  FROM video_full v LEFT JOIN song_all s ON s.id = v.song_id`;
 const videoSegments = (r: VideoIndexRow) => [r.title, r.title_latin ?? "", r.song_name, r.song_en];
 
-export function reindexVideo(db: Db, id: number) {
-  db.query("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(String(id));
-  let r: VideoIndexRow | null = null;
-  try {
-    r = db.query(`${VIDEO_INDEX_SQL} WHERE v.id = ?`).get(id) as VideoIndexRow | null;
-  } catch {
-    const v = db.query("SELECT id, title, title_latin FROM video WHERE id = ?").get(id) as VideoIndexRow | null; // no Mirror tables yet
-    r = v && { ...v, song_name: null, song_en: null };
-  }
+export function reindexVideo(db: Db, id: string) {
+  db.query("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(id);
+  const r = db.query(`${VIDEO_INDEX_SQL} WHERE v.id = ?`).get(id) as VideoIndexRow | null;
   if (!r) return;
   const p = videoSegments(r).filter((x): x is string => !!x && x.trim() !== "");
   db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('video', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
 }
 
 /** One Chapter's index row, replaced in place (or removed when the Chapter is gone). */
-export function reindexChapter(db: Db, id: number) {
-  db.query("DELETE FROM search WHERE kind = 'chapter' AND ref_id = ?").run(String(id));
-  const r = db.query("SELECT id, title, title_latin FROM chapter WHERE id = ?").get(id) as { id: number; title: string; title_latin: string | null } | null;
+export function reindexChapter(db: Db, id: string) {
+  db.query("DELETE FROM search WHERE kind = 'chapter' AND ref_id = ?").run(id);
+  const r = db.query("SELECT id, title, title_latin FROM chapter_full WHERE id = ?").get(id) as { id: string; title: string; title_latin: string | null } | null;
   if (!r) return;
   const p = [r.title, r.title_latin].filter((x): x is string => !!x && x.trim() !== "");
   if (!p.length) return;
   db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('chapter', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
 }
 
-/** One Artist's index row (a Local Artist created from the chip editor). */
-export function indexArtist(db: Db, id: number) {
-  db.query("DELETE FROM search WHERE kind = 'artist' AND ref_id = ?").run(String(id));
-  const r = db.query("SELECT id, name, name_latin FROM artist WHERE id = ?").get(id) as { id: number; name: string; name_latin: string | null } | null;
+/** One Artist's index row (an Artist applied, a Local Artist created from the chip editor), replaced in place. */
+export function indexArtist(db: Db, id: string) {
+  db.query("DELETE FROM search WHERE kind = 'artist' AND ref_id = ?").run(id);
+  const r = db.query("SELECT id, name, name_latin FROM artist_all WHERE id = ?").get(id) as { id: string; name: string; name_latin: string | null } | null;
   if (!r) return;
   const p = [r.name, r.name_latin].filter((x): x is string => !!x && x.trim() !== "");
   db.query("INSERT INTO search (kind, ref_id, text, text_folded) VALUES ('artist', ?, ?, ?)").run(String(r.id), p.join(SEP), foldSegments(p));
@@ -185,7 +179,7 @@ interface Cand {
 }
 
 interface VideoFacts {
-  id: number;
+  id: string;
   title: string;
   type: string;
   fav: boolean;
@@ -196,9 +190,9 @@ interface VideoFacts {
   artistKeys: string[];
 }
 
-function loadVideoFacts(db: Db, env: SearchEnv, needArtists: boolean): Map<number, VideoFacts> {
-  const out = new Map<number, VideoFacts>();
-  for (const v of db.query("SELECT id, title, type, favorited_at, song_id, song_suggested FROM video").all() as any[])
+function loadVideoFacts(db: Db, env: SearchEnv, needArtists: boolean): Map<string, VideoFacts> {
+  const out = new Map<string, VideoFacts>();
+  for (const v of db.query("SELECT id, title, type, favorited_at, song_id, song_suggested FROM video_full").all() as any[])
     out.set(v.id, { id: v.id, title: v.title, type: v.type, fav: !!v.favorited_at, songId: v.song_id, songSuggested: !!v.song_suggested, durationS: null, available: false, artistKeys: [] });
   for (const c of db.query("SELECT video_id, root_id, missing_since, duration_s FROM copy").all() as any[]) {
     const f = out.get(c.video_id);
@@ -208,7 +202,7 @@ function loadVideoFacts(db: Db, env: SearchEnv, needArtists: boolean): Map<numbe
     if (c.duration_s != null && (f.durationS == null || ok)) f.durationS = c.duration_s;
   }
   if (needArtists) {
-    for (const r of db.query("SELECT va.video_id, a.name, a.name_latin FROM video_artist va JOIN artist a ON a.id = va.artist_id").all() as any[]) {
+    for (const r of db.query("SELECT va.video_id, a.name, a.name_latin FROM video_artist_full va JOIN artist_all a ON a.id = va.artist_id").all() as any[]) {
       const f = out.get(r.video_id);
       if (!f) continue;
       f.artistKeys.push(foldQuery(r.name));
@@ -236,7 +230,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
   const videoFilters = hasVideoFilters(parsed);
   // Video filters stack onto the Artists and Songs groups too: those keep only rows with a Video that passes them.
   const needFacts = wantVideos || groups.includes("artists") || (videoFilters && groups.includes("songs"));
-  const facts = needFacts ? loadVideoFacts(db, env, parsed.artists.length > 0) : new Map<number, VideoFacts>();
+  const facts = needFacts ? loadVideoFacts(db, env, parsed.artists.length > 0) : new Map<string, VideoFacts>();
   const artistWanted = parsed.artists.map(foldQuery);
   const videoOk = (f: VideoFacts | undefined) =>
     !!f &&
@@ -294,11 +288,11 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
   for (const c of cands) {
     if (c.kind === "video" && wantVideos && !parsed.lyricsOnly) {
       const s = scoreOf(c, videoPenalty);
-      if (s !== null && videoOk(facts.get(Number(c.ref)))) buckets.videos.push({ c, score: s, name: nameOf(c.text) });
+      if (s !== null && videoOk(facts.get(c.ref))) buckets.videos.push({ c, score: s, name: nameOf(c.text) });
     } else if (c.kind === "chapter" && wantVideos && !parsed.lyricsOnly) {
       const s = scoreOf(c);
       if (s === null) continue;
-      const ch = db.query("SELECT video_id, favorited_at FROM chapter WHERE id = ?").get(Number(c.ref)) as { video_id: number; favorited_at: string | null } | null;
+      const ch = db.query("SELECT video_id, favorited_at FROM chapter_full WHERE id = ?").get(c.ref) as { video_id: string; favorited_at: string | null } | null;
       if (!ch) continue;
       const f = facts.get(ch.video_id);
       // #fav on a Chapter row means the Chapter itself is a Favorite
@@ -346,46 +340,46 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
   };
   /** Videos performing a Song: by their Song pointer (startS null) or through a Chapter (its first start). */
   const songVideos = (songId: string) =>
-    many<{ id: number; startS: number | null }>(
-      `SELECT id, NULL AS startS FROM video WHERE song_id = ?
-       UNION ALL SELECT video_id AS id, MIN(start_s) AS startS FROM chapter WHERE song_id = ? AND video_id NOT IN (SELECT id FROM video WHERE song_id = ?) GROUP BY video_id
+    many<{ id: string; startS: number | null }>(
+      `SELECT id, NULL AS startS FROM video_full WHERE song_id = ?
+       UNION ALL SELECT video_id AS id, MIN(start_s) AS startS FROM chapter_full WHERE song_id = ? AND video_id NOT IN (SELECT id FROM video_full WHERE song_id = ?) GROUP BY video_id
        ORDER BY id`, songId, songId, songId);
   const build = (g: Group, b: Scored): SearchRow | null => {
     const c = b.c;
     if (g === "videos") {
       if (c.kind === "video") {
-        const f = facts.get(Number(c.ref))!;
+        const f = facts.get(c.ref)!;
         const songs = f.songId ? many<{ name: string }>("SELECT name FROM song_all WHERE id = ?", f.songId).map((s) => s.name) : [];
         return { kind: "video", id: f.id, title: f.title, type: f.type as any, durationS: f.durationS, available: f.available, songs, songSuggested: f.songSuggested };
       }
-      const ch = one<{ id: number; video_id: number; start_s: number; title: string }>("SELECT id, video_id, start_s, title FROM chapter WHERE id = ?", Number(c.ref));
+      const ch = one<{ id: string; video_id: string; start_s: number; title: string }>("SELECT id, video_id, start_s, title FROM chapter_full WHERE id = ?", c.ref);
       if (!ch) return null;
       const f = facts.get(ch.video_id)!;
       return { kind: "chapter", id: ch.id, videoId: ch.video_id, videoTitle: f.title, title: ch.title, startS: ch.start_s, available: f.available };
     }
     if (g === "artists") {
-      const a = one<{ id: number; name: string; mirror_id: string | null; n: number }>(
-        "SELECT a.id, a.name, a.mirror_id, (SELECT COUNT(*) FROM video_artist WHERE artist_id = a.id) n FROM artist a WHERE a.id = ?", Number(c.ref));
-      return a ? { kind: "artist", id: a.id, name: a.name, local: a.mirror_id == null, videoCount: a.n } : null;
+      const a = one<{ id: string; name: string; kind: string; n: number }>(
+        "SELECT a.id, a.name, a.kind, (SELECT COUNT(*) FROM video_artist_full WHERE artist_id = a.id) n FROM artist_all a WHERE a.id = ?", c.ref);
+      return a ? { kind: "artist", id: a.id, name: a.name, local: a.kind === "local", proposed: a.kind === "proposed", videoCount: a.n } : null;
     }
     if (g === "songs") {
-      const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number; local: number }>("SELECT id, name, english_name, is_hidden, local FROM song_all WHERE id = ?", c.ref);
+      const s = one<{ id: string; name: string; english_name: string | null; is_hidden: number; kind: string }>("SELECT id, name, english_name, is_hidden, kind FROM song_all WHERE id = ?", c.ref);
       if (!s) return null;
       const videos = songVideos(s.id).filter((x) => !videoFilters || videoOk(facts.get(x.id)));
-      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, local: !!s.local, viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos };
+      return { kind: "song", id: s.id, name: s.name, englishName: s.english_name, hidden: !!s.is_hidden, local: s.kind === "local", proposed: s.kind === "proposed", viaLyrics: lyricOnlySongs.has(s.id), lyric: lyricHit.get(s.id) ?? null, videos };
     }
     if (g === "tracks") {
-      const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM mirror_track WHERE id = ?", c.ref);
+      const t = one<{ id: string; name: string; album_id: string; song_id: string | null; version_id: string | null }>("SELECT id, name, album_id, song_id, version_id FROM archive_track WHERE id = ?", c.ref);
       if (!t) return null;
-      const album = one<{ name: string; artist_id: string }>("SELECT name, artist_id FROM mirror_album WHERE id = ?", t.album_id);
+      const album = one<{ name: string; artist_id: string }>("SELECT name, artist_id FROM archive_album WHERE id = ?", t.album_id);
       let by = many<{ name: string }>(
-        "SELECT ar.name FROM mirror_track_artist ta JOIN mirror_artist ar ON ar.id = ta.artist_id WHERE ta.track_id = ? ORDER BY ta.position", t.id).map((x) => x.name);
-      if (!by.length && album) by = many<{ name: string }>("SELECT name FROM mirror_artist WHERE id = ?", album.artist_id).map((x) => x.name);
+        "SELECT ar.name FROM archive_track_artist ta JOIN archive_artist ar ON ar.id = ta.artist_id WHERE ta.track_id = ? ORDER BY ta.position", t.id).map((x) => x.name);
+      if (!by.length && album) by = many<{ name: string }>("SELECT name FROM archive_artist WHERE id = ?", album.artist_id).map((x) => x.name);
       return { kind: "track", id: t.id, name: t.name, album: album?.name ?? null, by, songId: t.song_id, versionId: t.version_id };
     }
-    const a = one<{ id: string; name: string; release_year: number | null; artist_id: string }>("SELECT id, name, release_year, artist_id FROM mirror_album WHERE id = ?", c.ref);
+    const a = one<{ id: string; name: string; release_year: number | null; artist_id: string }>("SELECT id, name, release_year, artist_id FROM archive_album WHERE id = ?", c.ref);
     if (!a) return null;
-    const by = one<{ name: string }>("SELECT name FROM mirror_artist WHERE id = ?", a.artist_id);
+    const by = one<{ name: string }>("SELECT name FROM archive_artist WHERE id = ?", a.artist_id);
     return { kind: "album", id: a.id, name: a.name, year: a.release_year, by: by?.name ?? null };
   };
 
@@ -396,16 +390,16 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
     if (g === "songs" && videoFilters) {
       // Songs narrowed by Video filters: only those performed (Song pointer or Chapter) by a Video that passes them.
       const ok = new Set<string>();
-      for (const r of many<{ video_id: number; song_id: string }>("SELECT id AS video_id, song_id FROM video WHERE song_id IS NOT NULL UNION ALL SELECT video_id, song_id FROM chapter WHERE song_id IS NOT NULL"))
+      for (const r of many<{ video_id: string; song_id: string }>("SELECT id AS video_id, song_id FROM video_full WHERE song_id IS NOT NULL UNION ALL SELECT video_id, song_id FROM chapter_full WHERE song_id IS NOT NULL"))
         if (videoOk(facts.get(r.video_id))) ok.add(r.song_id);
       list = list.filter((b) => ok.has(b.c.ref));
     }
     if (g === "artists" && videoFilters) {
       // Artists narrowed by Video filters: only those with a Video that passes them.
-      const ok = new Set<number>();
-      for (const r of db.query("SELECT video_id, artist_id FROM video_artist").all() as { video_id: number; artist_id: number }[])
+      const ok = new Set<string>();
+      for (const r of db.query("SELECT video_id, artist_id FROM video_artist_full").all() as { video_id: string; artist_id: string }[])
         if (videoOk(facts.get(r.video_id))) ok.add(r.artist_id);
-      list = list.filter((b) => ok.has(Number(b.c.ref)));
+      list = list.filter((b) => ok.has(b.c.ref));
     }
     if (!list.length) continue;
     list.sort((x, y) => x.score - y.score || x.name.localeCompare(y.name));

@@ -260,6 +260,7 @@ function ResultRowView({ row, needle, open }: { row: ResultRow; needle: string; 
           <div class="s">
             {row.videoCount} Video{row.videoCount === 1 ? "" : "s"}
             {row.local ? " · local" : ""}
+            {row.proposed ? " · proposed" : ""}
           </div>
         </div>
       )

@@ -17,14 +17,14 @@ export const setActivePlaylist = (pl: Playlist | null): void => {
  * A Video was opened (by any route): inside the active Playlist the cursor moves to its Entry, outside it the Playlist ends
  * and the Player is back to plain Playing from (spec 6.7, "jumps to that Entry when opened from elsewhere").
  */
-export function resolveOpen(pl: Playlist | null, videoId: number): Playlist | null {
+export function resolveOpen(pl: Playlist | null, videoId: string): Playlist | null {
   if (!pl) return null
   if (current(pl)?.videoId === videoId) return pl
   return jumpToVideo(pl, videoId)
 }
 
 /** The Playlist's current Entry as the Player opens it: a Chapter Entry at its Chapter's start, a deleted Chapter as the Video. */
-export function entryStart(pl: Playlist, chapters: readonly { id: number; startS: number }[] | null): { pl: Playlist; startS: number | null } {
+export function entryStart(pl: Playlist, chapters: readonly { id: string; startS: number }[] | null): { pl: Playlist; startS: number | null } {
   const e: Entry | null = current(pl)
   if (!e || e.chapterId === undefined) return { pl, startS: null }
   const c = chapters?.find((x) => x.id === e.chapterId)
@@ -36,7 +36,7 @@ export function entryStart(pl: Playlist, chapters: readonly { id: number; startS
 export const NO_PLAYLIST_REPEAT = "Repeat: one (this Video loops; Shuffle starts a Playlist)"
 
 /** Shuffle with none active starts a whole-library Playlist from the current Video; with one active it toggles the Play order. */
-export function pressShuffle(pl: Playlist | null, libraryIds: readonly number[], videoId: number, rng?: Rng): { pl: Playlist | null; label: string; started: boolean } {
+export function pressShuffle(pl: Playlist | null, libraryIds: readonly string[], videoId: string, rng?: Rng): { pl: Playlist | null; label: string; started: boolean } {
   if (pl) {
     const next = toggleShuffle(pl, rng)
     return { pl: next, label: shuffleLabel(next), started: false }

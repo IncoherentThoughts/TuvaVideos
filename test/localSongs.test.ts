@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { openDb } from "../src/server/db";
 import { patchVideo } from "../src/server/edit";
 import { createLocalSong, createLocalVersion, deleteLocalSong, deleteLocalVersion, patchLocalSong, patchLocalVersion } from "../src/server/localSongs";
-import { countDanglingRefs } from "../src/server/mirror";
+import { insertVideo, V } from "./helpers/seed";
 import { rebuildSearchIndex, runSearch as search } from "../src/server/search";
 import { listSongs, songDto, songRef, versionsOf } from "../src/server/songs";
 import { footnotesToText, htmlToPlain, linesToHtml, parseFootnotesText } from "../src/shared/lyrics/plain";
@@ -40,9 +40,9 @@ describe("plain text <-> lyric HTML", () => {
 describe("Local Songs and Versions", () => {
   const open = () => {
     const db = openDb(":memory:", MIGRATIONS);
-    db.exec("INSERT INTO video (id, youtube_id, title, created_at) VALUES (1, 'aaaaaaaaaaa', 'Концерт', 'x')");
-    db.exec("INSERT INTO mirror_song (id, name, slug, english_name) VALUES ('m1', 'Чашпы-Хем', 'chashpy-khem', 'Chashpy River')");
-    db.exec("INSERT INTO mirror_version (id, song_id, label, display_order, cyrillic) VALUES ('mv1', 'm1', 'Complete', 1, '<p>Архив</p>')");
+    insertVideo(db, { id: 1, youtube_id: "aaaaaaaaaaa", title: "Концерт", created_at: "x" });
+    db.exec("INSERT INTO archive_song (id, name, slug, english_name) VALUES ('m1', 'Чашпы-Хем', 'chashpy-khem', 'Chashpy River')");
+    db.exec("INSERT INTO archive_version (id, song_id, label, display_order, cyrillic) VALUES ('mv1', 'm1', 'Complete', 1, '<p>Архив</p>')");
     rebuildSearchIndex(db);
     return db;
   };
@@ -56,7 +56,7 @@ describe("Local Songs and Versions", () => {
     expect(createLocalSong(db, { name: "ак хем" })).toMatchObject({ ok: true, value: { id, created: false, local: true } });
     expect(createLocalSong(db, { name: "" }).ok).toBe(false);
 
-    expect(songRef(db, id)).toEqual({ id, name: "Ак Хем", englishName: "White River", hidden: false, local: true, versions: [] });
+    expect(songRef(db, id)).toEqual({ id, name: "Ак Хем", englishName: "White River", hidden: false, local: true, proposed: false, versions: [] });
     expect(songRef(db, "m1")?.local).toBe(false);
     expect(songDto(db, id)?.local).toBe(true);
     // a Local Song is listed even before a Video points at it; the Mirror Song is not until one does
@@ -64,8 +64,8 @@ describe("Local Songs and Versions", () => {
     const hit = search(db, env, "ak khem").groups.find((g) => g.key === "songs")!.rows[0];
     expect(hit).toMatchObject({ kind: "song", id, local: true });
     // a Video may point at it, and a dangling-ref count does not count it
-    expect(patchVideo(db, 1, { songId: id })).toEqual({ ok: true });
-    expect(countDanglingRefs(db).videoSong).toBe(0);
+    expect(patchVideo(db, V(1), { songId: id })).toEqual({ ok: true });
+    expect(db.query("SELECT kind FROM song_all WHERE id = (SELECT song_id FROM video_full WHERE id = ?)").get(V(1))).toEqual({ kind: "local" }); // not dangling
     expect(listSongs(db).find((s) => s.id === id)?.videoCount).toBe(1);
   });
 
@@ -76,9 +76,9 @@ describe("Local Songs and Versions", () => {
     expect(patchLocalSong(db, "m1", { name: "x" })).toMatchObject({ ok: false, status: 409 });
     expect(patchLocalSong(db, id, { name: "Кара Хем", englishName: null })).toEqual({ ok: true, value: { id, name: "Кара Хем", englishName: null } });
     expect(search(db, env, "kara khem").groups.find((g) => g.key === "songs")!.rows[0]).toMatchObject({ id, name: "Кара Хем" });
-    patchVideo(db, 1, { songId: id });
+    patchVideo(db, V(1), { songId: id });
     expect(deleteLocalSong(db, id)).toMatchObject({ ok: false, status: 409 });
-    patchVideo(db, 1, { songId: null });
+    patchVideo(db, V(1), { songId: null });
     createLocalVersion(db, id, { label: "Complete", scripts: { cyrillic: { html: "<p>Сөс</p>", footnotes: [] } } });
     expect(deleteLocalSong(db, id)).toEqual({ ok: true, value: { deleted: true } });
     expect(songRef(db, id)?.name).toBeNull();
@@ -104,16 +104,16 @@ describe("Local Songs and Versions", () => {
     expect(vs[1]!.scripts.cyrillic.html).toBe('<p>Кара<sup data-fn="1">1</sup> дыт</p>');
     expect(vs[1]!.scripts.cyrillic.footnotes).toEqual([{ id: 1, text: "note a" }]);
     expect(vs[1]!.scripts.transliteration.html).toBe("");
-    expect(songRef(db, "m1")?.versions).toEqual([{ id: "mv1", label: "Complete", local: false }, { id: vid, label: "Live 2024", local: true }]);
+    expect(songRef(db, "m1")?.versions).toEqual([{ id: "mv1", label: "Complete", local: false, proposed: false }, { id: vid, label: "Live 2024", local: true, proposed: false }]);
     expect(createLocalVersion(db, "m1", { label: "complete" })).toMatchObject({ ok: false, status: 409 });
     expect(createLocalVersion(db, "nope", { label: "x" })).toMatchObject({ ok: false, status: 404 });
     // the lyric line is searchable and resolves to the Song
     const hit = search(db, env, "black larch").groups.find((g) => g.key === "songs")!.rows[0];
     expect(hit).toMatchObject({ kind: "song", id: "m1", viaLyrics: true });
     // a Video may point at the Local Version
-    patchVideo(db, 1, { songId: "m1" });
-    expect(patchVideo(db, 1, { versionId: vid })).toEqual({ ok: true });
-    expect(countDanglingRefs(db).videoVersion).toBe(0);
+    patchVideo(db, V(1), { songId: "m1" });
+    expect(patchVideo(db, V(1), { versionId: vid })).toEqual({ ok: true });
+    expect(db.query("SELECT kind FROM version_all WHERE id = (SELECT version_id FROM video_full WHERE id = ?)").get(V(1))).toEqual({ kind: "local" });
     expect(listSongs(db).find((s) => s.id === "m1")).toMatchObject({ versionCount: 2, localVersionCount: 1, local: false });
   });
 
@@ -127,9 +127,9 @@ describe("Local Songs and Versions", () => {
     expect(search(db, env, "бир").groups.find((g) => g.key === "songs")?.rows ?? []).toEqual([]);
     expect(patchLocalVersion(db, "mv1", { label: "x" })).toMatchObject({ ok: false, status: 409 });
     expect(deleteLocalVersion(db, "mv1")).toMatchObject({ ok: false, status: 409 });
-    patchVideo(db, 1, { songId: "m1", versionId: vid });
+    patchVideo(db, V(1), { songId: "m1", versionId: vid });
     expect(deleteLocalVersion(db, vid)).toEqual({ ok: true, value: { deleted: true } });
-    expect(db.query("SELECT song_id, version_id FROM video WHERE id = 1").get()).toEqual({ song_id: "m1", version_id: null });
+    expect(db.query("SELECT song_id, version_id FROM videos WHERE id = ?").get(V(1))).toEqual({ song_id: "m1", version_id: null });
     expect(versionsOf(db, "m1").length).toBe(1);
   });
 });
@@ -137,13 +137,15 @@ describe("Local Songs and Versions", () => {
 describe("stacked filters on the Songs group", () => {
   test("#fav narrows Songs to those a Favorite Video performs, and their Video lists", () => {
     const db = openDb(":memory:", MIGRATIONS);
-    db.exec("INSERT INTO mirror_song (id, name, slug) VALUES ('m1', 'Чавыдак', 'chavydak'), ('m2', 'Чавыдак-2', 'chavydak-2')");
-    db.exec("INSERT INTO video (id, youtube_id, title, created_at, song_id, favorited_at) VALUES (1, 'aaaaaaaaaaa', 'A', 'x', 'm1', 'x'), (2, 'bbbbbbbbbbb', 'B', 'x', 'm1', NULL), (3, 'ccccccccccc', 'C', 'x', 'm2', NULL)");
+    db.exec("INSERT INTO archive_song (id, name, slug) VALUES ('m1', 'Чавыдак', 'chavydak'), ('m2', 'Чавыдак-2', 'chavydak-2')");
+    insertVideo(db, { id: 1, youtube_id: "aaaaaaaaaaa", title: "A", created_at: "x", song_id: "m1", favorited_at: "x" });
+    insertVideo(db, { id: 2, youtube_id: "bbbbbbbbbbb", title: "B", created_at: "x", song_id: "m1" });
+    insertVideo(db, { id: 3, youtube_id: "ccccccccccc", title: "C", created_at: "x", song_id: "m2" });
     rebuildSearchIndex(db);
     const songs = (q: string) => search(db, env, q).groups.find((g) => g.key === "songs")?.rows ?? [];
     expect(songs("#songs chavydak").map((r) => r.id).sort()).toEqual(["m1", "m2"]);
     const fav = songs("#songs #fav chavydak");
     expect(fav.map((r) => r.id)).toEqual(["m1"]);
-    expect((fav[0] as any).videos.map((v: any) => v.id)).toEqual([1]);
+    expect((fav[0] as any).videos.map((v: any) => v.id)).toEqual([V(1)]);
   });
 });

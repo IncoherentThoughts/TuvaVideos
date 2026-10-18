@@ -13,7 +13,7 @@ export interface EntryRange {
  * A Video Entry plays the whole Video. A Chapter Entry plays from the Chapter's start to the next Chapter's start, or the
  * Video's end. A Chapter that no longer exists (deleted) plays as a Video Entry.
  */
-export function entryRange(entry: Entry | null, chapters: readonly { id: number; startS: number }[], durationS: number | null): EntryRange {
+export function entryRange(entry: Entry | null, chapters: readonly { id: string; startS: number }[], durationS: number | null): EntryRange {
   const whole: EntryRange = { start: 0, end: null };
   if (!entry || entry.chapterId === undefined) return whole;
   const c = chapters.find((x) => x.id === entry.chapterId);
@@ -68,7 +68,7 @@ export function prevEntry(pl: Playlist, playable: Playable = () => true): Playli
 }
 
 /** Entries for a whole-library Playlist, in library order, starting at `videoId`; null when the Video is not in the library. */
-export function libraryPlaylist(videoIds: readonly number[], videoId: number, rng?: Rng): Playlist | null {
+export function libraryPlaylist(videoIds: readonly string[], videoId: string, rng?: Rng): Playlist | null {
   const startAt = videoIds.indexOf(videoId);
   if (startAt < 0) return null;
   return startPlaylist(videoIds.map((id) => ({ videoId: id })), { source: "library-all", shuffled: true, startAt, rng });
@@ -95,6 +95,6 @@ export const prevLabel = (title: string) => `Previous: ${title}`;
 export const ENDED_LABEL = "Playlist ended";
 
 /** Whether a Playlist is the one this screen is showing: its current Entry is for this Video. */
-export function playlistFor(pl: Playlist | null, videoId: number): Playlist | null {
+export function playlistFor(pl: Playlist | null, videoId: string): Playlist | null {
   return pl && current(pl)?.videoId === videoId ? pl : null;
 }

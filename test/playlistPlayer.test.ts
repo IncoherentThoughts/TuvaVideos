@@ -6,9 +6,9 @@ import {
   entryRange, libraryPlaylist, nextEntry, openAt, playlistFor, prevEntry, reachedEnd, repeatIcon, resumeAllowed, seekWidens, toggleShuffle,
 } from "../src/shared/playlistPlayer";
 
-const videos = (...ids: number[]): Entry[] => ids.map((videoId) => ({ videoId }));
+const videos = (...ids: number[]): Entry[] => ids.map((n) => ({ videoId: String(n) }));
 const seqPl = (entries: Entry[], startAt = 0): Playlist => startPlaylist(entries, { source: "library", shuffled: false, startAt });
-const ids = (pl: Playlist) => pl.order.map((i) => pl.entries[i]!.videoId);
+const ids = (pl: Playlist) => pl.order.map((i) => pl.entries[i]!.videoId).map(Number);
 
 describe("Playlist keys (spec 4.8)", () => {
   test("n N x e q map to Playlist actions", () => {
@@ -50,19 +50,19 @@ describe("the State panel key guide matches keyAction", () => {
 });
 
 describe("entryRange", () => {
-  const chapters = [{ id: 1, startS: 10 }, { id: 2, startS: 60 }, { id: 3, startS: 120 }];
+  const chapters = [{ id: "1", startS: 10 }, { id: "2", startS: 60 }, { id: "3", startS: 120 }];
   test("a Video Entry plays the whole Video", () => {
-    expect(entryRange({ videoId: 1 }, chapters, 200)).toEqual({ start: 0, end: null });
+    expect(entryRange({ videoId: "1" }, chapters, 200)).toEqual({ start: 0, end: null });
     expect(entryRange(null, chapters, 200)).toEqual({ start: 0, end: null });
   });
   test("a Chapter Entry runs to the next Chapter's start, or the Video's end", () => {
-    expect(entryRange({ videoId: 1, chapterId: 2 }, chapters, 200)).toEqual({ start: 60, end: 120 });
-    expect(entryRange({ videoId: 1, chapterId: 1 }, [...chapters].reverse(), 200)).toEqual({ start: 10, end: 60 });
-    expect(entryRange({ videoId: 1, chapterId: 3 }, chapters, 200)).toEqual({ start: 120, end: 200 });
-    expect(entryRange({ videoId: 1, chapterId: 3 }, chapters, null)).toEqual({ start: 120, end: null });
+    expect(entryRange({ videoId: "1", chapterId: "2" }, chapters, 200)).toEqual({ start: 60, end: 120 });
+    expect(entryRange({ videoId: "1", chapterId: "1" }, [...chapters].reverse(), 200)).toEqual({ start: 10, end: 60 });
+    expect(entryRange({ videoId: "1", chapterId: "3" }, chapters, 200)).toEqual({ start: 120, end: 200 });
+    expect(entryRange({ videoId: "1", chapterId: "3" }, chapters, null)).toEqual({ start: 120, end: null });
   });
   test("a deleted Chapter plays as the Video", () => {
-    expect(entryRange({ videoId: 1, chapterId: 99 }, chapters, 200)).toEqual({ start: 0, end: null });
+    expect(entryRange({ videoId: "1", chapterId: "99" }, chapters, 200)).toEqual({ start: 0, end: null });
   });
   test("end detection and widening", () => {
     const r = { start: 60, end: 120 };
@@ -94,20 +94,20 @@ describe("nextEntry / prevEntry", () => {
     expect(nextEntry(pl, "end").kind).toBe("restart");
     const k = nextEntry(pl, "key");
     expect(k.kind).toBe("move");
-    expect(current(k.pl)?.videoId).toBe(2);
+    expect(current(k.pl)?.videoId).toBe("2");
   });
   test("end advances and skips unavailable Videos", () => {
-    const m = nextEntry(seqPl(videos(1, 2, 3)), "end", (id) => id !== 2);
+    const m = nextEntry(seqPl(videos(1, 2, 3)), "end", (id) => id !== "2");
     expect(m.kind).toBe("move");
-    expect(current(m.pl)?.videoId).toBe(3);
+    expect(current(m.pl)?.videoId).toBe("3");
   });
   test("Repeat off at the end: the end reports ended, `n` does nothing, `N` goes back", () => {
     const at = nextEntry(seqPl(videos(1, 2)), "key").pl; // now on Video 2, nothing after
-    expect(current(at)?.videoId).toBe(2);
+    expect(current(at)?.videoId).toBe("2");
     expect(nextEntry(at, "end").kind).toBe("ended");
     expect(nextEntry(at, "key").kind).toBe("none");
     expect(nextEntry(at, "key").pl).toBe(at);
-    expect(current(prevEntry(at)!)?.videoId).toBe(1);
+    expect(current(prevEntry(at)!)?.videoId).toBe("1");
     expect(prevEntry(seqPl(videos(1, 2)))).toBeNull();
   });
   test("Repeat list wraps; a one-Entry list restarts in place", () => {
@@ -117,8 +117,8 @@ describe("nextEntry / prevEntry", () => {
     expect(solo.kind).toBe("restart");
   });
   test("a Chapter Entry advances to the next Entry", () => {
-    const pl = seqPl([{ videoId: 1, chapterId: 5 }, { videoId: 1, chapterId: 6 }]);
-    expect(current(nextEntry(pl, "end").pl)).toEqual({ videoId: 1, chapterId: 6 });
+    const pl = seqPl([{ videoId: "1", chapterId: "5" }, { videoId: "1", chapterId: "6" }]);
+    expect(current(nextEntry(pl, "end").pl)).toEqual({ videoId: "1", chapterId: "6" });
   });
 });
 
@@ -130,12 +130,12 @@ describe("icons and shortcuts", () => {
     expect(repeatIcon(cycleRepeat(pl))).toEqual({ mode: "list", disabled: false });
   });
   test("x with none active starts a whole-library Playlist at the current Video, shuffled", () => {
-    const pl = libraryPlaylist([5, 6, 7, 8], 7)!;
+    const pl = libraryPlaylist(["5", "6", "7", "8"], "7")!;
     expect(pl.source).toBe("library-all");
     expect(pl.shuffled).toBe(true);
-    expect(current(pl)?.videoId).toBe(7);
+    expect(current(pl)?.videoId).toBe("7");
     expect(ids(pl).sort()).toEqual([5, 6, 7, 8]);
-    expect(libraryPlaylist([5, 6], 99)).toBeNull();
+    expect(libraryPlaylist(["5", "6"], "99")).toBeNull();
   });
   test("x with one active toggles the Play order", () => {
     const pl = seqPl(videos(1, 2, 3));
@@ -144,9 +144,9 @@ describe("icons and shortcuts", () => {
   });
   test("a Playlist only applies to the Video its current Entry is for", () => {
     const pl = seqPl(videos(1, 2));
-    expect(playlistFor(pl, 1)).toBe(pl);
-    expect(playlistFor(pl, 2)).toBeNull();
-    expect(playlistFor(null, 1)).toBeNull();
+    expect(playlistFor(pl, "1")).toBe(pl);
+    expect(playlistFor(pl, "2")).toBeNull();
+    expect(playlistFor(null, "1")).toBeNull();
   });
 });
 
@@ -154,7 +154,7 @@ describe("OSD wording", () => {
   test("one phrasing per action", async () => {
     const m = await import("../src/shared/playlistPlayer");
     const { startPlaylist } = await import("../src/shared/playlist");
-    const pl = startPlaylist([{ videoId: 1 }, { videoId: 2 }], { source: "library", shuffled: false, startAt: 0 });
+    const pl = startPlaylist([{ videoId: "1" }, { videoId: "2" }], { source: "library", shuffled: false, startAt: 0 });
     expect(m.shuffleLabel(pl)).toBe("Shuffle off");
     expect(m.shuffleLabel({ ...pl, shuffled: true })).toBe("Shuffle on");
     expect(m.shuffleStartLabel(2157)).toBe("Shuffle on · Playlist of 2157");

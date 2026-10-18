@@ -48,14 +48,14 @@ function RowView({ row, needle, on, idx, pick }: { row: SearchRow; needle: strin
       return (
         <div {...common}>
           <span class="nm" {...H(row.name, needle)} />
-          <span class="typ artist">artist{row.local ? " · local" : ""} · {row.videoCount} video{row.videoCount === 1 ? "" : "s"}</span>
+          <span class="typ artist">artist{row.local ? " · local" : ""}{row.proposed ? " · proposed" : ""} · {row.videoCount} video{row.videoCount === 1 ? "" : "s"}</span>
         </div>
       );
     case "song":
       return (
         <div {...common}>
           <span class="nm" dangerouslySetInnerHTML={{ __html: highlightHtml(row.name, needle) + (row.englishName ? ` <span class="en">· ${highlightHtml(row.englishName, needle)}</span>` : "") }} />
-          <span class="typ song">song{row.local ? " · local" : ""}{row.viaLyrics ? " · lyrics" : ""}</span>
+          <span class="typ song">song{row.local ? " · local" : ""}{row.proposed ? " · proposed" : ""}{row.viaLyrics ? " · lyrics" : ""}</span>
           {row.lyric && <span class="sn" dangerouslySetInnerHTML={{ __html: `<b>Lyrics:</b> ${highlightHtml(row.lyric, needle)}` }} />}
         </div>
       );

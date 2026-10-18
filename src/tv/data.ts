@@ -44,10 +44,10 @@ export const api = {
   songs: () => get<SongListDto[]>("/api/songs"),
   favorites: () => get<FavoriteItem[]>("/api/favorites"),
   song: (id: string) => get<SongDto>(`/api/songs/${encodeURIComponent(id)}`),
-  video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
-  chapters: (id: number) => get<ChapterDto[]>(`/api/videos/${id}/chapters`),
+  video: (id: string) => get<VideoDto>(`/api/videos/${id}`),
+  chapters: (id: string) => get<ChapterDto[]>(`/api/videos/${id}/chapters`),
   keyframes: (copyId: number) => get<KeyframeStatusDto>(`/api/copies/${copyId}/keyframes`),
-  audio: (id: number) => get<{ state: AudioState | null }>(`/api/videos/${id}/audio`),
+  audio: (id: string) => get<{ state: AudioState | null }>(`/api/videos/${id}/audio`),
   search: (q: string, signal?: AbortSignal, limit = 20) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`, signal),
 }
 
@@ -71,6 +71,6 @@ function post(path: string, body: unknown): void {
   }
 }
 export const writes = {
-  resume: (videoId: number, resumeS: number, copyId: number | null) => post(`/api/videos/${videoId}/resume`, { resumeS, copyId }),
-  view: (videoId: number) => post(`/api/videos/${videoId}/view`, undefined),
+  resume: (videoId: string, resumeS: number, copyId: number | null) => post(`/api/videos/${videoId}/resume`, { resumeS, copyId }),
+  view: (videoId: string) => post(`/api/videos/${videoId}/view`, undefined),
 }

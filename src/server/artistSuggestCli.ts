@@ -13,7 +13,7 @@ if (import.meta.main) {
   initLog(cfg.logPath);
   const db = openDb(cfg.dbPath, cfg.migrationsDir);
   try {
-    const r = suggestArtists(db, { videoId: id ? Number(id) : undefined, cacheDir: cfg.ytCacheDir, dryRun: args.includes("--dry-run") });
+    const r = suggestArtists(db, { videoId: id || undefined, cacheDir: cfg.ytCacheDir, dryRun: args.includes("--dry-run") });
     log("artist matcher:", r);
     if (!args.includes("--dry-run")) rebuildSearchIndex(db);
     console.log(`${r.videos} Videos looked at: ${r.suggested} Artists suggested, ${r.cleared} old suggestions replaced, ${r.skippedCurated} curated Videos left alone${args.includes("--dry-run") ? " (dry run)" : ""}`);

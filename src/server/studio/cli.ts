@@ -17,7 +17,7 @@ try {
   if (!file) file = await dump.refresh(true);
   const s = applyMatches(db, file.tracks);
   const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)}%` : "n/a");
-  const bySong = db.query("SELECT COUNT(DISTINCT song_id) n FROM mirror_track WHERE song_id IS NOT NULL").get() as { n: number };
+  const bySong = db.query("SELECT COUNT(DISTINCT song_id) n FROM archive_track WHERE song_id IS NOT NULL").get() as { n: number };
   console.log(`dump: ${file.tracks.length} tracks, read in ${file.ms} ms (${file.takenAt})`);
   console.log(`Mirror Tracks: ${s.tracks}, of which ${s.withSong} have a Song (only those can hold a Studio track)`);
   console.log(`  matched:     ${s.matched.total} (${pct(s.matched.total, s.tracks)})  single ${s.matched.single}, by duration ${s.matched.duration}, by artist ${s.matched.artist}`);

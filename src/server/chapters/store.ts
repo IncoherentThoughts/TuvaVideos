@@ -11,6 +11,8 @@ import type { Db } from "../db";
 import { fillLatinTitles } from "../latin";
 import { reindexChapter } from "../search";
 import { songRef } from "../songs";
+import { newUuid } from "../localCopy/ids";
+import { nowIso, setChapterFavorite, songPointers } from "../localCopy/rows";
 import { clampStart, formatStart } from "../../shared/timestamps";
 import type { ChapterCreate, ChapterDto, ChapterPatch } from "../../shared/types";
 
@@ -18,9 +20,10 @@ type Result<T> = { ok: true; value: T } | { ok: false; status: number; error: st
 const bad = (error: string, status = 400): { ok: false; status: number; error: string } => ({ ok: false, status, error });
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 
+/** A `chapter_full` row: one effective pointer per pair, this machine's Favorite. */
 export interface ChapterRow {
-  id: number;
-  video_id: number;
+  id: string;
+  video_id: string;
   start_s: number;
   title: string;
   title_latin: string | null;
@@ -38,26 +41,27 @@ export function chapterDto(db: Db, c: ChapterRow): ChapterDto {
   };
 }
 
-const getRow = (db: Db, id: number) => db.query("SELECT * FROM chapter WHERE id = ?").get(id) as ChapterRow | null;
+const getRow = (db: Db, id: string) => db.query("SELECT * FROM chapter_full WHERE id = ?").get(id) as ChapterRow | null;
+const videoExists = (db: Db, id: string) => !!db.query("SELECT 1 FROM video_full WHERE id = ?").get(id);
 
-export function listChapters(db: Db, videoId: number): ChapterDto[] | null {
-  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return null;
-  return (db.query("SELECT * FROM chapter WHERE video_id = ? ORDER BY start_s, id").all(videoId) as ChapterRow[]).map((c) => chapterDto(db, c));
+export function listChapters(db: Db, videoId: string): ChapterDto[] | null {
+  if (!videoExists(db, videoId)) return null;
+  return (db.query("SELECT * FROM chapter_full WHERE video_id = ? ORDER BY start_s, id").all(videoId) as ChapterRow[]).map((c) => chapterDto(db, c));
 }
 
-export function getChapter(db: Db, id: number): ChapterDto | null {
+export function getChapter(db: Db, id: string): ChapterDto | null {
   const c = getRow(db, id);
   return c ? chapterDto(db, c) : null;
 }
 
-const maxDuration = (db: Db, videoId: number) => (db.query("SELECT MAX(duration_s) d FROM copy WHERE video_id = ?").get(videoId) as { d: number | null }).d;
+const maxDuration = (db: Db, videoId: string) => (db.query("SELECT MAX(duration_s) d FROM copy WHERE video_id = ?").get(videoId) as { d: number | null }).d;
 
-function checkStart(db: Db, videoId: number, raw: unknown, exceptId?: number): Result<number> {
+function checkStart(db: Db, videoId: string, raw: unknown, exceptId?: string): Result<number> {
   if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) return bad("startS must be a number of seconds >= 0");
   const dur = maxDuration(db, videoId);
   const s = clampStart(raw, null);
   if (dur != null && s > dur + 0.5) return bad(`that time is past the end of the Video (${formatStart(dur)})`);
-  const clash = db.query("SELECT id FROM chapter WHERE video_id = ? AND start_s = ?").get(videoId, s) as { id: number } | null;
+  const clash = db.query("SELECT id FROM video_chapters WHERE video_id = ? AND start_s = ?").get(videoId, s) as { id: string } | null;
   if (clash && clash.id !== exceptId) return bad(`a Chapter already starts at ${formatStart(s)}`, 409);
   return ok(s);
 }
@@ -67,7 +71,7 @@ function checkSong(db: Db, songId: unknown, versionId: unknown, current: { song_
   let version = current.version_id;
   if (songId !== undefined) {
     if (songId !== null && typeof songId !== "string") return bad("songId must be a string or null");
-    if (songId && !db.query("SELECT 1 FROM song_all WHERE id = ?").get(songId)) return bad("unknown song (import the Mirror first, or add a local Song)", 404);
+    if (songId && !db.query("SELECT 1 FROM song_all WHERE id = ?").get(songId)) return bad("unknown song (Sync the archive first, or add a local Song)", 404);
     if ((songId ?? null) !== song) version = null; // a different Song starts on its default Version
     song = songId ?? null;
   }
@@ -82,8 +86,8 @@ function checkSong(db: Db, songId: unknown, versionId: unknown, current: { song_
   return ok({ song, version });
 }
 
-export function addChapter(db: Db, videoId: number, body: Partial<ChapterCreate> & Record<string, unknown>): Result<ChapterDto> {
-  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return bad("no such video", 404);
+export function addChapter(db: Db, videoId: string, body: Partial<ChapterCreate> & Record<string, unknown>): Result<ChapterDto> {
+  if (!videoExists(db, videoId)) return bad("no such video", 404);
   const start = checkStart(db, videoId, body.startS);
   if (!start.ok) return start;
   if (body.title !== undefined && typeof body.title !== "string") return bad("title must be a string");
@@ -92,9 +96,12 @@ export function addChapter(db: Db, videoId: number, body: Partial<ChapterCreate>
   const song = checkSong(db, body.songId, body.versionId, { song_id: null, version_id: null });
   if (!song.ok) return song;
   const id = db.transaction(() => {
-    const id = Number(
-      db.prepare("INSERT INTO chapter (video_id, start_s, title, song_id, version_id, suggested, source) VALUES (?, ?, ?, ?, ?, 0, 'manual')").run(videoId, start.value, title, song.value.song, song.value.version).lastInsertRowid,
-    );
+    const id = newUuid();
+    const p = songPointers(db, song.value.song, song.value.version);
+    db.prepare(
+      `INSERT INTO video_chapters (id, video_id, start_s, title, song_id, proposed_song_id, version_id, proposed_version_id, suggested, source, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'manual', ?)`,
+    ).run(id, videoId, start.value, title, p.song_id, p.proposed_song_id, p.version_id, p.proposed_version_id, nowIso());
     fillLatinTitles(db, { chapterId: id });
     reindexChapter(db, id);
     return id;
@@ -104,7 +111,13 @@ export function addChapter(db: Db, videoId: number, body: Partial<ChapterCreate>
 
 const cleanTitle = (t: string) => t.trim().replace(/\s+/g, " ");
 
-export function patchChapter(db: Db, id: number, body: ChapterPatch & Record<string, unknown>): Result<ChapterDto> {
+/** Tombstones a rejected Chapter suggestion (video, source, start) so the next suggest run does not bring it back. */
+export function rejectChapterAt(db: Db, videoId: string, source: string, startS: number) {
+  const now = nowIso();
+  db.prepare("INSERT OR IGNORE INTO video_chapter_rejections (id, video_id, source, start_s, rejected_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(newUuid(), videoId, source, startS, now, now);
+}
+
+export function patchChapter(db: Db, id: string, body: ChapterPatch & Record<string, unknown>): Result<ChapterDto> {
   const cur = getRow(db, id);
   if (!cur) return bad("no such chapter", 404);
   const cols = new Map<string, string | number | null>();
@@ -133,14 +146,13 @@ export function patchChapter(db: Db, id: number, body: ChapterPatch & Record<str
   if ("songId" in body || "versionId" in body) {
     const song = checkSong(db, body.songId, body.versionId, cur);
     if (!song.ok) return song;
-    cols.set("song_id", song.value.song);
-    cols.set("version_id", song.value.version);
+    for (const [k, v] of Object.entries(songPointers(db, song.value.song, song.value.version))) cols.set(k, v);
   }
   if (!cols.size) return ok(chapterDto(db, cur));
   db.transaction(() => {
     if (confirms && cur.suggested) cols.set("suggested", 0);
-    if (moved != null && cur.suggested) db.prepare("INSERT OR IGNORE INTO chapter_rejection (video_id, source, start_s) VALUES (?, ?, ?)").run(cur.video_id, cur.source, moved);
-    db.prepare(`UPDATE chapter SET ${[...cols.keys()].map((c) => `${c} = ?`).join(", ")} WHERE id = ?`).run(...cols.values(), id);
+    if (moved != null && cur.suggested) rejectChapterAt(db, cur.video_id, cur.source, moved);
+    db.prepare(`UPDATE video_chapters SET ${[...cols.keys()].map((c) => `${c} = ?`).join(", ")} WHERE id = ?`).run(...cols.values(), id);
     fillLatinTitles(db, { chapterId: id });
     reindexChapter(db, id);
   })();
@@ -148,19 +160,19 @@ export function patchChapter(db: Db, id: number, body: ChapterPatch & Record<str
 }
 
 /** Deletes a Chapter. A Suggested one is a rejection: the tombstone is written. */
-export function deleteChapter(db: Db, id: number): Result<{ deleted: true; tombstoned: boolean; videoId: number }> {
+export function deleteChapter(db: Db, id: string): Result<{ deleted: true; tombstoned: boolean; videoId: string }> {
   const cur = getRow(db, id);
   if (!cur) return bad("no such chapter", 404);
   db.transaction(() => {
-    if (cur.suggested) db.prepare("INSERT OR IGNORE INTO chapter_rejection (video_id, source, start_s) VALUES (?, ?, ?)").run(cur.video_id, cur.source, cur.start_s);
-    db.prepare("DELETE FROM chapter WHERE id = ?").run(id);
+    if (cur.suggested) rejectChapterAt(db, cur.video_id, cur.source, cur.start_s);
+    db.prepare("DELETE FROM video_chapters WHERE id = ?").run(id);
     reindexChapter(db, id);
   })();
   return ok({ deleted: true, tombstoned: !!cur.suggested, videoId: cur.video_id });
 }
 
 /** POST /reject: only a Suggested Chapter can be rejected. */
-export function rejectChapter(db: Db, id: number): Result<{ rejected: true; videoId: number }> {
+export function rejectChapter(db: Db, id: string): Result<{ rejected: true; videoId: string }> {
   const cur = getRow(db, id);
   if (!cur) return bad("no such chapter", 404);
   if (!cur.suggested) return bad("only a Suggested Chapter can be rejected (DELETE removes a confirmed one)", 409);
@@ -168,15 +180,17 @@ export function rejectChapter(db: Db, id: number): Result<{ rejected: true; vide
   return r.ok ? ok({ rejected: true, videoId: r.value.videoId }) : r;
 }
 
-export function confirmChapter(db: Db, id: number): Result<ChapterDto> {
+export function confirmChapter(db: Db, id: string): Result<ChapterDto> {
   const cur = getRow(db, id);
   if (!cur) return bad("no such chapter", 404);
-  if (cur.suggested) db.prepare("UPDATE chapter SET suggested = 0 WHERE id = ?").run(id);
+  if (cur.suggested) db.prepare("UPDATE video_chapters SET suggested = 0 WHERE id = ?").run(id);
   return ok(getChapter(db, id)!);
 }
 
-export function confirmAll(db: Db, videoId: number): Result<{ confirmed: number; chapters: ChapterDto[] }> {
-  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return bad("no such video", 404);
-  const n = db.prepare("UPDATE chapter SET suggested = 0 WHERE video_id = ? AND suggested = 1").run(videoId).changes;
+export function confirmAll(db: Db, videoId: string): Result<{ confirmed: number; chapters: ChapterDto[] }> {
+  if (!videoExists(db, videoId)) return bad("no such video", 404);
+  // counted first: `.changes` would also count the rows the updated_at trigger touches
+  const n = (db.query("SELECT COUNT(*) n FROM video_chapters WHERE video_id = ? AND suggested = 1").get(videoId) as { n: number }).n;
+  db.prepare("UPDATE video_chapters SET suggested = 0 WHERE video_id = ? AND suggested = 1").run(videoId);
   return ok({ confirmed: n, chapters: listChapters(db, videoId)! });
 }

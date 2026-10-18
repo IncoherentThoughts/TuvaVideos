@@ -1,6 +1,6 @@
 // Local Songs and Local Versions (the Song-side counterpart of a Local Artist and a Local Studio track): created,
-// edited and deleted here, never exported, and kept outside the mirror_* tables so an import leaves them alone.
-// Readers (songs.ts, search.ts, edit.ts, ...) see them through the song_all / version_all views.
+// edited and deleted here, this machine's own rows (local_song, local_version), pointed at by Unshared Videos.
+// Readers (songs.ts, search.ts, edit.ts, ...) see them through the song_all / version_all views with kind `local`.
 import type { Db } from "./db";
 import { indexSong, indexVersion, reindexVideo } from "./search";
 import { fillLatinTitles } from "./latin";
@@ -30,7 +30,7 @@ const optName = (raw: unknown, what: string): Result<string | null> => {
 
 /** A new or renamed Song may be what some Video titles name: the title pass runs again, and the Videos it moved are reindexed. */
 function resuggest(db: Db) {
-  const touched: number[] = [];
+  const touched: string[] = [];
   suggestSongsFromTitles(db, { touched });
   if (touched.length) fillLatinTitles(db);
   for (const v of touched) reindexVideo(db, v);
@@ -39,28 +39,30 @@ function resuggest(db: Db) {
 export interface LocalSongRow { id: string; name: string; english_name: string | null }
 
 /** Creates a Local Song. A Song (Mirror or Local) already named so, case-insensitively, is returned instead. */
-export function createLocalSong(db: Db, body: Record<string, unknown>): Result<{ id: string; name: string; englishName: string | null; local: boolean; created: boolean }> {
+export function createLocalSong(db: Db, body: Record<string, unknown>): Result<{ id: string; name: string; englishName: string | null; local: boolean; proposed: boolean; created: boolean }> {
   const name = cleanName(body.name, "name");
   if (!name.ok) return name;
   const en = optName(body.englishName, "englishName");
   if (!en.ok) return en;
   const want = name.value.toLowerCase();
-  const same = (db.query("SELECT id, name, english_name, local FROM song_all ORDER BY local, name").all() as (LocalSongRow & { local: number })[]).find((s) => s.name.toLowerCase() === want);
-  if (same) return ok({ id: same.id, name: same.name, englishName: same.english_name, local: !!same.local, created: false });
+  const same = (
+    db.query("SELECT id, name, english_name, kind FROM song_all ORDER BY CASE kind WHEN 'archive' THEN 0 WHEN 'proposed' THEN 1 ELSE 2 END, name").all() as (LocalSongRow & { kind: string })[]
+  ).find((s) => s.name.toLowerCase() === want);
+  if (same) return ok({ id: same.id, name: same.name, englishName: same.english_name, local: same.kind === "local", proposed: same.kind === "proposed", created: false });
   const id = crypto.randomUUID();
   db.transaction(() => {
     db.prepare("INSERT INTO local_song (id, name, english_name, created_at) VALUES (?, ?, ?, ?)").run(id, name.value, en.value, new Date().toISOString());
     indexSong(db, id);
     resuggest(db);
   })();
-  return ok({ id, name: name.value, englishName: en.value, local: true, created: true });
+  return ok({ id, name: name.value, englishName: en.value, local: true, proposed: false, created: true });
 }
 
-/** Renames a Local Song (a Mirror Song's name belongs to the archive). */
+/** Renames a Local Song (an archive or Proposed Song's name belongs to the Shared data). */
 export function patchLocalSong(db: Db, id: string, body: Record<string, unknown>): Result<{ id: string; name: string; englishName: string | null }> {
   const cur = db.query("SELECT id, name, english_name FROM local_song WHERE id = ?").get(id) as LocalSongRow | null;
   if (!cur) {
-    if (db.query("SELECT 1 FROM mirror_song WHERE id = ?").get(id)) return bad("this Song comes from the archive and is edited there", 409);
+    if (db.query("SELECT 1 FROM song_all WHERE id = ?").get(id)) return bad("this Song comes from the archive and is edited there", 409);
     return bad("no such Song", 404);
   }
   let name = cur.name;
@@ -81,7 +83,7 @@ export function patchLocalSong(db: Db, id: string, body: Record<string, unknown>
   db.transaction(() => {
     db.prepare("UPDATE local_song SET name = ?, english_name = ? WHERE id = ?").run(name, en, id);
     indexSong(db, id);
-    for (const v of db.query("SELECT id FROM video WHERE song_id = ?").all(id) as { id: number }[]) reindexVideo(db, v.id);
+    for (const v of db.query("SELECT id FROM video_full WHERE song_id = ?").all(id) as { id: string }[]) reindexVideo(db, v.id);
     resuggest(db);
     fillLatinTitles(db);
   })();
@@ -91,11 +93,11 @@ export function patchLocalSong(db: Db, id: string, body: Record<string, unknown>
 /** Deletes a Local Song and its Local Versions. Refused while a Video, Chapter or Studio track still points at it. */
 export function deleteLocalSong(db: Db, id: string): Result<{ deleted: true }> {
   if (!db.query("SELECT 1 FROM local_song WHERE id = ?").get(id)) {
-    if (db.query("SELECT 1 FROM mirror_song WHERE id = ?").get(id)) return bad("this Song comes from the archive and cannot be deleted here", 409);
+    if (db.query("SELECT 1 FROM song_all WHERE id = ?").get(id)) return bad("this Song comes from the archive and cannot be deleted here", 409);
     return bad("no such Song", 404);
   }
   const n = (sql: string) => (db.query(sql).get(id) as { n: number }).n;
-  const used = n("SELECT COUNT(*) n FROM video WHERE song_id = ?") + n("SELECT COUNT(*) n FROM chapter WHERE song_id = ?") + n("SELECT COUNT(*) n FROM studio_track WHERE song_id = ?");
+  const used = n("SELECT COUNT(*) n FROM videos WHERE song_id = ?") + n("SELECT COUNT(*) n FROM video_chapters WHERE song_id = ?") + n("SELECT COUNT(*) n FROM studio_track WHERE song_id = ?");
   if (used) return bad(`${used} Video${used === 1 ? "" : "s"}, Chapter${used === 1 ? "" : "s"} or Studio track${used === 1 ? "" : "s"} still point at this Song; clear them first`, 409);
   db.transaction(() => {
     for (const v of db.query("SELECT id FROM local_version WHERE song_id = ?").all(id) as { id: string }[]) {
@@ -168,7 +170,7 @@ export function createLocalVersion(db: Db, songId: string, body: Record<string, 
 export function patchLocalVersion(db: Db, id: string, body: Record<string, unknown>): Result<{ id: string }> {
   const cur = db.query("SELECT id, song_id, label FROM local_version WHERE id = ?").get(id) as { id: string; song_id: string; label: string } | null;
   if (!cur) {
-    if (db.query("SELECT 1 FROM mirror_version WHERE id = ?").get(id)) return bad("this Version comes from the archive; add a local Version instead", 409);
+    if (db.query("SELECT 1 FROM version_all WHERE id = ?").get(id)) return bad("this Version comes from the archive; add a local Version instead", 409);
     return bad("no such Version", 404);
   }
   const r = readVersionBody(body, false);
@@ -192,12 +194,12 @@ export function patchLocalVersion(db: Db, id: string, body: Record<string, unkno
 /** Deletes a Local Version; Videos and Chapters pointing at it fall back to the Song's default Version. */
 export function deleteLocalVersion(db: Db, id: string): Result<{ deleted: true }> {
   if (!db.query("SELECT 1 FROM local_version WHERE id = ?").get(id)) {
-    if (db.query("SELECT 1 FROM mirror_version WHERE id = ?").get(id)) return bad("this Version comes from the archive and cannot be deleted here", 409);
+    if (db.query("SELECT 1 FROM version_all WHERE id = ?").get(id)) return bad("this Version comes from the archive and cannot be deleted here", 409);
     return bad("no such Version", 404);
   }
   db.transaction(() => {
-    db.prepare("UPDATE video SET version_id = NULL WHERE version_id = ?").run(id);
-    db.prepare("UPDATE chapter SET version_id = NULL WHERE version_id = ?").run(id);
+    db.prepare("UPDATE videos SET version_id = NULL WHERE version_id = ?").run(id);
+    db.prepare("UPDATE video_chapters SET version_id = NULL WHERE version_id = ?").run(id);
     db.prepare("DELETE FROM local_version WHERE id = ?").run(id);
     indexVersion(db, id);
   })();

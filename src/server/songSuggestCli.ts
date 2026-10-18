@@ -16,7 +16,7 @@ if (import.meta.main) {
   const db = openDb(cfg.dbPath, cfg.migrationsDir);
   try {
     const report: SongSuggestRow[] = [];
-    const r = suggestSongsFromTitles(db, { videoId: id ? Number(id) : undefined, dryRun, report });
+    const r = suggestSongsFromTitles(db, { videoId: id || undefined, dryRun, report });
     log("songs from titles:", r);
     if (!dryRun) {
       fillLatinTitles(db);

@@ -229,7 +229,7 @@ describe("zones (spec 6.3 to 6.5)", () => {
 
 // ---- Playlist ----
 
-const entries = (...ids: number[]) => ids.map((videoId) => ({ videoId }))
+const entries = (...ids: number[]) => ids.map((n) => ({ videoId: String(n) }))
 const seq = (es: Entry[] = entries(1, 2, 3), o: Partial<Playlist> = {}): Playlist => ({ ...startPlaylist(es, { source: "library", shuffled: false, startAt: 0 }), ...o })
 
 describe("Playlist on the TV (spec 6.7)", () => {
@@ -238,11 +238,11 @@ describe("Playlist on the TV (spec 6.7)", () => {
     const a = nextEntry(pl, "end")
     expect(a.kind).toBe("move")
     pl = a.pl
-    expect(current(pl)?.videoId).toBe(2)
+    expect(current(pl)?.videoId).toBe("2")
     pl = nextEntry(pl, "end").pl
     const last = nextEntry(pl, "end")
     expect(last.kind).toBe("ended")
-    expect(current(last.pl)?.videoId).toBe(3)
+    expect(current(last.pl)?.videoId).toBe("3")
     expect(nextEntry(seq(), "key").kind).toBe("move")
     expect(nextEntry(last.pl, "key").kind).toBe("none") // `>` at the end does nothing
   })
@@ -254,57 +254,57 @@ describe("Playlist on the TV (spec 6.7)", () => {
     const list = { ...seq(undefined, { repeat: "list" }), cursor: 2 }
     const w = nextEntry(list, "end")
     expect(w.kind).toBe("move")
-    expect(current(w.pl)?.videoId).toBe(1)
+    expect(current(w.pl)?.videoId).toBe("1")
   })
 
   test("unavailable Entries are skipped", () => {
     const pl = seq()
-    const m = nextEntry(pl, "end", (id) => id !== 2)
-    expect(current(m.pl)?.videoId).toBe(3)
-    expect(prevEntry(m.pl, (id) => id !== 2)?.cursor).toBe(0)
+    const m = nextEntry(pl, "end", (id) => id !== "2")
+    expect(current(m.pl)?.videoId).toBe("3")
+    expect(prevEntry(m.pl, (id) => id !== "2")?.cursor).toBe(0)
   })
 
   test("a Chapter Entry plays to the next Chapter's start; seeking past it widens", () => {
-    const chapters = [{ id: 10, startS: 0 }, { id: 11, startS: 100 }, { id: 12, startS: 250 }]
-    const rg = entryRange({ videoId: 5, chapterId: 11 }, chapters, 400)
+    const chapters = [{ id: "10", startS: 0 }, { id: "11", startS: 100 }, { id: "12", startS: 250 }]
+    const rg = entryRange({ videoId: "5", chapterId: "11" }, chapters, 400)
     expect(rg).toEqual({ start: 100, end: 250 })
     expect(reachedEnd(rg, 249.9)).toBe(false)
     expect(reachedEnd(rg, 250)).toBe(true)
     expect(seekWidens(rg, 300)).toBe(true)
-    expect(entryRange({ videoId: 5, chapterId: 12 }, chapters, 400)).toEqual({ start: 250, end: 400 })
-    expect(entryRange({ videoId: 5 }, chapters, 400)).toEqual({ start: 0, end: null })
+    expect(entryRange({ videoId: "5", chapterId: "12" }, chapters, 400)).toEqual({ start: 250, end: 400 })
+    expect(entryRange({ videoId: "5" }, chapters, 400)).toEqual({ start: 0, end: null })
   })
 
   test("entryStart: a Chapter Entry opens at its Chapter, a deleted Chapter as the Video", () => {
-    const pl = seq([{ videoId: 5, chapterId: 11 }, { videoId: 6 }])
-    expect(entryStart(pl, [{ id: 11, startS: 100 }])).toMatchObject({ startS: 100 })
-    const gone = entryStart(pl, [{ id: 99, startS: 1 }])
+    const pl = seq([{ videoId: "5", chapterId: "11" }, { videoId: "6" }])
+    expect(entryStart(pl, [{ id: "11", startS: 100 }])).toMatchObject({ startS: 100 })
+    const gone = entryStart(pl, [{ id: "99", startS: 1 }])
     expect(gone.startS).toBeNull()
-    expect(current(gone.pl)).toEqual({ videoId: 5 })
+    expect(current(gone.pl)).toEqual({ videoId: "5" })
     expect(entryStart(seq(), null).startS).toBeNull()
   })
 
   test("opened from elsewhere: a Video inside the Playlist jumps to its Entry, one outside ends it", () => {
     const pl = seq()
-    expect(resolveOpen(pl, 1)).toBe(pl)
-    expect(current(resolveOpen(pl, 3)!)?.videoId).toBe(3)
-    expect(resolveOpen(pl, 99)).toBeNull()
-    expect(resolveOpen(null, 1)).toBeNull()
+    expect(resolveOpen(pl, "1")).toBe(pl)
+    expect(current(resolveOpen(pl, "3")!)?.videoId).toBe("3")
+    expect(resolveOpen(pl, "99")).toBeNull()
+    expect(resolveOpen(null, "1")).toBeNull()
   })
 
   test("Shuffle with none active starts a whole-library Playlist from the current Video; with one it toggles the Play order", () => {
-    const started = pressShuffle(null, [4, 5, 6, 7], 6, () => 0.5)
+    const started = pressShuffle(null, ["4", "5", "6", "7"], "6", () => 0.5)
     expect(started.started).toBe(true)
     expect(started.pl?.source).toBe("library-all")
-    expect(current(started.pl!)?.videoId).toBe(6)
+    expect(current(started.pl!)?.videoId).toBe("6")
     expect(started.pl?.shuffled).toBe(true)
     expect(started.pl?.repeat).toBe("off")
     expect(started.label).toContain("4")
-    const toggled = pressShuffle(started.pl, [4, 5, 6, 7], 6)
+    const toggled = pressShuffle(started.pl, ["4", "5", "6", "7"], "6")
     expect(toggled.started).toBe(false)
     expect(toggled.pl?.shuffled).toBe(false)
     expect(toggled.label).toBe("Shuffle off")
-    expect(pressShuffle(null, [1, 2], 99).pl).toBeNull()
+    expect(pressShuffle(null, ["1", "2"], "99").pl).toBeNull()
   })
 
   test("Repeat cycles off, list, one; with only Playing from it says the Video loops and shows 'one' disabled", () => {
@@ -523,7 +523,7 @@ describe("backdrop hues (spec 6.2)", () => {
 // ---- OSD ----
 
 describe("OSD (spec 6.6)", () => {
-  const chapters = [{ id: 1, startS: 0, title: "Intro" }, { id: 2, startS: 100, title: "Song two" }, { id: 3, startS: 300, title: "" }]
+  const chapters = [{ id: "1", startS: 0, title: "Intro" }, { id: "2", startS: 100, title: "Song two" }, { id: "3", startS: 300, title: "" }]
 
   test("the Chapter line has the title and its span", () => {
     expect(chapterLine(chapters, 150, 500)).toBe("Song two · 1:40–5:00")
@@ -568,12 +568,12 @@ describe("OSD (spec 6.6)", () => {
 // ---- tags ----
 
 describe("tag row (spec 6.4)", () => {
-  const video = { type: "concert", artists: [{ id: 3, name: "Alash", nameLatin: null, local: false, suggested: false }, { id: 4, name: "Maybe", nameLatin: null, local: false, suggested: true }], song: { id: "uuid-1", name: "Aldyn-ool", englishName: null, hidden: false, local: false, versions: [] }, songSuggested: false } as unknown as VideoDto
+  const video = { type: "concert", artists: [{ id: "3", name: "Alash", nameLatin: null, local: false, proposed: false, suggested: false }, { id: "4", name: "Maybe", nameLatin: null, local: false, proposed: false, suggested: true }], song: { id: "uuid-1", name: "Aldyn-ool", englishName: null, hidden: false, local: false, versions: [] }, songSuggested: false } as unknown as VideoDto
 
   test("Type, confirmed Artists, then the Song; each opens its grid", () => {
     const tags = focusableTags(video)
     expect(tags.map((t) => t.label)).toEqual(["concert", "Alash", "♪ Aldyn-ool"])
-    expect(tags.map(tagGrid)).toEqual([{ kind: "type", type: "concert" }, { kind: "artist", id: 3, name: "Alash" }, { kind: "song", id: "uuid-1", name: "Aldyn-ool" }])
+    expect(tags.map(tagGrid)).toEqual([{ kind: "type", type: "concert" }, { kind: "artist", id: "3", name: "Alash" }, { kind: "song", id: "uuid-1", name: "Aldyn-ool" }])
   })
 
   test("a Video without Song or Artists has just its Type", () => {
@@ -583,9 +583,9 @@ describe("tag row (spec 6.4)", () => {
   test("the text after the tags: the Copy's facts and the audio state; Playing from with or without a Playlist", () => {
     expect(infoTexts(copy(), "audio: untouched")).toEqual(["mkv · h264 aac · 1080p · local", "audio: untouched"])
     expect(infoTexts(null, null)).toEqual([])
-    const pf = { source: "favorites" as const, ids: [7, 8, 9] }
-    expect(playingFromText(pf, 8, null)).toBe("Playing from Favorites · 2 of 3")
-    expect(playingFromText(pf, 8, seq())).toBe("Playing from Playlist · Library · in order · 1 of 3")
+    const pf = { source: "favorites" as const, ids: ["7", "8", "9"] }
+    expect(playingFromText(pf, "8", null)).toBe("Playing from Favorites · 2 of 3")
+    expect(playingFromText(pf, "8", seq())).toBe("Playing from Playlist · Library · in order · 1 of 3")
   })
 })
 

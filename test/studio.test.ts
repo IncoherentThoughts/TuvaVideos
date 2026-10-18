@@ -8,12 +8,13 @@ import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 import { openDb, type Db } from "../src/server/db";
-import { runImport } from "../src/server/import";
+import { runArchiveFollowUps } from "../src/server/localCopy/followUps";
 import { BridgeRefused, ResidentBridge, type Bridge, type PlayerState, type PlayResult } from "../src/server/studio/bridge";
 import { DumpCache, dumpRows, type DumpTrack } from "../src/server/studio/dump";
 import { applyMatches, buildIndex, matchTrack, normalize, rematchTrack, type MirrorTrackInput } from "../src/server/studio/match";
 import { keyAction } from "../src/shared/keymap";
 import { studioRoute } from "../src/shared/studio";
+import { loadArchiveFixture } from "./helpers/archive";
 
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
 const DUMP: DumpTrack[] = JSON.parse(readFileSync(join(import.meta.dir, "fixtures", "studio-dump.json"), "utf8")).tracks;
@@ -95,10 +96,10 @@ describe("matcher narrowing (spec 7.3)", () => {
 // ---------------------------------------------------------------------------------------------------------------
 function seed(db: Db) {
   db.exec(`
-    INSERT INTO mirror_artist (id, name, is_hidden, is_various_artists) VALUES ('A1','Alash',0,0), ('A2','Huun-Huur-Tu',0,0), ('A3','Kongar-ool Ondar',0,0);
-    INSERT INTO mirror_album (id, name, artist_id) VALUES ('AL1','Achai','A1'), ('AL2','Best Live','A2'), ('AL3','Sketches','A1'), ('AL4','Roots','A2'), ('AL5','Ay-Kherel: The Music of Tuva','A1'), ('AL6','The Music of Tuva','A1');
-    INSERT INTO mirror_song (id, name, slug) VALUES ('${S(1)}','One','one'), ('${S(2)}','Two','two'), ('${S(3)}','Three','three'), ('${S(4)}','Four','four');
-    INSERT INTO mirror_track (id, album_id, track_number, name, duration_s, song_id) VALUES
+    INSERT INTO archive_artist (id, name, is_hidden, is_various_artists) VALUES ('A1','Alash',0,0), ('A2','Huun-Huur-Tu',0,0), ('A3','Kongar-ool Ondar',0,0);
+    INSERT INTO archive_album (id, name, artist_id) VALUES ('AL1','Achai','A1'), ('AL2','Best Live','A2'), ('AL3','Sketches','A1'), ('AL4','Roots','A2'), ('AL5','Ay-Kherel: The Music of Tuva','A1'), ('AL6','The Music of Tuva','A1');
+    INSERT INTO archive_song (id, name, slug) VALUES ('${S(1)}','One','one'), ('${S(2)}','Two','two'), ('${S(3)}','Three','three'), ('${S(4)}','Four','four');
+    INSERT INTO archive_track (id, album_id, track_number, name, duration_s, song_id) VALUES
       ('M1','AL1',1,'Alash Oglumga',290,'${S(1)}'),
       ('M2','AL2',1,'Barlyk River',300,'${S(2)}'),
       ('M3','AL2',2,'Barlyk River',NULL,'${S(3)}'),
@@ -106,7 +107,7 @@ function seed(db: Db) {
       ('M5','AL4',1,'Throat Song',NULL,'${S(4)}'),
       ('M6','AL5',1,'Igil Solo',NULL,'${S(3)}'),
       ('M7','AL6',1,'Igil Solo',NULL,NULL);
-    INSERT INTO mirror_track_artist (track_id, artist_id, position) VALUES ('M5','A3',0);
+    INSERT INTO archive_track_artist (track_id, artist_id, position) VALUES ('M5','A3',0);
   `);
 }
 const rowsOf = (db: Db) => db.query("SELECT * FROM studio_track ORDER BY id").all() as any[];
@@ -134,7 +135,7 @@ describe("applyMatches on the DB (spec 7.3)", () => {
   test("one match per Mirror Track, and a Song does not list one recording twice", () => {
     const db = openDb(":memory:", MIGRATIONS);
     seed(db);
-    db.exec("INSERT INTO mirror_track (id, album_id, track_number, name, duration_s, song_id) VALUES ('M8','AL2',3,'Barlyk River',300,'" + S(2) + "')");
+    db.exec("INSERT INTO archive_track (id, album_id, track_number, name, duration_s, song_id) VALUES ('M8','AL2',3,'Barlyk River',300,'" + S(2) + "')");
     applyMatches(db, DUMP);
     expect(rowsOf(db).filter((r) => r.song_id === S(2)).length).toBe(1);
     db.close();
@@ -230,14 +231,14 @@ describe("applyMatches on the DB (spec 7.3)", () => {
     db.close();
   });
 
-  test("runImport with an injected dump runs the matcher; without one under `bun test` it is skipped", async () => {
+  test("the archive follow-ups with an injected dump run the matcher; without one under `bun test` it is skipped", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tuva-studio-imp-"));
     const db = openDb(":memory:", MIGRATIONS);
-    const FIXTURE = join(import.meta.dir, "fixtures", "backup");
-    const skipped = await runImport(db, FIXTURE);
+    loadArchiveFixture(db);
+    const skipped = await runArchiveFollowUps(db, { cacheDir: dir });
     expect(skipped.studio).toBeNull();
     const dump = new DumpCache(join(dir, "d.json"), async () => DUMP);
-    const run = await runImport(db, FIXTURE, { dump });
+    const run = await runArchiveFollowUps(db, { studio: { dump }, cacheDir: dir });
     expect(run.studio).not.toBeNull();
     expect(run.studio!.tracks).toBeGreaterThan(0);
     db.close();

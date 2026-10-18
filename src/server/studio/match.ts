@@ -124,18 +124,18 @@ export function loadMirrorTracks(db: Db): MirrorTrackRow[] {
     .query(
       `SELECT t.id, t.song_id AS songId, t.track_number AS trackNumber, t.name, t.duration_s AS durationS,
               COALESCE(a.name, '') AS album, a.artist_id AS albumArtistId, t.album_id AS albumId
-         FROM mirror_track t LEFT JOIN mirror_album a ON a.id = t.album_id`,
+         FROM archive_track t LEFT JOIN archive_album a ON a.id = t.album_id`,
     )
     .all() as (MirrorTrackRow & { albumArtistId: string | null; albumId: string })[];
   const names = new Map<string, string>();
-  for (const r of db.query("SELECT id, name FROM mirror_artist").all() as { id: string; name: string }[]) names.set(r.id, r.name);
+  for (const r of db.query("SELECT id, name FROM archive_artist").all() as { id: string; name: string }[]) names.set(r.id, r.name);
   const trackArtists = new Map<string, string[]>();
-  for (const r of db.query("SELECT track_id, artist_id FROM mirror_track_artist ORDER BY track_id, position").all() as { track_id: string; artist_id: string }[]) {
+  for (const r of db.query("SELECT track_id, artist_id FROM archive_track_artist ORDER BY track_id, position").all() as { track_id: string; artist_id: string }[]) {
     const n = names.get(r.artist_id);
     if (n) (trackArtists.get(r.track_id) ?? trackArtists.set(r.track_id, []).get(r.track_id)!).push(n);
   }
   const credits = new Map<string, string[]>();
-  for (const r of db.query("SELECT album_id, artist_id FROM mirror_album_credit ORDER BY album_id, position").all() as { album_id: string; artist_id: string }[]) {
+  for (const r of db.query("SELECT album_id, artist_id FROM archive_album_credit ORDER BY album_id, position").all() as { album_id: string; artist_id: string }[]) {
     const n = names.get(r.artist_id);
     if (n) (credits.get(r.album_id) ?? credits.set(r.album_id, []).get(r.album_id)!).push(n);
   }

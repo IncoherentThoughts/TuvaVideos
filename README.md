@@ -53,11 +53,10 @@ Bare keys, handled while the Player has focus (`Esc` or `v` brings focus back). 
 
 | Command | Does |
 |---|---|
-| `bun run import <backup-dir>` | Re-imports the Mirror from a Tuvan Lyrics Archive backup (post-migration-126), then Latin titles, search index and the Studio matcher |
 | `bun run latin-titles` | Fills Latin titles on Videos, Chapters and Local Artists |
 | `bun run fetch-youtube-info [--limit n] [--force] [--replies] [--no-suggest]` | The only networked step: yt-dlp info + top comments for concert-length Videos into `youtube-info/`; ends by running the suggest step on the ids it fetched |
-| `bun run suggest-chapters [ids] [--dry-run]` | Offline: writes Suggested Chapters from the cache and Mirror Performances |
+| `bun run suggest-chapters [ids] [--dry-run]` | Offline: writes Suggested Chapters from the cache and the archive's Performances (the Local copy) |
 | `bun run suggest-artists [id] [--dry-run]` | Re-runs the Artist matcher over the titles (Videos with a confirmed Artist are left alone) |
-| `bun run studio-match [--cached]` | Matches Mirror Tracks to Music.app tracks |
+| `bun run studio-match [--cached]` | Matches the archive's Tracks to Music.app tracks |
 | `bun run index-keyframes` | Indexes the keyframes of every Copy on a mounted Root that has none yet, so keyframe seeks are instant from the first play (otherwise each Copy is indexed when it first plays) |
 | `bun test`, `bun run typecheck` | Tests and types |

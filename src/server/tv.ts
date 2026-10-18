@@ -182,7 +182,7 @@ export class TvServer {
     }
     let title = this.activity?.ip === ip ? this.activity.title : null;
     const m = path.match(/^\/(?:copy|live)\/(\d+)/);
-    if (m) title = (db.query("SELECT v.title FROM copy c JOIN video v ON v.id = c.video_id WHERE c.id = ?").get(Number(m[1])) as { title: string } | null)?.title ?? title;
+    if (m) title = (db.query("SELECT v.title FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.id = ?").get(Number(m[1])) as { title: string } | null)?.title ?? title;
     this.activity = { ip, model: model ?? (db.query("SELECT model FROM approved_tv WHERE ip = ?").get(ip) as { model: string | null } | null)?.model ?? null, at: now, title };
   }
 

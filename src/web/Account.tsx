@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { SIGN_IN_ERRORS } from "../shared/session";
 import { chipView, type ChipView, endedLine, FORGOT_URL, shelveLine, submitBlocked } from "./chipView";
 import { useSession } from "./session";
+import { clearShelvedEdits, fetchShelved, onShelvedChange, openShelved } from "./History";
+import { navigate } from "./router";
 
 // One dialog for the whole app: the chip's "Sign in", the banner's and the first-launch panel's all open it.
 let dialogOpen = false;
@@ -85,8 +87,25 @@ export function AccountChip() {
   );
 }
 
+/** How many Shelved edits this machine keeps (§7.4), re-read when the menu opens and when they change. */
+function useShelvedCount(open: boolean) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const load = () => void fetchShelved().then((l) => setN(l.length)).catch(() => null);
+    if (open) load();
+    return onShelvedChange(load);
+  }, [open]);
+  return n;
+}
+
 function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "chip" }>; open: boolean; setOpen: (on: boolean) => void; box: Ref<HTMLDivElement> }) {
   const s = useSession();
+  const shelved = useShelvedCount(open);
+  const clearAll = async () => {
+    if (!confirm(`Clear ${shelved} Shelved edit${shelved === 1 ? "" : "s"}? They are not in the Shared data and cannot be brought back.`)) return;
+    setOpen(false);
+    await clearShelvedEdits().catch((e: Error) => alert(e.message));
+  };
   return (
     <div class="acct" ref={box} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setOpen(false))}>
       <button
@@ -127,6 +146,19 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
             <div class="am-err" title={view.sync.error}>
               {view.sync.error}
             </div>
+          )}
+          <button role="menuitem" onClick={() => (setOpen(false), navigate("/edits"))}>
+            Edits
+          </button>
+          {shelved > 0 && (
+            <>
+              <button role="menuitem" onClick={() => (setOpen(false), openShelved(null))}>
+                Shelved edits ({shelved})
+              </button>
+              <button role="menuitem" onClick={() => void clearAll()}>
+                Clear Shelved edits
+              </button>
+            </>
           )}
           <button role="menuitem" onClick={() => (setOpen(false), void s.signOut())}>
             Sign out

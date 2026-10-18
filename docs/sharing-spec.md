@@ -369,6 +369,15 @@ A Bun script in this repo, run once with the service-role key after the archive 
 - writes one `video.migrated` history row per Video and per Proposed row;
 - prints the 351 Videos on hidden Songs as the initial exposure list for the owner to confirm, then exposes them.
 
+*(amended in #113: `scripts/migrate-shared.ts`, pure parts in `src/server/migrateShared/`.)*
+
+- **Credentials.** Migration 130's gates read `auth.uid()` (`is_video_editor()`, `get_my_role() = 'admin'`), which a service-role call does not have, so the service-role key (`TUVA_ARCHIVE_SERVICE_KEY`, env only) mints a session for the owner (`TUVA_MIGRATE_AS`, Auth admin `generate_link` magiclink + `verify`, no email sent), and every write function runs as the owner: the history's `editor_id` is the owner, and the owner must hold the editor grant and the archive admin role. The key itself is used for the emptiness checks, the poster uploads and the two writes no function takes: the rejection rows (no op writes a rejection without a Chapter or link to reject) and the library's `videos.created_at` (the functions stamp `now()`). Andrei Mongush's archive id is read by name with the publishable key (`TUVA_ARCHIVE_URL`, `TUVA_ARCHIVE_KEY`).
+- **History.** Proposed rows get `proposed.migrated`, not `video.migrated`: `write_proposed_*` take only the `proposed.*` family. A deletion is carried as `insert` (`video.migrated`) then `delete` (`video.deleted`, the library's date in `new_value`).
+- **Ids.** The Local copy already holds the deterministic uuids (0015), so ids are carried as they are; a Local Song, Version or Artist becomes the Proposed row of the same id. A `deleted_video` row gets `64656c00-0000-8000-8000-<n as 12 hex>`; one whose identity is a live Video again is not carried.
+- **Refusals**, re-counted every run: the #87 names (matched loosely: lower case, search fold, j -> y, punctuation dropped, letter runs collapsed), any Local Song or Artist that meets another Local row or an archive row that way (or would hit the dedupe's exact fold), the 6 working-note labels (7 Versions), the unreferenced Local Songs (eir excepted: dropped), and Version pointers the composite FK would refuse. `--accept "<name>"` acknowledges a reviewed near-duplicate. Unreferenced Local Artists are dropped, not refused.
+- **Exposure** covers the hidden Songs that Videos **or Chapters** point at.
+- **Re-runnable.** A resume marker (`<data dir>/migrate-shared.state.json`) lets a run start on a target holding only rows it planned; what is done is read back from the target. `library.db` is read through a migrated temporary copy, never written.
+
 ### 9.3 Cutover (HITL)
 
 Purge the seed and the test accounts; run the migration; confirm the exposure list; sign in on the owner's machine (reconciliation is a no-op); the Mirror tables were already renamed `archive_*` by the companion's migration (#112) and the first Sync refreshes them; `bun run import` and the backup import already left the README in #112. ADR 0001 is retired with the Mirror (ADR 0009).

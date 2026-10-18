@@ -21,7 +21,8 @@
     "fetch-youtube-info": "bun scripts/fetch-youtube-info.ts",
     "app": "bun scripts/make-app.ts",
     "tv-prototype": "bun tv/home-prototype/serve.ts",
-    "tv-install": "bun scripts/tv-install.ts"
+    "tv-install": "bun scripts/tv-install.ts",
+    "seed-shared": "bun scripts/seed-shared.ts"
   },
   "bin": {
     "tuva": "src/server/index.ts"

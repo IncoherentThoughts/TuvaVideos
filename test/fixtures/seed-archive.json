@@ -1,0 +1,22 @@
+{
+  "_comment": "A stand-in for the archive rows seed-shared.ts reads (scripts/seed/plan.ts ArchiveSnapshot): used by the tests and by --dry-run without TUVA_ARCHIVE_URL. Fake ids and names.",
+  "songs": [
+    { "id": "00000000-0000-4000-8000-000000000103", "name": "Fixture Song C" },
+    { "id": "00000000-0000-4000-8000-000000000101", "name": "Fixture Song A" },
+    { "id": "00000000-0000-4000-8000-000000000102", "name": "Fixture Song B" },
+    { "id": "00000000-0000-4000-8000-000000000104", "name": "Fixture Song Without Version" },
+    { "id": "00000000-0000-4000-8000-000000000100", "name": "zz-test leftover Song" }
+  ],
+  "versions": [
+    { "id": "00000000-0000-4000-8000-000000000201", "song_id": "00000000-0000-4000-8000-000000000101", "label": "Main" },
+    { "id": "00000000-0000-4000-8000-000000000202", "song_id": "00000000-0000-4000-8000-000000000102", "label": null },
+    { "id": "00000000-0000-4000-8000-000000000205", "song_id": "00000000-0000-4000-8000-000000000102", "label": "Second" },
+    { "id": "00000000-0000-4000-8000-000000000203", "song_id": "00000000-0000-4000-8000-000000000103", "label": "Main" },
+    { "id": "00000000-0000-4000-8000-000000000200", "song_id": "00000000-0000-4000-8000-000000000100", "label": "Main" }
+  ],
+  "artists": [
+    { "id": "00000000-0000-4000-8000-000000000302", "name": "Fixture Artist B" },
+    { "id": "00000000-0000-4000-8000-000000000301", "name": "Fixture Artist A" },
+    { "id": "00000000-0000-4000-8000-000000000303", "name": "Fixture Artist C" }
+  ]
+}

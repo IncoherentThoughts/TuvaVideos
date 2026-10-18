@@ -2,7 +2,7 @@
 // History is Shared data the pull and `/api/cache/apply` deliver; the companion only reads it here. Shelved edits are
 // this machine's (`shelved_edit`, §2.3): listed, and cleared one, one Video's, or all at once.
 import type { Db } from "./db";
-import { clearShelved, listShelved } from "./localCopy/meta";
+import { clearShelved, listShelved, markShelvedSeen, unseenShelvedVideos } from "./localCopy/meta";
 import { decodeValue, showValue, type EditsPage, type HistoryEntry, type ShelvedItem } from "../shared/editHistory";
 import { diffRow, type DiffNow } from "../shared/shelvedDiff";
 import { localNames } from "./reconcile";
@@ -147,7 +147,7 @@ export function shelvedItems(db: Db, videoId?: string): ShelvedItem[] {
     }
     const { kind, ...payload } = p;
     const diff = v ? diffRow(s.payload, nowOf(s.videoId), names) : { ...diffRow(s.payload, nowOf(s.videoId), names), after: "(not on this machine)" };
-    return { id: s.id, videoId: s.videoId, videoTitle: v?.title ?? "(gone)", shared: !!v?.shared, shelvedAt: s.shelvedAt, kind, payload, summary, diff };
+    return { id: s.id, videoId: s.videoId, videoTitle: v?.title ?? "(gone)", shared: !!v?.shared, shelvedAt: s.shelvedAt, kind, payload, summary, diff, seen: s.seenAt != null };
   });
 }
 
@@ -156,4 +156,4 @@ export function dropShelved(db: Db, id: number): boolean {
   return db.query("DELETE FROM shelved_edit WHERE id = ?").run(id).changes > 0;
 }
 
-export { clearShelved };
+export { clearShelved, markShelvedSeen, unseenShelvedVideos };

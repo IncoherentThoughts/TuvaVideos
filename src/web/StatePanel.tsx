@@ -9,7 +9,8 @@ import type { CopyDto, VideoDto } from "../shared/types";
 import type { ChapterMark } from "./Timeline";
 import { api } from "./data";
 import { FavoriteBadge, artistSlot, resolutionLabel } from "./ui";
-import { VideoHistory } from "./History";
+import { useUnseenShelved, VideoHistory } from "./History";
+import { hasUnseenShelved } from "../shared/editHistory";
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -115,6 +116,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
   const [, tick] = useState(0);
   const [tab, setTabState] = useState(lastTab);
   const setTab = (t: typeof tab) => ((lastTab = t), setTabState(t));
+  const shelfNew = hasUnseenShelved(useUnseenShelved(), video.id);
   useEffect(() => {
     if (tab !== "state") return;
     const t = setInterval(() => tick((n) => n + 1), 250);
@@ -197,7 +199,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
       <div class="stp-head">
         <div class="stp-tabs" role="tablist">
           <button role="tab" tabIndex={-1} aria-selected={tab === "state"} class={tab === "state" ? "on" : ""} onClick={() => setTab("state")}>State</button>
-          <button role="tab" tabIndex={-1} aria-selected={tab === "history"} class={tab === "history" ? "on" : ""} onClick={() => setTab("history")}>History</button>
+          <button role="tab" tabIndex={-1} aria-selected={tab === "history"} class={tab === "history" ? "on" : ""} onClick={() => setTab("history")}>History{shelfNew && <span class="shelf-dot" aria-label="New Shelved edits" />}</button>
         </div>
         {v && !v.paused && !v.ended ? <span class="live on"><i /> live</span> : <span class="live"><i /> {v?.ended ? "ended" : "paused"}</span>}
         <span class="dim">press <kbd>i</kbd> to hide</span>

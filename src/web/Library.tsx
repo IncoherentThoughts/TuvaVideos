@@ -16,6 +16,8 @@ import { useWindowed } from "./windowed";
 import { FirstLaunchPanel, NoRootBar, useOnboarding } from "./Onboarding";
 import { openSignIn } from "./Account";
 import { useSession } from "./session";
+import { useUnseenShelved } from "./History";
+import { hasUnseenShelved } from "../shared/editHistory";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
@@ -25,12 +27,15 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
   const notHere = isNotHere(v);
   // #158: with the grant, the Unshared exceptions carry one corner mark (opposite §7.1's); Shared cards stay plain.
   const unshared = sharingMark(v, !!useSession().record?.grantLevel) === "unshared";
+  // #159: Shelved edits not looked at yet: a small dot before the title (the corners are §7.1's and #158's).
+  const shelfNew = hasUnseenShelved(useUnseenShelved(), v.id);
   return (
     <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}${unshared ? " unshared" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <Poster video={v} dur />
       {notHere && <NotHereMark />}
       {unshared && <UnsharedMark />}
       <div class="ttl">
+        {shelfNew && <span class="shelf-dot" title="Shelved edits you have not looked at (History tab on the Video)" />}
         {v.favoritedAt && <FavoriteBadge />}
         {titleHtml != null ? <span dangerouslySetInnerHTML={{ __html: titleHtml }} /> : v.title}
       </div>

@@ -230,6 +230,8 @@ export function setLastPlayed(id: string) {
 
 /** The in-memory library, for code outside components. */
 export const currentVideos = () => state.videos;
+/** Calls `f` after every store change, outside components. Returns the unsubscribe. */
+export const onStoreChange = (f: () => void) => (subs.add(f), () => void subs.delete(f));
 
 /**
  * Plays a random Available Video (the top-bar button and `r`), skipping the one on screen so a repeat always moves.

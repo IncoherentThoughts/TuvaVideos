@@ -3,8 +3,9 @@
 // copy back and Clear. Undo buttons for Video Editors only; everything reads the Local copy through the companion.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { DiffRowView, ShelvedExplainer } from "./ShelvedDiff";
-import { EVENT_FILTERS, editorLabel, groupWrites, showValue, type EditsPage, type HistoryEntry, type ShelvedItem, type WriteGroup } from "../shared/editHistory";
-import { api, reloadAll, replaceVideo } from "./data";
+import { EVENT_FILTERS, editorLabel, groupWrites, hasUnseenShelved, showValue, type EditsPage, type HistoryEntry, type ShelvedItem, type WriteGroup } from "../shared/editHistory";
+import { writePills, type ActionPill } from "../shared/historyPill";
+import { api, currentVideos, onStoreChange, reloadAll, replaceVideo } from "./data";
 import { Link, playHref } from "./router";
 import { useSession } from "./session";
 import { dismissToast, RELOADED_EVENT, undoFromToast, undoWrite, useUndoToast, writeLink } from "./writeLink";
@@ -21,6 +22,19 @@ function change(e: HistoryEntry): string | null {
   if (!e.fieldName || (e.oldValue == null && e.newValue == null) || e.description.includes("→")) return null;
   if (e.fieldName === "song_id" || e.fieldName === "version_id" || e.fieldName === "artist_id") return null; // ids say nothing
   return `${showValue(e.oldValue)} → ${showValue(e.newValue)}`;
+}
+
+/** A write's coloured action pills (#159): edit, create, soft delete, undo, Repoint, share, Elevate, expose, … */
+export function ActionPills({ pills }: { pills: ActionPill[] }) {
+  return (
+    <span class="apills">
+      {pills.map((p) => (
+        <span key={p.label} class={`apill ${p.kind}`}>
+          {p.label}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 /** The writes, newest first, with Undo for a Video Editor. `onChanged` after an undo (re-read the list). */
@@ -50,6 +64,7 @@ export function WriteList({ groups, showVideo, onChanged }: { groups: WriteGroup
         return (
           <li key={g.key} class={undone ? "undone" : ""}>
             <div class="hist-head">
+              <ActionPills pills={writePills(g.entries)} />
               <span class="hist-when">{when(g.createdAt)}</span>
               <span class="hist-who">{editorLabel(g.editorId, me)}</span>
               {showVideo && g.videoId && (
@@ -58,7 +73,6 @@ export function WriteList({ groups, showVideo, onChanged }: { groups: WriteGroup
                 </Link>
               )}
               {undone && <span class="hist-tag">undone</span>}
-              {g.entries.some((e) => e.reverses) && <span class="hist-tag">undo</span>}
               {s.canEdit && !undone && !block && (
                 <button class="btn small hist-undo" disabled={busy != null} onClick={() => void undo(g)}>
                   {busy === g.key ? "Undoing…" : "Undo"}
@@ -105,11 +119,13 @@ export function VideoHistory({ videoId, shared }: { videoId: string; shared: boo
   useEffect(load, [videoId]);
   useReloadOn(videoId, load);
   useEffect(() => onShelvedChange(load), [videoId]);
+  const unseen = hasUnseenShelved(useUnseenShelved(), videoId);
   return (
     <div class="vhist">
       {shelved > 0 && (
-        <button class="shelf-mark" onClick={() => openShelved(videoId)} title="Values this machine had before sign-in replaced them with the Shared ones">
-          {shelved} Shelved edit{shelved === 1 ? "" : "s"}
+        <button class={`shelf-mark${unseen ? " unseen" : ""}`} onClick={() => openShelved(videoId)} title={`Values this machine had before sign-in replaced them with the Shared ones${unseen ? " (not looked at yet)" : ""}`}>
+          {unseen && <span class="shelf-dot" aria-hidden="true" />}
+          {shelved} Shelved edit{shelved === 1 ? "" : "s"}{unseen ? " · new" : ""}
         </button>
       )}
       {err && <p class="bad">{err}</p>}
@@ -220,6 +236,56 @@ export const openShelved = (videoId: string | null = null) => ((drawer = { video
 export const onShelvedChange = (f: () => void) => (shelvedSubs.add(f), () => void shelvedSubs.delete(f));
 const shelvedChanged = () => shelvedSubs.forEach((f) => f());
 
+// "Seen" (#159): the Videos with Shelved edits the user has not opened the drawer on. One Set for the whole page,
+// read from `GET /api/shelved/unseen` when the first reader mounts, after every library reload (a Sync can shelve),
+// after a Clear or copy back, and after the drawer stamps its rows seen.
+let unseen: ReadonlySet<string> = new Set();
+const unseenSubs = new Set<() => void>();
+let unseenLoading: Promise<void> | null = null;
+let unseenAgain = false;
+let watchingStore = false;
+let lastVideos: unknown = undefined;
+export function refreshUnseen(): Promise<void> {
+  if (unseenLoading) return ((unseenAgain = true), unseenLoading);
+  unseenLoading = fetch("/api/shelved/unseen")
+    .then((r) => (r.ok ? (r.json() as Promise<string[]>) : Promise.reject(new Error(`unseen: ${r.status}`))))
+    .then((ids) => ((unseen = new Set(ids)), unseenSubs.forEach((f) => f())))
+    .catch(() => undefined)
+    .finally(() => {
+      unseenLoading = null;
+      if (unseenAgain) (unseenAgain = false), void refreshUnseen();
+    });
+  return unseenLoading;
+}
+/**
+ * The Videos with unseen Shelved edits, kept current. A grid card's dot is
+ * `hasUnseenShelved(useUnseenShelved(), v.id) && <span class="shelf-dot" />`.
+ */
+export function useUnseenShelved(): ReadonlySet<string> {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    unseenSubs.add(f);
+    if (!watchingStore) {
+      watchingStore = true;
+      onShelvedChange(() => void refreshUnseen());
+      onStoreChange(() => {
+        const v = currentVideos();
+        if (v !== lastVideos) (lastVideos = v), void refreshUnseen();
+      });
+      lastVideos = currentVideos();
+      void refreshUnseen();
+    }
+    return () => void unseenSubs.delete(f);
+  }, []);
+  return unseen;
+}
+/** The drawer opened on one Video (or every Video): its Shelved edits are seen now. */
+async function markSeen(videoId: string | null) {
+  const r = await fetch(videoId ? `/api/videos/${videoId}/shelved/seen` : "/api/shelved/seen", { method: "POST" });
+  if (r.ok) await refreshUnseen();
+}
+
 /** Clears one Video's Shelved edits, or all of them. Returns how many went. */
 export async function clearShelvedEdits(videoId?: string | null): Promise<number> {
   const r = await fetch(videoId ? `/api/videos/${videoId}/shelved` : "/api/shelved", { method: "DELETE" });
@@ -246,10 +312,16 @@ function ShelvedDialog({ videoId, onClose }: { videoId: string | null; onClose: 
   const [items, setItems] = useState<ShelvedItem[] | null>(null);
   const [busy, setBusy] = useState<number | string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const load = () => void fetchShelved(videoId ?? undefined).then(setItems).catch((e: Error) => setErr(e.message));
+  // The ones unseen when the drawer opened keep a "new" mark while it stays open (#159).
+  const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set());
+  const load = () => fetchShelved(videoId ?? undefined).then((l) => (setItems(l), l)).catch((e: Error) => (setErr(e.message), null));
   useEffect(() => {
     box.current?.showModal();
-    load();
+    void load().then((l) => {
+      if (!l) return;
+      setFresh(new Set(l.filter((i) => !i.seen).map((i) => i.id)));
+      if (l.some((i) => !i.seen)) void markSeen(videoId);
+    });
   }, []);
   const byVideo = new Map<string, ShelvedItem[]>();
   for (const it of items ?? []) byVideo.set(it.videoId, [...(byVideo.get(it.videoId) ?? []), it]);
@@ -306,6 +378,7 @@ function ShelvedDialog({ videoId, onClose }: { videoId: string | null; onClose: 
           <ul class="sd-rows">
             {list.map((it) => (
               <DiffRowView key={it.id} row={it.diff ?? { attr: it.kind, label: it.summary, before: it.summary, after: "" }}>
+                {fresh.has(it.id) && <span class="apill new">new</span>}
                 <span class="dim sd-when">shelved {when(it.shelvedAt)}</span>
                 {s.canEdit && it.shared && (
                   <button class="btn small" disabled={busy != null} onClick={() => void copyBack(it)}>

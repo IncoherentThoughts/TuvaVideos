@@ -874,3 +874,30 @@ ul.sd-rows { list-style: none; margin: 4px 0; padding: 0 0 0 10px; font-size: .9
 .sd-arrow { color: var(--fg3); }
 .sd-when { font-size: .9em; }
 dialog.shelf .sd-row .btn { margin-left: auto; }
+
+/* Unseen Shelved edits and history action pills (#159). The dot marks a Video whose Shelved edits nobody has opened
+   the drawer on: on the State button, the History tab, the History tab's marker and before a grid card's title (the
+   card corners are §7.1's Not on this machine and #158's Unshared). Palette tokens only, so a theme that redefines
+   --t1..--t8 recolours them. */
+.shelf-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--t3); box-shadow: 0 0 0 2px color-mix(in srgb, var(--t3) 30%, transparent); vertical-align: middle; margin-inline: 0 6px; }
+.shelf-mark.unseen { border-style: solid; background: color-mix(in srgb, var(--t3) 16%, transparent); font-weight: 600; }
+.cbtn.statebtn.shelf-new { border-color: color-mix(in srgb, var(--t3) 70%, var(--line)); }
+.cbtn.statebtn .shelf-dot { margin: 0; }
+.stp-tabs .shelf-dot { margin: 0 0 0 6px; }
+.card .ttl .shelf-dot { margin-right: 5px; }
+.apills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.apill { --c: var(--fg2); display: inline-block; font-size: .78em; font-weight: 600; line-height: 1.35; padding: 0 7px; border-radius: 999px; white-space: nowrap; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+.apill.edit { --c: var(--t6); }
+.apill.create { --c: var(--t4); }
+.apill.delete { --c: var(--t1); }
+.apill.restore { --c: var(--t5); }
+.apill.undo { --c: var(--t7); }
+.apill.repoint { --c: var(--t2); }
+.apill.share { --c: var(--t3); }
+.apill.elevate { --c: var(--accent); }
+.apill.expose { --c: var(--t8); }
+.apill.suggest { --c: var(--fg3); border-style: dashed; }
+.apill.confirm { --c: var(--ok); }
+.apill.reject { --c: var(--no); }
+.apill.migrate { --c: var(--fg2); }
+.apill.new { --c: var(--t3); }

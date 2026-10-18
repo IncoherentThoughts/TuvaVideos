@@ -44,15 +44,15 @@ Two companions on this Mac, each with its own data dir, port and test Root. Port
 | Test Root | `~/TuvaTest/A/root` (the seed script's output) | `~/TuvaTest/B/root` (a subset of A's clips plus two of its own) |
 | Account | test Video Editor | test Member (the no-grant account where a scenario says so) |
 | Origin | `http://localhost:4401` | `http://localhost:4402` |
-| TV Server | no | **yes**: the TV Server reads machine B's Local copy |
+| TV Server | no | **yes**: the TV Server reads machine B's Local copy, on port `4403` (`TUVA_TV_PORT`) |
 
 Setup, once:
 
 1. `mkdir -p ~/TuvaTest/A/data ~/TuvaTest/A/root ~/TuvaTest/B/data ~/TuvaTest/B/root`.
-2. `bun scripts/seed-shared.ts` with `~/TuvaTest/A/root` as its test Root.
+2. `bun scripts/seed-shared.ts --root ~/TuvaTest/A/root` (with `--dry-run` first to read the plan). The script reads `TUVA_ARCHIVE_URL`, `TUVA_ARCHIVE_KEY`, `TUVA_SEED_EMAIL` and `TUVA_SEED_PASSWORD`; `bun --env-file=<file> scripts/seed-shared.ts …` loads them without exporting them into the shell.
 3. Copy about half of the seeded clips into `~/TuvaTest/B/root`, including at least one YouTube-id, one Instagram, one Rutube and one id-less clip, so machine B has Videos both on and Not on this machine. Re-encode one of the YouTube-id clips (same name, different bytes) so its provenance matches and its hash does not. Add two clips the seed does not know, made with ffmpeg the same way: `zz-test unknown B1 [aaaaaaaaaa1].mp4` and the id-less `zz-test unknown B2.mp4`.
-4. Start each machine from the worktree with its env vars: `TUVA_DATA_DIR=~/TuvaTest/A/data TUVA_PORT=4401 <the README's start command>`, and likewise for B with `~/TuvaTest/B/data` and `4402`. Both run at once.
-5. Start the TV Server against machine B (`TUVA_DATA_DIR=~/TuvaTest/B/data`) and open its page on the TV or in a browser tab.
+4. Start each machine from the worktree with its env vars: `TUVA_NO_OPEN=1 TUVA_DATA_DIR=~/TuvaTest/A/data TUVA_PORT=4401 bun run start`, and for B `TUVA_NO_OPEN=1 TUVA_DATA_DIR=~/TuvaTest/B/data TUVA_PORT=4402 TUVA_TV_PORT=4403 bun run start`. Both run at once. *(Amended in #120: the TV Server's default port is 4401, machine A's companion port, so B's TV Server must be moved; on macOS the wildcard bind succeeds silently beside A's `127.0.0.1:4401`, so nothing warns.)*
+5. The TV Server lives in B's companion: the header's **TV** button (or `POST /api/tv/on`). Open `http://127.0.0.1:4403/` in a browser tab; it answers `{"error":"approve"}` until that client is approved from B's TV panel (or `POST /api/tv/approve {"ip":"127.0.0.1"}`).
 
 Reset a machine between runs by stopping it and deleting its `data` directory; reset a Root by re-copying clips. Never `--purge` mid-run: both machines depend on the seeded Shared content.
 
@@ -71,10 +71,10 @@ Machine B, never signed in; later signed out, and signed in without the grant. W
 | S1 | Start B on the fresh `~/TuvaTest/B/data`. | The first launch flow (Root field offered); a plain "Sign in" button at the header's right and nothing else; the app looks as before sharing. | §8.4, §2.2 |
 | S2 | Add `~/TuvaTest/B/root` as a Root and scan. | All clips appear as Videos; none has `pending_share` set; every one is Unshared. No request to Supabase (REST or Storage). | §6.6, §6.5 |
 | S3 | Tag locally a title, a Type, a Song and a Version pointer, an Artist and two Chapters on three Videos the seed also knows (one by YouTube id, one by Rutube id, one id-less one known by hash), and on `zz-test unknown B1`. Create one new Song while doing so. Star one of those Chapters and one Video as Favorites. | Writes land; the new Song is a `local_song` row. Favorites list shows both stars. | §6.1 |
-| S4 | Play a Video for 20 s, stop, reopen. | Resume offered, as today. | §2.4 |
+| S4 | Play a Video for 20 s, stop, reopen. Use a clip of a minute or more (`ffmpeg -f lavfi -i testsrc=duration=60 …`): every seeded clip is under 30 s, and a position within 30 s of the end counts as finished and reopens at 0. *(Amended in #120.)* | Resume offered, as today. | §2.4 |
 | S5 | Unmount the Root (rename the folder) and reload; rename it back. | Cards are Unmounted: dashed drive icon, "plug the drive in" overlay; auto-resume when the Root returns. | §7.1 |
 | S6 | Look at the header. | No account chip, no Sync row, no Edits entry. | §2.2 |
-| S7 | Look for the "On this machine" filter. | Hidden, since every Video here has a Copy; the `#available` search token still works. | §7.2 |
+| S7 | Look for the "On this machine" filter. | Shown: the chip hides only when it would select nothing (no Video with an Available Copy, #148), so on a Standalone machine with every Copy mounted it shows and selects everything; with the Root unmounted (S5) it is hidden. The `#available` search token still works. *(Amended in #120.)* | §7.2 |
 | S8 | (After §3.1) Sign out on B from the Member session. | No confirmation; Session record cleared; chip back to "Sign in". The Local copy stays, read-only: Shared Videos listed with their Shared tags, no edit controls on them. Favorites, Resume, Copies, Roots, Thumbnails, Audio settings and Studio tracks untouched; Exposed Songs' text still readable. No purge. | §2.4 |
 | S9 | Signed out, drop `zz-test unknown B3.mp4` into B's Root and scan. | An Unshared Video, taggable locally; nothing is sent. | §2.4, §6.6 |
 | S10 | Signed out, scroll the whole grid. | Zero Storage requests; downloaded Shared posters show; others fall back to the locally generated poster, then the no-image card. | §6.5 |
@@ -248,21 +248,119 @@ The TV Server reads machine B's Local copy (§1.3).
 
 ## 8. Results (#120)
 
-Run by: ______ Date: ______ Commit: ______ Seed manifest: ______ Seeded Videos: ______
-Session time-box and inactivity limit off (MD3): yes / no
+### Agent pass, 2026-10-18
+
+Run by: Opus build agent (Claude Opus 5.5) Date: 2026-10-18 Commit: `265f33d` (main `7498201` plus the seed fix) Seed manifest: `~/TuvaTest/A/root/zz-test-seed.manifest.json` Seeded Videos: 11 (10 live, 1 soft-deleted), with 5 Chapters, 9 Artist links, 2 each of Proposed Songs, Versions and Artists, 11 posters
+Session time-box and inactivity limit off (MD3): not checked (owner)
+
+Accounts: the plan's `+videotest` addresses were replaced by `test1@test.com` (Video Editor, grant `editor`, archive moderator), `test2@test.com` (Member, grant `member`) and `test3@test.com` (no grant). `bun test` 890 pass, 0 fail; `tsc --noEmit` clean.
+
+13 Pass, 0 Fail, 83 left for the owner. The agent did not sign in to the archive from either app: entering an account password into a page that sends it to the live Supabase project is outside what it may do, so every scenario that needs a session is the owner's. The seed itself ran (the owner's script, credentials from the env file).
 
 | Scenario | Pass / Fail | Notes | Follow-up issue |
 |---|---|---|---|
-| S1 | | | |
-| S2 | | | |
-| … | | | |
-| T7 | | | |
+| S1 | Pass | Fresh B: Root panel and Sign in card (§8.4's two calls to action); the header holds only "Sign in". | |
+| S2 | Pass | 7 clips (5 seeded, B1, B2) scanned; `pending_share` 0 and `shared` 0 on every Video; no request left localhost (Performance entries, companion log). | |
+| S3 | Pass | Title, Type, Song, Artist and two Chapters on Хоомей (UI) and on the Rutube clip, the id-less one and B1 (the same routes from the page); the new Song is a `local_song`; Favorites lists the Video and the Chapter. No Version pointer: a never-signed-in machine has no Versions to pick (`archive_version` empty; a local Song has none). | |
+| S4 | Pass | Seeded clips are 3-8 s, always "finished"; used a 60 s clip (`zz-test long B4.mp4`): paused at 21 s, reopened at 21 s. Plan amended. | |
+| S5 | Pass | Root renamed: cards carry the dashed drive (`avail none`), the Player shows "Copy unavailable … Plug the drive in"; renamed back, playback resumed by itself within the 3 s poll. | |
+| S6 | Pass | Only "Sign in"; no chip, Sync row or Edits. | |
+| S7 | Pass | Chip shown with every Copy mounted (hidden only when it would select nothing, #148) and hidden while the Root was unmounted. Plan amended (it said hidden). | |
+| S8 | Owner | Needs the Member session of §3.1. Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| S9 | Pass | Run before any sign-in: `zz-test unknown B3.mp4` scanned in as Unshared (`pending_share` 0), taggable, nothing sent. Repeat after S8 for the signed-out-with-Local-copy case. | |
+| S10 | Owner | Needs downloaded Shared posters (after a Member Sync). Before any sign-in the grid made zero non-local requests. Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| S11 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| S12 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| S13 | Pass | B stopped, data dir deleted, restarted: onboarding `standalone`/panel, Root saved through `POST /api/roots`, S3's tags and Favorites re-applied; 9 Videos, all Unshared, one `local_song`. B is left in this state for §3. | |
+| M1 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M2 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M3 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M4 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M5 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M6 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M7 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M8 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M9 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M10 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M11 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M12 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M13 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M14 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M15 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M16 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M17 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M18 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M19 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M20 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M21 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M22 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M23 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M24 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M25 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M26 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M27 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M28 | Owner | Refusal half passed: `POST /api/sync` with a foreign Origin 403, with a foreign Host 403 ("Host is not this machine"). Token half needs a session. Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M29 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M30 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M31 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| M32 | Pass | `POST /api/cache/apply` with `shared_schema: 999`: 422 "nothing was applied: the batch is Shared schema 999, this checkout speaks 1". | |
+| M33 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MO1 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MO2 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MO3 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MO4 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MO5 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MO6 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MD1 | Owner | Archive console action plus a B session. | |
+| MD2 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| MD3 | Owner | Dashboard check (Auth, Sessions). | |
+| E1 | Pass | Fresh A: panel, Root added, all 11 seeded clips (the soft-deleted one too) appear as Unshared; two tagged locally. | |
+| E2 | Pass | A1 and A2 scanned in after the first scan, Unshared; A1 points at a new `local_song`. | |
+| E3 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E4 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E5 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E6 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E7 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E8 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E9 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E10 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E11 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E12 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E13 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E14 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E15 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E16 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E17 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E18 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E19 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E20 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E21 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E22 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E23 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E24 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E25 | Owner | Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| E26 | Owner | From the consoles as each account. Checked here: the bucket is private (`/storage/v1/object/public/posters/<seeded object>` answers "Bucket not found"); the seed's 11 `image/webp` uploads went in as the editor. | |
+| A1 | Owner | Needs the editor+moderator session on A. Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| A2 | Owner | Needs the editor+moderator session on A. Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| A3 | Owner | After A2. | |
+| A4 | Owner | Needs the owner's admin account. | |
+| A5 | Owner | Needs the editor+moderator session on A. Owner: needs a browser sign-in to the live archive, which the agent may not do (no credential entry outside a local host). | |
+| A6 | Owner | Needs the owner's admin account. | |
+| A7 | Owner | Needs the owner's admin account. | |
+| A8 | Pass | No grant control exists in either app's code: nothing in `src/` writes `video_access` (only the read `video_access_profile_ids`); the never-signed-in UI on A and B has none. Re-check once signed in. | |
+| T1 | Owner | Follows the Member scenarios it names. Checked here: B's TV Server (port 4403) serves the Standalone Local copy at `http://127.0.0.1:4403/` once 127.0.0.1 is approved: Favorites, Library 9, Artists, local tags shown. | |
+| T2 | Owner | Follows the Member scenarios it names. Checked here: B's TV Server (port 4403) serves the Standalone Local copy at `http://127.0.0.1:4403/` once 127.0.0.1 is approved: Favorites, Library 9, Artists, local tags shown. | |
+| T3 | Owner | Follows the Member scenarios it names. Checked here: B's TV Server (port 4403) serves the Standalone Local copy at `http://127.0.0.1:4403/` once 127.0.0.1 is approved: Favorites, Library 9, Artists, local tags shown. | |
+| T4 | Owner | Follows the Member scenarios it names. Checked here: B's TV Server (port 4403) serves the Standalone Local copy at `http://127.0.0.1:4403/` once 127.0.0.1 is approved: Favorites, Library 9, Artists, local tags shown. | |
+| T5 | Owner | Follows the Member scenarios it names. Checked here: B's TV Server (port 4403) serves the Standalone Local copy at `http://127.0.0.1:4403/` once 127.0.0.1 is approved: Favorites, Library 9, Artists, local tags shown. | |
+| T6 | Owner | Follows the Member scenarios it names. Checked here: B's TV Server (port 4403) serves the Standalone Local copy at `http://127.0.0.1:4403/` once 127.0.0.1 is approved: Favorites, Library 9, Artists, local tags shown. | |
+| T7 | Owner | Follows the Member scenarios it names. Checked here: B's TV Server (port 4403) serves the Standalone Local copy at `http://127.0.0.1:4403/` once 127.0.0.1 is approved: Favorites, Library 9, Artists, local tags shown. | |
 
-One row per scenario id: S1-S13, M1-M33, MO1-MO6, MD1-MD3, E1-E26, A1-A8, T1-T7 (96 rows).
+### Fixed on the branch
+
+- `scripts/seed-shared.ts` read `song_lyrics.label`, which the live archive does not have (the column is `version_label`); the seed stopped at its first read. Now `label:version_label` (`265f33d`). Spec §3.1's `video_proposed_versions` row amended to say so.
+- This plan: §1.3 B's TV Server on `TUVA_TV_PORT=4403` (its default 4401 is machine A's companion port) and how to approve a browser tab; S4 needs a clip over 30 s; S7's expected result follows #148.
 
 ### Follow-up issues
 
-Each failure gets an issue before cutover (§9.1):
-
-- #___ (scenario ___):
-- #___ (scenario ___):
+None opened: no app defect was found in the scenarios the agent could run.

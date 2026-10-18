@@ -97,6 +97,8 @@ export interface ShelvedEdit {
   videoId: string;
   payload: ShelvedPayload;
   shelvedAt: string;
+  /** When the user first opened the drawer showing it (#159); null while unseen. */
+  seenAt: string | null;
 }
 
 export function shelve(db: Db, videoId: string, payload: ShelvedPayload, at = new Date().toISOString()): number {
@@ -106,8 +108,21 @@ export function shelve(db: Db, videoId: string, payload: ShelvedPayload, at = ne
 export function listShelved(db: Db, videoId?: string): ShelvedEdit[] {
   const rows = (videoId
     ? db.query("SELECT * FROM shelved_edit WHERE video_id = ? ORDER BY id").all(videoId)
-    : db.query("SELECT * FROM shelved_edit ORDER BY id").all()) as { id: number; video_id: string; payload: string; shelved_at: string }[];
-  return rows.map((r) => ({ id: r.id, videoId: r.video_id, payload: JSON.parse(r.payload) as ShelvedPayload, shelvedAt: r.shelved_at }));
+    : db.query("SELECT * FROM shelved_edit ORDER BY id").all()) as { id: number; video_id: string; payload: string; shelved_at: string; seen_at: string | null }[];
+  return rows.map((r) => ({ id: r.id, videoId: r.video_id, payload: JSON.parse(r.payload) as ShelvedPayload, shelvedAt: r.shelved_at, seenAt: r.seen_at }));
+}
+
+/** Stamps one Video's Shelved edits, or all of them, as seen (the drawer opened, #159). Returns how many were unseen. */
+export function markShelvedSeen(db: Db, videoId?: string | null, at = new Date().toISOString()): number {
+  return (videoId
+    ? db.query("UPDATE shelved_edit SET seen_at = ? WHERE seen_at IS NULL AND video_id = ?").run(at, videoId)
+    : db.query("UPDATE shelved_edit SET seen_at = ? WHERE seen_at IS NULL").run(at)
+  ).changes;
+}
+
+/** The Videos with at least one unseen Shelved edit (`GET /api/shelved/unseen`), in id order. */
+export function unseenShelvedVideos(db: Db): string[] {
+  return (db.query("SELECT DISTINCT video_id FROM shelved_edit WHERE seen_at IS NULL ORDER BY video_id").all() as { video_id: string }[]).map((r) => r.video_id);
 }
 
 /** Clears one Video's Shelved edits, or all of them (the chip menu's "Clear Shelved edits"). Returns how many went. */

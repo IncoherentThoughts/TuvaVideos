@@ -9,7 +9,7 @@ import { migrate, migrationFiles } from "../src/server/db";
 import { V } from "./helpers/seed";
 
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
-const LATEST = 17;
+const LATEST = 18;
 const names = () => migrationFiles(MIGRATIONS).map((m) => m.name);
 const cols = (db: Database, table: string) => (db.query(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
 const recorded = (db: Database) => (db.query("SELECT name FROM migration ORDER BY name").all() as { name: string }[]).map((r) => r.name);

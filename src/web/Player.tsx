@@ -18,6 +18,8 @@ import { CopyPicker, copyLabel } from "./CopyPicker";
 import { StripFrame, Timeline, type ChapterMark } from "./Timeline";
 import { StudioBar, type StudioCtl } from "./Studio";
 import { StatePanel } from "./StatePanel";
+import { useUnseenShelved } from "./History";
+import { hasUnseenShelved } from "../shared/editHistory";
 import { AudioEngine } from "./audioEngine";
 import { isDefaultAudio, type AudioState } from "../shared/audio";
 import { api, apiError, replaceVideo } from "./data";
@@ -166,6 +168,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const [osdAlways, setOsdAlways] = useState(false);
   const [studio, setStudio] = useState<{ songId: string; data: SongStudioDto } | null>(null);
   const showState = !!stateOpen;
+  // #159: Shelved edits not looked at yet light the State button until the drawer opens on them.
+  const shelfNew = hasUnseenShelved(useUnseenShelved(), video.id);
   const studioOn = useRef(false);
   studioOn.current = !!studio;
   const studioCtl = useRef<StudioCtl | null>(null);
@@ -934,7 +938,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         <button class={`cbtn statebtn${audioOpen ? " on" : ""}`} tabIndex={-1} aria-pressed={!!audioOpen} title="Audio: channels, equalizer, level (a while the Player has focus)" onClick={() => (onAudioToggle?.(), refocus())}>
           Audio <kbd>a</kbd>
         </button>
-        <button class={`cbtn statebtn${showState ? " on" : ""}`} tabIndex={-1} aria-pressed={showState} title="State: metadata, playback, Copies and key bindings (i while the Player has focus)" onClick={() => (onStateToggle?.(), refocus())}>
+        <button class={`cbtn statebtn${showState ? " on" : ""}${shelfNew ? " shelf-new" : ""}`} tabIndex={-1} aria-pressed={showState} title={`State: metadata, playback, Copies and key bindings (i while the Player has focus)${shelfNew ? ". This Video has Shelved edits you have not looked at: History tab" : ""}`} onClick={() => (onStateToggle?.(), refocus())}>
+          {shelfNew && <span class="shelf-dot" aria-label="New Shelved edits" />}
           State <kbd>i</kbd>
         </button>
         <button class={`cbtn statebtn${playlistPanelOpen && playlist ? " on" : ""}`} tabIndex={-1} disabled={!playlist} aria-pressed={!!playlistPanelOpen && !!playlist} title={playlist ? "Playlist panel (q while the Player has focus)" : "Playlist panel: shuffle (x) to start a Playlist"} onClick={() => (onPlaylistPanelToggle?.(), refocus())}>

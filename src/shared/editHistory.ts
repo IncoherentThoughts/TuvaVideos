@@ -113,4 +113,18 @@ export interface ShelvedItem {
   summary: string;
   /** The kept value (red) against what the Video says now (green), #157. */
   diff: DiffRow;
+  /** Whether the user had opened a drawer showing it (#159), as read before this opening stamps it: the drawer marks the new ones. */
+  seen: boolean;
 }
+
+/**
+ * Whether a Video has Shelved edits the user has not looked at (#159), given `GET /api/shelved/unseen`'s list or the
+ * Set `useUnseenShelved()` (src/web/History.tsx) keeps of it. The Video page highlights its State button and Shelved
+ * marker on this; a grid card's dot is one line on it.
+ */
+export const hasUnseenShelved = (unseen: ReadonlySet<string> | readonly string[], videoId: string): boolean =>
+  Array.isArray(unseen) ? unseen.includes(videoId) : (unseen as ReadonlySet<string>).has(videoId);
+
+/** The Videos among drawer items that still have an unseen Shelved edit. */
+export const unseenVideoIds = (items: readonly Pick<ShelvedItem, "videoId" | "seen">[]): Set<string> =>
+  new Set(items.filter((i) => !i.seen).map((i) => i.videoId));

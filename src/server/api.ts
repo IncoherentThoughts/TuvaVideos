@@ -14,7 +14,7 @@ import { factsOfRow, parseDecision } from "./tvJudge";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
 import { deleteVideo, removeCopies } from "./deleteVideo";
 import { deletedMatches, kindsOf, rowInfo, sharedSuggestions } from "./sharedWrites";
-import { clearShelved, dropShelved, listEdits, shelvedItems, videoHistory } from "./editHistory";
+import { clearShelved, dropShelved, listEdits, markShelvedSeen, shelvedItems, unseenShelvedVideos, videoHistory } from "./editHistory";
 import { serveFile } from "./stream";
 import type { KeyframeIndex } from "./keyframes";
 import { NO_TRASH_NOTICE, resolveTrash } from "./platform";
@@ -453,6 +453,7 @@ export function createHandler(s: Services) {
           return json(listEdits(s.db, { editor: q.get("editor"), type: q.get("type"), before: q.get("before"), limit: q.get("limit") ? Number(q.get("limit")) || undefined : undefined }));
         }
         if (p === "/api/shelved") return json(shelvedItems(s.db, url.searchParams.get("video") ?? undefined));
+        if (p === "/api/shelved/unseen") return json(unseenShelvedVideos(s.db));
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
           const v = s.db.query("SELECT * FROM video_full WHERE id = ?").get(m[1]!) as VideoDbRow | null;
           if (!v) return json({ error: "no such video" }, 404);
@@ -671,6 +672,13 @@ export function createHandler(s: Services) {
         if (one) return dropShelved(s.db, Number(one[1])) ? json({ cleared: 1 }) : json({ error: "no such Shelved edit" }, 404);
         const vid = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/shelved$/);
         return json({ cleared: clearShelved(s.db, vid?.[1]) });
+      }
+      // The drawer opened (#159): one Video's Shelved edits, or all of them, stamped seen. Same-origin only.
+      if (req.method === "POST" && (p === "/api/shelved/seen" || /^\/api\/videos\/[0-9a-fA-F-]{36}\/shelved\/seen$/.test(p))) {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const vid = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/shelved\/seen$/);
+        return json({ seen: markShelvedSeen(s.db, vid?.[1]) });
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/copies$/))) {
         // This machine's Copies to the Trash; the Video stays, Not on this machine (sharing-spec §4.5). Same-origin only.

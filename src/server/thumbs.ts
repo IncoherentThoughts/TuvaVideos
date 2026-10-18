@@ -10,7 +10,7 @@ import { IO_RE, run, sleep } from "./proc";
 import { rankCopies } from "./ranking";
 import type { Roots } from "./roots";
 import { sliceCentre, stripGeometry, STRIP_FRAME_WIDTH, type StripGeometry } from "./stripGeometry";
-import { legacyUuid } from "./localCopy/ids";
+import { isUuid, legacyUuid } from "./localCopy/ids";
 
 /** Writes a Video's Thumbnail facts (this machine's: `video_local`). Parameters in column order, the Video id last. */
 const SET_THUMB = `INSERT INTO video_local (thumbnail_generated_at, thumbnail_copy_id, strip_frames, strip_columns, strip_rows, strip_frame_w, strip_frame_h, video_id)
@@ -20,25 +20,58 @@ const SET_THUMB = `INSERT INTO video_local (thumbnail_generated_at, thumbnail_co
     strip_frame_w = excluded.strip_frame_w, strip_frame_h = excluded.strip_frame_h`;
 
 /**
- * Thumbnails written before migration 0015 are named by the Video's integer id (`<n>.poster.webp`); they become
- * `<uuid>.poster.webp` under the deterministic map of the migration (`legacyUuid`). Idempotent; returns how many moved.
+ * Thumbnail files from before migration 0015 are named by the Video's integer id (`<n>.poster.webp`, what the server
+ * wrote) or, for the #21 seed cache that `adoptSeed` copied from, by the Video's `content_hash` (64 hex) or `youtube_id`.
+ * Each becomes `<uuid>.{poster,strip}.webp`: integer ids under the migration's deterministic map (`legacyUuid`), the
+ * other two through one query on the Videos. Idempotent (an existing target is never overwritten, integer names go first,
+ * uuid names are left alone); a file whose name matches no Video stays in place. Returns the counts moved per naming style.
  */
-export function renameLegacyThumbnails(thumbsDir: string): number {
-  let n = 0;
+export function renameLegacyThumbnails(db: Db, thumbsDir: string): { integer: number; contentHash: number; youtubeId: number } {
+  const n = { integer: 0, contentHash: 0, youtubeId: 0 };
   let names: string[] = [];
   try {
     names = readdirSync(thumbsDir);
   } catch {
-    return 0;
+    return n;
   }
+  // The server's own integer-named files first: when a seed file maps to the same Video, the one whose strip geometry
+  // `video_local` records wins and the seed file stays.
+  const intFirst = (f: string) => (/^\d+\./.test(f) ? 0 : 1);
+  names.sort((a, b) => intFirst(a) - intFirst(b) || (a < b ? -1 : a > b ? 1 : 0));
+  let maps: { byHash: Map<string, string>; byYoutube: Map<string, string> } | undefined;
+  const lookups = () => {
+    if (maps) return maps;
+    maps = { byHash: new Map(), byYoutube: new Map() };
+    const rows = db.query("SELECT id, youtube_id, content_hash FROM video_full").all() as { id: string; youtube_id: string | null; content_hash: string | null }[];
+    for (const r of rows) {
+      if (r.content_hash) maps.byHash.set(r.content_hash.toLowerCase(), r.id);
+      if (r.youtube_id) maps.byYoutube.set(r.youtube_id, r.id);
+    }
+    return maps;
+  };
   for (const f of names) {
-    const m = /^(\d+)\.(poster|strip)\.webp$/.exec(f);
+    const m = /^(.+)\.(poster|strip)\.webp$/.exec(f);
     if (!m) continue;
-    const to = join(thumbsDir, `${legacyUuid("video", Number(m[1]))}.${m[2]}.webp`);
+    const key = m[1]!;
+    if (isUuid(m[1])) continue; // already renamed (tested on m[1]: the type guard would narrow `key` to never below)
+    let uuid: string | undefined;
+    let style: keyof typeof n;
+    if (/^\d+$/.test(key) && Number.isSafeInteger(Number(key)) && Number(key) <= 0xffffffffffff) {
+      uuid = legacyUuid("video", Number(key));
+      style = "integer";
+    } else if (/^[0-9a-f]{64}$/i.test(key)) {
+      uuid = lookups().byHash.get(key.toLowerCase());
+      style = "contentHash";
+    } else {
+      uuid = lookups().byYoutube.get(key);
+      style = "youtubeId";
+    }
+    if (!uuid) continue;
+    const to = join(thumbsDir, `${uuid}.${m[2]}.webp`);
     if (existsSync(to)) continue;
     try {
       renameSync(join(thumbsDir, f), to);
-      n++;
+      n[style]++;
     } catch (e) {
       log(`thumbs: could not rename ${f}: ${e}`);
     }
@@ -113,8 +146,9 @@ export class Thumbnails {
     private shouldPause: () => boolean,
   ) {
     mkdirSync(cfg.thumbsDir, { recursive: true });
-    const renamed = renameLegacyThumbnails(cfg.thumbsDir);
-    if (renamed) log(`thumbs: renamed ${renamed} Thumbnail files from integer ids to uuids (migration 0015)`);
+    const r = renameLegacyThumbnails(db, cfg.thumbsDir);
+    if (r.integer + r.contentHash + r.youtubeId)
+      log(`thumbs: renamed Thumbnail files to uuids (migration 0015): ${r.integer} by integer id, ${r.contentHash} by content_hash, ${r.youtubeId} by youtube_id`);
   }
 
   /** Adopt the #21 cache: copy `<youtubeId|sha256>.{poster,strip}.webp` to `<videoId>.*` and record geometry. */

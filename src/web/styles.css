@@ -777,3 +777,10 @@ fieldset.editgate[data-edit="hidden"] :is(.confirm, .x, .linkbtn, .acceptall) { 
 fieldset.editgate:disabled :is(.tagbtn, .confirm, .x, .linkbtn) { cursor: default; }
 fieldset.editgate[data-edit="disabled"] :is(.confirm, .x, .linkbtn) { opacity: .45; }
 .edit-notice { margin: 4px 0 0; font-size: .85em; }
+
+/* The conflict notice and the deleted-match scan warning (ConflictNotice.tsx; sharing-spec §4.2, §4.5) */
+.conflict-bar { border-color: var(--accent, var(--line)); color: var(--fg); }
+.conflict-bar .mono { color: var(--fg2); }
+.deleted-bar p { margin: 2px 0; }
+.delconfirm .reason { width: 100%; min-height: 3.2em; margin: 6px 0; }
+.delconfirm h4 { margin: 14px 0 4px; }

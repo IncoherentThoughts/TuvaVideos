@@ -4,6 +4,8 @@ import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { TvButton } from "./TvButton";
 import { AccountChip } from "./Account";
+import { refreshDeletedMatches } from "./ConflictNotice";
+import { drainSharedSuggestions } from "./writeLink";
 import { Link, type Route } from "./router";
 import { THEMES, useTheme } from "./theme";
 
@@ -44,7 +46,8 @@ export function TopBar({ route }: { route: Route }) {
         if (!alive) return;
         setScan(s);
         if (s.running) next = 1000;
-        if (wasRunning.current && !s.running) void reloadAll();
+        // a scan that finished: reload, the deleted-match warning, and the matchers on Shared Videos (sharing-spec §4.3, §4.5)
+        if (wasRunning.current && !s.running) void reloadAll().then(() => refreshDeletedMatches()).then(() => drainSharedSuggestions()).then((n) => void (n && reloadAll()));
         wasRunning.current = s.running;
       } catch {}
       if (alive) timer = setTimeout(tick, next);

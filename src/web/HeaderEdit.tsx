@@ -9,6 +9,7 @@ import { api, apiError, loadArtists, replaceVideo } from "./data";
 import { TypeTag, artistSlot, artistTitle } from "./ui";
 import { Link } from "./router";
 import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
+import { writeLink } from "./writeLink";
 
 type Change = (v: VideoDto) => void;
 export type SongRow = Extract<SearchRow, { kind: "song" }>;
@@ -146,7 +147,7 @@ function useEdit(v: VideoDto, onChange: Change) {
       return false;
     }
   };
-  return { err, apply, patch: (p: VideoPatch) => apply(() => api.patchVideo(v.id, p)) };
+  return { err, apply, patch: (p: VideoPatch) => apply(() => writeLink(v, { kind: "video.update", patch: p })) };
 }
 
 /** The title (click to edit) and, under it, the Latin title. */
@@ -176,9 +177,9 @@ export function AcceptAll({ video: v, onChange }: { video: VideoDto; onChange: C
       const patch: VideoPatch = {};
       if (cur.typeSuggested) patch.type = cur.type;
       if (cur.songId && cur.songSuggested) patch.songId = cur.songId;
-      if (Object.keys(patch).length) cur = await api.patchVideo(cur.id, patch);
+      if (Object.keys(patch).length) cur = await writeLink(cur, { kind: "video.update", patch });
       if (cur.artists.some((a) => a.suggested)) {
-        cur = await api.confirmArtists(cur.id);
+        cur = await writeLink(cur, { kind: "artists.confirm" });
         void loadArtists();
       }
       replaceVideo(cur);
@@ -355,7 +356,7 @@ export function SongPicker({ onPick, onClose }: { onPick: (songId: string) => vo
 function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<VideoDto>) => Promise<boolean> }) {
   const [adding, setAdding] = useState(false);
   const save = async (ids: string[]) => {
-    if (await apply(() => api.setVideoArtists(v.id, ids))) void loadArtists();
+    if (await apply(() => writeLink(v, { kind: "artists.set", artistIds: ids }))) void loadArtists();
   };
   const ids = v.artists.map((a) => a.id);
   const confirmed = v.artists.filter((a) => !a.suggested).map((a) => a.id);
@@ -369,13 +370,13 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
             {a.name}
             {a.suggested && <i class="sugmark">suggested</i>}
           </Link>
-          <button class="x" aria-label={a.suggested ? `Reject ${a.name}` : `Remove ${a.name}`} title={a.suggested ? "Reject this suggestion" : "Remove"} onClick={() => void apply(() => api.removeArtist(v.id, a.id)).then((ok) => ok && void loadArtists())}>
+          <button class="x" aria-label={a.suggested ? `Reject ${a.name}` : `Remove ${a.name}`} title={a.suggested ? "Reject this suggestion" : "Remove"} onClick={() => void apply(() => writeLink(v, { kind: "artists.remove", artistId: a.id })).then((ok) => ok && void loadArtists())}>
             <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
           </button>
         </span>
       ))}
       {anySuggested && (
-        <button class="confirm" title="Confirm the Suggested Artists" aria-label="Confirm Artists" onClick={() => void apply(() => api.confirmArtists(v.id)).then((ok) => ok && void loadArtists())}>
+        <button class="confirm" title="Confirm the Suggested Artists" aria-label="Confirm Artists" onClick={() => void apply(() => writeLink(v, { kind: "artists.confirm" })).then((ok) => ok && void loadArtists())}>
           ✓
         </button>
       )}

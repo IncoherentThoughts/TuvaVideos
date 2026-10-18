@@ -15,6 +15,8 @@ export interface ArtistRef {
   proposed: boolean;
   /** Offered by the Artist matcher and not yet confirmed (dashed tag). */
   suggested: boolean;
+  /** The `video_artists` link's id (a Shared reject targets it, sharing-spec §4.1); absent outside a Video. */
+  linkId?: string;
 }
 
 /** What the header shows of a Video's Song. `name: null` is a dangling uuid ("unknown song", ADR-0001). */
@@ -84,6 +86,8 @@ export interface VideoDto {
   rutubeId: string | null;
   /** The Shared data knows this Video (a Sync or cache apply delivered it); false = Unshared or Standalone. */
   shared: boolean;
+  /** The row's `updated_at`: a Shared write's `p_expected_updated_at` (sharing-spec §4.2). */
+  updatedAt: string;
   title: string;
   titleLatin: string | null;
   titleLatinSource: "archive" | "table" | "manual" | null;
@@ -170,6 +174,8 @@ export interface ChapterDto {
   /** The Chapter's Song (name and Version labels), or null. `name: null` is a dangling uuid. */
   song: SongRef | null;
   favoritedAt: string | null;
+  /** The row's `updated_at`: a Shared write's `p_expected_updated_at` (sharing-spec §4.2). */
+  updatedAt: string;
 }
 
 /** POST /api/videos/:id/chapters */

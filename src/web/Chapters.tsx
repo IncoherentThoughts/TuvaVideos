@@ -10,6 +10,7 @@ import { Picker, createSongRow, rowsOf, songPickerRow, type SongRow } from "./He
 import { TRASH } from "./ui";
 import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
+import { RELOADED_EVENT, writeLink } from "./writeLink";
 import { FavoriteBadge, StripFrame } from "./ui";
 
 interface StripProps {
@@ -74,6 +75,12 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
     onList(list);
     return list;
   };
+  // the conflict notice reloaded this Video (keep theirs, apply mine): re-read its Chapters (sharing-spec §4.2)
+  useEffect(() => {
+    const f = (e: Event) => void ((e as CustomEvent<{ videoId: string }>).detail?.videoId === video.id && reload().catch(() => {}));
+    window.addEventListener(RELOADED_EVENT, f);
+    return () => window.removeEventListener(RELOADED_EVENT, f);
+  }, [video.id]);
   const run = async (what: () => Promise<unknown>): Promise<boolean> => {
     try {
       await what();
@@ -126,7 +133,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
           + Add at playhead
         </button>
         {suggestedN > 0 && (
-          <button class="btn small" title="Confirm every Suggested Chapter of this Video" onClick={() => void run(() => api.confirmAllChapters(video.id))}>
+          <button class="btn small" title="Confirm every Suggested Chapter of this Video" onClick={() => void run(() => writeLink(video, { kind: "chapters.confirmAll" }))}>
             Confirm all ({suggestedN})
           </button>
         )}
@@ -163,12 +170,12 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
               onPick={(r) => {
                 setPickFor(null);
                 wantFocus.current = picking.id;
-                void run(() => api.patchChapter(picking.id, { songId: r.id }));
+                void run(() => writeLink(video, { kind: "chapter.update", chapter: picking, patch: { songId: r.id } }));
               }}
               create={createSongRow((id) => {
                 setPickFor(null);
                 wantFocus.current = picking.id;
-                void run(() => api.patchChapter(picking.id, { songId: id }));
+                void run(() => writeLink(video, { kind: "chapter.update", chapter: picking, patch: { songId: id } }));
               })}
               onClose={() => {
                 setPickFor(null);
@@ -209,7 +216,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
   const tryPatch = async (p: ChapterPatch): Promise<boolean> => {
     keepFocus(c.id);
     try {
-      await api.patchChapter(c.id, p);
+      await writeLink(video, { kind: "chapter.update", chapter: c, patch: p });
     } catch (e) {
       setErr(apiError(e));
       return false;
@@ -245,7 +252,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
       // a Chapter made with `c` and abandoned: remove it (manual, so no tombstone)
       fresh.current = false;
       onNewDone();
-      await run(() => api.deleteChapter(c.id));
+      await run(() => writeLink(video, { kind: "chapter.delete", chapter: c }));
       ctl.current?.focus();
       return;
     }
@@ -288,7 +295,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
   };
   const remove = async () => {
     afterDelete(c.id);
-    await run(() => (c.suggested ? api.rejectChapter(c.id) : api.deleteChapter(c.id)));
+    await run(() => writeLink(video, { kind: c.suggested ? "chapter.reject" : "chapter.delete", chapter: c }));
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -311,7 +318,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
     else if (k === "s") (handled(), pickSong());
     else if (k === "Backspace" || k === "Delete") (handled(), setMode("delete"));
     else if (k === " ") (handled(), ctl.current?.seekTo(c.startS));
-    else if (k === "y" && c.suggested) (handled(), keepFocus(c.id), void run(() => api.confirmChapter(c.id)));
+    else if (k === "y" && c.suggested) (handled(), keepFocus(c.id), void run(() => writeLink(video, { kind: "chapter.confirm", chapter: c })));
     else if (k === "x" && c.suggested) (handled(), void remove());
     else if (k === "f" || k === "F") (handled(), void toggleFavorite("chapter", c.id).then(() => run(async () => {})));
     else if (k === "Escape") (handled(), ctl.current?.focus());
@@ -401,7 +408,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
           <div class="chact">
             {c.suggested && (
               <>
-                <button class="chbtn ok" tabIndex={-1} title="Confirm this Chapter (y)" onClick={() => (keepFocus(c.id), void run(() => api.confirmChapter(c.id)))}>
+                <button class="chbtn ok" tabIndex={-1} title="Confirm this Chapter (y)" onClick={() => (keepFocus(c.id), void run(() => writeLink(video, { kind: "chapter.confirm", chapter: c })))}>
                   ✓ confirm
                 </button>
                 <button class="chbtn no" tabIndex={-1} title="Reject this suggestion (x); it will not come back" onClick={() => void remove()}>

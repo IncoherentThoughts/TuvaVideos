@@ -314,9 +314,10 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
           )}
           <p class="dim">The archive's titles, Artists and Chapters replace this machine's for the Videos it knows.</p>
           {step.noGrant && (
-            <p class="si-note">
-              <b>No video library access.</b> Ask the owner for video access; until then the library stays read-only.
-            </p>
+            <div class="si-note">
+              <div class="am-nogrant-line">{NO_ACCESS_LINE}</div>
+              <div class="dim">{NO_ACCESS_HINT}</div>
+            </div>
           )}
           {step.mustChangePassword && (
             <p class="si-note">

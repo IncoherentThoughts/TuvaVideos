@@ -4,7 +4,7 @@
 import type { Ref } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { SIGN_IN_ERRORS } from "../shared/session";
-import { chipView, type ChipView, endedLine, FORGOT_URL, shelveLine, submitBlocked } from "./chipView";
+import { chipView, type ChipView, endedLine, FORGOT_URL, NO_ACCESS_HINT, NO_ACCESS_LINE, OFFLINE_LINE, REFRESH_ALL_CONFIRM, shelveLine, submitBlocked } from "./chipView";
 import { useSession } from "./session";
 import { clearShelvedEdits, fetchShelved, onShelvedChange, openShelved } from "./History";
 import { navigate } from "./router";
@@ -111,7 +111,7 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
   return (
     <div class="acct" ref={box} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setOpen(false))}>
       <button
-        class={`acct-chip${view.offline ? " offline" : ""}`}
+        class={`acct-chip${view.avatarUrl ? " pic" : ""}${view.offline ? " offline" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account: ${view.displayName}${view.offline ? " (the archive can't be reached)" : ""}`}
@@ -132,8 +132,8 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
             </div>
           ) : (
             <div class="am-nogrant">
-              <b>No video library access</b>
-              <p class="dim">Ask the owner for video access; until then the library is read-only.</p>
+              <div class="am-nogrant-line">{NO_ACCESS_LINE}</div>
+              <div class="dim">{NO_ACCESS_HINT}</div>
             </div>
           )}
           <div class="am-sync" role="group" aria-label="Sync">
@@ -148,6 +148,16 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
             <div class="am-err" title={view.sync.error}>
               {view.sync.error}
             </div>
+          )}
+          {view.refreshAll && (
+            <button
+              role="menuitem"
+              disabled={!view.refreshAll.enabled}
+              title={view.refreshAll.enabled ? "Wipe this machine's copy of the Shared data and pull it whole" : view.offline ? OFFLINE_LINE : "A Sync is running"}
+              onClick={() => confirm(REFRESH_ALL_CONFIRM) && (setOpen(false), void s.refreshAll())}
+            >
+              Refresh all Shared data
+            </button>
           )}
           <button role="menuitem" onClick={() => (setOpen(false), navigate("/edits"))}>
             Edits

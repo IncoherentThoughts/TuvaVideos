@@ -233,7 +233,8 @@ export function SearchBox() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (hi >= 0 && flat[hi]) return openRow(flat[hi]!);
-      if (parsed.text.trim()) return showAll();
+      // The grid's URL has no Unshared filter, so `#unshared` opens the results page, which applies it (#158).
+      if (parsed.text.trim() || parsed.unshared) return showAll();
       if (hasVideoFilters(parsed)) return applyFilters();
       openGroupPage();
     } else if (e.key === "Backspace" && pills.length) {

@@ -193,6 +193,21 @@ export function NotHereMark() {
   );
 }
 
+export const UNSHARED_TITLE = "Unshared: on this machine only, not in the Shared data";
+
+/** #158: the one corner mark of an Unshared Video's card when the library also holds Shared Videos. */
+export function UnsharedMark() {
+  return (
+    <span class="unshared-mark" title={UNSHARED_TITLE} aria-label={UNSHARED_TITLE}>
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7 18h10a4 4 0 0 0 .9-7.9A6 6 0 0 0 6.3 9.2 4.5 4.5 0 0 0 7 18z" />
+        <path d="M3 3l18 18" />
+      </svg>
+      Unshared
+    </span>
+  );
+}
+
 /** A placeholder tint from a Video id: its last 8 hex digits (a legacy id keeps its old integer's tint). */
 export const phColor = (id: string) => `var(--t${((parseInt(id.slice(-8), 16) || 0) % 8) + 1})`;
 

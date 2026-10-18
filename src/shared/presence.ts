@@ -14,6 +14,15 @@ export function videoPresence(v: Pick<VideoDto, "available"> & { copies: Pick<Co
 export const isNotHere = (v: Parameters<typeof videoPresence>[0]) => videoPresence(v) === "notHere";
 
 /**
+ * The grid's Shared/Unshared mark (#158). Only a machine signed in with the grant has Shared Videos, so only there
+ * does the difference mean anything: the exceptions, Unshared Videos, carry the one mark and a Shared card stays
+ * plain. In Standalone (or without the grant) every Video is Unshared and no card is marked.
+ */
+export function sharingMark(v: Pick<VideoDto, "shared">, granted: boolean): "unshared" | null {
+  return granted && !v.shared ? "unshared" : null;
+}
+
+/**
  * The "On this machine" chip (§7.2): it selects the Videos with an Available Copy (the `#available` token's set) and
  * is hidden when it would select nothing. It stays while it is on, so a URL that turned it on can turn it off.
  */

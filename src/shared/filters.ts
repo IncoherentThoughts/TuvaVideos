@@ -1,7 +1,7 @@
 // Typed filters in the search box (spec 5.2, 6.2). Pure.
 //   #songs #videos #artists #tracks #albums   restrict the dropdown groups
 //   #lyrics                                    match lyric text only
-//   #available #fav #type:<t> #artist:<Name_With_Underscores>
+//   #available #unshared #fav #type:<t> #artist:<Name_With_Underscores>
 // Any unknown #word stays in the search text.
 
 export const GROUPS = ["songs", "videos", "artists", "tracks", "albums"] as const;
@@ -21,6 +21,8 @@ export interface ParsedQuery {
   groups: Group[];
   lyricsOnly: boolean;
   available: boolean;
+  /** `#unshared` (#158): only Unshared Videos, local to this machine. */
+  unshared: boolean;
   fav: boolean;
   types: VideoType[];
   /** Artist names with underscores turned back into spaces. */
@@ -34,7 +36,7 @@ export interface FilterChip {
 }
 
 export function parseQuery(q: string): ParsedQuery {
-  const out: ParsedQuery = { text: "", groups: [], lyricsOnly: false, available: false, fav: false, types: [], artists: [] };
+  const out: ParsedQuery = { text: "", groups: [], lyricsOnly: false, available: false, unshared: false, fav: false, types: [], artists: [] };
   const words: string[] = [];
   for (const w of q.split(/\s+/)) {
     if (!w) continue;
@@ -65,6 +67,7 @@ export function parseQuery(q: string): ParsedQuery {
       if (!out.groups.includes(g)) out.groups.push(g);
     } else if (lower === "lyrics" || lower === "lyric") out.lyricsOnly = true;
     else if (lower === "available") out.available = true;
+    else if (lower === "unshared") out.unshared = true;
     else if (lower === "fav" || lower === "favorite" || lower === "favorites") out.fav = true;
     else words.push(w);
   }
@@ -73,7 +76,7 @@ export function parseQuery(q: string): ParsedQuery {
 }
 
 /** Filters that narrow Videos (and Chapters) rather than choosing groups. */
-export const hasVideoFilters = (p: ParsedQuery) => p.available || p.fav || p.types.length > 0 || p.artists.length > 0;
+export const hasVideoFilters = (p: ParsedQuery) => p.available || p.unshared || p.fav || p.types.length > 0 || p.artists.length > 0;
 export const hasAnyFilter = (p: ParsedQuery) => hasVideoFilters(p) || p.groups.length > 0 || p.lyricsOnly;
 /** A query made only of filters (no search text). */
 export const isFilterOnly = (p: ParsedQuery) => p.text.trim() === "" && hasAnyFilter(p);
@@ -91,6 +94,7 @@ export function filterChips(p: ParsedQuery): FilterChip[] {
   for (const g of p.groups) chips.push({ token: `#${g}`, label: `#${g}` });
   if (p.lyricsOnly) chips.push({ token: "#lyrics", label: "#lyrics" });
   if (p.available) chips.push({ token: "#available", label: "#available" });
+  if (p.unshared) chips.push({ token: "#unshared", label: "#unshared" });
   if (p.fav) chips.push({ token: "#fav", label: "#fav" });
   for (const t of p.types) chips.push({ token: `#type:${t}`, label: `#type:${t}` });
   for (const a of p.artists) chips.push({ token: `#artist:${a.replace(/ /g, "_")}`, label: `#artist:${a}` });
@@ -112,6 +116,7 @@ export function filterSlot(token: string): number {
   if (p.types[0]) return TYPE_SLOT[p.types[0]];
   if (p.lyricsOnly) return 7;
   if (p.available) return 4;
+  if (p.unshared) return 8;
   if (p.fav) return 2;
   return 6; // #artist:… (the box colours it by the Artist's own slot)
 }

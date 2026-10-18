@@ -39,9 +39,21 @@ export type ChipView =
       /** The small slashed dot (§2.2): the archive was not reached, or auth is unsettled (§5.3: unsettled = offline). */
       offline: boolean;
       sync: SyncRow;
+      /**
+       * §6.4 "Refresh all Shared data" (M33): null for an account without the grant (nothing Shared to refresh);
+       * otherwise shown, enabled only while a Sync could run and the archive is not known unreachable.
+       */
+      refreshAll: { enabled: boolean } | null;
     };
 
 export const OFFLINE_LINE = "The archive can't be reached";
+/** #158: an account without the video grant reads exactly this pair, once (red line, then grey line). */
+export const NO_ACCESS_LINE = "This account has no access to the shared library";
+export const NO_ACCESS_HINT = "Ask the owner for video access";
+/** The Sync errors that only repeat the no-access pair (src/server/sync.ts). */
+const NO_ACCESS_ERROR = /\bno (longer has )?access to the shared library\b/i;
+/** The one confirm before "Refresh all Shared data". */
+export const REFRESH_ALL_CONFIRM = "Re-download all Shared data from the archive? Your local tags and Favorites are kept.";
 
 export function initials(name: string | null, email: string | null): string {
   const src = (name ?? "").trim() || (email ?? "").split("@")[0]!.trim();
@@ -76,16 +88,19 @@ export function chipView(s: ChipInput, nowMs: number): ChipView {
   if (s.authSettled && !s.browserSignedIn) return { kind: "sign-in" };
   const offline = !s.authSettled || s.reachable === false;
   const line = s.syncing ? "Syncing…" : offline ? OFFLINE_LINE : `Last Sync ${ago(r.lastSyncAt, nowMs)}`;
+  const role = r.grantLevel === "editor" ? "Video Editor" : r.grantLevel === "member" ? "Member" : null;
+  // An unreachable Sync's error repeats the offline line, a no-grant Sync's error the no-access pair: say each once.
+  const repeats = s.lastSyncError === line || (role === null && !!s.lastSyncError && NO_ACCESS_ERROR.test(s.lastSyncError));
   return {
     kind: "chip",
     initials: initials(r.displayName, r.email),
     avatarUrl: r.avatarUrl,
     displayName: r.displayName?.trim() || r.email || "Signed in",
     email: r.email,
-    role: r.grantLevel === "editor" ? "Video Editor" : r.grantLevel === "member" ? "Member" : null,
+    role,
     offline,
-    // An unreachable Sync's error repeats the offline line; say it once.
-    sync: { line, error: s.lastSyncError === line ? null : s.lastSyncError, canSync: s.browserSignedIn && !s.syncing },
+    sync: { line, error: repeats ? null : s.lastSyncError, canSync: s.browserSignedIn && !s.syncing },
+    refreshAll: role ? { enabled: s.browserSignedIn && !s.syncing && !offline } : null,
   };
 }
 

@@ -183,6 +183,7 @@ interface VideoFacts {
   title: string;
   type: string;
   fav: boolean;
+  shared: boolean;
   songId: string | null;
   songSuggested: boolean;
   durationS: number | null;
@@ -192,8 +193,8 @@ interface VideoFacts {
 
 function loadVideoFacts(db: Db, env: SearchEnv, needArtists: boolean): Map<string, VideoFacts> {
   const out = new Map<string, VideoFacts>();
-  for (const v of db.query("SELECT id, title, type, favorited_at, song_id, song_suggested FROM video_full").all() as any[])
-    out.set(v.id, { id: v.id, title: v.title, type: v.type, fav: !!v.favorited_at, songId: v.song_id, songSuggested: !!v.song_suggested, durationS: null, available: false, artistKeys: [] });
+  for (const v of db.query("SELECT id, title, type, favorited_at, song_id, song_suggested, shared FROM video_full").all() as any[])
+    out.set(v.id, { id: v.id, title: v.title, type: v.type, fav: !!v.favorited_at, shared: !!v.shared, songId: v.song_id, songSuggested: !!v.song_suggested, durationS: null, available: false, artistKeys: [] });
   for (const c of db.query("SELECT video_id, root_id, missing_since, duration_s FROM copy").all() as any[]) {
     const f = out.get(c.video_id);
     if (!f) continue;
@@ -235,6 +236,7 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
   const videoOk = (f: VideoFacts | undefined) =>
     !!f &&
     (!parsed.available || f.available) &&
+    (!parsed.unshared || !f.shared) &&
     (!parsed.fav || f.fav) &&
     (!parsed.types.length || (parsed.types as string[]).includes(f.type)) &&
     (!artistWanted.length || artistWanted.every((a) => f.artistKeys.includes(a)));

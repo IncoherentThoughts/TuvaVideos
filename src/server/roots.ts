@@ -49,8 +49,15 @@ export class Roots {
 
   seed() {
     const ins = this.db.prepare("INSERT OR IGNORE INTO root (path, kind) VALUES (?, ?)");
-    ins.run(this.cfg.localRoot, "local");
+    if (this.cfg.localRoot) ins.run(this.cfg.localRoot, "local");
     if (this.cfg.externalRoot) ins.run(this.cfg.externalRoot, "external");
+  }
+
+  /** The first-launch Root (§8.4): one `local` row, chosen in the UI. The caller checks it and starts the first scan. */
+  add(path: string): RootRow {
+    const id = Number(this.db.query("INSERT INTO root (path, kind) VALUES (?, 'local')").run(path).lastInsertRowid);
+    log(`root local added: ${path}`);
+    return this.get(id)!;
   }
 
   list(): RootRow[] {

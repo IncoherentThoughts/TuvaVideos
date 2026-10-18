@@ -4,7 +4,7 @@ import type { AudioPreset, AudioState } from "../shared/audio";
 import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { VersionInput } from "../shared/lyrics/types";
-import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
+import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { isUuid } from "../shared/ids";
 import { navigate, PLAY_PATH, playHref } from "./router";
 
@@ -119,6 +119,10 @@ export const api = {
   scan: () => get<ScanDto>("/api/scan"),
   search: (q: string, signal?: AbortSignal, limit?: number) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`, signal),
   rescan: () => post<{ queued: number[] }>("/api/rescan"),
+  /** First launch (sharing-spec §8.4): which surface to show, choosing the Root (starts its first scan), the bar. */
+  onboarding: () => get<OnboardingDto>("/api/onboarding"),
+  addRoot: (path: string) => post<{ root: { id: number; path: string }; onboarding: OnboardingDto }>("/api/roots", { path }),
+  dismissRootBar: () => post<OnboardingDto>("/api/onboarding/dismiss-bar"),
   quit: () => post<{ quitting: true }>("/api/quit"),
   setFavorite: (kind: "video" | "chapter", id: string, favorite?: boolean) =>
     post<{ favorite: boolean; favoritedAt: string | null }>(`/api/${kind === "video" ? "videos" : "chapters"}/${id}/favorite`, favorite === undefined ? {} : { favorite }),

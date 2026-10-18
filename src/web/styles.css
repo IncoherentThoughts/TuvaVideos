@@ -729,3 +729,17 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .tvmenu .tvnone { color: var(--fg3); font-size: .9em; padding: 2px 4px; }
 .tvmenu .tvrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px; font-size: .92em; }
 .tvmenu .tvname .dim { color: var(--fg2); font-family: var(--font-mono); font-size: .9em; }
+
+/* ---- first launch (sharing-spec 8.4) ---- */
+.first-launch { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; max-width: 900px; margin: 48px auto; }
+.fl-card { padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2); display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.fl-card h2 { margin: 0; font-size: 1.15em; font-weight: 600; }
+.fl-card p { margin: 0; line-height: 1.45; }
+.root-field { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+.root-input { flex: 1; min-width: 200px; padding: 5px 10px; border: 1px solid var(--line); border-radius: calc(var(--r) * .6); background: var(--bg); color: var(--fg); }
+.root-input[aria-invalid="true"] { border-color: var(--no); }
+.root-error { flex-basis: 100%; color: var(--no); font-size: .92em; }
+.root-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; padding: 6px 10px 6px 14px; border: 1px solid var(--line); border-radius: calc(var(--r) * .7); background: var(--bg2); color: var(--fg2); }
+.root-bar .root-field { flex: 1; width: auto; }
+.root-bar-x { margin-left: auto; padding: 0 6px; color: var(--fg3); font-size: 1.2em; }
+.root-bar-x:hover { color: var(--fg); }

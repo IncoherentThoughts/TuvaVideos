@@ -284,3 +284,11 @@ export interface TvStateDto {
   /** An Approved TV that made a request in the last 60 s; `title` is the Video whose stream it asked for last. */
   playing: { ip: string; model: string | null; title: string | null } | null;
 }
+
+/** GET /api/onboarding (docs/sharing-spec.md §8.4): the machine's mode, its Root count and the surface to show. */
+export interface OnboardingDto {
+  mode: "standalone" | "no-grant" | "member" | "editor";
+  rootCount: number;
+  /** "panel": the first-launch panel (folder field, Sign in); "bar": the dismissable "No videos folder yet" bar. */
+  show: "panel" | "bar" | "none";
+}

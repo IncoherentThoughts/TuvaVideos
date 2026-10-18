@@ -10,7 +10,8 @@ import { libraryFiltered, libraryStart } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
-import { AvailabilityIcon, FavoriteBadge, Poster, SpecTags, Tags } from "./ui";
+import { AvailabilityIcon, FavoriteBadge, NotHereMark, Poster, SpecTags, Tags } from "./ui";
+import { isNotHere, showOnThisMachineChip } from "../shared/presence";
 import { useWindowed } from "./windowed";
 import { FirstLaunchPanel, NoRootBar, useOnboarding } from "./Onboarding";
 import { openSignIn } from "./Account";
@@ -19,20 +20,24 @@ import { useSession } from "./session";
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
 export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpen: () => void; /** Title with <mark>s (search results); plain title otherwise. */ titleHtml?: string; /** Why the search matched: lines under the title. */ why?: ComponentChildren; /** Open the Video at this time (a search that matched a Chapter) instead of its Resume position. */ startS?: number | null }) {
+  // §7.1: Not on this machine is the greyed poster plus one corner mark; title and tags stay, "n copies" and the
+  // availability icon go. The click-through is the ordinary card link (Now playing explains).
+  const notHere = isNotHere(v);
   return (
-    <Link href={playHref(v.id, startS)} class="card" data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
+    <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
       <Poster video={v} dur />
+      {notHere && <NotHereMark />}
       <div class="ttl">
         {v.favoritedAt && <FavoriteBadge />}
         {titleHtml != null ? <span dangerouslySetInnerHTML={{ __html: titleHtml }} /> : v.title}
       </div>
       {why}
       <Tags video={v} />
-      <SpecTags video={v} />
-      {(v.availability !== "local" || v.chapterCount > 0 || v.viewCount > 0) && (
+      {!notHere && <SpecTags video={v} />}
+      {((!notHere && v.availability !== "local") || v.chapterCount > 0 || v.viewCount > 0) && (
         <div class="meta">
           {/* Nearly every Copy is local, so only the exceptions (external, unavailable) get an icon here; Now playing always shows it. */}
-          {v.availability !== "local" && <AvailabilityIcon availability={v.availability} />}
+          {!notHere && v.availability !== "local" && <AvailabilityIcon availability={v.availability} />}
           {v.chapterCount > 0 && <span>{v.chapterCount} ch</span>}
           {v.viewCount > 0 && <span>{v.viewCount} {v.viewCount === 1 ? "view" : "views"}</span>}
         </div>
@@ -90,9 +95,11 @@ export function Library({ search }: { search: string }) {
           </button>
         ))}
         <span class="sep" />
-        <button class={`chip${st.availableOnly ? " on" : ""}`} aria-pressed={st.availableOnly} onClick={() => go({ availableOnly: !st.availableOnly })}>
-          {st.availableOnly ? "Available only" : "All Videos"}
-        </button>
+        {showOnThisMachineChip(videos, st.availableOnly) && (
+          <button class={`chip${st.availableOnly ? " on" : ""}`} aria-pressed={st.availableOnly} title="Only Videos with a Copy that plays now (#available)" onClick={() => go({ availableOnly: !st.availableOnly })}>
+            On this machine
+          </button>
+        )}
         <button class={`chip${st.fav ? " on" : ""}`} aria-pressed={st.fav} onClick={() => go({ fav: !st.fav })}>
           ★ Favorites
         </button>

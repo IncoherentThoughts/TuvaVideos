@@ -83,3 +83,119 @@ export function deletedMatches(db: Db, roots: Roots): DeletedMatch[] {
   }
   return [...out.values()];
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Proposed rows, Elevate, Expose, Repoint (§3.4, §3.5, §4.4, §4.6; ticket #146)
+// ---------------------------------------------------------------------------------------------------------------
+
+export type RowTable = "song" | "version" | "artist";
+
+/** A Video pointing at the row (its Song or Version pointer), with what `writeLink` needs to repoint it. */
+export interface RowUseVideo {
+  id: string;
+  shared: boolean;
+  updatedAt: string;
+  title: string;
+  songId: string | null;
+  versionId: string | null;
+}
+/** A Chapter pointing at the row. */
+export interface RowUseChapter {
+  id: string;
+  videoId: string;
+  shared: boolean;
+  startS: number;
+  title: string;
+  suggested: boolean;
+  updatedAt: string;
+  songId: string | null;
+  versionId: string | null;
+}
+/** A Video linking the Artist, with its whole ordered list (a repoint on an Unshared Video is an `artists.set`). */
+export interface RowUseArtistLink {
+  videoId: string;
+  shared: boolean;
+  updatedAt: string;
+  artistIds: string[];
+}
+
+/** `GET /api/rows/:table/:id`: one Song, Version or Artist as the Proposed / Elevate / Expose / Repoint controls need it. */
+export interface RowInfo {
+  table: RowTable;
+  id: string;
+  kind: RowKind | null;
+  name: string | null;
+  /** A Proposed row's stamp (`write_proposed_* update`); null otherwise. */
+  updatedAt: string | null;
+  /** A Proposed row's columns, in the archive's names (`name`, `english_name`, … / `label`). */
+  fields: Record<string, unknown> | null;
+  /** An archive Song or Artist hidden on the lyrics website. */
+  hidden: boolean;
+  /** Has a `video_exposed_songs` row (§3.5). */
+  exposed: boolean;
+  /** A Version's Song: its id, kind and whether it is hidden (an elevated Version under a public Song is public, §4.4). */
+  parent: { id: string; kind: RowKind | null; hidden: boolean } | null;
+  uses: { videos: RowUseVideo[]; chapters: RowUseChapter[]; artistLinks: RowUseArtistLink[] };
+}
+
+export function rowInfo(db: Db, table: RowTable, id: string): RowInfo | null {
+  const kind = table === "song" ? songKind(db, id) : table === "version" ? versionKind(db, id) : artistKind(db, id);
+  if (!kind) return null;
+  const one = <T>(sql: string, ...a: string[]) => db.query(sql).get(...a) as T | null;
+  let name: string | null = null;
+  let hidden = false;
+  let parent: RowInfo["parent"] = null;
+  if (table === "song") {
+    const s = one<{ name: string; is_hidden: number }>("SELECT name, is_hidden FROM song_all WHERE id = ?", id);
+    name = s?.name ?? null;
+    hidden = !!s?.is_hidden;
+  } else if (table === "version") {
+    const v = one<{ label: string; song_id: string | null }>("SELECT label, song_id FROM version_all WHERE id = ?", id);
+    name = v?.label ?? null;
+    if (v?.song_id) {
+      const s = one<{ is_hidden: number }>("SELECT is_hidden FROM song_all WHERE id = ?", v.song_id);
+      parent = { id: v.song_id, kind: songKind(db, v.song_id), hidden: !!s?.is_hidden };
+    }
+  } else {
+    const a = one<{ name: string; is_hidden: number }>("SELECT name, is_hidden FROM artist_all WHERE id = ?", id);
+    name = a?.name ?? null;
+    hidden = !!a?.is_hidden;
+  }
+  let updatedAt: string | null = null;
+  let fields: Record<string, unknown> | null = null;
+  if (kind === "proposed") {
+    const r = one<Record<string, unknown>>(`SELECT * FROM video_proposed_${table}s WHERE id = ?`, id);
+    if (r) {
+      updatedAt = (r.updated_at as string) ?? null;
+      const keep = table === "song" ? ["name", "english_name", "alternate_titles", "notes"] : table === "version" ? ["label", "song_id", "proposed_song_id", "source"] : ["name"];
+      fields = Object.fromEntries(keep.map((k) => [k, r[k] ?? null]));
+    }
+  }
+  const exposed = table !== "version" && !!one(`SELECT 1 FROM video_exposed_songs WHERE ${table === "song" ? "song_id" : "artist_id"} = ?`, id);
+
+  const col = table === "song" ? "song_id" : "version_id";
+  const videos: RowUseVideo[] =
+    table === "artist"
+      ? []
+      : (db.query(`SELECT id, shared, updated_at, title, song_id, version_id FROM video_full WHERE ${col} = ? ORDER BY created_at, id`).all(id) as {
+          id: string; shared: number; updated_at: string; title: string; song_id: string | null; version_id: string | null;
+        }[]).map((v) => ({ id: v.id, shared: !!v.shared, updatedAt: v.updated_at, title: v.title, songId: v.song_id, versionId: v.version_id }));
+  const chapters: RowUseChapter[] =
+    table === "artist"
+      ? []
+      : (db.query(
+          `SELECT c.id, c.video_id, v.shared, c.start_s, c.title, c.suggested, c.updated_at, c.song_id, c.version_id
+             FROM chapter_full c JOIN video_full v ON v.id = c.video_id WHERE c.${col} = ? ORDER BY c.video_id, c.start_s`,
+        ).all(id) as { id: string; video_id: string; shared: number; start_s: number; title: string | null; suggested: number; updated_at: string; song_id: string | null; version_id: string | null }[]).map((c) => ({
+          id: c.id, videoId: c.video_id, shared: !!c.shared, startS: Number(c.start_s), title: c.title ?? "", suggested: !!c.suggested, updatedAt: c.updated_at, songId: c.song_id, versionId: c.version_id,
+        }));
+  const artistLinks: RowUseArtistLink[] = [];
+  if (table === "artist") {
+    const vids = db.query("SELECT DISTINCT a.video_id, v.shared, v.updated_at FROM video_artist_full a JOIN video_full v ON v.id = a.video_id WHERE a.artist_id = ? ORDER BY a.video_id").all(id) as {
+      video_id: string; shared: number; updated_at: string;
+    }[];
+    const list = db.prepare("SELECT artist_id FROM video_artist_full WHERE video_id = ? ORDER BY position");
+    for (const v of vids) artistLinks.push({ videoId: v.video_id, shared: !!v.shared, updatedAt: v.updated_at, artistIds: (list.all(v.video_id) as { artist_id: string }[]).map((r) => r.artist_id) });
+  }
+  return { table, id, kind, name, updatedAt, fields, hidden, exposed, parent, uses: { videos, chapters, artistLinks } };
+}

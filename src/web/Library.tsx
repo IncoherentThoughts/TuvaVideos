@@ -114,6 +114,7 @@ export function Library({ search }: { search: string }) {
         {st.song && (
           <span class="chip on song">
             Song: {song ? song.name : song === null ? "unknown song" : "…"}
+            {song?.proposed && <> · proposed</>}
             <button aria-label="Clear the Song filter" onClick={() => go({ song: null })}>
               ×
             </button>

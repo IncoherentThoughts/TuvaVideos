@@ -52,13 +52,27 @@ export function TypeTag({ type, suggested }: { type: string; suggested?: boolean
 }
 
 export function artistTitle(artist: ArtistRef): string | undefined {
-  return artist.suggested ? "Suggested Artist (from the title): confirm it on Now playing" : artist.local ? "Local Artist" : undefined;
+  return artist.suggested ? "Suggested Artist (from the title): confirm it on Now playing" : artist.local ? "Local Artist" : artist.proposed ? PROPOSED_TITLE : undefined;
+}
+
+const PROPOSED_TITLE = "Proposed: a Video Editor's row, not yet in the archive (never on the lyrics website)";
+
+/** The Proposed mark (sharing-spec §7.5): wherever a Proposed Song, Version or Artist's name appears. `tag` = inside a tag. */
+export function ProposedMark({ tag }: { tag?: boolean } = {}) {
+  return tag ? (
+    <i class="sugmark propmark" title={PROPOSED_TITLE}>proposed</i>
+  ) : (
+    <span class="localmark propmark" title={PROPOSED_TITLE}>
+      proposed
+    </span>
+  );
 }
 
 export function ArtistTag({ artist }: { artist: ArtistRef }) {
   return (
     <span class={`tag${artist.suggested ? " sug" : ""}`} style={{ "--c": `var(--t${artistSlot(artist.name)})` }} title={artistTitle(artist)}>
       <span class="nm">{artist.name}</span>
+      {artist.proposed && <ProposedMark tag />}
       {artist.suggested && <i class="sugmark">suggested</i>}
     </span>
   );
@@ -71,6 +85,7 @@ export function SongTag({ video }: { video: Pick<VideoDto, "song" | "songSuggest
   return (
     <span class={`tag song${video.songSuggested ? " sug" : ""}`} title={video.songSuggested ? `Suggested Song: ${s.name ?? "unknown"} (confirm it on Now playing)` : `Song: ${s.name ?? "unknown"}`}>
       <span class="nm">{s.name ?? "unknown song"}</span>
+      {s.proposed && <ProposedMark tag />}
       {video.songSuggested && <i class="sugmark">suggested</i>}
     </span>
   );

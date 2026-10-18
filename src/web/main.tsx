@@ -16,6 +16,7 @@ import { startSession } from "./session";
 import { EndedBanner } from "./Account";
 import { ConflictNotice, DeletedMatchNotice } from "./ConflictNotice";
 import { ShareQuestion } from "./ShareQuestion";
+import { RowPromptHost } from "./ProposedRows";
 
 function App() {
   const loc = useLocation();
@@ -30,6 +31,7 @@ function App() {
         <ConflictNotice />
         <DeletedMatchNotice />
         <ShareQuestion />
+        <RowPromptHost />
         {error && <div class="empty-state">Server problem: {error}</div>}
         {route.name === "library" && <Library search={loc.search} />}
         {route.name === "favorites" && <Favorites search={loc.search} />}

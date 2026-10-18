@@ -135,6 +135,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
         <>
           {i > 0 && <Dim>, </Dim>}
           <span class={a.suggested ? "sug" : ""} style={{ color: `var(--t${artistSlot(a.name)})` }} title={a.nameLatin ?? undefined}>{a.name}</span>
+          {a.proposed && <span class="flag local"> proposed</span>}
         </>
       )) : <Nil v="none" />,
     },
@@ -145,6 +146,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
           <Str v={video.song.name ?? "unknown song"} />
           {video.song.englishName && <Dim> · {video.song.englishName}</Dim>}
           {video.song.local && <span class="flag local"> local</span>}
+          {video.song.proposed && <span class="flag local"> proposed</span>}
           {video.songSuggested && <Dim> · suggested{video.suggestionSource ? ` (${video.suggestionSource})` : ""}</Dim>}
         </>
       ) : <Nil v="none" />,

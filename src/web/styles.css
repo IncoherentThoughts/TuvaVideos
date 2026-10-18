@@ -798,3 +798,18 @@ fieldset.chact:disabled .chbtn { opacity: .45; cursor: default; }
 .deleted-bar p { margin: 2px 0; }
 .delconfirm .reason { width: 100%; min-height: 3.2em; margin: 6px 0; }
 .delconfirm h4 { margin: 14px 0 4px; }
+
+/* Proposed rows, Elevate, Expose, Repoint (ProposedRows.tsx; sharing-spec §7.5) */
+.propmark { color: var(--t6, var(--t4)); border-style: dashed; }
+.tag .propmark { margin-left: 5px; }
+.rowacts-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 2px; }
+.rowacts { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rowacts.compact .btn { padding: 1px 7px; }
+.rowacts .btn.on { border-color: var(--accent, var(--line)); }
+.vsrc .rowacts { margin-left: auto; }
+dialog.rowprompt .cands { list-style: none; margin: 8px 0; padding: 0; max-height: 260px; overflow: auto; }
+dialog.rowprompt .cands li { display: flex; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+dialog.rowprompt .cands .cand-nm { font-weight: 600; }
+dialog.rowprompt .cands .btn { margin-left: auto; }
+dialog.rowprompt .pk-in { width: 100%; }
+dialog.rowprompt .picker { position: relative; }

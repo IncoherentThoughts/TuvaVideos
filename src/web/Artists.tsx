@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { libraryQuery, defaultLibraryState } from "../shared/libraryView";
 import {
   ARTIST_KINDS, ARTIST_SORTS, artistsQuery, cmpNullsLast, cmpText, nameMatches, naturalDir, parseArtistsSearch, type ArtistSort, type ArtistsState,
 } from "../shared/listView";
 import type { ArtistDto, VideoDto } from "../shared/types";
-import type { SearchRow } from "../shared/types";
 import { NameFilter, SortControls } from "./ListControls";
 import { api, apiError, loadArtists, reloadAll, useStore } from "./data";
+import { RowActions, useRowRoles } from "./ProposedRows";
 import { navigate } from "./router";
-import { Poster } from "./ui";
+import { Poster, ProposedMark } from "./ui";
 
 const SORT_LABEL: Record<ArtistSort, string> = { name: "Name", videos: "Videos", added: "Latest Video" };
 const KIND_LABEL = { all: "All", mirror: "Archive", local: "Local" } as const;
@@ -30,84 +30,6 @@ export function viewArtists(artists: ArtistDto[], st: ArtistsState, videos: Vide
     return c || cmpText(x.name, y.name);
   });
   return out;
-}
-
-/** "merge into…": search Mirror Artists, pick one, confirm. Only a Local Artist can be merged (spec 2.3). */
-function MergeInto({ artist, onClose }: { artist: ArtistDto; onClose: () => void }) {
-  const [q, setQ] = useState("");
-  const [rows, setRows] = useState<Extract<SearchRow, { kind: "artist" }>[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [pick, setPick] = useState<Extract<SearchRow, { kind: "artist" }> | null>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => input.current?.focus(), []);
-  // a click anywhere outside the popover closes it, like the header pickers
-  useEffect(() => {
-    const on = (e: MouseEvent) => !box.current?.contains(e.target as Node) && onClose();
-    document.addEventListener("mousedown", on);
-    return () => document.removeEventListener("mousedown", on);
-  }, []);
-  useEffect(() => {
-    if (!q.trim()) return setRows(null);
-    const ac = new AbortController();
-    const t = setTimeout(() => {
-      api
-        .search(`#artists ${q}`, ac.signal)
-        .then((r) => {
-          const g = r.groups.find((x) => x.key === "artists");
-          setRows(((g?.rows ?? []) as SearchRow[]).filter((x): x is Extract<SearchRow, { kind: "artist" }> => x.kind === "artist" && !x.local && x.id !== artist.id));
-        })
-        .catch(() => {});
-    }, 80);
-    return () => {
-      clearTimeout(t);
-      ac.abort();
-    };
-  }, [q]);
-
-  const confirm = async () => {
-    if (!pick) return;
-    setBusy("Merging…");
-    try {
-      await api.merge(artist.id, pick.id);
-      await reloadAll();
-      onClose();
-    } catch (e) {
-      setBusy(String((e as Error).message ?? e));
-    }
-  };
-
-  return (
-    <div class="merge" ref={box} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") onClose(); }}>
-      {pick ? (
-        <div>
-          <div style={{ marginBottom: "8px" }}>
-            Merge <b>{artist.name}</b> into <b>{pick.name}</b>? Its {artist.videoCount} Video{artist.videoCount === 1 ? "" : "s"} move to {pick.name} and the Local Artist is removed.
-          </div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <button class="btn" onClick={confirm} disabled={busy === "Merging…"}>Merge</button>
-            <button class="btn" onClick={() => setPick(null)}>Back</button>
-            {busy && <span class="muted">{busy}</span>}
-          </div>
-        </div>
-      ) : (
-        <>
-          <input ref={input} placeholder="Search Mirror Artists…" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
-          {rows === null ? (
-            <div class="none">Type the name of an archive Artist.</div>
-          ) : rows.length === 0 ? (
-            <div class="none">No Mirror Artist matches. Mirror Artists arrive with the archive import.</div>
-          ) : (
-            rows.map((r) => (
-              <button key={r.id} class="opt" onClick={() => setPick(r)}>
-                {r.name} <span class="dim mono">{r.videoCount} Video{r.videoCount === 1 ? "" : "s"}</span>
-              </button>
-            ))
-          )}
-        </>
-      )}
-    </div>
-  );
 }
 
 /** Click the name of a Local Artist to fix its spelling; Enter saves, Esc cancels. */
@@ -165,6 +87,7 @@ function NameField({ a }: { a: ArtistDto }) {
 
 function ArtistRow({ a, open, setOpen }: { a: ArtistDto; open: boolean; setOpen: (v: boolean) => void }) {
   const { videos } = useStore();
+  const roles = useRowRoles();
   const poster = useMemo(() => videos?.find((v) => v.id === a.posterVideoId), [videos, a.posterVideoId]);
   const go = () => navigate(`/${libraryQuery({ ...defaultLibraryState(), artist: a.name })}`);
   return (
@@ -184,26 +107,30 @@ function ArtistRow({ a, open, setOpen }: { a: ArtistDto; open: boolean; setOpen:
         <div class="nm">
           <NameField a={a} />
           {a.local && <span class="tag local" title="Created here; the archive has no row for this Artist">local</span>}
-          {a.proposed && <span class="tag local" title="Proposed: not yet in the archive">proposed</span>}
+          {a.proposed && <ProposedMark />}
         </div>
         <div class="cnt">
           {a.videoCount} Video{a.videoCount === 1 ? "" : "s"}
         </div>
       </div>
       <div class="acts">
-        {a.local && (
-          <button
-            class="btn small"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(!open);
-            }}
-          >
-            merge into…
-          </button>
+        {/* Repoint replaces merge (sharing-spec §4.6); the Proposed and Expose controls by role (§7.5). Read on open. */}
+        {open ? (
+          <RowActions table="artist" id={a.id} compact onChanged={() => void reloadAll()} />
+        ) : (
+          (a.local || roles.propose || roles.expose) && (
+            <button
+              class="btn small"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(true);
+              }}
+            >
+              {a.local ? "repoint…" : "actions…"}
+            </button>
+          )
         )}
       </div>
-      {open && <MergeInto artist={a} onClose={() => setOpen(false)} />}
     </div>
   );
 }

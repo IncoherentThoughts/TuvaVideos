@@ -8,7 +8,7 @@ import { openDb, type Db } from "../src/server/db";
 import { applyShared } from "../src/server/localCopy/apply";
 import { listShelved, pendingShareIds, readSessionRecord, setPendingShare, writeSessionRecord } from "../src/server/localCopy/meta";
 import {
-  applyPlan, createReconcile, matchVideo, planCounts, planFor, planReconcile, sharedIndex, shelvedFor, type ReconcileVideo,
+  applyPlan, createReconcile, matchVideo, planCounts, planDiffs, planFor, planReconcile, sharedIndex, shelvedFor, type ReconcileVideo,
 } from "../src/server/reconcile";
 import { createSync } from "../src/server/sync";
 import type { SharedChanges, SharedChapterRow, SharedVideoArtistRow, SharedVideoRow } from "../src/shared/sharedRows";
@@ -266,9 +266,28 @@ describe("preview and confirm", () => {
     expect(db.query("SELECT COUNT(*) n FROM videos WHERE id = ?").get(L1)).toEqual({ n: 1 });
     const c = await rc.confirm(TOKEN);
     expect(c.counts).toEqual(p.counts);
+    // #157: the post-Sync popup's rows are the confirmation's.
+    expect(p.diffs?.map((d) => [d.videoId, d.rows.length])).toEqual([[SV1, 4]]);
+    expect(c.diffs).toEqual(p.diffs!);
     expect(m.pulls).toBe(1);
     expect(listShelved(db).length).toBe(4);
     expect(readSessionRecord(db)?.watermark).toBeNull(); // the Sync that follows pulls and sets it
+  });
+
+  test("#157: the diff rows say each local value against the Shared one, names from the batch first", () => {
+    const { db } = library();
+    const b = bundle();
+    b.tables!.artists = [{ id: ART, name: "Shared singer" }];
+    expect(planDiffs(db, planFor(db, b), b)).toEqual([
+      {
+        videoId: SV1, videoTitle: "Song of the steppe", rows: [
+          { attr: "title", label: "Title", before: "My steppe song", after: "Song of the steppe" },
+          { attr: "type", label: "Type", before: "concert", after: "song" },
+          { attr: "artists", label: "Artists", before: "Local singer", after: "Shared singer" },
+          { attr: "chapter", label: "Chapter at 0:45", before: "“My part”", after: "No Chapter here" },
+        ],
+      },
+    ]);
   });
 
   test("a Member's unknown Videos stay Unshared; no grant reconciles nothing", async () => {

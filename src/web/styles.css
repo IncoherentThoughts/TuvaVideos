@@ -855,3 +855,22 @@ dialog.shelf .row-end { display: flex; justify-content: flex-end; gap: 8px; marg
 /* §6.4 schema gate banner (#158, SchemaBanner.tsx): persistent, not dismissable */
 .schema-bar { border-color: var(--t3); color: var(--fg); }
 .schema-bar.behind { border-color: var(--t2); }
+
+/* Shelved diffs (#157): one row per attribute a Video lost to the Shared row: local value (red) → Shared (green).
+   Used by the sign-in confirmation, its post-Sync popup and the Shelved drawer (src/web/ShelvedDiff.tsx). */
+.sd-explain { font-size: .9em; color: var(--fg2); margin: 6px 0 10px; }
+.sd-key { white-space: nowrap; }
+.sd-list { max-height: 45vh; overflow: auto; margin: 8px 0; padding-right: 4px; }
+dialog.signin { max-width: min(640px, calc(100vw - 32px)); }
+.sd-video { margin: 8px 0; }
+.sd-title { font-weight: 600; font-size: .92em; }
+ul.sd-rows { list-style: none; margin: 4px 0; padding: 0 0 0 10px; font-size: .9em; }
+.sd-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; margin: 4px 0; }
+.sd-label { color: var(--fg3); min-width: 6.5em; }
+.sd-vals { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; min-width: 0; }
+.sd-before, .sd-after { padding: 0 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.sd-before { color: var(--no); background: color-mix(in srgb, var(--no) 14%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--no) 60%, transparent); }
+.sd-after { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); text-decoration: none; }
+.sd-arrow { color: var(--fg3); }
+.sd-when { font-size: .9em; }
+dialog.shelf .sd-row .btn { margin-left: auto; }

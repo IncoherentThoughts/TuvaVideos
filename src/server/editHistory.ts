@@ -4,6 +4,8 @@
 import type { Db } from "./db";
 import { clearShelved, listShelved } from "./localCopy/meta";
 import { decodeValue, showValue, type EditsPage, type HistoryEntry, type ShelvedItem } from "../shared/editHistory";
+import { diffRow, type DiffNow } from "../shared/shelvedDiff";
+import { localNames } from "./reconcile";
 
 interface HistoryDbRow {
   id: string;
@@ -98,6 +100,25 @@ export function shelvedItems(db: Db, videoId?: string): ShelvedItem[] {
   const video = db.prepare("SELECT v.title, COALESCE(l.shared, 0) AS shared FROM videos v LEFT JOIN video_local l ON l.video_id = v.id WHERE v.id = ?");
   const song = db.prepare("SELECT name FROM song_all WHERE id = ?");
   const artist = db.prepare("SELECT name FROM artist_all WHERE id = ?");
+  const names = localNames(db);
+  // The Video as it is now (the Shared values that replaced the shelved ones), read once per Video.
+  const nowQ = db.prepare("SELECT title, type, COALESCE(song_id, proposed_song_id) AS s, COALESCE(version_id, proposed_version_id) AS ver FROM videos WHERE id = ?");
+  const artistsQ = db.prepare("SELECT COALESCE(artist_id, proposed_artist_id) AS a FROM video_artists WHERE video_id = ? ORDER BY position");
+  const chaptersQ = db.prepare("SELECT start_s, title, COALESCE(song_id, proposed_song_id) AS s, COALESCE(version_id, proposed_version_id) AS ver FROM video_chapters WHERE video_id = ? ORDER BY start_s");
+  const nows = new Map<string, DiffNow>();
+  const nowOf = (id: string): DiffNow => {
+    let n = nows.get(id);
+    if (!n) {
+      const v = nowQ.get(id) as { title: string; type: string | null; s: string | null; ver: string | null } | null;
+      n = {
+        title: v?.title ?? "", type: v?.type ?? null, songId: v?.s ?? null, versionId: v?.ver ?? null,
+        artistIds: (artistsQ.all(id) as { a: string }[]).map((r) => r.a),
+        chapters: (chaptersQ.all(id) as { start_s: number; title: string | null; s: string | null; ver: string | null }[]).map((c) => ({ startS: c.start_s, title: c.title ?? "", songId: c.s, versionId: c.ver })),
+      };
+      nows.set(id, n);
+    }
+    return n;
+  };
   const name = (q: typeof song, id: unknown) => (typeof id === "string" ? ((q.get(id) as { name: string } | null)?.name ?? "an unknown row") : null);
   return listShelved(db, videoId).map((s) => {
     const v = video.get(s.videoId) as { title: string; shared: number } | null;
@@ -125,7 +146,8 @@ export function shelvedItems(db: Db, videoId?: string): ShelvedItem[] {
         summary = String((p as { kind: string }).kind);
     }
     const { kind, ...payload } = p;
-    return { id: s.id, videoId: s.videoId, videoTitle: v?.title ?? "(gone)", shared: !!v?.shared, shelvedAt: s.shelvedAt, kind, payload, summary };
+    const diff = v ? diffRow(s.payload, nowOf(s.videoId), names) : { ...diffRow(s.payload, nowOf(s.videoId), names), after: "(not on this machine)" };
+    return { id: s.id, videoId: s.videoId, videoTitle: v?.title ?? "(gone)", shared: !!v?.shared, shelvedAt: s.shelvedAt, kind, payload, summary, diff };
   });
 }
 

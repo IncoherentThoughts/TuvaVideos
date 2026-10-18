@@ -30,6 +30,7 @@ export function setMeta(db: Db, key: string, value: string | null) {
 
 // The record's type lives in src/shared/session.ts so the browser's session layer reads the same shape.
 import type { GrantLevel, SessionRecord } from "../../shared/session";
+import type { ShelvedValue } from "../../shared/shelvedDiff";
 export type { GrantLevel, SessionRecord };
 
 /** The machine's mode (§2.1): no record, a record without the grant, or a Member / Video Editor. */
@@ -88,13 +89,8 @@ export function machineMode(rec: SessionRecord | null): MachineMode {
 
 export type ShelvedKind = "title" | "type" | "song" | "artists" | "chapter";
 
-/** What a Shelved edit keeps: the values the local row had before the Shared row replaced it. */
-export type ShelvedPayload =
-  | { kind: "title"; title: string; titleLatin: string | null }
-  | { kind: "type"; type: string }
-  | { kind: "song"; songId: string | null; versionId: string | null }
-  | { kind: "artists"; artistIds: string[] }
-  | { kind: "chapter"; startS: number; title: string; songId: string | null; versionId: string | null; favoritedAt: string | null };
+/** What a Shelved edit keeps: the values the local row had before the Shared row replaced it (src/shared/shelvedDiff.ts). */
+export type ShelvedPayload = ShelvedValue;
 
 export interface ShelvedEdit {
   id: number;

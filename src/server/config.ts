@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, win32 } from "node:path";
+import { archiveEndpoint, type ArchiveEndpoint } from "../shared/archive";
 
 export interface Config {
   dataDir: string;
@@ -36,6 +37,8 @@ export interface Config {
   openTab: boolean;
   migrationsDir: string;
   webDir: string;
+  /** The Tuvan Lyrics Archive (sharing-spec §4.9): committed, or `TUVA_ARCHIVE_URL` / `TUVA_ARCHIVE_KEY`. */
+  archive: ArchiveEndpoint;
 }
 
 /**
@@ -88,5 +91,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     openTab: env.TUVA_NO_OPEN !== "1",
     migrationsDir: join(import.meta.dir, "..", "..", "migrations"),
     webDir: join(import.meta.dir, "..", "web"),
+    archive: archiveEndpoint(env),
   };
 }

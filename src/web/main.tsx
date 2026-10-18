@@ -12,6 +12,7 @@ import { loadArtists, loadVideos, useStore } from "./data";
 import { installKeys } from "./keys";
 import { matchRoute, useLocation } from "./router";
 import { applyThemeFromUrl } from "./theme";
+import { startSession } from "./session";
 
 function App() {
   const loc = useLocation();
@@ -40,4 +41,6 @@ applyThemeFromUrl();
 installKeys();
 void loadVideos();
 void loadArtists();
+// The session layer (sharing-spec §5.3): the record at once, then supabase-js; the chip and dialog (#131) use useSession().
+void startSession();
 render(<App />, document.getElementById("app")!);

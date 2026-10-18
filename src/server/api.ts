@@ -33,9 +33,12 @@ import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "../shared/types";
 import type { SharedChanges } from "../shared/sharedRows";
 import { applyShared } from "./localCopy/apply";
-import { localRequestError } from "./localOnly";
+import { hostError, localRequestError } from "./localOnly";
+import { createSync } from "./sync";
+import { looksLikeJwt } from "../shared/archive";
+import type { SessionResponse } from "../shared/session";
 import { checkRootPath, onboardingFor, ROOT_BAR_DISMISSED } from "./rootSetup";
-import { getMeta, machineMode, readSessionRecord, setMeta } from "./localCopy/meta";
+import { clearSessionRecord, getMeta, machineMode, readSessionRecord, setMeta } from "./localCopy/meta";
 import type { OnboardingDto } from "../shared/types";
 import { homedir } from "node:os";
 
@@ -126,6 +129,7 @@ const COPY_SQL = `SELECT c.id, c.video_id, c.root_id, r.kind AS root_kind, c.rel
   FROM copy c JOIN root r ON r.id = c.root_id`;
 
 export function createHandler(s: Services) {
+  const sync = createSync(s.db, s.cfg.archive);
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
@@ -747,6 +751,31 @@ export function createHandler(s: Services) {
         } catch (e) {
           return json({ error: `nothing was applied: ${(e as Error).message ?? e}` }, 422);
         }
+      }
+      // The Session record (sharing-spec §5.2): read by every tab on launch and window focus. Token-free, but it names
+      // the account, so only this machine's pages (the Host check; a same-origin GET sends no Origin).
+      if (req.method === "GET" && p === "/api/session") {
+        const refused = hostError(req);
+        if (refused) return json({ error: refused }, 403);
+        return json({ record: readSessionRecord(s.db), archive: s.cfg.archive, syncing: sync.busy() } satisfies SessionResponse);
+      }
+      // Sign out, a SIGNED_OUT event the browser read as a dropped session, or a cancelled sign-in (§2.4, §5.1, §5.4):
+      // the record goes, the Local copy stays read-only.
+      if (req.method === "DELETE" && p === "/api/session") {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        clearSessionRecord(s.db);
+        return json({ record: null });
+      }
+      // A Sync (§5.2, §6.4) with the browser's access token in the body, never the URL or a header we log. The stub runs
+      // video_whoami() and writes the record; #115 adds the pull. Origin and Host checked: it takes a token.
+      if (req.method === "POST" && p === "/api/sync") {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const body = await readJson(req);
+        const extra = body ? Object.keys(body).filter((k) => k !== "access_token") : [];
+        if (!body || extra.length || !looksLikeJwt(body.access_token)) return json({ error: "body must be {access_token} (the access token only)" }, 400);
+        return json(await sync.request(body.access_token));
       }
       if (req.method === "POST" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/relocate$/))) {
         // Point a Video's Copy at its file's new place (Now playing's folder button). See relocate.ts.

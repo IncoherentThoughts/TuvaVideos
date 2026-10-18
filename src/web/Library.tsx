@@ -12,6 +12,7 @@ import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, SpecTags, Tags } from "./ui";
 import { useWindowed } from "./windowed";
+import { FirstLaunchPanel, NoRootBar, useOnboarding } from "./Onboarding";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
@@ -40,7 +41,8 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
 
 export function Library({ search }: { search: string }) {
   const { videos } = useStore();
-  const st = useMemo(() => parseLibrarySearch(search), [search]);
+  const onboarding = useOnboarding();
+  const st =useMemo(() => parseLibrarySearch(search), [search]);
   // `?song=`: the Videos performing that Song (its Song pointer, or a Chapter), from the Song's own record.
   const [song, setSong] = useState<SongDto | null | undefined>(undefined);
   useEffect(() => {
@@ -128,7 +130,9 @@ export function Library({ search }: { search: string }) {
           shuffle random
         </button>
       </div>
-      {videos && shown.length === 0 ? (
+      {onboarding?.show === "bar" && <NoRootBar />}
+      {onboarding?.show === "panel" && <FirstLaunchPanel />}
+      {videos && videos.length === 0 && onboarding && onboarding.show !== "none" ? null :videos && shown.length === 0 ? (
         <div class="empty-state">
           No Videos match these filters.{" "}
           <Link href="/" class="muted" style={{ textDecoration: "underline" }}>

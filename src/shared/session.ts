@@ -3,6 +3,7 @@
 // rule (the one rule later tickets ask), the multi-tab messages, and the readings of supabase-js outcomes (a sign-in
 // error, a revocation probe, a SIGNED_OUT event). No I/O; src/web/session.ts wires them to supabase-js and the companion.
 import type { ArchiveEndpoint } from "./archive";
+import type { ApplySharedResult } from "./sharedRows";
 
 export type GrantLevel = "member" | "editor";
 
@@ -28,9 +29,13 @@ export interface SessionResponse {
   syncing: boolean;
 }
 
-/** `POST /api/sync` takes `{access_token}` and nothing else (never the refresh token). */
+/**
+ * `POST /api/sync` takes `{access_token}` and nothing else (never the refresh token), plus `full: true` for Settings'
+ * "Refresh all Shared data" (§6.4): the Shared rows are wiped and pulled whole.
+ */
 export interface SyncRequest {
   access_token: string;
+  full?: boolean;
 }
 
 /** `POST /api/sync`'s answer. The stub (#130) runs `video_whoami()` only; the pull and posters are #115's. */
@@ -46,10 +51,14 @@ export interface SyncResponse {
   schema: { client: number; archive: number | null };
   /** `video_whoami().must_change_password` (not kept in the record); false when the archive was not reached. */
   mustChangePassword: boolean;
-  /** Whether rows were pulled; false in the stub. */
+  /** Whether a pull was applied to the Local copy (§6.2). */
   pulled: boolean;
   /** One line for the chip's "last Sync error"; null on success. */
   error: string | null;
+  /** This Sync was (or was to be) a full refetch, one of §6.4's repair cases. */
+  full?: boolean;
+  /** What `applyShared` did, when a pull was applied. */
+  applied?: ApplySharedResult | null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -79,10 +88,36 @@ export interface SessionState {
   lastSyncError: string | null;
   /** Set when the session dropped (§5.4); the record is already cleared. The UI's banner reads it and dismisses it. */
   ended: EndedReason | null;
+  /** Where the running Sync is, for the chip's Sync row; null when none runs. */
+  progress: SyncProgress | null;
+  /** The schema gate's mismatch (§6.4) from the last Sync that reached whoami; cleared by the next successful one. */
+  schemaMismatch: SchemaMismatch | null;
+  /** Failed Syncs in a row (the focus trigger's back-off, §6.2), and when the last one ended (ms). */
+  failures: number;
+  lastFailureAt: number | null;
+}
+
+/** The running Sync: checking the session (the revocation probe), then the companion's whoami + pull + apply. */
+export interface SyncProgress {
+  phase: "checking" | "pulling";
+  /** A full refetch ("Refresh all Shared data"). */
+  full: boolean;
+  /** When this Sync started (ms). */
+  startedAt: number;
+}
+
+/** §6.4's schema gate: `behind` = this checkout is older than the archive ("Update TuvaVideos ..."). */
+export interface SchemaMismatch {
+  client: number;
+  archive: number;
+  behind: boolean;
+  /** The banner's line. */
+  line: string;
 }
 
 export const INITIAL_SESSION_STATE: SessionState = {
   record: null, recordLoaded: false, authSettled: false, browser: null, reachable: null, syncing: false, lastSyncError: null, ended: null,
+  progress: null, schemaMismatch: null, failures: 0, lastFailureAt: null,
 };
 
 export type SessionAction =
@@ -90,8 +125,14 @@ export type SessionAction =
   | { type: "auth"; session: BrowserSession | null }
   | { type: "settled" }
   | { type: "reach"; reachable: boolean }
-  | { type: "sync-start" }
-  | { type: "sync-end"; record?: SessionRecord | null; reachable: boolean; error: string | null }
+  | { type: "sync-start"; full?: boolean; at?: number }
+  | { type: "sync-phase"; phase: SyncProgress["phase"] }
+  | {
+      type: "sync-end"; record?: SessionRecord | null; reachable: boolean; error: string | null;
+      /** The response's schema pair, when whoami answered: sets or clears `schemaMismatch`. */
+      schema?: { client: number; archive: number | null };
+      at?: number;
+    }
   | { type: "ended"; reason: EndedReason }
   | { type: "dismiss-ended" }
   | { type: "signed-out" };
@@ -108,17 +149,27 @@ export function sessionReducer(s: SessionState, a: SessionAction): SessionState 
     case "reach":
       return { ...s, reachable: a.reachable };
     case "sync-start":
-      return { ...s, syncing: true };
+      return { ...s, syncing: true, progress: { phase: "checking", full: a.full === true, startedAt: a.at ?? Date.now() } };
+    case "sync-phase":
+      return s.progress ? { ...s, progress: { ...s.progress, phase: a.phase } } : s;
     case "sync-end": {
       const record = a.record === undefined ? s.record : a.record;
-      return { ...s, syncing: false, reachable: a.reachable, lastSyncError: a.error, record, ended: record ? null : s.ended };
+      const failed = a.error != null;
+      // The gate's verdict changes only when whoami answered; a successful Sync clears it in any case (§6.4).
+      let schemaMismatch = s.schemaMismatch;
+      if (a.schema && a.schema.archive != null) schemaMismatch = schemaMismatchOf(a.schema.client, a.schema.archive);
+      else if (!failed) schemaMismatch = null;
+      return {
+        ...s, syncing: false, progress: null, reachable: a.reachable, lastSyncError: a.error, record, ended: record ? null : s.ended, schemaMismatch,
+        failures: failed ? s.failures + 1 : 0, lastFailureAt: failed ? (a.at ?? Date.now()) : null,
+      };
     }
     case "ended":
-      return { ...s, record: null, browser: null, syncing: false, lastSyncError: null, ended: a.reason };
+      return { ...s, record: null, browser: null, syncing: false, progress: null, lastSyncError: null, ended: a.reason, schemaMismatch: null, failures: 0, lastFailureAt: null };
     case "dismiss-ended":
       return { ...s, ended: null };
     case "signed-out":
-      return { ...s, record: null, browser: null, syncing: false, lastSyncError: null, ended: null };
+      return { ...s, record: null, browser: null, syncing: false, progress: null, lastSyncError: null, ended: null, schemaMismatch: null, failures: 0, lastFailureAt: null };
   }
 }
 
@@ -149,6 +200,54 @@ export function focusWantsSync(record: SessionRecord | null, browser: BrowserSes
   if (!record || !browser || browser.userId !== record.userId) return false;
   const last = record.lastSyncAt ? Date.parse(record.lastSyncAt) : NaN;
   return !Number.isFinite(last) || nowMs - last > FOCUS_SYNC_AFTER_MS;
+}
+
+/** The schema gate's banner line (§6.4), or null when the archive and this checkout agree. */
+export function schemaGateLine(client: number, archive: number): string | null {
+  if (archive > client) return "Update TuvaVideos: git pull, then restart";
+  if (archive < client) return `The archive's Shared schema is ${archive}, this checkout's is ${client}: the archive's migration has not run yet`;
+  return null;
+}
+
+export function schemaMismatchOf(client: number, archive: number): SchemaMismatch | null {
+  const line = schemaGateLine(client, archive);
+  return line ? { client, archive, behind: archive > client, line } : null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Sync triggers (§6.4): no timer, no network-regained trigger
+// ---------------------------------------------------------------------------------------------------------------
+
+/** What can start a Sync. `refresh-all` is Settings' "Refresh all Shared data" (a full refetch). */
+export type SyncTrigger = "sign-in" | "launch" | "after-write" | "button" | "focus" | "refresh-all";
+
+/** The focus trigger's back-off after failed Syncs (§6.2 "backs off and retries"): 1, 2, 4, 8, then 10 minutes. */
+export const SYNC_BACKOFF_MS = [60_000, 120_000, 240_000, 480_000, FOCUS_SYNC_AFTER_MS] as const;
+export function syncBackoffMs(failures: number): number {
+  if (failures <= 0) return 0;
+  return SYNC_BACKOFF_MS[Math.min(failures, SYNC_BACKOFF_MS.length) - 1]!;
+}
+
+/**
+ * Whether a trigger starts a Sync (the pure rule). Every trigger but `sign-in` needs this browser's session to be the
+ * record's user (`sign-in` runs before the record names anyone); `launch` also waits for a settled session. `focus`
+ * Syncs only when the last successful Sync is older than 10 minutes and, after failures, the back-off has passed; the
+ * button, an editor's write and Refresh all always run (the button is how a person retries at once).
+ */
+export function syncWanted(
+  t: SyncTrigger,
+  s: Pick<SessionState, "record" | "browser" | "authSettled" | "failures" | "lastFailureAt">,
+  nowMs: number,
+): boolean {
+  if (t === "sign-in") return true;
+  const mine = !!s.record && !!s.browser && s.browser.userId === s.record.userId;
+  if (!mine) return false;
+  if (t === "launch") return s.authSettled;
+  if (t === "focus") {
+    if (!focusWantsSync(s.record, s.browser, nowMs)) return false;
+    return s.lastFailureAt == null || nowMs - s.lastFailureAt >= syncBackoffMs(s.failures);
+  }
+  return true;
 }
 
 /** §5.3: how long launch waits for supabase-js's initial session before counting it as unsettled-offline. */

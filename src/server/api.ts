@@ -129,7 +129,7 @@ const COPY_SQL = `SELECT c.id, c.video_id, c.root_id, r.kind AS root_kind, c.rel
   FROM copy c JOIN root r ON r.id = c.root_id`;
 
 export function createHandler(s: Services) {
-  const sync = createSync(s.db, s.cfg.archive);
+  const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir });
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
@@ -767,15 +767,17 @@ export function createHandler(s: Services) {
         clearSessionRecord(s.db);
         return json({ record: null });
       }
-      // A Sync (§5.2, §6.4) with the browser's access token in the body, never the URL or a header we log. The stub runs
-      // video_whoami() and writes the record; #115 adds the pull. Origin and Host checked: it takes a token.
+      // A Sync (§5.2, §6.2–§6.4) with the browser's access token in the body, never the URL or a header we log:
+      // video_whoami(), the record, the schema gate, the pull and its apply. `full: true` is "Refresh all Shared data".
+      // Origin and Host checked: it takes a token.
       if (req.method === "POST" && p === "/api/sync") {
         const refused = localRequestError(req);
         if (refused) return json({ error: refused }, 403);
         const body = await readJson(req);
-        const extra = body ? Object.keys(body).filter((k) => k !== "access_token") : [];
-        if (!body || extra.length || !looksLikeJwt(body.access_token)) return json({ error: "body must be {access_token} (the access token only)" }, 400);
-        return json(await sync.request(body.access_token));
+        const extra = body ? Object.keys(body).filter((k) => k !== "access_token" && k !== "full") : [];
+        if (!body || extra.length || !looksLikeJwt(body.access_token) || (body.full !== undefined && typeof body.full !== "boolean"))
+          return json({ error: "body must be {access_token, full?} (the access token only, never the refresh token)" }, 400);
+        return json(await sync.request({ accessToken: body.access_token, full: body.full === true }));
       }
       if (req.method === "POST" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/relocate$/))) {
         // Point a Video's Copy at its file's new place (Now playing's folder button). See relocate.ts.

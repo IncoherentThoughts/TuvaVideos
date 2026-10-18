@@ -131,6 +131,9 @@ describe("the Session record through /api/sync and /api/session (mocked PostgRES
     mock = Bun.serve({
       port: 0,
       async fetch(r) {
+        // The pull (#139) answers an empty bundle here; test/syncPull.test.ts covers it.
+        if (new URL(r.url).pathname === "/rest/v1/rpc/shared_changes_since")
+          return Response.json({ shared_schema: 1, server_time: "2026-10-17T12:00:01Z", since: null, watermark: null, tables: {}, replace_whole: [], tombstones: [], archive_ids: {} });
         if (new URL(r.url).pathname !== "/rest/v1/rpc/video_whoami") return new Response("{}", { status: 404 });
         seen.push({ auth: r.headers.get("authorization"), apikey: r.headers.get("apikey") });
         if (delayMs) await Bun.sleep(delayMs);
@@ -171,10 +174,10 @@ describe("the Session record through /api/sync and /api/session (mocked PostgRES
     const token = jwt({ exp: future(), sub: "11111111-1111-4111-8111-111111111111" });
     const r = await sync({ access_token: token }).then((x) => x.json() as Promise<any>);
     expect(seen.at(-1)).toEqual({ auth: `Bearer ${token}`, apikey: "test-key" });
-    expect(r).toMatchObject({ ok: true, reachable: true, pulled: false, mustChangePassword: true, schema: { client: 1, archive: 1 }, error: null });
+    expect(r).toMatchObject({ ok: true, reachable: true, pulled: true, full: true, mustChangePassword: true, schema: { client: 1, archive: 1 }, error: null });
     expect(r.record).toEqual({
       userId: "11111111-1111-4111-8111-111111111111", email: "ed@example.org", displayName: "Ed", avatarUrl: "https://x/a.png",
-      grantLevel: "editor", archiveRole: "user", lastVerifiedAt: "2026-10-17T12:00:00Z", lastSyncAt: null, watermark: null,
+      grantLevel: "editor", archiveRole: "user", lastVerifiedAt: "2026-10-17T12:00:00Z", lastSyncAt: expect.any(String), watermark: null,
     });
     expect((await session()).record).toEqual(r.record);
     const logPath = loadConfig({ TUVA_DATA_DIR: join(base, "m") }).logPath;

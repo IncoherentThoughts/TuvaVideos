@@ -2,6 +2,7 @@
 // panel, the library-wide Edits view (`/edits`, from the chip menu), the undo toast, and the Shelved drawer with its
 // copy back and Clear. Undo buttons for Video Editors only; everything reads the Local copy through the companion.
 import { useEffect, useRef, useState } from "preact/hooks";
+import { DiffRowView, ShelvedExplainer } from "./ShelvedDiff";
 import { EVENT_FILTERS, editorLabel, groupWrites, showValue, type EditsPage, type HistoryEntry, type ShelvedItem, type WriteGroup } from "../shared/editHistory";
 import { api, reloadAll, replaceVideo } from "./data";
 import { Link, playHref } from "./router";
@@ -289,7 +290,8 @@ function ShelvedDialog({ videoId, onClose }: { videoId: string | null; onClose: 
   return (
     <dialog ref={box} class="delconfirm shelf" aria-label="Shelved edits" onClose={onClose} onClick={(e) => e.target === box.current && busy == null && box.current?.close()}>
       <h3>Shelved edits</h3>
-      <p class="dim">What this machine had before signing in replaced it with the Shared values. Read-only{s.canEdit ? "; copy back writes one as an ordinary edit" : ""}.</p>
+      <ShelvedExplainer />
+      <p class="dim">Read-only{s.canEdit ? "; copy back writes one as an ordinary edit" : ""}.</p>
       {items && !items.length && <p class="nil">No Shelved edits.</p>}
       {[...byVideo].map(([vid, list]) => (
         <section key={vid} class="shelf-video">
@@ -301,17 +303,16 @@ function ShelvedDialog({ videoId, onClose }: { videoId: string | null; onClose: 
               Clear
             </button>
           </div>
-          <ul>
+          <ul class="sd-rows">
             {list.map((it) => (
-              <li key={it.id}>
-                <span>{it.summary}</span>
-                <span class="dim"> · shelved {when(it.shelvedAt)}</span>
+              <DiffRowView key={it.id} row={it.diff ?? { attr: it.kind, label: it.summary, before: it.summary, after: "" }}>
+                <span class="dim sd-when">shelved {when(it.shelvedAt)}</span>
                 {s.canEdit && it.shared && (
                   <button class="btn small" disabled={busy != null} onClick={() => void copyBack(it)}>
                     {busy === it.id ? "Copying…" : "Copy back"}
                   </button>
                 )}
-              </li>
+              </DiffRowView>
             ))}
           </ul>
         </section>

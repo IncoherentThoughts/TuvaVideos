@@ -212,6 +212,12 @@ describe("Shelved edits: list, drop, clear (§7.4)", () => {
       ["Два", "chapter", "Chapter at 1:15 “Ыр”"],
     ]);
     expect(all[0]).toMatchObject({ shared: true, payload: { title: "Мой", titleLatin: null } });
+    // #157: each item is a red/green row against what the Video says now.
+    expect(all.map((i) => i.diff)).toEqual([
+      { attr: "title", label: "Title", before: "Мой", after: "Один" },
+      { attr: "song", label: "Song", before: "Mezhegei", after: "No Song" },
+      { attr: "chapter", label: "Chapter at 1:15", before: "“Ыр”", after: "No Chapter here" },
+    ]);
     expect(shelvedItems(db, v2)).toHaveLength(1);
     expect(dropShelved(db, a)).toBe(true);
     expect(dropShelved(db, a)).toBe(false);

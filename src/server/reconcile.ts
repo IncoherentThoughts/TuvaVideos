@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { changesSince, postgrestClient, tokenExp, whoami, type ArchiveCall, type ArchiveEndpoint, type RpcClient } from "../shared/archive";
 import type { VideoWhoami } from "../shared/archiveWire";
 import { NO_RECONCILE, type ReconcileCounts, type ReconcileResponse } from "../shared/reconcile";
+import { mapNames, videoDiffs, type DiffNames, type DiffNow, type VideoDiff } from "../shared/shelvedDiff";
 import { schemaGateLine, type SessionRecord } from "../shared/session";
 import type { SharedChanges } from "../shared/sharedRows";
 import type { Db } from "./db";
@@ -244,6 +245,45 @@ export function planFor(db: Db, batch: SharedChanges): ReconcilePlan {
   return planReconcile(localVideos(db, matched), shared);
 }
 
+/** Names from the Local copy's views (archive, Proposed and local rows alike). */
+export function localNames(db: Db): DiffNames {
+  const q = (sql: string) => {
+    const st = db.prepare(sql);
+    return (id: string) => (st.get(id) as { n: string } | null)?.n ?? null;
+  };
+  return { song: q("SELECT name AS n FROM song_all WHERE id = ?"), version: q("SELECT label AS n FROM version_all WHERE id = ?"), artist: q("SELECT name AS n FROM artist_all WHERE id = ?") };
+}
+
+/** The Shared side of a Video as a diff compares against it. */
+export const diffNow = (v: ReconcileVideo): DiffNow & { videoTitle: string } => ({
+  videoTitle: v.title, title: v.title, type: v.type, songId: v.songId, versionId: v.versionId, artistIds: v.artistIds,
+  chapters: v.chapters.map((c) => ({ startS: c.startS, title: c.title, songId: c.songId, versionId: c.versionId })),
+});
+
+/**
+ * What a plan shelves, per Video, as red/green rows (#157): the local value against the batch's Shared value. Names
+ * come from the batch first (a fresh machine holds none of the Shared rows yet), then from the Local copy.
+ */
+export function planDiffs(db: Db, plan: ReconcilePlan, batch: SharedChanges): VideoDiff[] {
+  if (!plan.shelve.length) return [];
+  const t = batch.tables ?? {};
+  const songs = new Map<string, string>();
+  const versions = new Map<string, string>();
+  const artists = new Map<string, string>();
+  for (const r of t.songs ?? []) songs.set(String(r.id), String(r.name ?? r.slug ?? r.id));
+  for (const r of t.video_proposed_songs ?? []) songs.set(r.id, r.name);
+  for (const r of t.song_lyrics ?? []) versions.set(String(r.id), String(r.version_label ?? r.label ?? "Complete"));
+  for (const r of t.video_proposed_versions ?? []) versions.set(r.id, r.label);
+  for (const r of t.artists ?? []) artists.set(String(r.id), String(r.name ?? r.id));
+  for (const r of t.video_proposed_artists ?? []) artists.set(r.id, r.name);
+  const shared = new Map(sharedVideos(batch).map((v) => [v.id, v]));
+  const names = mapNames({ songs, versions, artists }, localNames(db));
+  return videoDiffs(plan.shelve.map((s) => ({ videoId: s.videoId, value: s.payload })), (id) => {
+    const v = shared.get(id);
+    return v ? diffNow(v) : null;
+  }, names);
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // The SQL half
 // ---------------------------------------------------------------------------------------------------------------
@@ -386,7 +426,7 @@ const refusal = (r: Extract<ArchiveCall<unknown>, { ok: false }>, what: string) 
 export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: ReconcileOptions = {}) {
   const now = opts.now ?? Date.now;
   let held: { userId: string; at: number; batch: SharedChanges } | null = null;
-  const fail = (error: string, o: Partial<ReconcileResponse> = {}): ReconcileResponse => ({ ok: false, error, record: readSessionRecord(db), mustChangePassword: false, counts: NO_RECONCILE, ...o });
+  const fail = (error: string, o: Partial<ReconcileResponse> = {}): ReconcileResponse => ({ ok: false, error, record: readSessionRecord(db), mustChangePassword: false, counts: NO_RECONCILE, diffs: [], ...o });
 
   /** whoami (the record), the schema gate, the grant; then the Shared set, pulled whole or reused. */
   async function prepare(token: string, reuse: boolean) {
@@ -406,7 +446,7 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
     const gate = schemaGateLine(SHARED_SCHEMA, w.shared_schema);
     if (gate) return { done: fail(gate, { record, mustChangePassword }) };
     // No grant: nothing to pull, nothing to reconcile; the library stays as it is, read-only (§5.1).
-    if (!record.grantLevel) return { done: { ok: true, error: null, record, mustChangePassword, counts: NO_RECONCILE } as ReconcileResponse };
+    if (!record.grantLevel) return { done: { ok: true, error: null, record, mustChangePassword, counts: NO_RECONCILE, diffs: [] } as ReconcileResponse };
     if (reuse && held && held.userId === record.userId && now() - held.at < PREVIEW_REUSE_MS) return { record, mustChangePassword, batch: held.batch };
     const pull = await changesSince(c, null);
     if (!pull.ok) return { done: fail(pull.unreachable ? "The archive can't be reached" : refusal(pull, "the pull"), { record, mustChangePassword }) };
@@ -423,7 +463,8 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
       const p = await prepare(token, false);
       if ("done" in p) return p.done!;
       const editor = p.record.grantLevel === "editor";
-      return { ok: true, error: null, record: p.record, mustChangePassword: p.mustChangePassword, counts: planCounts(planFor(db, p.batch), editor) };
+      const plan = planFor(db, p.batch);
+      return { ok: true, error: null, record: p.record, mustChangePassword: p.mustChangePassword, counts: planCounts(plan, editor), diffs: planDiffs(db, plan, p.batch) };
     },
     /** `POST /api/reconcile`: reconciles and applies the Shared set in one transaction. The Sync that follows pulls. */
     async confirm(token: string): Promise<ReconcileResponse> {
@@ -431,11 +472,15 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
       if ("done" in p) return p.done!;
       const editor = p.record.grantLevel === "editor";
       let done: AppliedPlan;
+      let diffs: VideoDiff[] = [];
       try {
         done = db.transaction(() => {
           // A Member's unknown Videos stay Unshared, queued ones from an earlier editor session included (§2.5).
           if (!editor) loseEditorGrant(db);
-          const r = applyPlan(db, planFor(db, p.batch), { queueUnknown: editor, keepThumbnails: !!opts.thumbsDir });
+          const plan = planFor(db, p.batch);
+          // Read before the apply: the local values and the local_* names they point at are still where they were.
+          diffs = planDiffs(db, plan, p.batch);
+          const r = applyPlan(db, plan, { queueUnknown: editor, keepThumbnails: !!opts.thumbsDir });
           applyShared(db, p.batch);
           return r;
         })();
@@ -444,7 +489,7 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
       }
       held = null;
       if (opts.thumbsDir) renameThumbnails(opts.thumbsDir, done.rekeyed);
-      return { ok: true, error: null, record: readSessionRecord(db), mustChangePassword: p.mustChangePassword, counts: done.counts };
+      return { ok: true, error: null, record: readSessionRecord(db), mustChangePassword: p.mustChangePassword, counts: done.counts, diffs };
     },
   };
 }

@@ -118,10 +118,17 @@ export function editGate(video: { shared: boolean }, s: { editorView: boolean; c
 
 export const EDIT_DISABLED_NOTICE = "Editing needs the archive: reconnect, then Sync from the account menu.";
 
-/** The reconciliation confirmation's sentence (§2.3, §5.1); the count is a placeholder until #117. */
-export function shelveLine(count: number): string {
-  if (count <= 0) return "Nothing on this machine will be shelved.";
-  return `${count} local edit${count === 1 ? "" : "s"} will be shelved: kept on this machine, read-only.`;
+/**
+ * The reconciliation confirmation's sentence (§2.3, §5.1), or with `done` the post-Sync popup's (#157). `videos` is
+ * how many Videos the edits are on (omitted: not said).
+ */
+export function shelveLine(count: number, videos?: number, done = false): string {
+  if (count <= 0) return done ? "Nothing on this machine was shelved." : "Nothing on this machine will be shelved.";
+  const on = videos ? ` on ${videos} Video${videos === 1 ? "" : "s"}` : "";
+  const edits = `${count} local edit${count === 1 ? "" : "s"}${on}`;
+  return done
+    ? `${edits} ${count === 1 ? "was" : "were"} shelved: kept on this machine, read-only. The shared library's values show now.`
+    : `${edits} will be shelved: kept on this machine, read-only.`;
 }
 
 export const FORGOT_URL = "https://songsofthesteppe.org";

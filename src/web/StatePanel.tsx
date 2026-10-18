@@ -9,6 +9,7 @@ import type { CopyDto, VideoDto } from "../shared/types";
 import type { ChapterMark } from "./Timeline";
 import { api } from "./data";
 import { FavoriteBadge, artistSlot, resolutionLabel } from "./ui";
+import { VideoHistory } from "./History";
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -107,12 +108,18 @@ function CopyRow({ c, playing, preferred }: { c: CopyDto; playing: boolean; pref
   );
 }
 
+/** The panel's tab: the live state, or the Video's edit history (§4.8). Kept across Videos for this tab. */
+let lastTab: "state" | "history" = "state";
+
 export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }: Props) {
   const [, tick] = useState(0);
+  const [tab, setTabState] = useState(lastTab);
+  const setTab = (t: typeof tab) => ((lastTab = t), setTabState(t));
   useEffect(() => {
+    if (tab !== "state") return;
     const t = setInterval(() => tick((n) => n + 1), 250);
     return () => clearInterval(t);
-  }, []);
+  }, [tab]);
 
   const v = vid.current;
   const t = v?.currentTime ?? 0;
@@ -186,12 +193,15 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
   return (
     <div class="stpanel" data-keep-focus="" role="region" aria-label="Player state">
       <div class="stp-head">
-        <h4>State</h4>
+        <div class="stp-tabs" role="tablist">
+          <button role="tab" tabIndex={-1} aria-selected={tab === "state"} class={tab === "state" ? "on" : ""} onClick={() => setTab("state")}>State</button>
+          <button role="tab" tabIndex={-1} aria-selected={tab === "history"} class={tab === "history" ? "on" : ""} onClick={() => setTab("history")}>History</button>
+        </div>
         {v && !v.paused && !v.ended ? <span class="live on"><i /> live</span> : <span class="live"><i /> {v?.ended ? "ended" : "paused"}</span>}
         <span class="dim">press <kbd>i</kbd> to hide</span>
         <button class="ib" tabIndex={-1} aria-label="Close the State panel" onClick={onClose}>×</button>
       </div>
-      <div class="stp-cols">
+      {tab === "history" ? <VideoHistory videoId={video.id} shared={video.shared} /> : <div class="stp-cols">
         <Section name="video" color="t3">
           <Kv rows={meta} />
         </Section>
@@ -213,7 +223,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
             ))}
           </div>
         </Section>
-      </div>
+      </div>}
     </div>
   );
 }

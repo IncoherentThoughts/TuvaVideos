@@ -6,6 +6,7 @@
 import type { ArchiveError, ConflictDetail, EditInput, WriteFunction } from "../shared/archiveWire";
 import type { VideoType } from "../shared/filters";
 import { latinByTable } from "../shared/translit";
+import type { HistoryEntry } from "../shared/editHistory";
 import type { ChapterCreate, ChapterDto, ChapterPatch, VideoDto, VideoPatch } from "../shared/types";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -40,7 +41,10 @@ export type LinkOp =
   | { kind: "chapter.delete"; chapter: LinkChapter }
   | { kind: "chapter.confirm"; chapter: LinkChapter }
   | { kind: "chapter.reject"; chapter: LinkChapter }
-  | { kind: "chapters.confirmAll" };
+  | { kind: "chapters.confirmAll" }
+  // undo only (§4.7): a rejection taken back, by the rejection row's id
+  | { kind: "chapter.unreject"; rejectionId: string }
+  | { kind: "artists.unreject"; rejectionId: string };
 
 export type LinkOpKind = LinkOp["kind"];
 
@@ -54,12 +58,15 @@ export type WriteMode = "standalone" | "no-grant" | "member" | "editor";
 export const READ_ONLY_LINE = "Shared Videos are edited by Video Editors; this machine is signed in without that access.";
 export const SHARED_ONLY_LINE = "Only a Shared Video is deleted or restored through the archive; this one is deleted from this machine.";
 
+export const UNDO_SHARED_LINE = "Undo works on Shared Videos' edit history; this Video is edited on this machine only.";
+
 export type Route = { to: "archive" } | { to: "local" } | { to: "refused"; line: string };
 
 /** A Shared Video on a Video Editor's machine goes to the archive; an Unshared or Standalone one to the companion. */
 export function routeFor(video: Pick<LinkVideo, "shared">, op: Pick<LinkOp, "kind">, mode: WriteMode): Route {
   if (video.shared) return mode === "editor" ? { to: "archive" } : { to: "refused", line: READ_ONLY_LINE };
   if (op.kind === "video.delete" || op.kind === "video.restore" || op.kind === "video.suggest") return { to: "refused", line: SHARED_ONLY_LINE };
+  if (op.kind === "chapter.unreject" || op.kind === "artists.unreject") return { to: "refused", line: UNDO_SHARED_LINE };
   return { to: "local" };
 }
 
@@ -165,6 +172,8 @@ export interface CallOptions {
   stamp?: string | null;
   /** A client-minted uuid for `chapter.add`. */
   newId?: string;
+  /** Undo (§4.7): the history rows this write inverts. Each Edit points at the row of its field, else the first. */
+  reverses?: { id: string; fieldName?: string | null }[];
 }
 
 class LocalRow extends Error {}
@@ -201,7 +210,11 @@ const cleanTitle = (t: string) => t.trim().replace(/\s+/g, " ");
  */
 export function archiveCall(video: LinkVideo, op: LinkOp, kinds: Kinds = NO_KINDS, opts: CallOptions = {}): ArchiveCallSpec | { refused: string } {
   try {
-    return build(video, op, kinds, opts);
+    const spec = build(video, op, kinds, opts);
+    const rev = opts.reverses ?? [];
+    if (!("refused" in spec) && rev.length)
+      for (const e of spec.args.p_edits) e.reverses = (rev.find((r) => r.fieldName != null && r.fieldName === e.field_name) ?? rev[0]!).id;
+    return spec;
   } catch (e) {
     if (e instanceof LocalRow) return { refused: LOCAL_ROW_LINE };
     throw e;
@@ -279,9 +292,10 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
       const prev = new Map((video.artists ?? []).map((a) => [a.id, a]));
       const ids = [...new Set(op.artistIds)];
       const artists = ids.map((id) => ({ ...artistRef(kinds, id), suggested: prev.get(id)?.suggested ?? false }));
-      const names = (list: string[]) => list.map((id) => prev.get(id)?.name ?? id);
+      // ids with names, so an undo can put them back (§3.6: values sufficient to invert)
+      const named = (list: string[]) => list.map((id) => ({ id, name: prev.get(id)?.name ?? id }));
       return call("write_video_artists", "replace", video.id, { artists }, vStamp, [
-        { event_type: "artists.replaced", field_name: "artists", old_value: names([...prev.keys()]), new_value: names(ids), description: "Artists changed" },
+        { event_type: "artists.replaced", field_name: "artists", old_value: named([...prev.keys()]), new_value: named(ids), description: "Artists changed" },
       ]);
     }
     case "artists.remove": {
@@ -292,7 +306,7 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
         return call("write_video_artists", "reject", a.linkId, {}, null, [{ event_type: "artist_link.rejected", field_name: "artist_id", old_value: a.id, description: `Rejected ${a.name}` }]);
       const rest = (video.artists ?? []).filter((x) => x.id !== op.artistId);
       return call("write_video_artists", "replace", video.id, { artists: rest.map((x) => ({ ...artistRef(kinds, x.id), suggested: x.suggested })) }, vStamp, [
-        { event_type: "artists.replaced", field_name: "artists", old_value: (video.artists ?? []).map((x) => x.name), new_value: rest.map((x) => x.name), description: `Removed ${a.name}` },
+        { event_type: "artists.replaced", field_name: "artists", old_value: (video.artists ?? []).map((x) => ({ id: x.id, name: x.name })), new_value: rest.map((x) => ({ id: x.id, name: x.name })), description: `Removed ${a.name}` },
       ]);
     }
     case "artists.confirm":
@@ -335,7 +349,8 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
     }
     case "chapter.delete":
       return call("write_video_chapters", "delete", op.chapter.id, {}, opts.stamp !== undefined ? opts.stamp : op.chapter.updatedAt, [
-        { event_type: "chapter.deleted", field_name: "start_s", old_value: op.chapter.startS, description: `Chapter deleted: ${op.chapter.title}` },
+        // the whole Chapter, so an undo can add it back (§3.6: values sufficient to invert)
+        { event_type: "chapter.deleted", field_name: "chapter", old_value: { start_s: op.chapter.startS, title: op.chapter.title, song_id: op.chapter.songId ?? null, version_id: op.chapter.versionId ?? null }, description: `Chapter deleted: ${op.chapter.title}` },
       ]);
     case "chapter.confirm":
       return call("write_video_chapters", "confirm", op.chapter.id, {}, opts.stamp !== undefined ? opts.stamp : op.chapter.updatedAt, [
@@ -347,6 +362,142 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
       ]);
     case "chapters.confirmAll":
       return call("write_video_chapters", "confirm_all", video.id, {}, null, [{ event_type: "chapter.confirmed", description: "Every Suggested Chapter confirmed" }]);
+    case "chapter.unreject":
+      return call("write_video_chapters", "unreject", op.rejectionId, {}, null, [{ event_type: "chapter.unrejected", description: "Chapter rejection undone" }]);
+    case "artists.unreject":
+      return call("write_video_artists", "unreject", op.rejectionId, {}, null, [{ event_type: "artist_link.unrejected", description: "Artist rejection undone" }]);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Undo (§4.7): the inversion table. An undo is an ordinary new write with the inverse op, stamped like any write,
+// its Edits pointing (`reverses`) at the rows they invert. Shelved edits' copy back (§7.4) is an ordinary write too.
+// ---------------------------------------------------------------------------------------------------------------
+
+export const NOT_UNDOABLE_LINE = "Scans, suggestions, elevations and the migration are not undone (§4.7).";
+export const CONFIRM_NOT_UNDOABLE_LINE = "A confirmation is not undone: the archive has no un-confirm.";
+export const ALREADY_UNDONE_LINE = "Already undone.";
+export const GONE_LINE = "That row is no longer here (deleted since); nothing to undo.";
+export const NOT_RECORDED_LINE = "Not enough was recorded with this edit to undo it.";
+export const UNREJECTED_GONE_LINE = "The rejection is no longer held (taken back since); nothing to undo.";
+export const NOT_HERE_LINE = "This kind of edit is not undone from here.";
+
+/** What an undo needs of an Edit (a `HistoryEntry` from `GET /api/videos/:id/history`). */
+export type UndoEntry = Pick<HistoryEntry, "id" | "targetId" | "eventType" | "fieldName" | "oldValue" | "newValue" | "reversedBy" | "rejectionId">;
+
+/** The Video and its Chapters as the Local copy holds them now (the ops quote current values and stamps). */
+export interface UndoContext {
+  video: LinkVideo;
+  chapters: LinkChapter[];
+}
+
+export type UndoPlan = { op: LinkOp; reverses: { id: string; fieldName: string | null }[] } | { refused: string };
+
+const isConfirmation = (e: UndoEntry) =>
+  e.eventType === "chapter.confirmed" || e.eventType === "artists.confirmed" ||
+  ((e.eventType === "video.type_changed" || e.eventType === "video.song_changed") && JSON.stringify(e.oldValue ?? null) === JSON.stringify(e.newValue ?? null));
+
+/** Why a write cannot be undone at all, whatever the Local copy holds now; null when it can be tried. */
+export function undoBlock(entries: UndoEntry[]): string | null {
+  if (!entries.length) return NOT_HERE_LINE;
+  if (entries.some((e) => e.reversedBy)) return ALREADY_UNDONE_LINE;
+  if (entries.some((e) => e.eventType === "video.scanned" || e.eventType.endsWith(".migrated") || e.eventType.endsWith(".suggested") || e.eventType.endsWith("_elevated") || e.eventType.endsWith(".elevated")))
+    return NOT_UNDOABLE_LINE;
+  if (entries.every(isConfirmation)) return CONFIRM_NOT_UNDOABLE_LINE;
+  const handled = new Set([
+    "video.title_changed", "video.title_latin_changed", "video.type_changed", "video.song_changed", "video.version_changed", "video.deleted", "video.restored",
+    "chapter.added", "chapter.changed", "chapter.deleted", "chapter.rejected", "chapter.confirmed", "artists.replaced", "artist_link.rejected", "artists.confirmed",
+  ]);
+  if (entries.some((e) => !handled.has(e.eventType))) return NOT_HERE_LINE;
+  const e = entries.find((x) => !isConfirmation(x))!;
+  if (e.eventType === "chapter.rejected" || e.eventType === "artist_link.rejected") return e.rejectionId ? null : UNREJECTED_GONE_LINE;
+  if (e.eventType === "chapter.deleted" && !(e.oldValue && typeof e.oldValue === "object" && "start_s" in e.oldValue)) return NOT_RECORDED_LINE;
+  if (e.eventType === "artists.replaced" && !(Array.isArray(e.oldValue) && e.oldValue.every((a) => a && typeof a === "object" && typeof (a as { id?: unknown }).id === "string")))
+    return NOT_RECORDED_LINE;
+  return null;
+}
+
+const str = (v: unknown) => (v == null ? null : String(v));
+
+/**
+ * The inverse of one write (the Edits one call filed, `groupWrites`), as the op `writeLink` sends with `reverses`.
+ * Confirmations in a mixed write are left as they are (no un-confirm); the rest is put back to its old values.
+ */
+export function inverseOf(entries: UndoEntry[], ctx: UndoContext): UndoPlan {
+  const blocked = undoBlock(entries);
+  if (blocked) return { refused: blocked };
+  const live = entries.filter((e) => !isConfirmation(e));
+  const reverses = live.map((e) => ({ id: e.id, fieldName: e.fieldName }));
+  const first = live[0]!;
+  const chapter = () => ctx.chapters.find((c) => c.id === first.targetId);
+  switch (first.eventType) {
+    case "video.deleted":
+      return { op: { kind: "video.restore" }, reverses };
+    case "video.restored":
+      return { op: { kind: "video.delete", reason: "Restore undone" }, reverses };
+    case "chapter.added": {
+      const c = chapter();
+      return c ? { op: { kind: "chapter.delete", chapter: c }, reverses } : { refused: GONE_LINE };
+    }
+    case "chapter.deleted": {
+      const o = first.oldValue as { start_s: number; title?: string | null; song_id?: string | null; version_id?: string | null };
+      return { op: { kind: "chapter.add", chapter: { startS: Number(o.start_s), title: o.title ?? "", songId: o.song_id ?? null, versionId: o.version_id ?? null } }, reverses };
+    }
+    case "chapter.changed": {
+      const c = chapter();
+      if (!c) return { refused: GONE_LINE };
+      const patch: ChapterPatch = {};
+      for (const e of live) {
+        if (e.fieldName === "title") patch.title = str(e.oldValue) ?? "";
+        else if (e.fieldName === "start_s") patch.startS = Number(e.oldValue);
+        else if (e.fieldName === "song_id") patch.songId = str(e.oldValue);
+      }
+      return { op: { kind: "chapter.update", chapter: c, patch }, reverses };
+    }
+    case "chapter.rejected":
+      return { op: { kind: "chapter.unreject", rejectionId: first.rejectionId! }, reverses };
+    case "artist_link.rejected":
+      return { op: { kind: "artists.unreject", rejectionId: first.rejectionId! }, reverses };
+    case "artists.replaced":
+      return { op: { kind: "artists.set", artistIds: (first.oldValue as { id: string }[]).map((a) => a.id) }, reverses };
+    default: {
+      // the video.* field changes of one update, as one update back
+      const patch: VideoPatch = {};
+      const titleChanged = live.some((e) => e.eventType === "video.title_changed");
+      const used: typeof reverses = [];
+      for (const e of live) {
+        if (e.eventType === "video.title_changed") patch.title = str(e.oldValue) ?? "";
+        // a Latin title that followed the title is regenerated from the old title; one typed alone is put back
+        else if (e.eventType === "video.title_latin_changed") {
+          if (!titleChanged) patch.titleLatin = str(e.oldValue);
+        } else if (e.eventType === "video.type_changed") patch.type = e.oldValue as VideoPatch["type"];
+        else if (e.eventType === "video.song_changed") patch.songId = str(e.oldValue);
+        else if (e.eventType === "video.version_changed") patch.versionId = str(e.oldValue);
+        used.push({ id: e.id, fieldName: e.fieldName });
+      }
+      if (patch.title !== undefined && !patch.title) return { refused: NOT_RECORDED_LINE };
+      if (patch.songId !== undefined && patch.versionId === undefined && patch.songId === (ctx.video.songId ?? null)) delete patch.songId;
+      return { op: { kind: "video.update", patch }, reverses: used };
+    }
+  }
+}
+
+/** A Shelved edit's copy back (§7.4): the kept values as an ordinary write on the Shared Video. */
+export function copyBackOp(item: { kind: string; payload: Record<string, unknown> }): LinkOp | null {
+  const p = item.payload;
+  switch (item.kind) {
+    case "title":
+      return typeof p.title === "string" && p.title.trim() ? { kind: "video.update", patch: { title: p.title } } : null;
+    case "type":
+      return typeof p.type === "string" ? { kind: "video.update", patch: { type: p.type as VideoPatch["type"] } } : null;
+    case "song":
+      return { kind: "video.update", patch: { songId: str(p.songId), versionId: str(p.versionId) } };
+    case "artists":
+      return Array.isArray(p.artistIds) ? { kind: "artists.set", artistIds: p.artistIds.map(String) } : null;
+    case "chapter":
+      return typeof p.startS === "number" ? { kind: "chapter.add", chapter: { startS: p.startS, title: typeof p.title === "string" ? p.title : "", songId: str(p.songId), versionId: str(p.versionId) } } : null;
+    default:
+      return null;
   }
 }
 

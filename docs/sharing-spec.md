@@ -216,9 +216,15 @@ Merging Artist A into B is **repointing**: every `video_artists` link moves (pos
 
 An ordinary new write with the inverse op, never an edit of history, checked against `updated_at` like any write, logged as its own event pointing at the one it reverses. Not undoable: `video.scanned`, `*.suggested`, `*.elevated`, `video.migrated`.
 
+*(amended in #147)* The inversion table is `inverseOf` in `src/web/writeOps.ts`; an undo goes through `writeLink(video, op, {reverses})`, every Edit of the new write carrying `reverses` (the row of its field, else the write's first). The unit undone is one **write**: the Edits one call filed (same Video, editor and `created_at`, `groupWrites` in `src/shared/editHistory.ts`). What the spec left open:
+- **Inverses**: a title, Latin title, Type, Song or Version change goes back to `old_value` (a Latin title that followed the title is regenerated from the old title; one typed alone is put back); `video.deleted` ↔ `video.restored` (the re-delete's reason is "Restore undone"); `chapter.added` → delete, `chapter.changed` → the old fields, `chapter.deleted` → add back; `chapter.rejected` / `artist_link.rejected` → `unreject` by the rejection's id (the companion finds it in the Local copy); `artists.replaced` → the old list.
+- **Not undoable, besides the list above**: confirmations (`chapter.confirmed`, `artists.confirmed`, a Type or Song confirmed: the archive has no un-confirm; inside a mixed write they stay and the rest goes back), `*.unrejected`, `artist_link.repointed`, `proposed.*`, `exposure.*`, `video.provenance_changed`, `video.poster_changed` (not from this UI). An undo is itself undoable like any write.
+- **Values sufficient to invert (§3.6)**: `chapter.deleted` now records the whole Chapter (`field_name: "chapter"`, `old_value {start_s, title, song_id, version_id}`) and `artists.replaced` records `[{id, name}]` instead of names. Rows written before cannot be undone ("not enough was recorded").
+- **The toast**: after a Shared write on a Video Editor's machine, "Saved: … [Undo]" for the last write only (gone after 8 s; matcher writes and the conflict notice's apply mine show none). Unshared Videos keep no history and get no toast.
+
 ### 4.8 Surfaces
 
-A **history tab** in Now playing's State panel per Video, and a library-wide **Edits** view from the chip menu, filterable by editor and type, with undo buttons for Video Editors only. The conflict notice (§4.2). The Proposed badge and the "use existing / create anyway" prompt. The Elevate control (moderator + editor) and the Expose toggle (admin) on a Song. The Repoint action where merge was.
+A **history tab** in Now playing's State panel per Video, and a library-wide **Edits** view from the chip menu, filterable by editor and type, with undo buttons for Video Editors only. *(amended in #147: the companion serves them from the Local copy, `GET /api/videos/:id/history` and `GET /api/edits?editor=&type=&before=&limit=` (newest first, `type` an event-family prefix list, pages never split a write); the Edits view is the route `/edits`; editors are "You" or "Video Editor <id prefix>", the Local copy holding no names.)* The conflict notice (§4.2). The Proposed badge and the "use existing / create anyway" prompt. The Elevate control (moderator + editor) and the Expose toggle (admin) on a Song. The Repoint action where merge was.
 
 ### 4.9 The client seam
 
@@ -343,6 +349,8 @@ As built (#131, #148): one rule, `editGate(video, session)` in `chipView.ts` (Un
 ### 7.4 Shelved edits
 
 A small marker on a Video with Shelved edits opens a read-only drawer listing them; a Video Editor has a "copy back" action per item (an ordinary write); "Clear" per Video, and all at once from the chip menu.
+
+*(amended in #147)* The marker is on the Video's History tab (the grid cards are #148's); the chip menu has "Shelved edits (n)" (the drawer for every Video) and "Clear Shelved edits" (confirmed). Routes: `GET /api/shelved[?video=]` (with the names the values point at), `DELETE /api/shelved/:id`, `DELETE /api/videos/:id/shelved`, `DELETE /api/shelved` (same-origin only). Copy back writes the kept value through `writeLink` (a title, a Type, a Song and Version, the Artists list, a Chapter added) and then drops that item; a Local Song or Artist is refused like any Shared write.
 
 ### 7.5 Proposed and Exposed in the UI
 

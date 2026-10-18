@@ -44,6 +44,7 @@ export type Route =
   | { name: "favorites" }
   | { name: "artists" }
   | { name: "songs" }
+  | { name: "edits" }
   | { name: "search"; q: string; sort: "rank" | "views" }
   | { name: "notfound" };
 
@@ -53,6 +54,7 @@ export function matchRoute(loc: Loc): Route {
   if (p === "/favorites") return { name: "favorites" };
   if (p === "/artists") return { name: "artists" };
   if (p === "/songs") return { name: "songs" };
+  if (p === "/edits") return { name: "edits" };
   if (p === "/search") {
     const sp = new URLSearchParams(loc.search);
     return { name: "search", q: sp.get("q") ?? "", sort: sp.get("sort") === "views" ? "views" : "rank" };

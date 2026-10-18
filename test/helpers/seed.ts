@@ -93,6 +93,6 @@ export function insertCopy(db: Db, row: Row & { video_id: Id; root_id: number; r
 }
 
 /** A rejected Chapter suggestion's tombstone (`video_chapter_rejections`). */
-export function insertChapterRejection(db: Db, row: { video_id: Id; source: string; start_s: number; rejected_at?: string }) {
-  insert(db, "video_chapter_rejections", { id: newUuid(), video_id: vid(row.video_id), source: row.source, start_s: row.start_s, rejected_at: row.rejected_at, updated_at: now() });
+export function insertChapterRejection(db: Db, row: { video_id: Id; source: string; start_s: number; created_at?: string }) {
+  insert(db, "video_chapter_rejections", { id: newUuid(), video_id: vid(row.video_id), source: row.source, start_s: row.start_s, created_at: row.created_at ?? now(), updated_at: now() });
 }

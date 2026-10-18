@@ -564,7 +564,7 @@ describe("Rutube id (ADR 0008)", () => {
 describe("POST /api/cache/apply (sharing-spec §4.9, §6.2)", () => {
   const SV = "33333333-3333-4333-8333-333333333333";
   const row = { id: SV, content_hash: "cache-apply-hash", title: "From the archive", type: "song", created_at: "2026-10-17T00:00:00Z", updated_at: "2026-10-17T00:00:00Z" };
-  const post = (headers: Record<string, string>) => fetch(base_url + "/api/cache/apply", { method: "POST", headers, body: JSON.stringify({ videos: [row] }) });
+  const post = (headers: Record<string, string>) => fetch(base_url + "/api/cache/apply", { method: "POST", headers, body: JSON.stringify({ tables: { videos: [row] } }) });
   test("refused without this companion's Origin; applied with it, and the Video is Shared", async () => {
     expect((await post({})).status).toBe(403);
     expect((await post({ origin: "https://evil.example" })).status).toBe(403);
@@ -572,7 +572,10 @@ describe("POST /api/cache/apply (sharing-spec §4.9, §6.2)", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ applied: { videos: 1 }, reindex: "rows" });
     expect(await api(`/api/videos/${SV}`)).toMatchObject({ id: SV, title: "From the archive", shared: true });
-    const bad = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ videos: [{ id: V(999998) }] }) });
+    const bad = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ tables: { videos: [{ id: V(999998) }] } }) });
     expect(bad.status).toBe(422);
+    // the pre-130 flat body (rows by table at the top) is refused, not silently ignored
+    const flat = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ videos: [row] }) });
+    expect(flat.status).toBe(400);
   });
 });

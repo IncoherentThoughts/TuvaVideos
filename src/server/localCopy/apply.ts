@@ -6,13 +6,18 @@
 //     ones held for it (the write functions bump the parent whenever a child changes); children of a skipped Video are
 //     skipped; children arriving without their Video are upserted one by one under the same guard;
 //   - Proposed rows deleted or elevated arrive as tombstones and leave the Local copy (§6.3);
+//   - the tables `replace_whole` names arrive complete: held rows the batch lacks go (§6.2, migration 130);
+//   - `archive_ids` lists every archive Song, Version, Artist, Performance and Album the caller can read: held ones
+//     missing from it go (the ids-only reconcile of hard deletes, §6.3);
+//   - a batch whose `shared_schema` is not this checkout's is refused whole (§6.4);
 //   - afterwards each changed Video, Chapter, Artist, Song and Version is reindexed, a changed Song also reindexes its
 //     Videos and Chapters, and above 200 changed rows the whole index is rebuilt once.
 // Any failure rolls the whole batch back and throws; the caller's watermark stays where it was.
 import type { Db } from "../db";
 import { fillArtistLatin } from "../latin";
 import { indexArtist, indexSong, indexVersion, rebuildSearchIndex, reindexChapter, reindexVideo } from "../search";
-import type { ApplySharedResult, SharedChanges, SharedTombstoneRow } from "../../shared/sharedRows";
+import type { ApplySharedResult, ArchiveIds, ReplaceWholeTable, SharedChanges, SharedTombstoneRow } from "../../shared/sharedRows";
+import { SHARED_SCHEMA } from "./meta";
 import {
   mapAlbum, mapAlbumCredits, mapArtist, mapPerformance, mapSong, mapTrack, mapTrackArtists, mapVersion, isArchiveTestSong, type Row,
 } from "./archiveRows";
@@ -79,6 +84,7 @@ const UNIQUES: Record<string, string[][]> = {
   video_artists: [["video_id", "artist_id"], ["video_id", "proposed_artist_id"]],
   video_chapter_rejections: [["video_id", "source", "start_s"]],
   video_artist_rejections: [["video_id", "artist_id"], ["video_id", "proposed_artist_id"]],
+  video_exposed_songs: [["song_id"], ["artist_id"]],
   archive_song: [["slug"]],
   archive_version: [["song_id", "label"]],
   archive_track: [["album_id", "track_number"]],
@@ -129,7 +135,27 @@ function upserter(db: Db, table: string, pk: string[] = ["id"]): Upserter {
 /** The Video children: table and how a held row is matched to the batch (`id`). */
 const CHILDREN = ["video_chapters", "video_artists", "video_chapter_rejections", "video_artist_rejections"] as const;
 /** Proposed tables that tombstones may name. */
-const TOMBSTONE_TABLES = new Set(["video_proposed_songs", "video_proposed_versions", "video_proposed_artists", "video_exposed_songs"]);
+const TOMBSTONE_TABLES = new Set(["video_proposed_songs", "video_proposed_versions", "video_proposed_artists"]);
+/** The Local copy table each `replace_whole` table lands in. */
+const WHOLE_TABLE: Record<ReplaceWholeTable, string> = {
+  video_exposed_songs: "video_exposed_songs",
+  album_tracks: "archive_track",
+  album_track_artists: "archive_track_artist",
+  album_artists: "archive_album_credit",
+};
+/** The Local copy table each `archive_ids` list reconciles. */
+const IDS_TABLE: Record<keyof ArchiveIds, string> = {
+  songs: "archive_song",
+  song_lyrics: "archive_version",
+  artists: "archive_artist",
+  song_performances: "archive_performance",
+  albums: "archive_album",
+};
+
+/** A table's whole content as one string, to tell whether a wholesale replace changed anything (no rebuild if not). */
+function fingerprint(db: Db, table: string): string {
+  return JSON.stringify(db.query(`SELECT * FROM ${table} ORDER BY 1, 2`).all().map((r) => ({ ...(r as Row), updated_at: undefined })));
+}
 
 interface Changed {
   videos: Set<string>;
@@ -140,8 +166,17 @@ interface Changed {
   tracks: boolean;
 }
 
-export function applyShared(db: Db, changes: SharedChanges): ApplySharedResult {
+export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   const t0 = performance.now();
+  if (batch.shared_schema != null && batch.shared_schema !== SHARED_SCHEMA) {
+    throw new Error(`the batch is Shared schema ${batch.shared_schema}, this checkout speaks ${SHARED_SCHEMA}`);
+  }
+  const changes = batch.tables ?? {};
+  const whole = new Set<ReplaceWholeTable>();
+  for (const t of batch.replace_whole ?? []) {
+    if (!Object.hasOwn(WHOLE_TABLE, t)) throw new Error(`replace_whole names an unknown table: ${t}`);
+    if (changes[t]) whole.add(t); // a whole table that did not come is not emptied
+  }
   const applied: Record<string, number> = {};
   const skipped: Record<string, number> = {};
   const count = (rec: Record<string, number>, t: string) => void (rec[t] = (rec[t] ?? 0) + 1);
@@ -178,17 +213,26 @@ export function applyShared(db: Db, changes: SharedChanges): ApplySharedResult {
       if (put("archive_version", mapVersion(v))) changed.versions.add(String(v.id));
     }
     for (const a of changes.albums ?? []) if (put("archive_album", mapAlbum(a))) changed.tracks = true;
-    for (const [albumId, rows] of mapAlbumCredits(changes.album_artists ?? [])) {
+    // Tracks and credits have no updated_at and arrive whole at every pull: rebuild the index only if they differ.
+    const trackTables = ["archive_album_credit", "archive_track", "archive_track_artist"];
+    const trackRowsCame = !!(changes.album_artists || changes.album_tracks || changes.album_track_artists);
+    const before = trackRowsCame ? trackTables.map((t) => fingerprint(db, t)).join("\n") : "";
+    const credits = mapAlbumCredits(changes.album_artists ?? []);
+    if (whole.has("album_artists")) removed += dropMissing(db, "archive_album_credit", "album_id", new Set(credits.keys()));
+    for (const [albumId, rows] of credits) {
       removed += db.query("DELETE FROM archive_album_credit WHERE album_id = ?").run(albumId).changes;
       for (const r of rows) put("archive_album_credit", r, { guard: false }, ["album_id", "artist_id"]);
-      changed.tracks = true;
     }
-    for (const t of changes.album_tracks ?? []) if (put("archive_track", mapTrack(t))) changed.tracks = true;
-    for (const [trackId, rows] of mapTrackArtists(changes.album_track_artists ?? [])) {
+    const tracks = (changes.album_tracks ?? []).map(mapTrack);
+    if (whole.has("album_tracks")) removed += dropMissing(db, "archive_track", "id", new Set(tracks.map((t) => String(t.id))));
+    for (const t of tracks) put("archive_track", t);
+    const trackArtists = mapTrackArtists(changes.album_track_artists ?? []);
+    if (whole.has("album_track_artists")) removed += dropMissing(db, "archive_track_artist", "track_id", new Set(trackArtists.keys()));
+    for (const [trackId, rows] of trackArtists) {
       removed += db.query("DELETE FROM archive_track_artist WHERE track_id = ?").run(trackId).changes;
       for (const r of rows) put("archive_track_artist", r, { guard: false }, ["track_id", "artist_id"]);
-      changed.tracks = true;
     }
+    if (trackRowsCame && trackTables.map((t) => fingerprint(db, t)).join("\n") !== before) changed.tracks = true;
     for (const p of changes.song_performances ?? []) {
       if (testSongs.has(String(p.song_id))) continue;
       put("archive_performance", mapPerformance(p));
@@ -198,7 +242,22 @@ export function applyShared(db: Db, changes: SharedChanges): ApplySharedResult {
     for (const s of changes.video_proposed_songs ?? []) if (put("video_proposed_songs", s as Row)) changed.songs.add(s.id);
     for (const v of changes.video_proposed_versions ?? []) if (put("video_proposed_versions", proposedVersion(v as Row))) changed.versions.add(v.id);
     for (const a of changes.video_proposed_artists ?? []) if (put("video_proposed_artists", a as Row)) changed.artists.add(a.id);
-    for (const e of changes.video_exposed_songs ?? []) if (put("video_exposed_songs", e as Row) && e.song_id) changed.songs.add(e.song_id);
+    const exposed = changes.video_exposed_songs ?? [];
+    if (whole.has("video_exposed_songs")) {
+      const keep = new Set(exposed.map((e) => e.id));
+      for (const h of db.query("SELECT id, song_id, artist_id FROM video_exposed_songs").all() as Row[]) {
+        if (keep.has(h.id)) continue;
+        db.query("DELETE FROM video_exposed_songs WHERE id = ?").run(h.id);
+        removed++;
+        if (h.song_id) changed.songs.add(h.song_id);
+        if (h.artist_id) changed.artists.add(h.artist_id);
+      }
+    }
+    for (const e of exposed) {
+      if (!put("video_exposed_songs", e as Row)) continue;
+      if (e.song_id) changed.songs.add(e.song_id);
+      if (e.artist_id) changed.artists.add(e.artist_id);
+    }
 
     // ---- Videos, then their children
     const appliedVideos = new Set<string>();
@@ -247,13 +306,19 @@ export function applyShared(db: Db, changes: SharedChanges): ApplySharedResult {
     for (const h of changes.video_edit_history ?? []) put("video_edit_history", h as Row);
 
     // ---- tombstones (§6.3)
+    const clashing = db.prepare("DELETE FROM shared_tombstone WHERE table_name = ? AND row_id = ? AND id <> ?");
     const tomb = db.prepare(
-      "INSERT INTO shared_tombstone (table_name, row_id, kind, at) VALUES (?, ?, ?, ?) ON CONFLICT(table_name, row_id) DO UPDATE SET kind = excluded.kind, at = excluded.at",
+      `INSERT INTO shared_tombstone (id, table_name, row_id, kind, replaced_by, at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET table_name = excluded.table_name, row_id = excluded.row_id, kind = excluded.kind,
+         replaced_by = excluded.replaced_by, at = excluded.at`,
     );
-    for (const t of changes.tombstones ?? []) {
+    for (const t of batch.tombstones ?? []) {
       const table = tombstoneTable(t);
-      if (!table) throw new Error(`tombstone for an unknown table: ${t.table_name ?? t.table}`);
-      tomb.run(table, t.row_id, t.kind, t.at);
+      if (!table) throw new Error(`tombstone for an unknown table: ${t.table_name}`);
+      if (!t.id) throw new Error(`tombstone without an id for ${table} ${t.row_id}`);
+      clashing.run(table, t.row_id, t.id);
+      tomb.run(t.id, table, t.row_id, t.kind, t.replaced_by ?? null, t.at);
+      seen(t.at);
       const gone = db.query(`DELETE FROM ${table} WHERE id = ?`).run(t.row_id).changes;
       tombstones++;
       if (!gone) continue;
@@ -262,12 +327,30 @@ export function applyShared(db: Db, changes: SharedChanges): ApplySharedResult {
       if (table === "video_proposed_artists") changed.artists.add(t.row_id);
     }
 
+    // ---- the ids-only reconcile (§6.3): archive rows no longer readable, or hard-deleted, go
+    for (const [key, ids] of Object.entries(batch.archive_ids ?? {}) as [keyof ArchiveIds, string[] | undefined][]) {
+      const table = IDS_TABLE[key];
+      if (!table) throw new Error(`archive_ids names an unknown table: ${key}`);
+      if (!Array.isArray(ids)) continue;
+      const keep = new Set(ids.map(String));
+      for (const { id } of db.query(`SELECT id FROM ${table}`).all() as { id: string }[]) {
+        if (keep.has(id)) continue;
+        db.query(`DELETE FROM ${table} WHERE id = ?`).run(id);
+        removed++;
+        if (table === "archive_song") changed.songs.add(id);
+        else if (table === "archive_version") changed.versions.add(id);
+        else if (table === "archive_artist") changed.artists.add(id);
+        else if (table === "archive_album") changed.tracks = true;
+      }
+    }
+
     reindex(db, changed);
   })();
 
   const total = changed.videos.size + changed.chapters.size + changed.artists.size + changed.songs.size + changed.versions.size;
   return {
-    applied, skipped, removed, tombstones, watermark,
+    applied, skipped, removed, tombstones,
+    watermark: batch.watermark !== undefined ? batch.watermark : watermark,
     reindex: total > REBUILD_THRESHOLD || changed.tracks ? "rebuild" : total ? "rows" : "none",
     ms: Math.round(performance.now() - t0),
   };
@@ -281,8 +364,17 @@ function proposedVersion(v: Row): Row {
 }
 
 function tombstoneTable(t: SharedTombstoneRow): string | null {
-  const name = t.table_name ?? t.table;
-  return name && TOMBSTONE_TABLES.has(name) ? name : null;
+  return t.table_name && TOMBSTONE_TABLES.has(t.table_name) ? t.table_name : null;
+}
+
+/** Deletes the held rows of a whole table whose `key` the batch does not carry; returns how many went. */
+function dropMissing(db: Db, table: string, key: string, keep: Set<string>): number {
+  let n = 0;
+  for (const r of db.query(`SELECT DISTINCT ${key} AS k FROM ${table}`).all() as { k: string }[]) {
+    if (keep.has(String(r.k))) continue;
+    n += db.query(`DELETE FROM ${table} WHERE ${key} = ?`).run(r.k).changes;
+  }
+  return n;
 }
 
 /** §6.2 indexing: per row, a changed Song also reindexing its Videos and Chapters; above the threshold one rebuild. */

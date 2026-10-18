@@ -90,7 +90,7 @@ export function rejectArtistLink(db: Db, videoId: string, artistId: string) {
   const held = db.query("SELECT 1 FROM video_artist_rejections WHERE video_id = ? AND (artist_id = ? OR proposed_artist_id = ?)").get(videoId, artistId, artistId);
   if (held) return;
   const now = nowIso();
-  db.prepare("INSERT INTO video_artist_rejections (id, video_id, artist_id, proposed_artist_id, rejected_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+  db.prepare("INSERT INTO video_artist_rejections (id, video_id, artist_id, proposed_artist_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
     .run(newUuid(), videoId, p.artist_id, p.proposed_artist_id, now, now);
 }
 

@@ -39,6 +39,8 @@ import type { OnboardingDto } from "../shared/types";
 import { homedir } from "node:os";
 
 const THUMB_CACHE = "public, max-age=86400";
+/** The top-level keys of a `POST /api/cache/apply` body: `SharedChanges` (a write's return or a pull's). */
+const CACHE_APPLY_KEYS = new Set<string>(["tables", "replace_whole", "tombstones", "archive_ids", "watermark", "since", "server_time", "shared_schema"] satisfies (keyof SharedChanges)[]);
 /** `/thumbs/<id>/<which>.webp?v=<generatedAt>`: the query string is the cache key (the route matches the path alone). */
 export const thumbUrl = (videoId: string, which: "poster" | "strip", generatedAt: string) => `/thumbs/${videoId}/${which}.webp?v=${encodeURIComponent(generatedAt)}`;
 
@@ -730,7 +732,9 @@ export function createHandler(s: Services) {
         const refused = localRequestError(req);
         if (refused) return json({ error: refused }, 403);
         const body = await readJson(req);
-        if (!body) return json({ error: "body must be a JSON object of Shared rows by table" }, 400);
+        if (!body) return json({ error: "body must be a write function's {tables, tombstones} or a shared_changes_since return" }, 400);
+        const unknown = Object.keys(body).filter((k) => !CACHE_APPLY_KEYS.has(k));
+        if (unknown.length) return json({ error: `unknown key(s) ${unknown.join(", ")}: rows go under "tables" (migration 130's shape)` }, 400);
         try {
           return json(applyShared(s.db, body as SharedChanges));
         } catch (e) {

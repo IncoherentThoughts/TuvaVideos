@@ -10,10 +10,9 @@ import { loadConfig } from "../src/server/config";
 import { applyPerformanceDefaults } from "../src/server/defaults";
 import { openDb } from "../src/server/db";
 import { fillLatinTitles, latinFor, songNames } from "../src/server/latin";
-import { applyShared } from "../src/server/localCopy/apply";
 import { parseOffset, parsePerformanceUrl, VARIOUS_ARTISTS_ID } from "../src/server/localCopy/archiveRows";
 import { runArchiveFollowUps } from "../src/server/localCopy/followUps";
-import { archiveChanges, FIXTURE, loadArchiveFixture } from "./helpers/archive";
+import { applyFlat, archiveChanges, FIXTURE, loadArchiveFixture } from "./helpers/archive";
 import { insertChapter, insertLocalArtist, insertVideo, V } from "./helpers/seed";
 
 const REAL = "/Users/evanwilliams/Desktop/Lyrics Website/Backups/supabase_backup_20261007_162813_no_media";
@@ -122,7 +121,7 @@ describe("applying archive rows again", () => {
     db.exec("INSERT INTO artist_latin (artist_id, name_latin, name_latin_source) VALUES ('" + S(201) + "', 'kept', 'manual')");
     const songs = archiveChanges().songs!;
     const s1 = songs.find((s) => s.id === S(1))!;
-    const r = applyShared(db, {
+    const r = applyFlat(db, {
       songs: [
         { ...s1, name: "Renamed", updated_at: "2026-02-01T00:00:00+00:00" },
         { ...songs.find((s) => s.id === S(2))!, name: "Old name", updated_at: "2025-12-31T23:59:59.999999+00:00" },
@@ -147,7 +146,7 @@ describe("applying archive rows again", () => {
     const before = n(db, "SELECT COUNT(*) n FROM archive_song");
     const songs = archiveChanges().songs!;
     expect(() =>
-      applyShared(db, {
+      applyFlat(db, {
         songs: [{ ...songs[0]!, id: S(77), slug: "new-song", updated_at: "2027-01-01T00:00:00Z" }],
         videos: [{ id: V(9), title: null } as any], // NOT NULL title: the whole batch fails
       }),
@@ -250,7 +249,7 @@ describe("Latin titles (spec 2.5)", () => {
 describe("real 2026-10-07 backup", () => {
   test.skipIf(!existsSync(REAL))("applies with the counts the research found", () => {
     const { dir, db } = freshDb();
-    const r = applyShared(db, archiveChanges(REAL));
+    const r = applyFlat(db, archiveChanges(REAL));
     expect(r.applied.archive_song).toBe(145); // 146 minus the zz_ test song
     expect(n(db, "SELECT COUNT(*) n FROM archive_song WHERE is_hidden = 1")).toBe(87);
     expect(r.applied.archive_version).toBe(159);
@@ -370,7 +369,7 @@ describe("editing endpoints", () => {
   });
 
   test("a Proposed Song is pointed at through proposed_song_id and reads back as one Song with proposed: true", async () => {
-    applyShared(app.db, { video_proposed_songs: [{ id: S(900), name: "zz-test Proposed", english_name: null, alternate_titles: null, notes: null, updated_at: "2026-10-17T00:00:00Z" }] });
+    applyFlat(app.db, { video_proposed_songs: [{ id: S(900), name: "zz-test Proposed", english_name: null, alternate_titles: null, notes: null, created_by: null, created_at: "2026-10-17T00:00:00Z", updated_at: "2026-10-17T00:00:00Z" }] });
     const r = await call("PATCH", `/api/videos/${V(3)}`, { songId: S(900) });
     expect(r.body).toMatchObject({ songId: S(900), song: { id: S(900), name: "zz-test Proposed", proposed: true, local: false } });
     expect(app.db.query("SELECT song_id, proposed_song_id FROM videos WHERE id = ?").get(V(3))).toEqual({ song_id: null, proposed_song_id: S(900) });

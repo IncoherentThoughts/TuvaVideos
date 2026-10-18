@@ -257,7 +257,13 @@ async function refreshAfterRow(op: RowOp, bundle: { tables?: Record<string, unkn
   const t = bundle?.tables ?? {};
   if (op.kind === "artists.repoint" || ("table" in op && op.table === "artist") || (op.kind === "exposure" && op.target === "artist")) void loadArtists();
   if ((t.videos?.length ?? 0) > 0 || op.kind === "elevate" || op.kind === "artists.repoint") void loadVideos();
+  announce(((t.videos ?? []) as { id?: string }[]).map((v) => v.id).filter((id): id is string => !!id));
 }
+
+/** Tells open pages (Now playing, the Chapter strip) that these Videos changed under them. */
+const announce = (videoIds: Iterable<string>) => {
+  for (const videoId of new Set(videoIds)) window.dispatchEvent(new CustomEvent(RELOADED_EVENT, { detail: { videoId } }));
+};
 
 /**
  * One row write (§4.1): through the archive and `/api/cache/apply`, like `writeLink`. `proposed.create` resolves to the
@@ -355,6 +361,7 @@ export async function repointRow(table: RowTable, from: NamedRow, to: NamedRow &
     }
   }
   void loadVideos();
+  announce([...info.uses.videos.map((v) => v.id), ...info.uses.chapters.map((c) => c.videoId), ...info.uses.artistLinks.map((l) => l.videoId)]);
   return { moved, failed, deleted };
 }
 

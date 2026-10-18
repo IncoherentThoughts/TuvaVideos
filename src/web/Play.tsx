@@ -21,7 +21,7 @@ import { RelocateButton } from "./Relocate";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
 import { AudioPanel } from "./AudioPanel";
 import { DeleteVideoDialog } from "./DeleteVideo";
-import { writeLink } from "./writeLink";
+import { RELOADED_EVENT, writeLink } from "./writeLink";
 import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
 import { useSession } from "./session";
 import { NotHerePanel } from "./NotHere";
@@ -49,9 +49,13 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
     const timer = setInterval(() => {
       api.video(videoId).then((r) => alive && setV(r)).catch(() => {});
     }, POLL_MS);
+    // a conflict reload, an Elevation or a Repoint changed this Video elsewhere on the page (writeLink.ts)
+    const changed = (e: Event) => void ((e as CustomEvent<{ videoId: string }>).detail?.videoId === videoId && api.video(videoId).then((r) => alive && setV(r)).catch(() => {}));
+    window.addEventListener(RELOADED_EVENT, changed);
     return () => {
       alive = false;
       clearInterval(timer);
+      window.removeEventListener(RELOADED_EVENT, changed);
     };
   }, [videoId]);
 

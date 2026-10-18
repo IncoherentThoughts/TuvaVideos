@@ -111,7 +111,7 @@ export function installKeys() {
     } else if ((e.key === "f" || e.key === "F") && cur && cur.dataset.favKind) {
       e.preventDefault();
       const kind = cur.dataset.favKind as "video" | "chapter";
-      const id = Number(cur.dataset.id);
+      const id = cur.dataset.id!;
       const idx = all.indexOf(cur);
       void toggleFavorite(kind, id).then(() => {
         // The item may leave the list (Favorites, or the grid with the Favorites chip on): keep focus nearby.

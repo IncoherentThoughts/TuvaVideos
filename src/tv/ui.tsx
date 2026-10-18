@@ -3,14 +3,12 @@
 import { useState } from "preact/hooks"
 import type { ComponentChildren } from "preact"
 import { tileForTime } from "../server/stripGeometry"
-import { artistSlot, fmtDuration } from "../web/ui"
+import { artistSlot, fmtDuration, phColor } from "../web/ui"
 import type { ArtistDto, SongListDto, VideoDto, ChapterDto } from "../shared/types"
 import { url } from "./data"
 import type { Tile } from "./rails"
 
-const phColor = (id: number) => `var(--t${(id % 8) + 1})`
-
-export function Poster({ video, posterOf, children }: { video: Pick<VideoDto, "id" | "thumbnail" | "available">; posterOf?: number; children?: ComponentChildren }) {
+export function Poster({ video, posterOf, children }: { video: Pick<VideoDto, "id" | "thumbnail" | "available">; posterOf?: string; children?: ComponentChildren }) {
   const [failed, setFailed] = useState(false)
   const src = posterOf != null ? `/thumbs/${posterOf}/poster.webp` : video.thumbnail?.poster
   const has = !!src && !failed && (posterOf != null || !!video.thumbnail)
@@ -117,6 +115,7 @@ export function ArtistCard({ tileKey, zone, artist, onOpen }: { tileKey: string;
       <div class="sub">
         {artist.videoCount} Video{artist.videoCount === 1 ? "" : "s"}
         {artist.local ? " · local" : ""}
+        {artist.proposed ? " · proposed" : ""}
       </div>
     </Card>
   )
@@ -125,7 +124,7 @@ export function ArtistCard({ tileKey, zone, artist, onOpen }: { tileKey: string;
 export function SongCard({ tileKey, zone, song, onOpen }: { tileKey: string; zone: string; song: SongListDto; onOpen: () => void }) {
   return (
     <Card tileKey={tileKey} zone={zone} onOpen={onOpen} class="song">
-      <Poster video={{ id: song.posterVideoId ?? 0, thumbnail: null, available: true }} posterOf={song.posterVideoId ?? undefined}>
+      <Poster video={{ id: song.posterVideoId ?? song.id, thumbnail: null, available: true }} posterOf={song.posterVideoId ?? undefined}>
         {song.versionCount > 0 && <span class="lyr">lyrics</span>}
       </Poster>
       <div class="ttl">

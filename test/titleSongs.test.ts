@@ -9,6 +9,7 @@ import { applyPerformanceDefaults } from "../src/server/defaults";
 import { suggestSongsFromTitles } from "../src/server/songSuggest";
 import { foldForMatch, prepareSongs } from "../src/shared/songMatch";
 import { matchSongInTitle, prepareArtistNames, songSegments, type TitleSong } from "../src/shared/titleSongMatch";
+import { insertVideo, V } from "./helpers/seed";
 
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
 
@@ -72,16 +73,15 @@ describe("matchSongInTitle", () => {
 describe("suggestSongsFromTitles", () => {
   const open = () => {
     const db = openDb(":memory:", MIGRATIONS);
-    db.exec("INSERT INTO mirror_song (id, name, slug) VALUES ('m1', 'Mezhegei', 'mezhegei'), ('m2', 'Karachal', 'karachal')");
-    db.exec(`INSERT INTO video (id, youtube_id, title, created_at) VALUES
-      (1, 'aaaaaaaaaaa', 'Huun Huur Tu - Mezhegei', 'x'),
-      (2, 'bbbbbbbbbbb', 'Alash live in Kyzyl', 'x'),
-      (3, 'ccccccccccc', 'Karachal', 'x'),
-      (4, 'ddddddddddd', 'Radik Tyulyush Oskus Urug', 'x')`);
+    db.exec("INSERT INTO archive_song (id, name, slug) VALUES ('m1', 'Mezhegei', 'mezhegei'), ('m2', 'Karachal', 'karachal')");
+    insertVideo(db, { id: 1, youtube_id: "aaaaaaaaaaa", title: "Huun Huur Tu - Mezhegei", created_at: "x" });
+    insertVideo(db, { id: 2, youtube_id: "bbbbbbbbbbb", title: "Alash live in Kyzyl", created_at: "x" });
+    insertVideo(db, { id: 3, youtube_id: "ccccccccccc", title: "Karachal", created_at: "x" });
+    insertVideo(db, { id: 4, youtube_id: "ddddddddddd", title: "Radik Tyulyush Oskus Urug", created_at: "x" });
     return db;
   };
   const row = (db: ReturnType<typeof open>, id: number) =>
-    db.query("SELECT song_id, song_suggested, suggestion_source, type, type_suggested FROM video WHERE id = ?").get(id) as any;
+    db.query("SELECT song_id, song_suggested, suggestion_source, type, type_suggested FROM videos WHERE id = ?").get(V(id)) as any;
 
   test("suggests a Song (and the Type song) from the title, leaves the rest alone", () => {
     const db = open();
@@ -95,7 +95,7 @@ describe("suggestSongsFromTitles", () => {
   test("a title edited away from the Song clears the suggestion and the Suggested Type with it", () => {
     const db = open();
     suggestSongsFromTitles(db);
-    db.exec("UPDATE video SET title = 'Somewhere else' WHERE id = 3");
+    db.query("UPDATE videos SET title = 'Somewhere else' WHERE id = ?").run(V(3));
     expect(suggestSongsFromTitles(db).cleared).toBe(1);
     expect(row(db, 3)).toEqual({ song_id: null, song_suggested: 0, suggestion_source: null, type: "other", type_suggested: 0 });
   });
@@ -103,14 +103,14 @@ describe("suggestSongsFromTitles", () => {
   test("clearing the Song by hand is a rejection: it never comes back", () => {
     const db = open();
     suggestSongsFromTitles(db);
-    expect(patchVideo(db, 1, { songId: null }).ok).toBe(true);
+    expect(patchVideo(db, V(1), { songId: null }).ok).toBe(true);
     suggestSongsFromTitles(db);
     expect(row(db, 1)).toMatchObject({ song_id: null, suggestion_source: "manual" });
   });
 
   test("a Song from the Performances wins over the title", () => {
     const db = open();
-    db.exec("INSERT INTO mirror_performance (id, song_id, youtube_id, display_order, is_highlighted) VALUES ('p1', 'm2', 'aaaaaaaaaaa', 1, 0)");
+    db.exec("INSERT INTO archive_performance (id, song_id, youtube_id, display_order, is_highlighted) VALUES ('p1', 'm2', 'aaaaaaaaaaa', 1, 0)");
     applyPerformanceDefaults(db);
     suggestSongsFromTitles(db);
     expect(row(db, 1)).toMatchObject({ song_id: "m2", suggestion_source: "performance" });

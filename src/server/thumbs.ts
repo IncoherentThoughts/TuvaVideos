@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { copyFile, mkdtemp, open, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config";
@@ -10,6 +10,41 @@ import { IO_RE, run, sleep } from "./proc";
 import { rankCopies } from "./ranking";
 import type { Roots } from "./roots";
 import { sliceCentre, stripGeometry, STRIP_FRAME_WIDTH, type StripGeometry } from "./stripGeometry";
+import { legacyUuid } from "./localCopy/ids";
+
+/** Writes a Video's Thumbnail facts (this machine's: `video_local`). Parameters in column order, the Video id last. */
+const SET_THUMB = `INSERT INTO video_local (thumbnail_generated_at, thumbnail_copy_id, strip_frames, strip_columns, strip_rows, strip_frame_w, strip_frame_h, video_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(video_id) DO UPDATE SET thumbnail_generated_at = excluded.thumbnail_generated_at, thumbnail_copy_id = excluded.thumbnail_copy_id,
+    strip_frames = excluded.strip_frames, strip_columns = excluded.strip_columns, strip_rows = excluded.strip_rows,
+    strip_frame_w = excluded.strip_frame_w, strip_frame_h = excluded.strip_frame_h`;
+
+/**
+ * Thumbnails written before migration 0015 are named by the Video's integer id (`<n>.poster.webp`); they become
+ * `<uuid>.poster.webp` under the deterministic map of the migration (`legacyUuid`). Idempotent; returns how many moved.
+ */
+export function renameLegacyThumbnails(thumbsDir: string): number {
+  let n = 0;
+  let names: string[] = [];
+  try {
+    names = readdirSync(thumbsDir);
+  } catch {
+    return 0;
+  }
+  for (const f of names) {
+    const m = /^(\d+)\.(poster|strip)\.webp$/.exec(f);
+    if (!m) continue;
+    const to = join(thumbsDir, `${legacyUuid("video", Number(m[1]))}.${m[2]}.webp`);
+    if (existsSync(to)) continue;
+    try {
+      renameSync(join(thumbsDir, f), to);
+      n++;
+    } catch (e) {
+      log(`thumbs: could not rename ${f}: ${e}`);
+    }
+  }
+  return n;
+}
 
 // Settings from spec 3.5 / docs/research/thumbnail-pilot.md
 const POSTER_W = 480;
@@ -68,7 +103,7 @@ export class Thumbnails {
   private stopping = false;
   private draining: Promise<void> | null = null;
   private again = false;
-  private failedThisRun = new Set<number>();
+  private failedThisRun = new Set<string>();
   stats = { generated: 0, adopted: 0, failed: 0, pending: 0, running: false };
 
   constructor(
@@ -78,6 +113,8 @@ export class Thumbnails {
     private shouldPause: () => boolean,
   ) {
     mkdirSync(cfg.thumbsDir, { recursive: true });
+    const renamed = renameLegacyThumbnails(cfg.thumbsDir);
+    if (renamed) log(`thumbs: renamed ${renamed} Thumbnail files from integer ids to uuids (migration 0015)`);
   }
 
   /** Adopt the #21 cache: copy `<youtubeId|sha256>.{poster,strip}.webp` to `<videoId>.*` and record geometry. */
@@ -93,12 +130,9 @@ export class Thumbnails {
     }
     const byId = new Map<string, any>(entries.map((e) => [e.id, e]));
     const todo = this.db
-      .query("SELECT id, youtube_id, content_hash FROM video WHERE thumbnail_generated_at IS NULL")
-      .all() as { id: number; youtube_id: string | null; content_hash: string | null }[];
-    const upd = this.db.prepare(
-      `UPDATE video SET thumbnail_generated_at = ?, thumbnail_copy_id = ?, strip_frames = ?, strip_columns = ?, strip_rows = ?,
-         strip_frame_w = ?, strip_frame_h = ? WHERE id = ?`,
-    );
+      .query("SELECT id, youtube_id, content_hash FROM video_full WHERE thumbnail_generated_at IS NULL")
+      .all() as { id: string; youtube_id: string | null; content_hash: string | null }[];
+    const upd = this.db.prepare(SET_THUMB);
     const findCopy = this.db.prepare(
       "SELECT c.id FROM copy c JOIN root r ON r.id = c.root_id WHERE c.video_id = ? AND r.kind = ? AND c.rel_path = ?",
     );
@@ -126,10 +160,10 @@ export class Thumbnails {
     return n;
   }
 
-  posterPath(videoId: number) {
+  posterPath(videoId: string) {
     return join(this.cfg.thumbsDir, `${videoId}.poster.webp`);
   }
-  stripPath(videoId: number) {
+  stripPath(videoId: string) {
     return join(this.cfg.thumbsDir, `${videoId}.strip.webp`);
   }
 
@@ -152,19 +186,19 @@ export class Thumbnails {
   }
 
   /** Videos still needing a Thumbnail that have at least one readable Copy, newest first. */
-  private pendingJobs(): { videoId: number; src: SourceCopy }[] {
+  private pendingJobs(): { videoId: string; src: SourceCopy }[] {
     const vids = this.db
       .query(
-        `SELECT v.id, MAX(c.mtime) AS newest FROM video v JOIN copy c ON c.video_id = v.id
+        `SELECT v.id, MAX(c.mtime) AS newest FROM video_full v JOIN copy c ON c.video_id = v.id
          WHERE v.thumbnail_generated_at IS NULL GROUP BY v.id ORDER BY newest DESC, v.id DESC`,
       )
-      .all() as { id: number }[];
+      .all() as { id: string }[];
     const copiesOf = this.db.prepare(
       `SELECT c.id, c.root_id, r.kind AS root_kind, r.path AS root_path, c.rel_path, c.size, c.duration_s, c.video_codec,
               c.width, c.height, c.playback
        FROM copy c JOIN root r ON r.id = c.root_id WHERE c.video_id = ? AND c.missing_since IS NULL`,
     );
-    const jobs: { videoId: number; src: SourceCopy }[] = [];
+    const jobs: { videoId: string; src: SourceCopy }[] = [];
     for (const v of vids) {
       if (this.failedThisRun.has(v.id)) continue;
       const usable = (copiesOf.all(v.id) as SourceCopy[]).filter((c) => this.roots.isAvailable(c.root_id));
@@ -333,7 +367,7 @@ export class Thumbnails {
     return r.ok && (await fileSize(out)) === 0 ? { ok: false, error: "empty strip", io: false } : r;
   }
 
-  private async generate(videoId: number, src: SourceCopy) {
+  private async generate(videoId: string, src: SourceCopy) {
     const abs = join(src.root_path, src.rel_path);
     const tmpRoot = join(this.cfg.thumbsDir, ".tmp");
     mkdirSync(tmpRoot, { recursive: true });
@@ -365,10 +399,7 @@ export class Thumbnails {
       if (g) await rename(stripTmp, this.stripPath(videoId));
       else await rm(this.stripPath(videoId), { force: true });
       this.db
-        .prepare(
-          `UPDATE video SET thumbnail_generated_at = ?, thumbnail_copy_id = ?, strip_frames = ?, strip_columns = ?, strip_rows = ?,
-             strip_frame_w = ?, strip_frame_h = ? WHERE id = ?`,
-        )
+        .prepare(SET_THUMB)
         .run(new Date().toISOString(), src.id, g?.frames ?? 0, g?.columns ?? 0, g?.rows ?? 0, g ? STRIP_FRAME_WIDTH : null, frameH, videoId);
       this.stats.generated++;
       log(`thumbs: video ${videoId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (${g ? g.frames + " frames" : "poster only"})`);

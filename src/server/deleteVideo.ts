@@ -3,6 +3,8 @@
 // Trash; a Copy on an unmounted Root or already Missing cannot be). Either way the Video's own rows go: Copies,
 // Chapters, Artists, rejections, audio settings, search rows, Thumbnails and Fallbacks. While any file stays on disk
 // the Video's identity is kept in `deleted_video` so the scanner never brings it back (migration 0011).
+// This is the hard local delete of a Standalone or Unshared Video (sharing-spec §4.5); a Shared Video is soft-deleted
+// through the archive (`write_videos` op delete, ticket #116) and is refused here.
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config";
@@ -32,13 +34,14 @@ export async function deleteVideo(
   db: Db,
   cfg: Pick<Config, "thumbsDir" | "remuxDir" | "trash">,
   roots: Roots,
-  videoId: number,
+  videoId: string,
   opts: { media: boolean },
-): Promise<DeleteResult | null> {
-  const v = db.query("SELECT id, youtube_id, content_hash, title FROM video WHERE id = ?").get(videoId) as
-    | { id: number; youtube_id: string | null; content_hash: string | null; title: string }
+): Promise<DeleteResult | { refused: string } | null> {
+  const v = db.query("SELECT id, youtube_id, content_hash, title, shared FROM video_full WHERE id = ?").get(videoId) as
+    | { id: string; youtube_id: string | null; content_hash: string | null; title: string; shared: number }
     | null;
   if (!v) return null;
+  if (v.shared) return { refused: "a Shared Video is deleted through the archive, not here" };
   const copies = db.query("SELECT id, root_id, rel_path, fallback_file, missing_since FROM copy WHERE video_id = ?").all(videoId) as CopyRow[];
 
   const trashed: string[] = [];
@@ -71,12 +74,11 @@ export async function deleteVideo(
         v.youtube_id, v.youtube_id ? null : v.content_hash, v.title, new Date().toISOString(),
       );
     }
-    db.prepare("DELETE FROM search WHERE kind = 'chapter' AND ref_id IN (SELECT CAST(id AS TEXT) FROM chapter WHERE video_id = ?)").run(videoId);
-    db.prepare("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(String(videoId));
-    for (const t of ["chapter_rejection", "artist_rejection", "video_artist", "chapter", "video_audio", "copy"]) {
-      db.prepare(`DELETE FROM ${t} WHERE video_id = ?`).run(videoId);
-    }
-    db.prepare("DELETE FROM video WHERE id = ?").run(videoId);
+    db.prepare("DELETE FROM search WHERE kind = 'chapter' AND ref_id IN (SELECT id FROM video_chapters WHERE video_id = ?)").run(videoId);
+    db.prepare("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(videoId);
+    db.prepare("DELETE FROM copy WHERE video_id = ?").run(videoId);
+    // Chapters, Artist links, rejections, the side tables, audio settings and Shelved edits go with the row (ON DELETE CASCADE).
+    db.prepare("DELETE FROM videos WHERE id = ?").run(videoId);
   })();
   return { deleted: true, trashed, kept, tombstoned };
 }

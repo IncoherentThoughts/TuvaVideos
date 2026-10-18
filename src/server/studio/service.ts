@@ -158,7 +158,7 @@ export class Studio {
 
   /** "match this Track": a confirmed match for one Mirror Track. Replaces whatever was there. */
   async matchMirrorTrack(mirrorTrackId: string, persistentId: string): Promise<Result<{ id: number }>> {
-    const mt = this.db.query("SELECT id, song_id FROM mirror_track WHERE id = ?").get(mirrorTrackId) as { id: string; song_id: string | null } | null;
+    const mt = this.db.query("SELECT id, song_id FROM archive_track WHERE id = ?").get(mirrorTrackId) as { id: string; song_id: string | null } | null;
     if (!mt) return bad("no such Mirror Track", 404);
     if (!mt.song_id) return bad("this Track has no Song, so it has no Studio tracks", 409);
     if (!(await this.knows(persistentId))) return bad("that track is not in the Music.app library", 404);

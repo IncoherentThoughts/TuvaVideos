@@ -9,6 +9,7 @@ import { loadConfig } from "../src/server/config";
 import { TvServer } from "../src/server/tv";
 import { judgeStaleCopies } from "../src/server/tvJudge";
 import { TV_ROUTES, matchTvRoute } from "../src/server/tvRoutes";
+import { V } from "./helpers/seed";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder, type CopyFacts, type PlaybackProfile, type TvDecision } from "../src/shared/playbackProfile";
 
 const facts = (ext: string, v: string | null, a: string | null, width = 1920, height = 1080, frameRate: number | null = 30): CopyFacts => ({ ext, videoCodec: v, audioCodec: a, width, height, frameRate });
@@ -93,13 +94,13 @@ describe("route list", () => {
   });
 
   test("the writes are exactly resume and view; nothing editable is listed", () => {
-    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual(["/api/videos/1/resume", "/api/videos/1/view"]);
+    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual([`/api/videos/${V(1)}/resume`, `/api/videos/${V(1)}/view`]);
     for (const bad of ["/copy/1/pcm", "/api/studio/state", "/api/roots", "/api/scan", "/api/rescan", "/api/quit", "/app.js", "/api/tv", "/favorites", "/themes/a/b.css"]) {
       expect(matchTvRoute("GET", bad)).toBeNull();
     }
-    expect(matchTvRoute("DELETE", "/api/videos/1")).toBeNull();
-    expect(matchTvRoute("PATCH", "/api/videos/1")).toBeNull();
-    expect(matchTvRoute("POST", "/api/videos/1/chapters")).toBeNull();
+    expect(matchTvRoute("DELETE", `/api/videos/${V(1)}`)).toBeNull();
+    expect(matchTvRoute("PATCH", `/api/videos/${V(1)}`)).toBeNull();
+    expect(matchTvRoute("POST", `/api/videos/${V(1)}/chapters`)).toBeNull();
   });
 
   test("a passive server never starts a TV Server", () => {
@@ -169,7 +170,7 @@ describe("scan-time judging", () => {
   });
 
   test("an existing Fallback the profile plays moves the order to fallback", async () => {
-    const id = (app.db.query("SELECT c.id FROM copy c JOIN video v ON v.id = c.video_id WHERE v.youtube_id = 'ddddddddddd'").get() as { id: number }).id;
+    const id = (app.db.query("SELECT c.id FROM copy c JOIN videos v ON v.id = c.video_id WHERE v.youtube_id = 'ddddddddddd'").get() as { id: number }).id;
     app.db.query("UPDATE copy SET fallback_file = ? WHERE id = ?").run(`${id}.mkv`, id);
     try {
       expect((await j(`/api/copies/${id}`)).tv.order).toBe("fallback"); // the Fallback holds AAC
@@ -220,12 +221,12 @@ describe("TV Server listener", () => {
   test("every unlisted route is a 404 on the TV listener, for an Approved TV and a stranger alike", async () => {
     const unlisted: [string, string][] = [
       ["GET", "/api/roots"], ["GET", "/api/scan"], ["GET", "/api/studio/state"], ["GET", "/api/tv"], ["GET", "/app.js"], ["GET", "/app.css"], ["GET", "/favorites"],
-      ["GET", "/search"], ["GET", "/play/1"], ["GET", "/themes/a/b.css"], ["GET", "/copy/1/pcm"], ["GET", "/api/studio/search?q=a"], ["GET", "/live/x"],
-      ["GET", "/api/videos/1/extra"], ["GET", "/nope"], ["GET", "/index.html"],
-      ["POST", "/api/rescan"], ["POST", "/api/quit"], ["POST", "/api/tv/on"], ["POST", "/api/tv/off"], ["POST", "/api/tv/approve"], ["POST", "/api/videos/1/favorite"],
-      ["POST", "/api/videos/1/loop"], ["POST", "/api/videos/1/screenshot?t=1"], ["POST", "/api/videos/1/chapters"], ["POST", "/api/copies/1/reveal"], ["POST", "/api/choose-file"],
-      ["POST", "/api/studio/play"], ["POST", "/api/artists"], ["POST", "/api/songs"], ["POST", "/api/videos/1/relocate"],
-      ["PATCH", "/api/videos/1"], ["PUT", "/api/videos/1/audio"], ["PUT", "/api/audio-presets/x"], ["DELETE", "/api/videos/1"], ["DELETE", "/api/videos/1/view"],
+      ["GET", "/search"], ["GET", `/play/${V(1)}`], ["GET", "/themes/a/b.css"], ["GET", "/copy/1/pcm"], ["GET", "/api/studio/search?q=a"], ["GET", "/live/x"],
+      ["GET", `/api/videos/${V(1)}/extra`], ["GET", "/nope"], ["GET", "/index.html"],
+      ["POST", "/api/rescan"], ["POST", "/api/quit"], ["POST", "/api/tv/on"], ["POST", "/api/tv/off"], ["POST", "/api/tv/approve"], ["POST", `/api/videos/${V(1)}/favorite`],
+      ["POST", `/api/videos/${V(1)}/loop`], ["POST", `/api/videos/${V(1)}/screenshot?t=1`], ["POST", `/api/videos/${V(1)}/chapters`], ["POST", "/api/copies/1/reveal"], ["POST", "/api/choose-file"],
+      ["POST", "/api/studio/play"], ["POST", "/api/artists"], ["POST", "/api/songs"], ["POST", `/api/videos/${V(1)}/relocate`],
+      ["PATCH", `/api/videos/${V(1)}`], ["PUT", `/api/videos/${V(1)}/audio`], ["PUT", "/api/audio-presets/x"], ["DELETE", `/api/videos/${V(1)}`], ["DELETE", `/api/videos/${V(1)}/view`],
       ["DELETE", "/api/tv/approved/1.2.3.4"], ["DELETE", "/api/audio-presets/x"],
     ];
     const walk = async () => {
@@ -263,7 +264,7 @@ describe("TV Server listener", () => {
     const copy = videos[0].copies[0].id;
     // walk the data: every listed route is answered by its handler (never the unlisted 404)
     for (const r of TV_ROUTES) {
-      const path = r.sample.replace("/videos/1", `/videos/${vid}`).replace("/copies/1", `/copies/${copy}`).replace("/copy/1", `/copy/${copy}`).replace("/thumbs/1/", `/thumbs/${vid}/`).replace("/live/1/", `/live/${copy}/`);
+      const path = r.sample.replace(`/videos/${V(1)}`, `/videos/${vid}`).replace("/copies/1", `/copies/${copy}`).replace("/copy/1", `/copy/${copy}`).replace(`/thumbs/${V(1)}/`, `/thumbs/${vid}/`).replace("/live/1/", `/live/${copy}/`);
       const res = await tvReq(path, { method: r.method, headers: tvModel, body: r.method === "POST" ? JSON.stringify({ resumeS: 3 }) : undefined });
       expect([r.method, path, res.headers.get("x-tuva-route") ?? res.headers.get("x-tv-route")]).toEqual([r.method, path, null]);
       if (r.kind === "live") expect(res.status).toBe(404); // until tv-live-remux

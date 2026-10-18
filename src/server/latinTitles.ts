@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // `bun run latin-titles`: the one-time Latin-title fill (spec 2.5) on its own, then the search rebuild. Also runs
-// after every Mirror import. Honours TUVA_DATA_DIR. `manual` Latin titles are never regenerated.
+// after archive rows change. Honours TUVA_DATA_DIR. `manual` Latin titles are never regenerated.
 import { loadConfig } from "./config";
 import { checkpoint, openDb } from "./db";
 import { fillLatinTitles } from "./latin";

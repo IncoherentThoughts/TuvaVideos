@@ -7,7 +7,7 @@ export type Route =
   | { kind: "home" }
   | { kind: "grid"; grid: GridSpec }
   | { kind: "search" }
-  | { kind: "player"; videoId: number; startS: number | null; playingFrom: PlayingFrom; playlist: Playlist | null }
+  | { kind: "player"; videoId: string; startS: number | null; playingFrom: PlayingFrom; playlist: Playlist | null }
 
 export interface Entry {
   /** A stable id for keeping the screen mounted while it is on the stack. */

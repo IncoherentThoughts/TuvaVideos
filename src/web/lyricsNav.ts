@@ -4,11 +4,11 @@
 //     Now playing on that Video, drawer open;
 //  3. else (no Video performs it) -> /lyrics/:songId, the Reader on a page of its own, no Video.
 import { api, currentVideos } from "./data";
-import { navigate, playHref } from "./router";
+import { navigate, PLAY_PATH, playHref } from "./router";
 
 export async function openLyrics(songId: string, versionId: string | null = null): Promise<void> {
-  const here = /^\/play\/(\d+)$/.exec(location.pathname);
-  const cur = here ? Number(here[1]) : null;
+  const here = PLAY_PATH.exec(location.pathname);
+  const cur = here ? here[1]! : null;
   const song = await api.song(songId).catch(() => null);
   if (!song) return void navigate(`/lyrics/${songId}`);
   const lyrics = { songId, versionId };

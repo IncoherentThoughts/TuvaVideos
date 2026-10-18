@@ -10,7 +10,7 @@ import type { GridSpec } from "./rails"
 
 export type TagItem =
   | { kind: "type"; label: string; type: VideoType }
-  | { kind: "artist"; label: string; id: number; name: string; suggested: boolean }
+  | { kind: "artist"; label: string; id: string; name: string; suggested: boolean }
   | { kind: "song"; label: string; id: string; name: string; suggested: boolean }
 
 export function focusableTags(video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested">): TagItem[] {
@@ -30,7 +30,7 @@ export function tagGrid(t: TagItem): GridSpec {
 }
 
 /** "Playing from Library · 3 of 40"; with a Playlist active "Playing from Playlist · Favorites · shuffled · 3 of 40". */
-export function playingFromText(pf: PlayingFrom, videoId: number, playlist: Pick<Playlist, "source" | "shuffled" | "order" | "cursor"> | null): string {
+export function playingFromText(pf: PlayingFrom, videoId: string, playlist: Pick<Playlist, "source" | "shuffled" | "order" | "cursor"> | null): string {
   if (playlist) {
     const { n, total } = position(playlist as Playlist)
     return `Playing from Playlist · ${PLAYLIST_LABEL[playlist.source]} · ${playlist.shuffled ? "shuffled" : "in order"} · ${n} of ${total}`

@@ -14,9 +14,9 @@ const zero = () => 0;
 /** rng() just under 1 leaves Fisher–Yates with the identity. */
 const one = () => 0.999999;
 
-const videos = (...ids: number[]): Entry[] => ids.map((videoId) => ({ videoId }));
-const ids = (pl: Playlist, idx: number[]) => idx.map((i) => pl.entries[i]!.videoId);
-const seqOf = (pl: Playlist) => pl.order.map((i) => pl.entries[i]!.videoId);
+const videos = (...ids: number[]): Entry[] => ids.map((n) => ({ videoId: String(n) }));
+const ids = (pl: Playlist, idx: number[]) => idx.map((i) => pl.entries[i]!.videoId).map(Number);
+const seqOf = (pl: Playlist) => pl.order.map((i) => pl.entries[i]!.videoId).map(Number);
 
 describe("startPlaylist", () => {
   test("shuffled by default, Repeat off, the chosen Entry first and nothing Played", () => {
@@ -24,7 +24,7 @@ describe("startPlaylist", () => {
     expect(pl.shuffled).toBe(true);
     expect(pl.repeat).toBe("off");
     expect(pl.cursor).toBe(0);
-    expect(current(pl)).toEqual({ videoId: 12 });
+    expect(current(pl)).toEqual({ videoId: "12" });
     expect(played(pl)).toEqual([]);
     expect(seqOf(pl)).toEqual([12, 10, 11, 13]);
     expect(position(pl)).toEqual({ n: 1, total: 4 });
@@ -37,7 +37,7 @@ describe("startPlaylist", () => {
 
   test("a random first Entry when startAt is omitted", () => {
     const pl = startPlaylist(videos(10, 11, 12, 13), { source: "favorites", rng: seq(0.6, 0.99, 0.99, 0.99) });
-    expect(current(pl)?.videoId).toBe(12);
+    expect(current(pl)?.videoId).toBe("12");
   });
 
   test("sequential runs in source order from the first Entry on, wrapping", () => {
@@ -46,7 +46,7 @@ describe("startPlaylist", () => {
   });
 
   test("Chapter Entries and repeated Videos are kept as given", () => {
-    const entries: Entry[] = [{ videoId: 5 }, { videoId: 5, chapterId: 7 }, { videoId: 6, chapterId: 8 }];
+    const entries: Entry[] = [{ videoId: "5" }, { videoId: "5", chapterId: "7" }, { videoId: "6", chapterId: "8" }];
     const pl = startPlaylist(entries, { source: "favorites", shuffled: false, startAt: 0 });
     expect(pl.entries).toEqual(entries);
     expect(pl.entries).not.toBe(entries);
@@ -61,8 +61,8 @@ describe("startPlaylist", () => {
   });
 
   test("startAt out of range is clamped", () => {
-    expect(current(startPlaylist(videos(1, 2), { source: "library", startAt: 9 }))?.videoId).toBe(2);
-    expect(current(startPlaylist(videos(1, 2), { source: "library", startAt: -1 }))?.videoId).toBe(1);
+    expect(current(startPlaylist(videos(1, 2), { source: "library", startAt: 9 }))?.videoId).toBe("2");
+    expect(current(startPlaylist(videos(1, 2), { source: "library", startAt: -1 }))?.videoId).toBe("1");
   });
 });
 
@@ -82,7 +82,7 @@ describe("advance and stepBack", () => {
   test("walks the Play order; what it passes is Played", () => {
     let pl = four();
     ({ pl } = advance(pl));
-    expect(current(pl)?.videoId).toBe(11);
+    expect(current(pl)?.videoId).toBe("11");
     expect(ids(pl, played(pl))).toEqual([10]);
     expect(ids(pl, upcoming(pl))).toEqual([12, 13]);
     expect(position(pl)).toEqual({ n: 2, total: 4 });
@@ -90,11 +90,11 @@ describe("advance and stepBack", () => {
 
   test("skips unavailable Entries, which count as Played", () => {
     let pl = four();
-    const r = advance(pl, (id) => id !== 11 && id !== 12);
-    expect(current(r.pl)?.videoId).toBe(13);
+    const r = advance(pl, (id) => id !== "11" && id !== "12");
+    expect(current(r.pl)?.videoId).toBe("13");
     expect(ids(r.pl, played(r.pl))).toEqual([10, 11, 12]);
-    pl = stepBack(r.pl, (id) => id !== 11 && id !== 12);
-    expect(current(pl)?.videoId).toBe(10);
+    pl = stepBack(r.pl, (id) => id !== "11" && id !== "12");
+    expect(current(pl)?.videoId).toBe("10");
   });
 
   test("Repeat off: ends at the last Entry and stays there; stepping back still works", () => {
@@ -103,21 +103,21 @@ describe("advance and stepBack", () => {
     const r = advance(pl);
     expect(r.ended).toBe(true);
     expect(r.pl).toBe(pl);
-    expect(current(stepBack(pl))?.videoId).toBe(12);
+    expect(current(stepBack(pl))?.videoId).toBe("12");
   });
 
   test("Repeat off: ended when nothing after the cursor is playable", () => {
     const pl = four();
-    expect(advance(pl, (id) => id === 10).ended).toBe(true);
+    expect(advance(pl, (id) => id === "10").ended).toBe(true);
   });
 
   test("Repeat list, sequential: wraps to the first playable Entry", () => {
     let pl = cycleRepeat(cycleRepeat(cycleRepeat(cycleRepeat(four())))); // off → list → one → off → list
     expect(pl.repeat).toBe("list");
     pl = jumpTo(pl, 3);
-    const r = advance(pl, (id) => id !== 10);
+    const r = advance(pl, (id) => id !== "10");
     expect(r.ended).toBe(false);
-    expect(current(r.pl)?.videoId).toBe(11);
+    expect(current(r.pl)?.videoId).toBe("11");
     expect(seqOf(r.pl)).toEqual([10, 11, 12, 13]);
     expect(ids(r.pl, played(r.pl))).toEqual([10]);
   });
@@ -142,14 +142,14 @@ describe("advance and stepBack", () => {
   test("Repeat one is not advance's job: it steps on like any other", () => {
     const pl = cycleRepeat(cycleRepeat(four()));
     expect(pl.repeat).toBe("one");
-    expect(current(advance(pl).pl)?.videoId).toBe(11);
+    expect(current(advance(pl).pl)?.videoId).toBe("11");
   });
 
   test("stepBack at the first Entry stays put, except Repeat list wraps to the end", () => {
     const pl = four();
     expect(stepBack(pl)).toBe(pl);
-    const wrapped = stepBack(cycleRepeat(pl), (id) => id !== 13);
-    expect(current(wrapped)?.videoId).toBe(12);
+    const wrapped = stepBack(cycleRepeat(pl), (id) => id !== "13");
+    expect(current(wrapped)?.videoId).toBe("12");
   });
 });
 
@@ -198,12 +198,12 @@ describe("cycleRepeat", () => {
 });
 
 describe("jumpTo and jumpToVideo", () => {
-  const entries: Entry[] = [{ videoId: 10 }, { videoId: 11, chapterId: 1 }, { videoId: 12 }, { videoId: 11, chapterId: 2 }, { videoId: 13 }];
+  const entries: Entry[] = [{ videoId: "10" }, { videoId: "11", chapterId: "1" }, { videoId: "12" }, { videoId: "11", chapterId: "2" }, { videoId: "13" }];
   const pl = startPlaylist(entries, { source: "favorites", shuffled: false, startAt: 0 });
 
   test("jumpTo an upcoming Entry makes the ones before it Played; to a Played one reopens the rest", () => {
     const fwd = jumpTo(pl, 3);
-    expect(current(fwd)).toEqual({ videoId: 11, chapterId: 2 });
+    expect(current(fwd)).toEqual({ videoId: "11", chapterId: "2" });
     expect(played(fwd)).toEqual([0, 1, 2]);
     const back = jumpTo(fwd, 1);
     expect(played(back)).toEqual([0]);
@@ -213,27 +213,27 @@ describe("jumpTo and jumpToVideo", () => {
 
   test("jumpToVideo picks the first upcoming occurrence", () => {
     const at2 = jumpTo(pl, 2);
-    expect(current(jumpToVideo(at2, 11)!)).toEqual({ videoId: 11, chapterId: 2 });
+    expect(current(jumpToVideo(at2, "11")!)).toEqual({ videoId: "11", chapterId: "2" });
   });
 
   test("…else the first in Play order, the current one included", () => {
     const at4 = jumpTo(pl, 4);
-    expect(current(jumpToVideo(at4, 11)!)).toEqual({ videoId: 11, chapterId: 1 });
-    expect(jumpToVideo(at4, 13)!.cursor).toBe(4);
+    expect(current(jumpToVideo(at4, "11")!)).toEqual({ videoId: "11", chapterId: "1" });
+    expect(jumpToVideo(at4, "13")!.cursor).toBe(4);
   });
 
   test("null for a Video outside the Playlist", () => {
-    expect(jumpToVideo(pl, 99)).toBeNull();
+    expect(jumpToVideo(pl, "99")).toBeNull();
   });
 });
 
 describe("widenToVideo", () => {
   test("a Chapter Entry that ran past its end becomes a Video Entry; others untouched", () => {
-    let pl = startPlaylist([{ videoId: 5, chapterId: 7 }, { videoId: 6, chapterId: 8 }], { source: "favorites", shuffled: false, startAt: 0 });
+    let pl = startPlaylist([{ videoId: "5", chapterId: "7" }, { videoId: "6", chapterId: "8" }], { source: "favorites", shuffled: false, startAt: 0 });
     const w = widenToVideo(pl);
-    expect(current(w)).toEqual({ videoId: 5 });
-    expect(w.entries[1]).toEqual({ videoId: 6, chapterId: 8 });
-    expect(pl.entries[0]).toEqual({ videoId: 5, chapterId: 7 });
+    expect(current(w)).toEqual({ videoId: "5" });
+    expect(w.entries[1]).toEqual({ videoId: "6", chapterId: "8" });
+    expect(pl.entries[0]).toEqual({ videoId: "5", chapterId: "7" });
   });
 
   test("a Video Entry is left as is", () => {
@@ -257,7 +257,8 @@ describe("isPlaylist", () => {
     expect(isPlaylist({ ...good, order: [0, 0, 1] })).toBe(false);
     expect(isPlaylist({ ...good, order: [0, 1] })).toBe(false);
     expect(isPlaylist({ ...good, cursor: 3 })).toBe(false);
-    expect(isPlaylist({ ...good, entries: [{ videoId: "1" }, { videoId: 2 }, { videoId: 3 }] })).toBe(false);
+    // an old tab's Playlist, from before Video ids were uuids
+    expect(isPlaylist({ ...good, entries: [{ videoId: 1 }, { videoId: 2 }, { videoId: 3 }] })).toBe(false);
   });
 });
 

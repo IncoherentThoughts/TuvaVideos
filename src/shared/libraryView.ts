@@ -103,7 +103,7 @@ export function sortVideos(videos: VideoDto[], st: LibraryState): VideoDto[] {
     // Views (the default): most watched first; the many unwatched Videos keep the date-added order, newest first.
     else if (st.sort === "views") c = sign * (x.viewCount - y.viewCount) || newestFirst(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt);
     else c = nullsLast(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    return c || y.id - x.id;
+    return c || newestFirst(x.createdAt, y.createdAt) || (x.id < y.id ? 1 : x.id > y.id ? -1 : 0);
   });
   return out;
 }

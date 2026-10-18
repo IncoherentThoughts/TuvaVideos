@@ -5,11 +5,14 @@ import type { TvDecision } from "./playbackProfile";
 export type { TvDecision };
 
 export interface ArtistRef {
-  id: number;
+  /** An archive Artist's uuid, a Proposed Artist's, or a Local Artist's (migration 0015). */
+  id: string;
   name: string;
   nameLatin: string | null;
-  /** A Local Artist (no Mirror row). */
+  /** A Local Artist: this machine's own row, on Unshared Videos only. */
   local: boolean;
+  /** A Proposed Artist (a Video Editor's, not yet in the archive; marked Proposed wherever shown, sharing-spec §7.5). */
+  proposed: boolean;
   /** Offered by the Artist matcher and not yet confirmed (dashed tag). */
   suggested: boolean;
 }
@@ -21,9 +24,11 @@ export interface SongRef {
   englishName: string | null;
   /** Hidden in the archive (un-reviewed); shown with a badge. */
   hidden: boolean;
-  /** A Local Song (no Mirror row). */
+  /** A Local Song: this machine's own row. */
   local: boolean;
-  versions: { id: string; label: string; local: boolean }[];
+  /** A Proposed Song (sharing-spec §3.4). */
+  proposed: boolean;
+  versions: { id: string; label: string; local: boolean; proposed: boolean }[];
 }
 
 export interface StripDto {
@@ -70,10 +75,15 @@ export interface CopyDto {
 export type KeyframeStatusDto = { state: "ready"; keyframes: number[] } | { state: "indexing" } | { state: "none" };
 
 export interface VideoDto {
-  id: number;
+  /** The Video's uuid (migration 0015; the Shared id once the Video is Shared). */
+  id: string;
   youtubeId: string | null;
   /** Shortcode of the Instagram post the Video was downloaded from, if known (provenance only, ADR 0005). */
   instagramId: string | null;
+  /** The rutube.ru video id the Video was downloaded from, if known (provenance only, ADR 0008). */
+  rutubeId: string | null;
+  /** The Shared data knows this Video (a Sync or cache apply delivered it); false = Unshared or Standalone. */
+  shared: boolean;
   title: string;
   titleLatin: string | null;
   titleLatinSource: "archive" | "table" | "manual" | null;
@@ -114,14 +124,14 @@ export interface VideoDto {
 }
 
 export interface ArtistDto {
-  id: number;
-  mirrorId: string | null;
+  id: string;
   name: string;
   nameLatin: string | null;
   local: boolean;
+  proposed: boolean;
   videoCount: number;
   /** Latest Video's id, for the poster. */
-  posterVideoId: number | null;
+  posterVideoId: string | null;
 }
 
 /** GET /api/songs: a Mirror Song some Video or Chapter points at. */
@@ -137,17 +147,18 @@ export interface SongListDto {
   versionCount: number;
   /** Local Versions among them. */
   localVersionCount: number;
-  /** A Local Song (no Mirror row); listed even before any Video points at it. */
+  /** A Local Song (this machine's own row); listed even before any Video points at it. */
   local: boolean;
+  proposed: boolean;
   /** The newest of its Videos (else the Video of its newest Chapter), for the poster. */
-  posterVideoId: number | null;
+  posterVideoId: string | null;
   /** Newest Copy mtime over its Videos and Chapters' Videos, ISO. */
   addedAt: string | null;
 }
 
 export interface ChapterDto {
-  id: number;
-  videoId: number;
+  id: string;
+  videoId: string;
   startS: number;
   title: string;
   titleLatin: string | null;
@@ -194,10 +205,10 @@ export interface ScanDto {
 // ---- search ----
 
 export type SearchRow =
-  | { kind: "video"; id: number; title: string; type: VideoType; durationS: number | null; available: boolean; songs: string[]; songSuggested: boolean }
-  | { kind: "chapter"; id: number; videoId: number; videoTitle: string; title: string; startS: number; available: boolean }
-  | { kind: "artist"; id: number; name: string; local: boolean; videoCount: number }
-  | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; local: boolean; viaLyrics: boolean; lyric: string | null; /** Videos performing the Song (their Song pointer, or a Chapter with `startS`), so the results page can list them. */ videos: { id: number; startS: number | null }[] }
+  | { kind: "video"; id: string; title: string; type: VideoType; durationS: number | null; available: boolean; songs: string[]; songSuggested: boolean }
+  | { kind: "chapter"; id: string; videoId: string; videoTitle: string; title: string; startS: number; available: boolean }
+  | { kind: "artist"; id: string; name: string; local: boolean; proposed: boolean; videoCount: number }
+  | { kind: "song"; id: string; name: string; englishName: string | null; hidden: boolean; local: boolean; proposed: boolean; viaLyrics: boolean; lyric: string | null; /** Videos performing the Song (their Song pointer, or a Chapter with `startS`), so the results page can list them. */ videos: { id: string; startS: number | null }[] }
   | { kind: "track"; id: string; name: string; album: string | null; by: string[]; songId: string | null; versionId: string | null }
   | { kind: "album"; id: string; name: string; year: number | null; by: string | null };
 
@@ -226,13 +237,15 @@ export interface SongDto {
   hidden: boolean;
   /** A Local Song: created here, renamable and deletable; its Versions are all Local. */
   local: boolean;
+  /** A Proposed Song (sharing-spec §3.4). */
+  proposed: boolean;
   alternateTitles: string[];
   alternateSpellings: string[];
   /** Every name with its kind (name, english, alternate_title, alternate_spelling). */
   names: { text: string; kind: "name" | "english" | "alternate_title" | "alternate_spelling" }[];
   versions: VersionDto[];
   /** Videos performing the Song (its Song pointer or a Performance with the Video YouTube id): playable ones first. */
-  videos: { id: number; title: string; available: boolean; pointed: boolean; startS: number | null }[];
+  videos: { id: string; title: string; available: boolean; pointed: boolean; startS: number | null }[];
 }
 
 /** PATCH /api/videos/:id. Any key may be left out; songId null clears the Song. */

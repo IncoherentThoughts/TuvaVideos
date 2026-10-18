@@ -54,6 +54,7 @@ function SongRow({ s }: { s: SongListDto }) {
           <span class="nm-text">{s.name}</span>
           {s.englishName && <span class="en">{s.englishName}</span>}
           {s.local && <span class="localmark" title="A local Song: created in this library, not in the archive">local</span>}
+          {s.proposed && <span class="localmark" title="Proposed: not yet in the archive">proposed</span>}
         </div>
         <div class="cnt">
           {counts.join(" · ") || <span class="dim">no Video yet</span>}

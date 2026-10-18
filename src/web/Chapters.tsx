@@ -16,10 +16,10 @@ interface StripProps {
   video: VideoDto;
   chapters: ChapterDto[];
   /** The Chapter the playhead is in. */
-  curId: number | null;
+  curId: string | null;
   ctl: { current: PlayerCtl | null };
   /** A Chapter just made with `c`: its card opens with the title field. */
-  newId: number | null;
+  newId: string | null;
   /** The list changed on the server (or a card edited): replace it and refresh the Video (chapterCount). */
   onList(list: ChapterDto[]): void;
   onAdd(): void;
@@ -49,8 +49,8 @@ export function catchTyping() {
 
 export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd, onNewDone }: StripProps) {
   const scroller = useRef<HTMLDivElement>(null);
-  const wantFocus = useRef<number | null>(null);
-  const [pickFor, setPickFor] = useState<number | null>(null);
+  const wantFocus = useRef<string | null>(null);
+  const [pickFor, setPickFor] = useState<string | null>(null);
   const pickBox = useRef<HTMLDivElement>(null);
   const [pickLeft, setPickLeft] = useState(0);
   useEffect(() => {
@@ -109,7 +109,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
   const duration = video.durationS;
   const picking = chapters.find((c) => c.id === pickFor) ?? null;
 
-  const focusNeighbour = (id: number) => {
+  const focusNeighbour = (id: string) => {
     const i = chapters.findIndex((c) => c.id === id);
     const next = chapters[i + 1] ?? chapters[i - 1];
     if (next) wantFocus.current = next.id;
@@ -193,8 +193,8 @@ interface CardProps {
   duration: number | null;
   onNewDone(): void;
   run(what: () => Promise<unknown>): Promise<boolean>;
-  keepFocus(id: number): void;
-  afterDelete(id: number): void;
+  keepFocus(id: string): void;
+  afterDelete(id: string): void;
   pickSong(): void;
 }
 

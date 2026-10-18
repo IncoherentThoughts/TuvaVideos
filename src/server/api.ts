@@ -30,10 +30,13 @@ import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } f
 import type { VideoType } from "../shared/filters";
 import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "../shared/types";
+import type { SharedChanges } from "../shared/sharedRows";
+import { applyShared } from "./localCopy/apply";
+import { localRequestError } from "./localOnly";
 
 const THUMB_CACHE = "public, max-age=86400";
 /** `/thumbs/<id>/<which>.webp?v=<generatedAt>`: the query string is the cache key (the route matches the path alone). */
-export const thumbUrl = (videoId: number, which: "poster" | "strip", generatedAt: string) => `/thumbs/${videoId}/${which}.webp?v=${encodeURIComponent(generatedAt)}`;
+export const thumbUrl = (videoId: string, which: "poster" | "strip", generatedAt: string) => `/thumbs/${videoId}/${which}.webp?v=${encodeURIComponent(generatedAt)}`;
 
 /** What a theme folder may serve (docs/themes.md), by extension. */
 const THEME_FILE_TYPES: Record<string, string> = { css: "text/css; charset=utf-8", json: "application/json", webp: "image/webp", png: "image/png", svg: "image/svg+xml", woff2: "font/woff2" };
@@ -60,7 +63,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 interface CopyDbRow {
   id: number;
-  video_id: number;
+  video_id: string;
   root_id: number;
   root_kind: "local" | "external";
   rel_path: string;
@@ -79,10 +82,13 @@ interface CopyDbRow {
   tv_playback: string | null;
 }
 
+/** A `video_full` row (migration 0015): the Shared columns, one effective pointer per pair, this machine's columns. */
 interface VideoDbRow {
-  id: number;
+  id: string;
   youtube_id: string | null;
   instagram_id: string | null;
+  rutube_id: string | null;
+  shared: number;
   title: string;
   title_latin: string | null;
   title_latin_source: "archive" | "table" | "manual" | null;
@@ -162,6 +168,8 @@ export function createHandler(s: Services) {
       id: v.id,
       youtubeId: v.youtube_id,
       instagramId: v.instagram_id,
+      rutubeId: v.rutube_id,
+      shared: !!v.shared,
       title: v.title,
       titleLatin: v.title_latin,
       titleLatinSource: v.title_latin_source,
@@ -187,8 +195,8 @@ export function createHandler(s: Services) {
       preferredCopyId: preferred?.id ?? null,
       width: (preferred ?? ranked[0])?.width ?? null,
       height: (preferred ?? ranked[0])?.height ?? null,
-      // `?v=` is the generation time: ids are reused after a Video is deleted or renumbered and the files are served
-      // with a day-long cache, so without it a browser keeps showing the previous owner's poster under the same id.
+      // `?v=` is the generation time: the files are served with a day-long cache, so a regenerated Thumbnail needs a
+      // new URL (before migration 0015 integer ids were also reused after a delete).
       thumbnail: v.thumbnail_generated_at
         ? {
             generatedAt: v.thumbnail_generated_at,
@@ -211,21 +219,21 @@ export function createHandler(s: Services) {
     };
   };
 
-  const extrasFor = (videoIds?: number[]): Map<number, Extras> => {
-    const out = new Map<number, Extras>();
-    const get = (id: number) => {
+  const extrasFor = (videoIds?: string[]): Map<string, Extras> => {
+    const out = new Map<string, Extras>();
+    const get = (id: string) => {
       let e = out.get(id);
       if (!e) out.set(id, (e = { artists: [], chapterCount: 0 }));
       return e;
     };
     const only = videoIds ? new Set(videoIds) : null;
     for (const r of s.db
-      .query("SELECT va.video_id, va.suggested, a.id, a.name, a.name_latin, a.mirror_id FROM video_artist va JOIN artist a ON a.id = va.artist_id ORDER BY va.video_id, va.suggested, va.position")
-      .all() as { video_id: number; suggested: number; id: number; name: string; name_latin: string | null; mirror_id: string | null }[]) {
+      .query("SELECT va.video_id, va.suggested, a.id, a.name, a.name_latin, a.kind FROM video_artist_full va JOIN artist_all a ON a.id = va.artist_id ORDER BY va.video_id, va.suggested, va.position")
+      .all() as { video_id: string; suggested: number; id: string; name: string; name_latin: string | null; kind: string }[]) {
       if (only && !only.has(r.video_id)) continue;
-      get(r.video_id).artists.push({ id: r.id, name: r.name, nameLatin: r.name_latin, local: r.mirror_id == null, suggested: !!r.suggested });
+      get(r.video_id).artists.push({ id: r.id, name: r.name, nameLatin: r.name_latin, local: r.kind === "local", proposed: r.kind === "proposed", suggested: !!r.suggested });
     }
-    for (const r of s.db.query("SELECT video_id, COUNT(*) n FROM chapter GROUP BY video_id").all() as { video_id: number; n: number }[]) {
+    for (const r of s.db.query("SELECT video_id, COUNT(*) n FROM chapter_full GROUP BY video_id").all() as { video_id: string; n: number }[]) {
       if (only && !only.has(r.video_id)) continue;
       get(r.video_id).chapterCount = r.n;
     }
@@ -233,7 +241,7 @@ export function createHandler(s: Services) {
   };
 
   const copiesByVideo = () => {
-    const byVideo = new Map<number, CopyDbRow[]>();
+    const byVideo = new Map<string, CopyDbRow[]>();
     for (const c of s.db.query(COPY_SQL).all() as CopyDbRow[]) {
       const arr = byVideo.get(c.video_id);
       if (arr) arr.push(c);
@@ -242,12 +250,12 @@ export function createHandler(s: Services) {
     return byVideo;
   };
 
-  const videosByIds = (ids: number[]) => {
+  const videosByIds = (ids: string[]) => {
     const want = [...new Set(ids)];
-    if (!want.length) return new Map<number, ReturnType<typeof videoJson>>();
+    if (!want.length) return new Map<string, ReturnType<typeof videoJson>>();
     const q = want.map(() => "?").join(",");
-    const rows = s.db.query(`SELECT * FROM video WHERE id IN (${q})`).all(...want) as VideoDbRow[];
-    const copies = new Map<number, CopyDbRow[]>();
+    const rows = s.db.query(`SELECT * FROM video_full WHERE id IN (${q})`).all(...want) as VideoDbRow[];
+    const copies = new Map<string, CopyDbRow[]>();
     for (const c of s.db.query(`${COPY_SQL} WHERE c.video_id IN (${q})`).all(...want) as CopyDbRow[]) {
       const arr = copies.get(c.video_id);
       if (arr) arr.push(c);
@@ -260,7 +268,7 @@ export function createHandler(s: Services) {
   const chapterJson = (c: ChapterRow): ChapterDto => chapterDto(s.db, c);
 
   const allVideos = () => {
-    const videos = s.db.query("SELECT * FROM video ORDER BY created_at DESC, id DESC").all() as VideoDbRow[];
+    const videos = s.db.query("SELECT * FROM video_full ORDER BY created_at DESC, id DESC").all() as VideoDbRow[];
     const ex = extrasFor();
     const byVideo = copiesByVideo();
     return videos.map((v) => videoJson(v, byVideo.get(v.id) ?? [], ex.get(v.id)));
@@ -277,7 +285,7 @@ export function createHandler(s: Services) {
       availableVideos: videos.filter((v) => v.available).length,
       copies: n("SELECT COUNT(*) n FROM copy"),
       missingCopies: n("SELECT COUNT(*) n FROM copy WHERE missing_since IS NOT NULL"),
-      thumbnails: n("SELECT COUNT(*) n FROM video WHERE thumbnail_generated_at IS NOT NULL"),
+      thumbnails: n("SELECT COUNT(*) n FROM video_full WHERE thumbnail_generated_at IS NOT NULL"),
       roots: s.roots.list().map((r) => ({ id: r.id, kind: r.kind, available: s.roots.isAvailable(r.id) })),
       scan: s.scanner.progress(),
       thumbWork: s.thumbs.stats,
@@ -312,7 +320,7 @@ export function createHandler(s: Services) {
   }
 
   /** A poster or strip: the URL carries `?v=<generatedAt>`, so the file may be cached for a day; `Last-Modified` lets a stale entry revalidate. */
-  async function thumbRoute(req: Request, videoId: number, which: "poster" | "strip"): Promise<Response> {
+  async function thumbRoute(req: Request, videoId: string, which: "poster" | "strip"): Promise<Response> {
     const path = which === "poster" ? s.thumbs.posterPath(videoId) : s.thumbs.stripPath(videoId);
     let mtime: Date | null = null;
     try {
@@ -331,8 +339,8 @@ export function createHandler(s: Services) {
     return res;
   }
 
-  const videoResponse = (id: number): Response => {
-    const v = s.db.query("SELECT * FROM video WHERE id = ?").get(id) as VideoDbRow | null;
+  const videoResponse = (id: string): Response => {
+    const v = s.db.query("SELECT * FROM video_full WHERE id = ?").get(id) as VideoDbRow | null;
     if (!v) return json({ error: "no such video" }, 404);
     return json(videoJson(v, s.db.query(`${COPY_SQL} WHERE c.video_id = ?`).all(v.id) as CopyDbRow[], extrasFor([v.id]).get(v.id)));
   };
@@ -392,21 +400,21 @@ export function createHandler(s: Services) {
       if (req.method === "GET" || req.method === "HEAD") {
         if ((m = p.match(/^\/copy\/(\d+)$/))) return copyRoute(req, Number(m[1]));
         if ((m = p.match(/^\/copy\/(\d+)\/pcm$/))) return pcmRoute(req, Number(m[1]));
-        if ((m = p.match(/^\/thumbs\/(\d+)\/(poster|strip)\.webp$/))) return thumbRoute(req, Number(m[1]), m[2] as "poster" | "strip");
+        if ((m = p.match(/^\/thumbs\/([0-9a-fA-F-]{36})\/(poster|strip)\.webp$/))) return thumbRoute(req, m[1]!, m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
         if (p === "/api/tv") return json(s.tv.state());
         if (p === "/api/videos") return json(allVideos());
-        if ((m = p.match(/^\/api\/videos\/(\d+)$/))) {
-          const v = s.db.query("SELECT * FROM video WHERE id = ?").get(Number(m[1])) as VideoDbRow | null;
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
+          const v = s.db.query("SELECT * FROM video_full WHERE id = ?").get(m[1]!) as VideoDbRow | null;
           if (!v) return json({ error: "no such video" }, 404);
           return json(videoJson(v, s.db.query(`${COPY_SQL} WHERE c.video_id = ?`).all(v.id) as CopyDbRow[], extrasFor([v.id]).get(v.id)));
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/chapters$/))) {
-          const list = listChapters(s.db, Number(m[1]));
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/chapters$/))) {
+          const list = listChapters(s.db, m[1]!);
           return list ? json(list) : json({ error: "no such video" }, 404);
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/audio$/))) {
-          const a = getVideoAudio(s.db, Number(m[1]));
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/audio$/))) {
+          const a = getVideoAudio(s.db, m[1]!);
           return a === undefined ? json({ error: "no such video" }, 404) : json({ state: a });
         }
         if (p === "/api/audio-presets") return json(listPresets(s.db));
@@ -418,21 +426,21 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/api\/songs\/([0-9a-fA-F-]{8,64})$/))) {
           const song = songDto(s.db, m[1]!);
           if (!song) return json({ error: "no such song" }, 404);
-          const perf = videosPerforming(s.db, song.id);
+          const perf = videosPerforming(s.db, song.id); // oldest first
           const vids = videosByIds(perf.map((x) => x.videoId));
-          const videos: SongDto["videos"] = perf.flatMap((x) => {
+          const videos: (SongDto["videos"][number] & { order: number })[] = perf.flatMap((x, order) => {
             const v = vids.get(x.videoId);
-            return v ? [{ id: v.id, title: v.title, available: v.available, pointed: x.pointed, startS: x.startS }] : [];
+            return v ? [{ id: v.id, title: v.title, available: v.available, pointed: x.pointed, startS: x.startS, order }] : [];
           });
-          // playable first, then the Videos that point at the Song, then oldest id (stable)
-          videos.sort((a, b) => Number(b.available) - Number(a.available) || Number(b.pointed) - Number(a.pointed) || a.id - b.id);
-          return json({ ...song, videos } satisfies SongDto);
+          // playable first, then the Videos that point at the Song, then oldest (stable)
+          videos.sort((a, b) => Number(b.available) - Number(a.available) || Number(b.pointed) - Number(a.pointed) || a.order - b.order);
+          return json({ ...song, videos: videos.map(({ order: _, ...v }) => v) } satisfies SongDto);
         }
         if (p === "/api/favorites") {
           const rows = listFavoriteRows(s.db);
           const vids = videosByIds(rows.map((r) => r.video_id));
-          const chapters = new Map<number, ChapterRow>();
-          for (const c of s.db.query("SELECT * FROM chapter WHERE favorited_at IS NOT NULL").all() as ChapterRow[]) chapters.set(c.id, c);
+          const chapters = new Map<string, ChapterRow>();
+          for (const c of s.db.query("SELECT * FROM chapter_full WHERE favorited_at IS NOT NULL").all() as ChapterRow[]) chapters.set(c.id, c);
           const items: FavoriteItem[] = [];
           for (const r of rows) {
             const video = vids.get(r.video_id);
@@ -478,7 +486,7 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/scan") return json(s.scanner.progress());
         // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
-        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/search" || p === "/artists" || p === "/songs" || /^\/play\/\d+$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
+        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/search" || p === "/artists" || p === "/songs" || /^\/play\/[0-9a-fA-F-]{36}$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {
@@ -497,33 +505,33 @@ export function createHandler(s: Services) {
           else s.tv.deny(b.ip);
           return json(s.tv.state());
         }
-        if ((m = p.match(/^\/api\/(videos|chapters)\/(\d+)\/favorite$/))) {
+        if ((m = p.match(/^\/api\/(videos|chapters)\/([0-9a-fA-F-]{36})\/favorite$/))) {
           const table = m[1] === "videos" ? "video" : "chapter";
           let want: boolean | undefined;
           try {
             const b = (await req.json()) as { favorite?: unknown };
             if (typeof b.favorite === "boolean") want = b.favorite;
           } catch {}
-          const at = setFavorite(s.db, table, Number(m[2]), want);
+          const at = setFavorite(s.db, table, m[2]!, want);
           if (at === undefined) return json({ error: `no such ${table}` }, 404);
-          return json({ id: Number(m[2]), favorite: at !== null, favoritedAt: at });
+          return json({ id: m[2]!, favorite: at !== null, favoritedAt: at });
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/chapters$/))) {
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/chapters$/))) {
           const body = await readJson(req);
           if (!body) return json({ error: "body must be a JSON object" }, 400);
-          const r = addChapter(s.db, Number(m[1]), body);
+          const r = addChapter(s.db, m[1]!, body);
           return r.ok ? json(r.value, 201) : json({ error: r.error }, r.status);
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/chapters\/confirm-all$/))) {
-          const r = confirmAll(s.db, Number(m[1]));
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/chapters\/confirm-all$/))) {
+          const r = confirmAll(s.db, m[1]!);
           return r.ok ? json(r.value) : json({ error: r.error }, r.status);
         }
-        if ((m = p.match(/^\/api\/chapters\/(\d+)\/confirm$/))) {
-          const r = confirmChapter(s.db, Number(m[1]));
+        if ((m = p.match(/^\/api\/chapters\/([0-9a-fA-F-]{36})\/confirm$/))) {
+          const r = confirmChapter(s.db, m[1]!);
           return r.ok ? json(r.value) : json({ error: r.error }, r.status);
         }
-        if ((m = p.match(/^\/api\/chapters\/(\d+)\/reject$/))) {
-          const r = rejectChapter(s.db, Number(m[1]));
+        if ((m = p.match(/^\/api\/chapters\/([0-9a-fA-F-]{36})\/reject$/))) {
+          const r = rejectChapter(s.db, m[1]!);
           return r.ok ? json(r.value) : json({ error: r.error }, r.status);
         }
         if ((m = p.match(/^\/api\/copies\/(\d+)\/reveal$/))) {
@@ -537,22 +545,22 @@ export function createHandler(s: Services) {
           const r = await studioPost(req, p);
           if (r) return r;
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/view$/))) {
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/view$/))) {
           // One more view (spec 4.3): the Player posts it the first time playback starts on a Now playing visit.
-          if (recordView(s.db, Number(m[1])) === undefined) return json({ error: "no such video" }, 404);
-          return videoResponse(Number(m[1]));
+          if (recordView(s.db, m[1]!) === undefined) return json({ error: "no such video" }, 404);
+          return videoResponse(m[1]!);
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/resume$/))) {
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/resume$/))) {
           let body: { resumeS?: unknown; copyId?: unknown } = {};
           try {
             body = (await req.json()) as typeof body; // sendBeacon posts a Blob; the content type does not matter here
           } catch {}
           if (typeof body.resumeS !== "number" || !Number.isFinite(body.resumeS) || body.resumeS < 0) return json({ error: "resumeS must be a number >= 0" }, 400);
-          const r = recordResume(s.db, Number(m[1]), body.resumeS, typeof body.copyId === "number" ? body.copyId : null);
+          const r = recordResume(s.db, m[1]!, body.resumeS, typeof body.copyId === "number" ? body.copyId : null);
           if (!r) return json({ error: "no such video" }, 404);
-          return json({ id: Number(m[1]), ...r });
+          return json({ id: m[1]!, ...r });
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/loop$/))) {
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/loop$/))) {
           let body: { loop?: unknown } = {};
           try {
             body = (await req.json()) as typeof body;
@@ -564,12 +572,12 @@ export function createHandler(s: Services) {
             const ok = typeof l === "object" && l != null && typeof (l as StoredLoop).a === "number" && typeof (l as StoredLoop).b === "number" && storedLoop(l as StoredLoop) != null;
             if (!ok) return json({ error: "loop must be null or {a, b} in seconds with b later than a" }, 400);
           }
-          const r = recordLoop(s.db, Number(m[1]), l as StoredLoop | null);
+          const r = recordLoop(s.db, m[1]!, l as StoredLoop | null);
           if (!r) return json({ error: "no such video" }, 404);
-          return json({ id: Number(m[1]), ...r });
+          return json({ id: m[1]!, ...r });
         }
-        if ((m = p.match(/^\/api\/videos\/(\d+)\/screenshot$/))) {
-          const v = s.db.query("SELECT title FROM video WHERE id = ?").get(Number(m[1])) as { title: string } | null;
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/screenshot$/))) {
+          const v = s.db.query("SELECT title FROM video_full WHERE id = ?").get(m[1]!) as { title: string } | null;
           if (!v) return json({ error: "no such video" }, 404);
           const t = Number(url.searchParams.get("t"));
           if (!url.searchParams.has("t") || !Number.isFinite(t) || t < 0) return json({ error: "t must be a number of seconds >= 0" }, 400);
@@ -580,8 +588,8 @@ export function createHandler(s: Services) {
           const path = await saveScreenshot(s.cfg.screenshotDir, v.title, t, png);
           return json({ saved: path, bytes: png.length });
         }
-        if ((m = p.match(/^\/api\/artists\/(\d+)\/merge-into\/(\d+)$/))) {
-          const r = mergeArtist(s.db, Number(m[1]), Number(m[2]));
+        if ((m = p.match(/^\/api\/artists\/([0-9a-fA-F-]{36})\/merge-into\/([0-9a-fA-F-]{36})$/))) {
+          const r = mergeArtist(s.db, m[1]!, m[2]!);
           if (!r.ok) return json({ error: r.error }, r.status);
           rebuildSearchIndex(s.db);
           return json({ merged: true, moved: r.moved });
@@ -591,9 +599,9 @@ export function createHandler(s: Services) {
         if (!s.tv.remove(decodeURIComponent(m[1]!))) return json({ error: "no such Approved TV" }, 404);
         return json(s.tv.state());
       }
-      if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/(\d+)\/audio$/))) {
+      if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/audio$/))) {
         const body = (await req.json().catch(() => ({}))) as { state?: unknown };
-        const r = setVideoAudio(s.db, Number(m[1]), body.state ?? null);
+        const r = setVideoAudio(s.db, m[1]!, body.state ?? null);
         return r.ok ? json({ state: r.value }) : json({ error: r.error }, r.status);
       }
       if (req.method === "PUT" && (m = p.match(/^\/api\/audio-presets\/([^/]+)$/))) {
@@ -601,65 +609,66 @@ export function createHandler(s: Services) {
         const r = savePreset(s.db, decodeURIComponent(m[1]!), body.eq);
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
-      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)\/view$/))) {
-        if (!resetViews(s.db, Number(m[1]))) return json({ error: "no such video" }, 404);
-        return videoResponse(Number(m[1]));
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/view$/))) {
+        if (!resetViews(s.db, m[1]!)) return json({ error: "no such video" }, 404);
+        return videoResponse(m[1]!);
       }
-      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)$/))) {
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
         // Delete a Video from the library; `media: true` also moves its files to the Trash (deleteVideo.ts).
         const body = (await req.json().catch(() => ({}))) as { media?: unknown };
-        const r = await deleteVideo(s.db, s.cfg, s.roots, Number(m[1]), { media: body.media === true });
+        const r = await deleteVideo(s.db, s.cfg, s.roots, m[1]!, { media: body.media === true });
+        if (r && "refused" in r) return json({ error: r.refused }, 409);
         return r ? json(r) : json({ error: "no such video" }, 404);
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/audio-presets\/([^/]+)$/))) {
         const r = deletePreset(s.db, decodeURIComponent(m[1]!));
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
-      if (req.method === "PATCH" && (m = p.match(/^\/api\/artists\/(\d+)$/))) {
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/artists\/([0-9a-fA-F-]{36})$/))) {
         const body = await readJson(req);
         if (!body) return json({ error: "body must be a JSON object" }, 400);
-        const r = renameLocalArtist(s.db, Number(m[1]), body.name);
+        const r = renameLocalArtist(s.db, m[1]!, body.name);
         if (!r.ok) return json({ error: r.error }, r.status);
         indexArtist(s.db, r.value.id);
         return json(r.value);
       }
-      if (req.method === "PATCH" && (m = p.match(/^\/api\/videos\/(\d+)$/))) {
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
         const body = await readJson(req);
         if (!body) return json({ error: "body must be a JSON object" }, 400);
-        const r = patchVideo(s.db, Number(m[1]), body);
+        const r = patchVideo(s.db, m[1]!, body);
         if (!r.ok) return json({ error: r.error }, r.status);
-        return videoResponse(Number(m[1]));
+        return videoResponse(m[1]!);
       }
-      if (req.method === "PATCH" && (m = p.match(/^\/api\/chapters\/(\d+)$/))) {
+      if (req.method === "PATCH" && (m = p.match(/^\/api\/chapters\/([0-9a-fA-F-]{36})$/))) {
         const body = await readJson(req);
         if (!body) return json({ error: "body must be a JSON object" }, 400);
-        const r = patchChapter(s.db, Number(m[1]), body);
+        const r = patchChapter(s.db, m[1]!, body);
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/studio-tracks\/(\d+)$/))) {
         const r = s.studio.remove(Number(m[1]));
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
-      if (req.method === "DELETE" && (m = p.match(/^\/api\/chapters\/(\d+)$/))) {
-        const r = deleteChapter(s.db, Number(m[1]));
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/chapters\/([0-9a-fA-F-]{36})$/))) {
+        const r = deleteChapter(s.db, m[1]!);
         return r.ok ? json(r.value) : json({ error: r.error }, r.status);
       }
-      if (req.method === "POST" && (m = p.match(/^\/api\/videos\/(\d+)\/artists\/confirm$/))) {
-        const r = confirmVideoArtists(s.db, Number(m[1]));
+      if (req.method === "POST" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/artists\/confirm$/))) {
+        const r = confirmVideoArtists(s.db, m[1]!);
         if (!r.ok) return json({ error: r.error }, r.status);
-        return videoResponse(Number(m[1]));
+        return videoResponse(m[1]!);
       }
-      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/(\d+)\/artists\/(\d+)$/))) {
-        const r = rejectVideoArtist(s.db, Number(m[1]), Number(m[2]));
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/artists\/([0-9a-fA-F-]{36})$/))) {
+        const r = rejectVideoArtist(s.db, m[1]!, m[2]!);
         if (!r.ok) return json({ error: r.error }, r.status);
-        return videoResponse(Number(m[1]));
+        return videoResponse(m[1]!);
       }
-      if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/(\d+)\/artists$/))) {
+      if (req.method === "PUT" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/artists$/))) {
         const body = await readJson(req);
         if (!body) return json({ error: "body must be a JSON object" }, 400);
-        const r = setVideoArtists(s.db, Number(m[1]), body.artistIds);
+        const r = setVideoArtists(s.db, m[1]!, body.artistIds);
         if (!r.ok) return json({ error: r.error }, r.status);
-        return videoResponse(Number(m[1]));
+        return videoResponse(m[1]!);
       }
       // Local Songs and Local Versions (the lyrics drawer's editor and the Song picker's "add as local song").
       if (req.method === "POST" && p === "/api/songs") {
@@ -702,15 +711,29 @@ export function createHandler(s: Services) {
         if (r.value.created) indexArtist(s.db, r.value.id);
         return json({ id: r.value.id, name: r.value.name, local: true, created: r.value.created }, r.value.created ? 201 : 200);
       }
-      if (req.method === "POST" && (m = p.match(/^\/api\/videos\/(\d+)\/relocate$/))) {
+      // The browser hands the companion the rows a write function returned (sharing-spec §4.9, §6.2): one transaction,
+      // the updated_at guard, children replaced per bumped parent. Same-origin only: never the TV listener, never a page
+      // of another site (the Origin and Host checks of §5.2).
+      if (req.method === "POST" && p === "/api/cache/apply") {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object of Shared rows by table" }, 400);
+        try {
+          return json(applyShared(s.db, body as SharedChanges));
+        } catch (e) {
+          return json({ error: `nothing was applied: ${(e as Error).message ?? e}` }, 422);
+        }
+      }
+      if (req.method === "POST" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/relocate$/))) {
         // Point a Video's Copy at its file's new place (Now playing's folder button). See relocate.ts.
         const body = await readJson(req);
         if (!body) return json({ error: "body must be a JSON object" }, 400);
-        const r = await relocateCopy(s.db, s.cfg, s.roots.list(), Number(m[1]), body as any);
+        const r = await relocateCopy(s.db, s.cfg, s.roots.list(), m[1]!, body as any);
         if (!r.ok) return json({ error: r.error, ...("conflict" in r ? { conflict: r.conflict } : {}) }, r.status);
         await s.roots.check(r.value.rootId);
         s.thumbs.kick();
-        return videoResponse(Number(m[1]));
+        return videoResponse(m[1]!);
       }
       if (req.method === "POST" && p === "/api/choose-file") {
         // The Finder's "choose file" dialog (macOS), for the folder button: a browser page cannot learn a file's full path.

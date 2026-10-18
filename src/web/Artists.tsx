@@ -184,6 +184,7 @@ function ArtistRow({ a, open, setOpen }: { a: ArtistDto; open: boolean; setOpen:
         <div class="nm">
           <NameField a={a} />
           {a.local && <span class="tag local" title="Created here; the archive has no row for this Artist">local</span>}
+          {a.proposed && <span class="tag local" title="Proposed: not yet in the archive">proposed</span>}
         </div>
         <div class="cnt">
           {a.videoCount} Video{a.videoCount === 1 ? "" : "s"}
@@ -209,7 +210,7 @@ function ArtistRow({ a, open, setOpen }: { a: ArtistDto; open: boolean; setOpen:
 
 export function Artists({ search }: { search: string }) {
   const { artists, videos } = useStore();
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   useEffect(() => void loadArtists(), []);
   const st = useMemo(() => parseArtistsSearch(search), [search]);
   const shown = useMemo(() => (artists ? viewArtists(artists, st, videos) : []), [artists, videos, st]);

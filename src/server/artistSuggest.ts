@@ -1,10 +1,12 @@
-// The Artist matcher's server pass (spec 2.3): Suggested Artists written to `video_artist` with `suggested = 1`.
-// A Video the person has curated (any confirmed Artist row) is left alone; otherwise its Suggested rows are replaced
-// by the matcher's current answer minus the rejections. Runs for a new Video at scan time, after every scan, after a
-// Mirror import, and from `bun run suggest-artists`.
+// The Artist matcher's server pass (spec 2.3): Suggested Artists written to `video_artists` with `suggested = 1`.
+// A Video the person has curated (any confirmed Artist link) is left alone; otherwise its Suggested links are replaced
+// by the matcher's current answer minus the rejections. Runs for a new Video at scan time, after every scan, after
+// archive rows change, and from `bun run suggest-artists`. Unshared Videos only (sharing-spec §4.3): a Shared Video's
+// suggestions are the Shared data's.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Db } from "./db";
+import { writeArtistLinks } from "./edit";
 import { matchArtists, type ArtistCandidate } from "../shared/artistMatch";
 
 export interface ArtistSuggestStats {
@@ -26,22 +28,21 @@ function uploaderOf(cacheDir: string | undefined, youtubeId: string | null): str
   }
 }
 
-export function suggestArtists(db: Db, opts: { videoId?: number; cacheDir?: string; dryRun?: boolean } = {}): ArtistSuggestStats {
+export function suggestArtists(db: Db, opts: { videoId?: string; cacheDir?: string; dryRun?: boolean } = {}): ArtistSuggestStats {
   const stats: ArtistSuggestStats = { videos: 0, suggested: 0, cleared: 0, skippedCurated: 0 };
-  const candidates: ArtistCandidate[] = (db.query("SELECT id, name, name_latin FROM artist").all() as { id: number; name: string; name_latin: string | null }[]).map((a) => ({
+  const candidates: ArtistCandidate<string>[] = (db.query("SELECT id, name, name_latin FROM artist_all").all() as { id: string; name: string; name_latin: string | null }[]).map((a) => ({
     id: a.id,
     names: [a.name, ...(a.name_latin ? [a.name_latin] : [])],
   }));
   if (!candidates.length) return stats;
   const videos = db
-    .query(`SELECT id, youtube_id, title FROM video ${opts.videoId != null ? "WHERE id = ?" : ""} ORDER BY id`)
-    .all(...(opts.videoId != null ? [opts.videoId] : [])) as { id: number; youtube_id: string | null; title: string }[];
-  const curated = new Set((db.query("SELECT DISTINCT video_id FROM video_artist WHERE suggested = 0").all() as { video_id: number }[]).map((r) => r.video_id));
-  const rejected = new Map<number, Set<number>>();
-  for (const r of db.query("SELECT video_id, artist_id FROM artist_rejection").all() as { video_id: number; artist_id: number }[])
+    .query(`SELECT id, youtube_id, title FROM video_full WHERE shared = 0 ${opts.videoId != null ? "AND id = ?" : ""} ORDER BY created_at, id`)
+    .all(...(opts.videoId != null ? [opts.videoId] : [])) as { id: string; youtube_id: string | null; title: string }[];
+  const curated = new Set((db.query("SELECT DISTINCT video_id FROM video_artists WHERE suggested = 0").all() as { video_id: string }[]).map((r) => r.video_id));
+  const rejected = new Map<string, Set<string>>();
+  for (const r of db.query("SELECT video_id, COALESCE(artist_id, proposed_artist_id) AS artist_id FROM video_artist_rejections").all() as { video_id: string; artist_id: string }[])
     (rejected.get(r.video_id) ?? rejected.set(r.video_id, new Set()).get(r.video_id)!).add(r.artist_id);
-  const del = db.prepare("DELETE FROM video_artist WHERE video_id = ? AND suggested = 1");
-  const ins = db.prepare("INSERT INTO video_artist (video_id, artist_id, position, suggested) VALUES (?, ?, ?, 1)");
+  const del = db.prepare("DELETE FROM video_artists WHERE video_id = ? AND suggested = 1");
   db.transaction(() => {
     for (const v of videos) {
       stats.videos++;
@@ -56,7 +57,7 @@ export function suggestArtists(db: Db, opts: { videoId?: number; cacheDir?: stri
         continue;
       }
       stats.cleared += (del.run(v.id) as { changes: number }).changes;
-      matches.forEach((m, i) => ins.run(v.id, m.id, i));
+      writeArtistLinks(db, v.id, matches.map((m) => m.id), 1);
       stats.suggested += matches.length;
     }
   })();

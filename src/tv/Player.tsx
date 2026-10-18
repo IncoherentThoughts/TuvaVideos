@@ -56,7 +56,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 type Phase = "loading" | "ready" | "unavailable" | "failed" | "remux"
 
 export interface PlayerProps {
-  videoId: number
+  videoId: string
   startS: number | null
   playingFrom: PlayingFrom
   /** The route's hint; the active Playlist lives in playlistOps (set by the Shuffle that starts one). */
@@ -64,7 +64,7 @@ export interface PlayerProps {
   nav: Nav
   active: boolean
   /** Replace this screen with another Video (stepping must not pile screens up). */
-  step: (videoId: number, o: { startS: number | null; playlist: Playlist | null }) => void
+  step: (videoId: string, o: { startS: number | null; playlist: Playlist | null }) => void
 }
 
 export function Player({ videoId, startS, playingFrom, nav, active, step }: PlayerProps) {
@@ -153,8 +153,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     return d != null && Number.isFinite(d) && d > 0 ? d : (copy?.durationS ?? video?.durationS ?? null)
   }
   const duration = durationNow()
-  const playable = (id: number) => nav.data.videos.find((v) => v.id === id)?.available === true
-  const titleOf = (id: number) => nav.data.videos.find((v) => v.id === id)?.title ?? `Video ${id}`
+  const playable = (id: string) => nav.data.videos.find((v) => v.id === id)?.available === true
+  const titleOf = (id: string) => nav.data.videos.find((v) => v.id === id)?.title ?? `Video ${id}`
   const range = pl ? entryRange(current(pl), chapters, duration) : null
   const { chapter: curChapter, target } = songTarget(chapters, t, video ?? { songId: null, versionId: null })
   const targetId = target?.songId ?? null
@@ -803,7 +803,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
 }
 
 /** The title of the Playlist's next Entry (what "Next:" names in the last 20 s), skipping unavailable Videos. */
-function nextEntryTitle(pl: Playlist, nav: Nav, playable: (id: number) => boolean): string | null {
+function nextEntryTitle(pl: Playlist, nav: Nav, playable: (id: string) => boolean): string | null {
   const m = nextEntry(pl, "end", playable)
   if (m.kind !== "move" && m.kind !== "restart") return null
   if (m.kind === "move" && m.pl.cursor <= pl.cursor) return null // Repeat list wrapping reshuffles only when it happens: nothing to name yet

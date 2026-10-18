@@ -23,6 +23,8 @@ export interface VersionDto {
   displayOrder: number;
   /** A Local Version: written here, not in the archive; editable and deletable. */
   local: boolean;
+  /** A Proposed Version (a Video Editor's, sharing-spec §3.4): read-only here, marked Proposed. */
+  proposed?: boolean;
   scripts: Record<ScriptKey, ScriptDto>;
 }
 

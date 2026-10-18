@@ -3,6 +3,7 @@
 // over them, one key dispatch (input.ts) and the geometry focus engine (focus.ts).
 import { render } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
+import { isUuid } from "../shared/ids"
 import { defaultLibraryState, type LibraryState } from "../shared/libraryView"
 import { pickRandomVideo } from "../shared/random"
 import { Grid } from "./Grid"
@@ -138,15 +139,15 @@ function App() {
   useEffect(() => {
     if (!nav || autoPlayed.current || window.tuvaTv) return
     const q = new URLSearchParams(location.search)
-    const id = Number(q.get("play"))
+    const id = q.get("play")
     autoPlayed.current = true
-    if (!Number.isInteger(id) || id <= 0) return
+    if (!isUuid(id)) return
     const t = q.get("t")
     nav.play(id, { startS: t != null && t !== "" ? Number(t) : null, playingFrom: { source: "library", ids: libraryOrder(nav.data.videos).map((v) => v.id) } })
   }, [!!nav])
 
   const topEntry = top(stack)
-  const stepPlayer = (e: Entry, videoId: number, o: { startS: number | null; playlist: import("../shared/playlist").Playlist | null }) => {
+  const stepPlayer = (e: Entry, videoId: string, o: { startS: number | null; playlist: import("../shared/playlist").Playlist | null }) => {
     if (e.route.kind !== "player") return
     const route: Route = { ...e.route, videoId, startS: o.startS, playlist: o.playlist }
     setStack((s) => replaceTop(s, makeEntry(route, e.fromPane)))
@@ -198,7 +199,7 @@ function App() {
   )
 }
 
-function Screen({ e, nav, active, mounted, step }: { e: Entry; nav: Nav; active: boolean; mounted: boolean; step: (videoId: number, o: { startS: number | null; playlist: import("../shared/playlist").Playlist | null }) => void }) {
+function Screen({ e, nav, active, mounted, step }: { e: Entry; nav: Nav; active: boolean; mounted: boolean; step: (videoId: string, o: { startS: number | null; playlist: import("../shared/playlist").Playlist | null }) => void }) {
   if (!mounted) return null
   const r = e.route
   switch (r.kind) {

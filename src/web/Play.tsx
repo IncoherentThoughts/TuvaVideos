@@ -30,7 +30,7 @@ const POLL_MS = 3000;
 let panelWanted = false;
 let panelSeenStart = 0;
 
-export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t: number | null; lyrics: string | null; lyricsVersion: string | null }) {
+export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t: number | null; lyrics: string | null; lyricsVersion: string | null }) {
   const { videos } = useStore();
   const [v, setV] = useState<VideoDto | null | undefined>(undefined);
 
@@ -105,8 +105,8 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
   }, [videoId]);
   const playlist = playlistFor(loadPlaylist(), videoId);
   const [nonce, setNonce] = useState(0); // a new Entry of the same Video opens a fresh Player (it opens at the Entry's start)
-  const playable = (id: number) => byId.get(id)?.available ?? true;
-  const title = (id: number) => byId.get(id)?.title ?? `Video ${id}`;
+  const playable = (id: string) => byId.get(id)?.available ?? true;
+  const title = (id: string) => byId.get(id)?.title ?? `Video ${id}`;
 
   /** Make `pl`'s current Entry the one on screen: a Chapter Entry opens at its Chapter's start. */
   const goTo = (pl: Playlist) => {
@@ -172,8 +172,8 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: number; t
 
   // ---- Chapters (spec 5.3) ----
   const [chapters, setChapters] = useState<ChapterDto[]>([]);
-  const [newId, setNewId] = useState<number | null>(null);
-  const [curId, setCurId] = useState<number | null>(null);
+  const [newId, setNewId] = useState<string | null>(null);
+  const [curId, setCurId] = useState<string | null>(null);
   const ctl = useRef<PlayerCtl | null>(null);
   const chaptersRef = useRef<ChapterDto[]>([]);
   const playhead = useRef(0);

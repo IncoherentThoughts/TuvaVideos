@@ -23,7 +23,7 @@ export interface RelocateBody {
 
 export type RelocateResult =
   | EditResult<{ copyId: number; rootId: number }>
-  | { ok: false; status: 409; error: string; conflict: { videoId: number; title: string } };
+  | { ok: false; status: 409; error: string; conflict: { videoId: string; title: string } };
 
 const bad = (error: string, status = 400) => ({ ok: false as const, status, error });
 
@@ -37,23 +37,26 @@ export function rootFor(roots: RootRow[], abs: string): RootRow | null {
   return best;
 }
 
-/** Remove a Video that has no Copy left, with every row that hangs off it. */
-function dropVideo(db: Db, id: number) {
-  for (const c of db.query("SELECT id FROM chapter WHERE video_id = ?").all(id) as { id: number }[])
-    db.query("DELETE FROM search WHERE kind = 'chapter' AND ref_id = ?").run(String(c.id));
-  db.query("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(String(id));
-  for (const t of ["video_artist", "artist_rejection", "chapter", "chapter_rejection", "video_audio"]) db.query(`DELETE FROM ${t} WHERE video_id = ?`).run(id);
-  db.query("DELETE FROM video WHERE id = ?").run(id);
+/**
+ * Remove a Video that has no Copy left, with every row that hangs off it (ON DELETE CASCADE). A Shared Video stays:
+ * its link data is the Shared data's, and with no Copy it is simply Not on this machine (sharing-spec §7.1).
+ */
+function dropVideo(db: Db, id: string) {
+  if ((db.query("SELECT shared FROM video_full WHERE id = ?").get(id) as { shared: number } | null)?.shared) return;
+  for (const c of db.query("SELECT id FROM video_chapters WHERE video_id = ?").all(id) as { id: string }[])
+    db.query("DELETE FROM search WHERE kind = 'chapter' AND ref_id = ?").run(c.id);
+  db.query("DELETE FROM search WHERE kind = 'video' AND ref_id = ?").run(id);
+  db.query("DELETE FROM videos WHERE id = ?").run(id);
 }
 
 /** Delete a superseded Copy row of `videoId`, handing its thumbnail pointer to the Copy that replaces it. */
-function dropCopy(db: Db, videoId: number, oldId: number, newId: number) {
-  db.query("UPDATE video SET thumbnail_copy_id = ? WHERE id = ? AND thumbnail_copy_id = ?").run(newId, videoId, oldId);
+function dropCopy(db: Db, videoId: string, oldId: number, newId: number) {
+  db.query("UPDATE video_local SET thumbnail_copy_id = ? WHERE video_id = ? AND thumbnail_copy_id = ?").run(newId, videoId, oldId);
   db.query("DELETE FROM copy WHERE id = ?").run(oldId);
 }
 
-export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxDir">, roots: RootRow[], videoId: number, body: RelocateBody): Promise<RelocateResult> {
-  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return bad("no such video", 404);
+export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxDir">, roots: RootRow[], videoId: string, body: RelocateBody): Promise<RelocateResult> {
+  if (!db.query("SELECT 1 FROM video_full WHERE id = ?").get(videoId)) return bad("no such video", 404);
   if (typeof body.path !== "string" || !body.path.trim()) return bad("path must be the file's full path");
   const raw = body.path.trim().replace(/^~(?=\/)/, process.env.HOME ?? "~");
   if (!isAbsolute(raw)) return bad("path must be a full path (starting with /)");
@@ -73,8 +76,8 @@ export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxD
   if (!root) return bad(`that file is outside the library folders (${roots.map((r) => r.path).join(", ")}); move it into one of them first`);
   const rel = relative(resolve(root.path), abs).normalize("NFC");
 
-  const dest = db.query("SELECT c.id, c.video_id, v.title FROM copy c JOIN video v ON v.id = c.video_id WHERE c.root_id = ? AND c.rel_path = ?").get(root.id, rel) as
-    | { id: number; video_id: number; title: string }
+  const dest = db.query("SELECT c.id, c.video_id, v.title FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.root_id = ? AND c.rel_path = ?").get(root.id, rel) as
+    | { id: number; video_id: string; title: string }
     | null;
   if (dest && dest.video_id === videoId) {
     // A scan already found the moved file for this Video: the stale row just goes.

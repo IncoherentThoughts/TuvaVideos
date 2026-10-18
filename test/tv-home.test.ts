@@ -19,15 +19,17 @@ import { playingFromRows, resultRows, startPlaylistOf } from "../src/tv/searchRo
 // ---- fixtures ----
 
 let nextId = 1
+// A legacy-shaped uuid (decimal digits in the last group), so ids made later sort after earlier ones as before.
+const uid = (n: number) => `76696400-0000-8000-8000-${String(n).padStart(12, "0")}`
 const video = (o: Partial<VideoDto> = {}): VideoDto =>
   ({
-    id: nextId++, title: "T", titleLatin: null, type: "song", favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, createdAt: "2026-01-01T00:00:00Z", addedAt: null,
+    id: uid(nextId++), title: "T", titleLatin: null, type: "song", favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, createdAt: "2026-01-01T00:00:00Z", addedAt: null,
     durationS: 200, available: true, artists: [], song: null, songSuggested: false, thumbnail: null, copies: [], chapterCount: 0, ...o,
   }) as unknown as VideoDto
 
-const chapter = (id: number, videoId: number, startS: number): ChapterDto => ({ id, videoId, startS, title: `Ch ${id}`, favoritedAt: "x" }) as unknown as ChapterDto
-const artist = (id: number, name: string, videoCount: number): ArtistDto => ({ id, name, videoCount, local: false, nameLatin: null, mirrorId: null, posterVideoId: null })
-const song = (id: string, name: string, o: Partial<SongListDto> = {}): SongListDto => ({ id, name, englishName: null, videoCount: 1, chapterCount: 0, versionCount: 1, localVersionCount: 0, local: false, posterVideoId: null, addedAt: null, ...o })
+const chapter = (id: string, videoId: string, startS: number): ChapterDto => ({ id, videoId, startS, title: `Ch ${id}`, favoritedAt: "x" }) as unknown as ChapterDto
+const artist = (id: string, name: string, videoCount: number): ArtistDto => ({ id, name, videoCount, local: false, proposed: false, nameLatin: null, posterVideoId: null })
+const song = (id: string, name: string, o: Partial<SongListDto> = {}): SongListDto => ({ id, name, englishName: null, videoCount: 1, chapterCount: 0, versionCount: 1, localVersionCount: 0, local: false, proposed: false, posterVideoId: null, addedAt: null, ...o })
 const data = (o: Partial<TvData> = {}): TvData => ({ videos: [], artists: [], songs: [], favorites: [], ...o })
 
 const box = (left: number, top: number, w = 100, h = 100): Box => ({ left, top, right: left + w, bottom: top + h })
@@ -104,7 +106,7 @@ describe("rail builders", () => {
     const full = buildRails(
       data({
         videos: [video({ type: "concert", resumeS: 10, lastPlayedAt: "2026-01-01T00:00:00Z" })],
-        artists: [artist(1, "A", 3), artist(2, "None", 0)],
+        artists: [artist("1", "A", 3), artist("2", "None", 0)],
         songs: [song("s1", "Song", { versionCount: 1 }), song("s2", "Mute", { versionCount: 0 })],
         favorites: [{ kind: "video", favoritedAt: "2026-01-01", video: video() } as FavoriteItem],
       }),
@@ -138,7 +140,7 @@ describe("Favorites tile builder", () => {
   const v2 = video()
   const items: FavoriteItem[] = [
     { kind: "video", favoritedAt: "2026-01-01T00:00:00Z", video: v1 },
-    { kind: "chapter", favoritedAt: "2026-03-01T00:00:00Z", video: v2, chapter: chapter(7, v2.id, 120) },
+    { kind: "chapter", favoritedAt: "2026-03-01T00:00:00Z", video: v2, chapter: chapter("7", v2.id, 120) },
     { kind: "video", favoritedAt: "2026-02-01T00:00:00Z", video: v2 },
   ]
 
@@ -159,7 +161,7 @@ describe("Favorites tile builder", () => {
       expect(s.playlist.shuffled).toBe(true)
       expect(s.playlist.repeat).toBe("off")
       expect(s.playlist.entries).toHaveLength(3)
-      if (e.chapterId === 7) expect(s.startS).toBe(120)
+      if (e.chapterId === "7") expect(s.startS).toBe(120)
       else expect(s.startS).toBeNull()
     }
     expect(playingFromTiles(tiles, "favorites")).toEqual({ source: "favorites", ids: [v2.id, v1.id] }) // one entry per Video
@@ -191,14 +193,14 @@ describe("grid tiles", () => {
   })
 
   test("an Artist's Videos are the Videos carrying that Artist", () => {
-    const ar = { id: 9, name: "X", nameLatin: null, local: false, suggested: false }
+    const ar = { id: "9", name: "X", nameLatin: null, local: false, proposed: false, suggested: false }
     const a = video({ artists: [ar] })
     const b = video({ artists: [] })
-    expect(artistVideoTiles([a, b], 9).map((t) => t.key)).toEqual([`v${a.id}`])
+    expect(artistVideoTiles([a, b], "9").map((t) => t.key)).toEqual([`v${a.id}`])
   })
 
   test("Artists and Songs grids get no Shuffle tile; Video grids do", () => {
-    const d = data({ videos: [video()], artists: [artist(1, "A", 2)], songs: [song("s", "S")] })
+    const d = data({ videos: [video()], artists: [artist("1", "A", 2)], songs: [song("s", "S")] })
     expect(isVideoGrid(gridTiles({ kind: "artists" }, d, defaultLibraryState()))).toBe(false)
     expect(isVideoGrid(gridTiles({ kind: "songs", lyricsOnly: false }, d, defaultLibraryState()))).toBe(false)
     expect(isVideoGrid(gridTiles({ kind: "library" }, d, defaultLibraryState()))).toBe(true)
@@ -208,7 +210,7 @@ describe("grid tiles", () => {
     const s = video({ type: "song", viewCount: 1 })
     const k = video({ type: "concert", viewCount: 2, favoritedAt: "x" })
     const d = data({ videos: [s, k] })
-    const ids = (lib = defaultLibraryState()) => gridTiles({ kind: "library" }, d, lib).map((t) => (t.kind === "video" ? t.video.id : 0))
+    const ids = (lib = defaultLibraryState()) => gridTiles({ kind: "library" }, d, lib).map((t) => (t.kind === "video" ? t.video.id : ""))
     expect(ids()).toEqual([k.id, s.id])
     expect(ids(cycleChip("type", defaultLibraryState()))).toEqual([s.id]) // Type: song
     expect(ids(cycleChip("fav", defaultLibraryState()))).toEqual([k.id])
@@ -362,19 +364,19 @@ describe("Search results", () => {
     ms: 1,
     groups: [
       { key: "videos", label: "Videos", total: 2, rows: [
-        { kind: "video", id: 5, title: "Alash live", type: "concert", durationS: 60, available: true, songs: [], songSuggested: false },
-        { kind: "chapter", id: 8, videoId: 6, videoTitle: "Concert", title: "Alash song", startS: 90, available: true },
+        { kind: "video", id: "5", title: "Alash live", type: "concert", durationS: 60, available: true, songs: [], songSuggested: false },
+        { kind: "chapter", id: "8", videoId: "6", videoTitle: "Concert", title: "Alash song", startS: 90, available: true },
       ] },
       { key: "songs", label: "Songs", total: 1, rows: [
-        { kind: "song", id: "u1", name: "Alash", englishName: null, hidden: false, local: false, viaLyrics: true, lyric: "an alash line", videos: [{ id: 5, startS: null }] },
+        { kind: "song", id: "u1", name: "Alash", englishName: null, hidden: false, local: false, proposed: false, viaLyrics: true, lyric: "an alash line", videos: [{ id: "5", startS: null }] },
       ] },
       { key: "tracks", label: "Tracks", total: 1, rows: [{ kind: "track", id: "t", name: "T", album: null, by: [], songId: null, versionId: null }] },
-      { key: "artists", label: "Artists", total: 1, rows: [{ kind: "artist", id: 3, name: "Alash Ensemble", local: false, videoCount: 4 }] },
+      { key: "artists", label: "Artists", total: 1, rows: [{ kind: "artist", id: "3", name: "Alash Ensemble", local: false, proposed: false, videoCount: 4 }] },
     ],
   }
 
   test("grouped Songs, Videos, Artists in that order; Tracks and Albums are dropped", () => {
-    const rows = resultRows(res, [video({ id: 6, type: "interview" } as Partial<VideoDto>)])
+    const rows = resultRows(res, [video({ id: "6", type: "interview" } as Partial<VideoDto>)])
     expect(rows.map((r) => (r.kind === "shuffle" ? r.kind : r.group))).toEqual(["Songs", "Videos", "Videos", "Artists"])
     const s = rows[0]!
     expect(s.kind === "song" && s.lyric).toBe("an alash line") // the lyric line under a lyrics-matched Song
@@ -383,15 +385,15 @@ describe("Search results", () => {
   test("a Chapter hit plays its Video at the Chapter", () => {
     const rows = resultRows(res)
     const ch = rows.find((r) => r.kind === "video" && r.chapterTitle != null)!
-    expect(ch.kind === "video" && [ch.videoId, ch.startS, ch.title]).toEqual([6, 90, "Concert"])
+    expect(ch.kind === "video" && [ch.videoId, ch.startS, ch.title]).toEqual(["6", 90, "Concert"])
   })
 
   test("Playing from is the Videos listed, once each; the Shuffle row starts a search Playlist", () => {
     const rows = resultRows(res)
-    expect(playingFromRows(rows)).toEqual({ source: "search", ids: [5, 6] })
+    expect(playingFromRows(rows)).toEqual({ source: "search", ids: ["5", "6"] })
     const s = startPlaylistOf(rows, [], () => 0)!
     expect(s.playlist.source).toBe("search")
-    expect([5, 6]).toContain(s.videoId)
+    expect(["5", "6"]).toContain(s.videoId)
     expect(startPlaylistOf([], [])).toBeNull()
   })
 

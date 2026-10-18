@@ -5,7 +5,8 @@ import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { VersionInput } from "../shared/lyrics/types";
 import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
-import { navigate, playHref } from "./router";
+import { isUuid } from "../shared/ids";
+import { navigate, PLAY_PATH, playHref } from "./router";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { signal });
@@ -59,23 +60,23 @@ export const api = {
     }
     return p;
   },
-  patchVideo: (id: number, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
+  patchVideo: (id: string, patch: VideoPatch) => send<VideoDto>("PATCH", `/api/videos/${id}`, patch),
   /** One more view of the Video; the answer is the updated Video. */
-  recordView: (id: number) => send<VideoDto>("POST", `/api/videos/${id}/view`),
-  resetViews: (id: number) => send<VideoDto>("DELETE", `/api/videos/${id}/view`),
+  recordView: (id: string) => send<VideoDto>("POST", `/api/videos/${id}/view`),
+  resetViews: (id: string) => send<VideoDto>("DELETE", `/api/videos/${id}/view`),
   /** Delete the Video from the library; `media` also moves its files to the Trash. */
-  deleteVideo: (id: number, media: boolean) =>
+  deleteVideo: (id: string, media: boolean) =>
     send<{ deleted: true; trashed: string[]; kept: { path: string; reason: string }[]; tombstoned: boolean }>("DELETE", `/api/videos/${id}`, { media }),
   /** Show the Copy's file in the Finder. */
   revealCopy: (id: number) => send<{ ok: true }>("POST", `/api/copies/${id}/reveal`),
   /** The Copy's keyframe index (spec 4.1): `ready` with the times, `indexing` while ffprobe reads it, `none` when it cannot be made now. */
   keyframes: (id: number) => get<KeyframeStatusDto>(`/api/copies/${id}/keyframes`),
-  relocate: (videoId: number, body: { path: string; copyId?: number | null; merge?: boolean }) => post<VideoDto>(`/api/videos/${videoId}/relocate`, body),
+  relocate: (videoId: string, body: { path: string; copyId?: number | null; merge?: boolean }) => post<VideoDto>(`/api/videos/${videoId}/relocate`, body),
   chooseFile: (start: string) => post<{ path?: string; cancelled?: true }>("/api/choose-file", { start }),
   /** The A-B loop kept on a Video; null clears it (spec 4.3). */
-  setLoop: (id: number, loop: { a: number; b: number } | null) => post<{ id: number; loop: { a: number; b: number } | null }>(`/api/videos/${id}/loop`, { loop }),
-  setVideoArtists: (id: number, artistIds: number[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
-  createArtist: (name: string) => post<{ id: number; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
+  setLoop: (id: string, loop: { a: number; b: number } | null) => post<{ id: string; loop: { a: number; b: number } | null }>(`/api/videos/${id}/loop`, { loop }),
+  setVideoArtists: (id: string, artistIds: string[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
+  createArtist: (name: string) => post<{ id: string; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
   // Local Songs and Local Versions (lyrics written here, outside the Mirror).
   createSong: (body: LocalSongCreate) => post<{ id: string; name: string; englishName: string | null; local: boolean; created: boolean }>("/api/songs", body),
   patchSong: (id: string, body: Partial<LocalSongCreate>) => send<{ id: string; name: string; englishName: string | null }>("PATCH", `/api/songs/${encodeURIComponent(id)}`, body).finally(() => forgetSong(id)),
@@ -83,19 +84,19 @@ export const api = {
   addVersion: (songId: string, body: VersionInput) => post<{ id: string }>(`/api/songs/${encodeURIComponent(songId)}/versions`, body).finally(() => forgetSong(songId)),
   patchVersion: (songId: string, id: string, body: VersionInput) => send<{ id: string }>("PATCH", `/api/versions/${encodeURIComponent(id)}`, body).finally(() => forgetSong(songId)),
   deleteVersion: (songId: string, id: string) => send<{ deleted: true }>("DELETE", `/api/versions/${encodeURIComponent(id)}`).finally(() => forgetSong(songId)),
-  chapters: (videoId: number) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),
+  chapters: (videoId: string) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),
   // Audio settings (spec 4.7): per Video; `state: null` clears them. Presets: built-in and custom EQ curves.
-  audio: (videoId: number) => get<{ state: AudioState | null }>(`/api/videos/${videoId}/audio`),
-  setAudio: (videoId: number, state: AudioState | null) => send<{ state: AudioState | null }>("PUT", `/api/videos/${videoId}/audio`, { state }),
+  audio: (videoId: string) => get<{ state: AudioState | null }>(`/api/videos/${videoId}/audio`),
+  setAudio: (videoId: string, state: AudioState | null) => send<{ state: AudioState | null }>("PUT", `/api/videos/${videoId}/audio`, { state }),
   audioPresets: () => get<AudioPreset[]>("/api/audio-presets"),
   savePreset: (name: string, eq: number[]) => send<AudioPreset>("PUT", `/api/audio-presets/${encodeURIComponent(name)}`, { eq }),
   deletePreset: (name: string) => send<{ deleted: true }>("DELETE", `/api/audio-presets/${encodeURIComponent(name)}`),
-  addChapter: (videoId: number, body: ChapterCreate) => post<ChapterDto>(`/api/videos/${videoId}/chapters`, body),
-  patchChapter: (id: number, patch: ChapterPatch) => send<ChapterDto>("PATCH", `/api/chapters/${id}`, patch),
-  deleteChapter: (id: number) => send<{ deleted: true; tombstoned: boolean }>("DELETE", `/api/chapters/${id}`),
-  confirmChapter: (id: number) => post<ChapterDto>(`/api/chapters/${id}/confirm`),
-  rejectChapter: (id: number) => post<{ rejected: true }>(`/api/chapters/${id}/reject`),
-  confirmAllChapters: (videoId: number) => post<{ confirmed: number; chapters: ChapterDto[] }>(`/api/videos/${videoId}/chapters/confirm-all`),
+  addChapter: (videoId: string, body: ChapterCreate) => post<ChapterDto>(`/api/videos/${videoId}/chapters`, body),
+  patchChapter: (id: string, patch: ChapterPatch) => send<ChapterDto>("PATCH", `/api/chapters/${id}`, patch),
+  deleteChapter: (id: string) => send<{ deleted: true; tombstoned: boolean }>("DELETE", `/api/chapters/${id}`),
+  confirmChapter: (id: string) => post<ChapterDto>(`/api/chapters/${id}/confirm`),
+  rejectChapter: (id: string) => post<{ rejected: true }>(`/api/chapters/${id}/reject`),
+  confirmAllChapters: (videoId: string) => post<{ confirmed: number; chapters: ChapterDto[] }>(`/api/videos/${videoId}/chapters/confirm-all`),
   // Studio playback (spec 7). Transport calls answer with the new StudioStateDto.
   studio: (songId: string) => get<SongStudioDto>(`/api/songs/${encodeURIComponent(songId)}/studio`),
   studioSearch: (q: string) => get<{ results: DumpHitDto[] }>(`/api/studio/search?q=${encodeURIComponent(q)}`),
@@ -111,7 +112,7 @@ export const api = {
   confirmStudio: (id: number) => post<{ id: number }>(`/api/studio-tracks/${id}/confirm`),
   removeStudio: (id: number) => send<{ removed: true; tombstoned: boolean }>("DELETE", `/api/studio-tracks/${id}`),
   videos: () => get<VideoDto[]>("/api/videos"),
-  video: (id: number) => get<VideoDto>(`/api/videos/${id}`),
+  video: (id: string) => get<VideoDto>(`/api/videos/${id}`),
   artists: () => get<ArtistDto[]>("/api/artists"),
   songs: () => get<SongListDto[]>("/api/songs"),
   favorites: () => get<FavoriteItem[]>("/api/favorites"),
@@ -119,12 +120,12 @@ export const api = {
   search: (q: string, signal?: AbortSignal, limit?: number) => get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`, signal),
   rescan: () => post<{ queued: number[] }>("/api/rescan"),
   quit: () => post<{ quitting: true }>("/api/quit"),
-  setFavorite: (kind: "video" | "chapter", id: number, favorite?: boolean) =>
+  setFavorite: (kind: "video" | "chapter", id: string, favorite?: boolean) =>
     post<{ favorite: boolean; favoritedAt: string | null }>(`/api/${kind === "video" ? "videos" : "chapters"}/${id}/favorite`, favorite === undefined ? {} : { favorite }),
-  confirmArtists: (videoId: number) => post<VideoDto>(`/api/videos/${videoId}/artists/confirm`),
-  removeArtist: (videoId: number, artistId: number) => send<VideoDto>("DELETE", `/api/videos/${videoId}/artists/${artistId}`),
-  renameArtist: (id: number, name: string) => send<{ id: number; name: string }>("PATCH", `/api/artists/${id}`, { name }),
-  merge: (sourceId: number, targetId: number) => post<{ merged: boolean; moved: number }>(`/api/artists/${sourceId}/merge-into/${targetId}`),
+  confirmArtists: (videoId: string) => post<VideoDto>(`/api/videos/${videoId}/artists/confirm`),
+  removeArtist: (videoId: string, artistId: string) => send<VideoDto>("DELETE", `/api/videos/${videoId}/artists/${artistId}`),
+  renameArtist: (id: string, name: string) => send<{ id: string; name: string }>("PATCH", `/api/artists/${id}`, { name }),
+  merge: (sourceId: string, targetId: string) => post<{ merged: boolean; moved: number }>(`/api/artists/${sourceId}/merge-into/${targetId}`),
 };
 
 // ---- a tiny store ----
@@ -173,7 +174,7 @@ export function replaceVideo(v: VideoDto) {
 }
 
 /** Drops a deleted Video from the in-memory library (and from "Now playing" if it was the last one played). */
-export function removeVideo(id: number) {
+export function removeVideo(id: string) {
   if (lastPlayed === id) {
     lastPlayed = null;
     try {
@@ -194,7 +195,7 @@ export async function loadArtists() {
 export const reloadAll = () => Promise.all([loadVideos(), loadArtists()]);
 
 /** Toggles a Favorite everywhere: optimistic in the in-memory library, then the server's answer. */
-export async function toggleFavorite(kind: "video" | "chapter", id: number) {
+export async function toggleFavorite(kind: "video" | "chapter", id: string) {
   const before = state.videos;
   if (kind === "video" && state.videos) {
     set({ videos: state.videos.map((v) => (v.id === id ? { ...v, favoritedAt: v.favoritedAt ? null : new Date().toISOString() } : v)) });
@@ -209,13 +210,13 @@ export async function toggleFavorite(kind: "video" | "chapter", id: number) {
 }
 
 /** Last Video opened in the player, for the "Now playing" tab. */
-let lastPlayed: number | null = null;
+let lastPlayed: string | null = null;
 try {
   const s = sessionStorage.getItem("tuva.lastPlayed");
-  if (s) lastPlayed = Number(s);
+  if (isUuid(s)) lastPlayed = s;
 } catch {}
 export const getLastPlayed = () => lastPlayed;
-export function setLastPlayed(id: number) {
+export function setLastPlayed(id: string) {
   lastPlayed = id;
   try {
     sessionStorage.setItem("tuva.lastPlayed", String(id));
@@ -230,9 +231,9 @@ export const currentVideos = () => state.videos;
  * Plays a random Available Video (the top-bar button and `r`), skipping the one on screen so a repeat always moves.
  * Returns the chosen id, or null when the library has no other Available Video.
  */
-export function playRandom(): number | null {
-  const cur = location.pathname.match(/^\/play\/(\d+)$/);
-  const id = pickRandomVideo(state.videos ?? [], cur ? Number(cur[1]) : null);
+export function playRandom(): string | null {
+  const cur = location.pathname.match(PLAY_PATH);
+  const id = pickRandomVideo(state.videos ?? [], cur ? cur[1]! : null);
   if (id != null) navigate(playHref(id));
   return id;
 }

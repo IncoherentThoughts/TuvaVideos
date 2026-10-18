@@ -12,7 +12,7 @@ export function onPlayingFromChange(f: () => void): () => void {
   return () => void subs.delete(f);
 }
 
-export function savePlayingFrom(source: PlayingSource, ids: readonly number[]) {
+export function savePlayingFrom(source: PlayingSource, ids: readonly string[]) {
   mem = { source, ids: uniqueIds(ids) };
   try {
     sessionStorage.setItem(KEY, JSON.stringify(mem));
@@ -26,7 +26,7 @@ export function loadPlayingFrom(): PlayingFrom | null {
     const raw = sessionStorage.getItem(KEY);
     if (!raw) return null;
     const j = JSON.parse(raw) as PlayingFrom;
-    if (j && Array.isArray(j.ids) && (j.source === "library" || j.source === "favorites" || j.source === "search")) return (mem = j);
+    if (j && Array.isArray(j.ids) && (j.source === "library" || j.source === "favorites" || j.source === "search")) return (mem = { source: j.source, ids: j.ids.filter((x: unknown): x is string => typeof x === "string") });
   } catch {}
   return null;
 }

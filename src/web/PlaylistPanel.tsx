@@ -16,7 +16,7 @@ interface Props {
   playlist: Playlist;
   /** Which Playlist start this is: the window starts over with a new one. */
   gen: number;
-  videos: ReadonlyMap<number, VideoDto>;
+  videos: ReadonlyMap<string, VideoDto>;
   /** The list ran out with Repeat off (spec 4.8 Repeat): the header says "Playlist ended". */
   ended: boolean;
   showPlayed: boolean;
@@ -42,7 +42,7 @@ const HISTORY = ico("M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l4 2");
 
 /** Chapters per Video, fetched when a Chapter Entry row first shows and kept for the panel's life. */
 function useChapterTitles(): (e: Entry) => string | null {
-  const cache = useRef(new Map<number, ReadonlyMap<number, string> | "loading">());
+  const cache = useRef(new Map<string, ReadonlyMap<string, string> | "loading">());
   const [, bump] = useState(0);
   return (e) => {
     if (e.chapterId === undefined) return null;

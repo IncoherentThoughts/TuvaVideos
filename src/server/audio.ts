@@ -5,8 +5,8 @@ import { BUILT_IN_PRESETS, isDefaultAudio, normalizeAudio, normalizeEq, presetNa
 type Result<T> = { ok: true; value: T } | { ok: false; error: string; status: number };
 
 /** The Video's settings, or null when it has none (the Player then uses the defaults). */
-export function getVideoAudio(db: Db, videoId: number): AudioState | null | undefined {
-  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return undefined;
+export function getVideoAudio(db: Db, videoId: string): AudioState | null | undefined {
+  if (!db.query("SELECT 1 FROM video_full WHERE id = ?").get(videoId)) return undefined;
   const row = db.query("SELECT state FROM video_audio WHERE video_id = ?").get(videoId) as { state: string } | null;
   if (!row) return null;
   try {
@@ -17,8 +17,8 @@ export function getVideoAudio(db: Db, videoId: number): AudioState | null | unde
 }
 
 /** Store the settings; the defaults (or null) clear the row so untouched Videos stay rowless. */
-export function setVideoAudio(db: Db, videoId: number, state: unknown): Result<AudioState | null> {
-  if (!db.query("SELECT 1 FROM video WHERE id = ?").get(videoId)) return { ok: false, error: "no such video", status: 404 };
+export function setVideoAudio(db: Db, videoId: string, state: unknown): Result<AudioState | null> {
+  if (!db.query("SELECT 1 FROM video_full WHERE id = ?").get(videoId)) return { ok: false, error: "no such video", status: 404 };
   if (state === null) {
     db.prepare("DELETE FROM video_audio WHERE video_id = ?").run(videoId);
     return { ok: true, value: null };

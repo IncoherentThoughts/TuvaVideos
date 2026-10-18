@@ -7,8 +7,8 @@ export type Repeat = "off" | "list" | "one";
 
 /** A Video, or a Chapter of one (a Favorite Chapter) that plays from the Chapter's start to the next Chapter's. */
 export interface Entry {
-  videoId: number;
-  chapterId?: number;
+  videoId: string;
+  chapterId?: string;
 }
 
 export interface Playlist {
@@ -23,7 +23,7 @@ export interface Playlist {
 }
 
 export type Rng = () => number;
-export type Playable = (videoId: number) => boolean;
+export type Playable = (videoId: string) => boolean;
 
 export const SOURCE_LABEL: Record<PlaylistSource, string> = {
   library: "Library",
@@ -151,7 +151,7 @@ export function jumpTo(pl: Playlist, entryIndex: number): Playlist {
  * Jump to the Entry for `videoId` when the Playlist holds one: the first upcoming occurrence, else the first in Play
  * order (the current one included). Null when the Video is not in the Playlist, so opening it ends the Playlist.
  */
-export function jumpToVideo(pl: Playlist, videoId: number): Playlist | null {
+export function jumpToVideo(pl: Playlist, videoId: string): Playlist | null {
   const at = (pos: number) => pl.entries[pl.order[pos]!]!.videoId === videoId;
   for (let pos = pl.cursor + 1; pos < pl.order.length; pos++) if (at(pos)) return { ...pl, cursor: pos };
   for (let pos = 0; pos <= pl.cursor && pos < pl.order.length; pos++) if (at(pos)) return { ...pl, cursor: pos };
@@ -173,7 +173,7 @@ export function isPlaylist(j: unknown): j is Playlist {
   const p = j as Playlist;
   if (!SOURCES.includes(p.source) || !REPEATS.includes(p.repeat) || typeof p.shuffled !== "boolean") return false;
   if (!Array.isArray(p.entries) || !Array.isArray(p.order) || p.order.length !== p.entries.length) return false;
-  if (!p.entries.every((e) => e && typeof e.videoId === "number" && (e.chapterId === undefined || typeof e.chapterId === "number"))) return false;
+  if (!p.entries.every((e) => e && typeof e.videoId === "string" && (e.chapterId === undefined || typeof e.chapterId === "string"))) return false;
   const seen = new Set(p.order);
   if (seen.size !== p.order.length || !p.order.every((i) => Number.isInteger(i) && i >= 0 && i < p.entries.length)) return false;
   return Number.isInteger(p.cursor) && p.cursor >= 0 && (p.cursor < p.order.length || p.order.length === 0);

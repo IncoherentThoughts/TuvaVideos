@@ -21,7 +21,11 @@ export interface Config {
    * explicit Rescan, never at startup or remount, so starting it does not re-scan and re-thumbnail the library.
    */
   passive: boolean;
-  localRoot: string;
+  /**
+   * A Root seeded at every start, for tests and smoke runs only (`TUVA_LOCAL_ROOT`). Unset in normal use: the Root is
+   * chosen in the UI on first launch (docs/sharing-spec.md §8.4) and lives in the `root` table.
+   */
+  localRoot?: string;
   /** Optional external Root (a drive); unset since the library moved under the local Root's `archive/` (2026-10-11). */
   externalRoot?: string;
   ffmpeg: string;
@@ -75,7 +79,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     port,
     tvPort: Number(env.TUVA_TV_PORT ?? DEFAULT_TV_PORT),
     passive: port !== DEFAULT_PORT && env.TUVA_DATA_DIR === undefined,
-    localRoot: env.TUVA_LOCAL_ROOT ?? "/Users/evanwilliams/Desktop/Khoomei/Videos",
+    localRoot: env.TUVA_LOCAL_ROOT,
     externalRoot: env.TUVA_EXTERNAL_ROOT,
     ffmpeg: findBin("ffmpeg", env),
     ffprobe: findBin("ffprobe", env),

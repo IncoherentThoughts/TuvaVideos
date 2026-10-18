@@ -33,6 +33,10 @@ import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "..
 import type { SharedChanges } from "../shared/sharedRows";
 import { applyShared } from "./localCopy/apply";
 import { localRequestError } from "./localOnly";
+import { checkRootPath, onboardingFor, ROOT_BAR_DISMISSED } from "./rootSetup";
+import { getMeta, machineMode, readSessionRecord, setMeta } from "./localCopy/meta";
+import type { OnboardingDto } from "../shared/types";
+import { homedir } from "node:os";
 
 const THUMB_CACHE = "public, max-age=86400";
 /** The top-level keys of a `POST /api/cache/apply` body: `SharedChanges` (a write's return or a pull's). */
@@ -294,6 +298,13 @@ export function createHandler(s: Services) {
     };
   };
 
+  // Which first-launch surface the Library shows, from the Session record and the `root` table (sharing-spec §8.4).
+  const onboardingState = (): OnboardingDto => {
+    const mode = machineMode(readSessionRecord(s.db));
+    const rootCount = s.roots.list().length;
+    return { mode, rootCount, show: onboardingFor({ mode, rootCount, barDismissed: getMeta(s.db, ROOT_BAR_DISMISSED) != null }) };
+  };
+
   // The Copy's audio track as raw PCM (s16le, stereo, 32 kHz) for the Audio panel's whole-file Auto analysis (spec 4.7).
   // ffmpeg demuxes the whole file but decodes only audio; the stream is killed when the client goes away.
   const PCM_RATE = 32000;
@@ -487,6 +498,7 @@ export function createHandler(s: Services) {
           );
         }
         if (p === "/api/scan") return json(s.scanner.progress());
+        if (p === "/api/onboarding") return json(onboardingState());
         // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
         if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/search" || p === "/artists" || p === "/songs" || /^\/play\/[0-9a-fA-F-]{36}$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
@@ -751,6 +763,30 @@ export function createHandler(s: Services) {
         if (r.code === 0) return json({ path: r.out.trim() });
         if (/-128|cancel/i.test(r.err)) return json({ cancelled: true });
         return json({ error: r.err.trim() || "the file dialog failed" }, 500);
+      }
+      // First launch (sharing-spec §8.4): the typed folder becomes the machine's one Root and its first scan starts at
+      // once; the no-scan-at-startup rule holds for later launches. Same-origin only, like the other machine writes.
+      if (req.method === "POST" && p === "/api/roots") {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const body = await readJson(req);
+        if (!body || typeof body.path !== "string") return json({ error: "body must be {path}" }, 400);
+        if (s.roots.list().length > 0) return json({ error: "This machine already has a videos folder" }, 409);
+        const checked = await checkRootPath(body.path, homedir());
+        if (!checked.ok) return json({ error: checked.error }, 422);
+        const root = s.roots.add(checked.path);
+        // The check's first "available" already queues the scan through the remount listener (app.ts); a passive
+        // server has no listener, so queue it here unless it is running or queued.
+        await s.roots.check(root.id);
+        const prog = s.scanner.progress();
+        if (!prog.running && !prog.queued.includes(root.id)) s.scanner.request(root.id);
+        return json({ root, onboarding: onboardingState() }, 201);
+      }
+      if (req.method === "POST" && p === "/api/onboarding/dismiss-bar") {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        setMeta(s.db, ROOT_BAR_DISMISSED, new Date().toISOString());
+        return json(onboardingState());
       }
       if (req.method === "POST" && p === "/api/rescan") {
         const queued = await s.scanner.requestAll();

@@ -17,6 +17,7 @@ import { EndedBanner } from "./Account";
 import { ConflictNotice, DeletedMatchNotice } from "./ConflictNotice";
 import { ShareQuestion } from "./ShareQuestion";
 import { RowPromptHost } from "./ProposedRows";
+import { EditsView, ShelvedDrawer, UndoToastView } from "./History";
 
 function App() {
   const loc = useLocation();
@@ -37,11 +38,14 @@ function App() {
         {route.name === "favorites" && <Favorites search={loc.search} />}
         {route.name === "artists" && <Artists search={loc.search} />}
         {route.name === "songs" && <Songs search={loc.search} />}
+        {route.name === "edits" && <EditsView />}
         {route.name === "search" && <SearchResults q={route.q} sort={route.sort} />}
         {route.name === "play" && <Play videoId={route.videoId} t={route.t} lyrics={route.lyrics} lyricsVersion={route.lyricsVersion} />}
         {route.name === "lyrics" && <LyricsPage songId={route.songId} />}
         {route.name === "notfound" && <div class="empty-state">No such page.</div>}
       </main>
+      <ShelvedDrawer />
+      <UndoToastView />
     </>
   );
 }

@@ -14,6 +14,7 @@ import { factsOfRow, parseDecision } from "./tvJudge";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
 import { deleteVideo, removeCopies } from "./deleteVideo";
 import { deletedMatches, kindsOf, rowInfo, sharedSuggestions } from "./sharedWrites";
+import { clearShelved, dropShelved, listEdits, shelvedItems, videoHistory } from "./editHistory";
 import { serveFile } from "./stream";
 import type { KeyframeIndex } from "./keyframes";
 import { NO_TRASH_NOTICE, resolveTrash } from "./platform";
@@ -445,6 +446,13 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/videos/deleted-matches") return json(deletedMatches(s.db, s.roots));
         if (p === "/api/suggestions/shared") return json(machineMode(readSessionRecord(s.db)) === "editor" ? sharedSuggestions(s.db) : []);
+        // Edit history and Shelved edits (sharing-spec §4.7, §4.8, §7.4; src/server/editHistory.ts).
+        if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/history$/))) return json(videoHistory(s.db, m[1]!));
+        if (p === "/api/edits") {
+          const q = url.searchParams;
+          return json(listEdits(s.db, { editor: q.get("editor"), type: q.get("type"), before: q.get("before"), limit: q.get("limit") ? Number(q.get("limit")) || undefined : undefined }));
+        }
+        if (p === "/api/shelved") return json(shelvedItems(s.db, url.searchParams.get("video") ?? undefined));
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
           const v = s.db.query("SELECT * FROM video_full WHERE id = ?").get(m[1]!) as VideoDbRow | null;
           if (!v) return json({ error: "no such video" }, 404);
@@ -654,6 +662,15 @@ export function createHandler(s: Services) {
       if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/view$/))) {
         if (!resetViews(s.db, m[1]!)) return json({ error: "no such video" }, 404);
         return videoResponse(m[1]!);
+      }
+      // Shelved edits (sharing-spec §7.4): one (after its copy back), one Video's ("Clear"), or all (the chip menu).
+      if (req.method === "DELETE" && (p === "/api/shelved" || /^\/api\/shelved\/\d+$/.test(p) || /^\/api\/videos\/[0-9a-fA-F-]{36}\/shelved$/.test(p))) {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const one = p.match(/^\/api\/shelved\/(\d+)$/);
+        if (one) return dropShelved(s.db, Number(one[1])) ? json({ cleared: 1 }) : json({ error: "no such Shelved edit" }, 404);
+        const vid = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/shelved$/);
+        return json({ cleared: clearShelved(s.db, vid?.[1]) });
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/copies$/))) {
         // This machine's Copies to the Trash; the Video stays, Not on this machine (sharing-spec §4.5). Same-origin only.

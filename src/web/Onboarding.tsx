@@ -85,8 +85,8 @@ function RootField({ autoFocus }: { autoFocus?: boolean }) {
   );
 }
 
-/** The empty Standalone grid: two independent calls to action, in either order. */
-export function FirstLaunchPanel({ signIn }: { /** The header's sign-in, once it exists (#114). */ signIn?: () => void }) {
+/** The empty Standalone grid: two independent calls to action, in either order (the Sign in card only with `signIn`). */
+export function FirstLaunchPanel({ signIn }: { /** Opens the header's sign-in dialog (Account.tsx). */ signIn?: () => void }) {
   return (
     <div class="first-launch">
       <section class="fl-card">
@@ -94,16 +94,16 @@ export function FirstLaunchPanel({ signIn }: { /** The header's sign-in, once it
         <p class="dim">The folder that holds your video files, as a full path. Everything under it is scanned in; this machine keeps one folder.</p>
         <RootField autoFocus />
       </section>
-      <section class="fl-card">
+      {signIn && <section class="fl-card">
         <h2>Sign in</h2>
         <p class="dim">
           With video access from the Tuvan Lyrics Archive, signing in brings the shared library&rsquo;s titles, Artists and Chapters. Create an account on
           songsofthesteppe.org and ask the owner for video access.
         </p>
-        <button class="btn" disabled={!signIn} onClick={signIn} title={signIn ? undefined : "Sign-in is not in this build yet"}>
+        <button class="btn" onClick={signIn}>
           Sign in
         </button>
-      </section>
+      </section>}
     </div>
   );
 }

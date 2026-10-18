@@ -150,8 +150,9 @@ function useEdit(v: VideoDto, onChange: Change) {
 }
 
 /** The title (click to edit) and, under it, the Latin title. */
-export function HeaderTitle({ video: v, onChange }: { video: VideoDto; onChange: Change }) {
+export function HeaderTitle({ video: v, onChange, locked }: { video: VideoDto; onChange: Change; /** Edit gate closed (chipView.ts editGate). */ locked?: boolean }) {
   const { patch, err } = useEdit(v, onChange);
+  if (locked) return <h1>{v.title}</h1>;
   return (
     <>
       <TitleField v={v} patch={patch} />

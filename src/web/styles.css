@@ -743,3 +743,37 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .root-bar .root-field { flex: 1; width: auto; }
 .root-bar-x { margin-left: auto; padding: 0 6px; color: var(--fg3); font-size: 1.2em; }
 .root-bar-x:hover { color: var(--fg); }
+
+/* Account chip, its menu, the sign-in dialog and the session banner (Account.tsx; sharing-spec §2.2, §5.1, §5.4) */
+.acct { position: relative; display: flex; }
+.topright > .btn { white-space: nowrap; }
+.acct-chip { position: relative; width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 2px solid #efdecd; background: var(--bg3); color: var(--fg); display: grid; place-items: center; overflow: visible; flex: none; }
+.acct-chip img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.acct-chip .ini { font-size: .78em; font-weight: 600; letter-spacing: .02em; }
+.acct-off { position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg2); border: 1.5px solid var(--fg2); }
+.acct-off::after { content: ""; position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1.5px; background: var(--fg2); transform: translateX(-50%) rotate(45deg); }
+.acct-menu { left: auto; right: 0; min-width: 240px; padding: 10px; gap: 8px; }
+.acct-menu .am-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-menu .am-role { display: inline-block; font-size: .78em; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--fg2); }
+.acct-menu .am-role.ed { color: var(--accent); border-color: var(--accent); }
+.acct-menu .am-nogrant p { margin: 2px 0 0; font-size: .85em; }
+.acct-menu .am-sync { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .88em; }
+.acct-menu .am-sync .btn { text-align: center; padding: 2px 10px; }
+.acct-menu .am-offline { color: var(--t2); }
+.acct-menu .am-err { color: var(--t1); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.signin .si-field { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+dialog.signin .si-field span { font-size: .85em; color: var(--fg2); }
+dialog.signin .si-field input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+dialog.signin .si-links { font-size: .85em; }
+dialog.signin a { color: var(--accent); }
+dialog.signin .si-note { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg3); font-size: .9em; }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.primary:disabled { opacity: .5; }
+.ended-bar { border-color: var(--t2); }
+
+/* Edit gate (chipView.ts editGate; sharing-spec §7.3): a fieldset that only disables, never lays out */
+fieldset.editgate { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.editgate[data-edit="hidden"] :is(.confirm, .x, .linkbtn, .acceptall) { display: none; }
+fieldset.editgate:disabled :is(.tagbtn, .confirm, .x, .linkbtn) { cursor: default; }
+fieldset.editgate[data-edit="disabled"] :is(.confirm, .x, .linkbtn) { opacity: .45; }
+.edit-notice { margin: 4px 0 0; font-size: .85em; }

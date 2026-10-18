@@ -166,15 +166,27 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
     setPassword("");
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? SIGN_IN_ERRORS.unreachable);
-    // The count of what reconciliation will shelve is #117's; until then nothing is shelved (placeholder 0).
-    setStep({ at: "confirm", count: 0, mustChangePassword: r.mustChangePassword, noGrant: r.sync?.record ? r.sync.record.grantLevel === null : false });
+    // §2.3: the count of what reconciliation will shelve. No count, no confirmation: sign out again (no half-signed-in state).
+    const rec = r.reconcile;
+    if (!rec?.ok) {
+      await s.signOut();
+      return void setErr(rec?.error ?? SIGN_IN_ERRORS.unreachable);
+    }
+    setStep({ at: "confirm", count: rec.counts.shelved, mustChangePassword: r.mustChangePassword, noGrant: rec.record ? rec.record.grantLevel === null : false });
   };
 
   const onDialogClose = () => {
     if (step.at === "confirm" && !confirmed.current) void s.signOut();
     onClose();
   };
-  const cont = () => {
+  const cont = async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    const r = await s.confirmSignIn();
+    setBusy(false);
+    // A failed reconciliation changed nothing: say why and stay on the confirmation (Cancel still signs out).
+    if (!r.reconcile?.ok) return void setErr(r.reconcile?.error ?? SIGN_IN_ERRORS.unreachable);
     confirmed.current = true;
     box.current?.close();
   };
@@ -224,6 +236,11 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
         <>
           <h3>Bring in the shared library?</h3>
           <p>{shelveLine(step.count)}</p>
+          {err && (
+            <p class="err" role="alert">
+              {err}
+            </p>
+          )}
           <p class="dim">The archive's titles, Artists and Chapters replace this machine's for the Videos it knows.</p>
           {step.noGrant && (
             <p class="si-note">
@@ -243,8 +260,8 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
             <button class="btn" onClick={() => box.current?.close()} title="Sign out again and keep this machine as it was">
               Cancel
             </button>
-            <button class="btn primary" autoFocus onClick={cont}>
-              Continue
+            <button class="btn primary" autoFocus disabled={busy} onClick={() => void cont()}>
+              {busy ? "Bringing it in…" : "Continue"}
             </button>
           </div>
         </>

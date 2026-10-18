@@ -16,6 +16,7 @@ import type { Db } from "./db";
 import { applyShared, tsMicros } from "./localCopy/apply";
 import { runArchiveFollowUps } from "./localCopy/followUps";
 import { getMeta, readSessionRecord, SHARED_SCHEMA, setMeta, writeSessionRecord } from "./localCopy/meta";
+import { reconcileBatch } from "./reconcile";
 
 /**
  * One run at a time; calls arriving during a run share one follow-up run, made with the newest argument (the newest
@@ -222,6 +223,7 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
     try {
       applied = db.transaction(() => {
         if (reason) wipeShared(db);
+        reconcileBatch(db, batch); // §2.3: an Unshared Video this batch's Shared Videos match takes the Shared row first (#149)
         return applyShared(db, batch);
       })();
     } catch (e) {

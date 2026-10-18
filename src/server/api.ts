@@ -34,6 +34,7 @@ import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "..
 import type { SharedChanges } from "../shared/sharedRows";
 import { applyShared } from "./localCopy/apply";
 import { hostError, localRequestError } from "./localOnly";
+import { createReconcile } from "./reconcile";
 import { createSync } from "./sync";
 import { looksLikeJwt } from "../shared/archive";
 import type { SessionResponse } from "../shared/session";
@@ -130,6 +131,7 @@ const COPY_SQL = `SELECT c.id, c.video_id, c.root_id, r.kind AS root_kind, c.rel
 
 export function createHandler(s: Services) {
   const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir });
+  const reconcile = createReconcile(s.db, s.cfg.archive, { thumbsDir: s.cfg.thumbsDir });
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
@@ -778,6 +780,25 @@ export function createHandler(s: Services) {
         if (!body || extra.length || !looksLikeJwt(body.access_token) || (body.full !== undefined && typeof body.full !== "boolean"))
           return json({ error: "body must be {access_token, full?} (the access token only, never the refresh token)" }, 400);
         return json(await sync.request({ accessToken: body.access_token, full: body.full === true }));
+      }
+      // Sign-in reconciliation (sharing-spec §2.3, #149). The preview is the confirmation's count: video_whoami() (the
+      // record) and the whole Shared set, nothing else written; the token rides in the Authorization header (a GET has
+      // no body; never logged), Host checked, and a cross-site page cannot send that header without a preflight we
+      // never answer. Continue posts {access_token}: reconcile and apply in one transaction; the Sync that follows pulls.
+      if (req.method === "GET" && p === "/api/reconcile/preview") {
+        const refused = hostError(req) ?? (req.headers.get("origin") ? localRequestError(req) : null);
+        if (refused) return json({ error: refused }, 403);
+        const token = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
+        if (!looksLikeJwt(token)) return json({ error: "send the access token as Authorization: Bearer <token>" }, 400);
+        return json(await reconcile.preview(token));
+      }
+      if (req.method === "POST" && p === "/api/reconcile") {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const body = await readJson(req);
+        if (!body || Object.keys(body).some((k) => k !== "access_token") || !looksLikeJwt(body.access_token))
+          return json({ error: "body must be {access_token} (the access token only, never the refresh token)" }, 400);
+        return json(await reconcile.confirm(body.access_token));
       }
       if (req.method === "POST" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/relocate$/))) {
         // Point a Video's Copy at its file's new place (Now playing's folder button). See relocate.ts.

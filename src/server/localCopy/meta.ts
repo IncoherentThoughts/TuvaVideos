@@ -28,21 +28,9 @@ export function setMeta(db: Db, key: string, value: string | null) {
 // The Session record (§5.2)
 // ---------------------------------------------------------------------------------------------------------------
 
-export type GrantLevel = "member" | "editor";
-
-/** Who this machine is signed in as. Holds no token. `grantLevel` null = an account without the video grant. */
-export interface SessionRecord {
-  userId: string;
-  email: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-  grantLevel: GrantLevel | null;
-  archiveRole: string | null;
-  lastVerifiedAt: string | null;
-  lastSyncAt: string | null;
-  /** Max `updated_at` seen by the last successful pull, from the server; null before the first Sync. */
-  watermark: string | null;
-}
+// The record's type lives in src/shared/session.ts so the browser's session layer reads the same shape.
+import type { GrantLevel, SessionRecord } from "../../shared/session";
+export type { GrantLevel, SessionRecord };
 
 /** The machine's mode (§2.1): no record, a record without the grant, or a Member / Video Editor. */
 export type MachineMode = "standalone" | "no-grant" | GrantLevel;

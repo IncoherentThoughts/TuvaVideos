@@ -5,8 +5,8 @@
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-/** Why the request is refused, or null when it comes from this companion's own pages. */
-export function localRequestError(req: Request): string | null {
+/** The Host check alone, for reads that carry no token but name the signed-in account (`GET /api/session`). */
+export function hostError(req: Request): string | null {
   const host = req.headers.get("host");
   if (!host) return "no Host header";
   let hostname: string;
@@ -15,7 +15,14 @@ export function localRequestError(req: Request): string | null {
   } catch {
     return "bad Host header";
   }
-  if (!LOOPBACK.has(hostname)) return "Host is not this machine";
+  return LOOPBACK.has(hostname) ? null : "Host is not this machine";
+}
+
+/** Why the request is refused, or null when it comes from this companion's own pages. */
+export function localRequestError(req: Request): string | null {
+  const bad = hostError(req);
+  if (bad) return bad;
+  const host = req.headers.get("host")!;
   const origin = req.headers.get("origin");
   if (!origin) return "no Origin header";
   if (origin !== `http://${host}`) return "Origin is not this companion";

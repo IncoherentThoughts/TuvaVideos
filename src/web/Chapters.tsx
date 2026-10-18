@@ -11,7 +11,7 @@ import { TRASH } from "./ui";
 import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
 import { RELOADED_EVENT, writeLink, WriteLinkError } from "./writeLink";
-import { FavoriteBadge, StripFrame } from "./ui";
+import { FavoriteBadge, ProposedMark, StripFrame } from "./ui";
 import { EDIT_DISABLED_NOTICE, type EditGate } from "./chipView";
 
 interface StripProps {
@@ -186,7 +186,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
                 setPickFor(null);
                 wantFocus.current = picking.id;
                 void run(() => writeLink(video, { kind: "chapter.update", chapter: picking, patch: { songId: id } }));
-              })}
+              }, undefined, video.shared)}
               onClose={() => {
                 setPickFor(null);
                 wantFocus.current = picking.id;
@@ -402,6 +402,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
         {c.song && (
           <div class="chsong" title={c.song.englishName ?? undefined}>
             ♪ {c.song.name ?? <span class="dim">unknown song</span>}
+            {c.song.proposed && <ProposedMark tag />}
           </div>
         )}
         {versions.length > 1 && c.songId && (

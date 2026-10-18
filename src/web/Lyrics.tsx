@@ -13,6 +13,8 @@ import type { SongDto } from "../shared/types";
 import { api, apiError } from "./data";
 import { SongPicker } from "./HeaderEdit";
 import { LyricsEditor } from "./LyricsEditor";
+import { AddProposedVersion, RowActions } from "./ProposedRows";
+import { ProposedMark } from "./ui";
 
 const SCRIPT_STORE = "tuva.lyricsScript";
 let scriptPref: ScriptKey = "cyrillic";
@@ -45,9 +47,11 @@ export interface LyricsReaderProps {
   autoFocus?: boolean;
   /** Called once the drawer has taken that focus, so the page can stop asking (a Chapter change must not steal focus from the Player). */
   onFocused?: () => void;
+  /** The Video is Shared: the relink picker makes a Proposed Song, not a Local one (sharing-spec §3.4). */
+  shared?: boolean;
 }
 
-export function LyricsReader({ songId, versionId, fromChapter = false, onClose, onPickVersion, onChangeSong, autoFocus = false, onFocused }: LyricsReaderProps) {
+export function LyricsReader({ songId, versionId, fromChapter = false, onClose, onPickVersion, onChangeSong, autoFocus = false, onFocused, shared = false }: LyricsReaderProps) {
   const [song, setSong] = useState<SongDto | null | undefined>(undefined);
   const [pick, setPick] = useState<string | null>(null);
   const [script, setScript] = useState<ScriptKey>(scriptPref);
@@ -217,6 +221,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
             )}
             {song?.englishName && <span class="en">· {song.englishName}</span>}
             {song?.local && <span class="localmark" title="A local Song: created in this library, not in the archive">local song</span>}
+            {song?.proposed && <ProposedMark />}
           </span>
           <span class="hctl">
             {onChangeSong && (
@@ -244,10 +249,17 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
           </span>
         </div>
         {renameErr && <div class="edit-err" role="alert">{renameErr}</div>}
+        {song && !song.local && (
+          // §7.5: the Proposed, Elevate and Expose controls on the Song, shown only to accounts that may use them
+          <div class="rowacts-line">
+            <RowActions key={`s${song.id}${reload}`} table="song" id={song.id} onChanged={() => setReload((n) => n + 1)} />
+            <AddProposedVersion songId={song.id} onAdded={(id) => (setPick(id), setReload((n) => n + 1))} />
+          </div>
+        )}
         {onChangeSong && relinking && (
           <div class="relink-row">
             <span class="lbl">Song:</span>
-            <SongPicker onPick={(id) => (setRelinking(false), id !== songId && onChangeSong(id))} onClose={() => setRelinking(false)} />
+            <SongPicker shared={shared} onPick={(id) => (setRelinking(false), id !== songId && onChangeSong(id))} onClose={() => setRelinking(false)} />
           </div>
         )}
         {alternates.length > 0 && (
@@ -261,6 +273,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
               <button key={x.id} class={`pill${i === idx ? " on" : ""}${x.local ? " local" : ""}`} aria-pressed={i === idx} title={`${x.local ? "Local Version (stored here, not in the archive)" : "Archive Version"}${onPickVersion ? " · sets this Video's Version" : ""}`} onClick={() => (setPick(x.id), onPickVersion?.(x.id))}>
                 {x.label}
                 {x.local && <span class="b"> · local</span>}
+                {x.proposed && <span class="b"> · proposed</span>}
                 {fromChapter && isPointedVersionAt(versions, versionId, i) && <span class="b"> · this chapter</span>}
               </button>
             ))}
@@ -305,6 +318,12 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
                 <span class="localmark">local</span>
                 <span>Stored in this library, not in the archive.</span>
                 <button class="linkbtn" onClick={() => setEditing({ versionId: version.id })}>edit</button>
+              </>
+            ) : version.proposed ? (
+              <>
+                <ProposedMark />
+                <span>A Proposed Version: Member-readable, never on the lyrics website.</span>
+                <RowActions key={`v${version.id}${reload}`} table="version" id={version.id} compact onChanged={() => (setPick(null), setReload((n) => n + 1))} />
               </>
             ) : (
               <span class="dim">From the archive Mirror.</span>

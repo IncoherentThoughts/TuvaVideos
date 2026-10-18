@@ -21,7 +21,7 @@ import { RelocateButton } from "./Relocate";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
 import { AudioPanel } from "./AudioPanel";
 import { DeleteVideoDialog } from "./DeleteVideo";
-import { writeLink } from "./writeLink";
+import { RELOADED_EVENT, writeLink } from "./writeLink";
 import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
 import { useSession } from "./session";
 import { NotHerePanel } from "./NotHere";
@@ -49,9 +49,13 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
     const timer = setInterval(() => {
       api.video(videoId).then((r) => alive && setV(r)).catch(() => {});
     }, POLL_MS);
+    // a conflict reload, an Elevation or a Repoint changed this Video elsewhere on the page (writeLink.ts)
+    const changed = (e: Event) => void ((e as CustomEvent<{ videoId: string }>).detail?.videoId === videoId && api.video(videoId).then((r) => alive && setV(r)).catch(() => {}));
+    window.addEventListener(RELOADED_EVENT, changed);
     return () => {
       alive = false;
       clearInterval(timer);
+      window.removeEventListener(RELOADED_EVENT, changed);
     };
   }, [videoId]);
 
@@ -423,7 +427,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
           {!drawer && stateOpen && <div class="drawer statehost" ref={stateHost} />}
           {drawer &&
             (target ? (
-              <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void writeLink(v, { kind: "video.update", patch: { versionId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void writeLink(v, { kind: "video.update", patch: { songId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
+              <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void writeLink(v, { kind: "video.update", patch: { versionId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void writeLink(v, { kind: "video.update", patch: { songId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} shared={v.shared} />
             ) : (
               <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
                 <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>

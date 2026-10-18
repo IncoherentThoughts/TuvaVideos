@@ -212,6 +212,8 @@ Local, for everyone: `DELETE /api/videos/:id/copies` trashes this machine's Copi
 
 Merging Artist A into B is **repointing**: every `video_artists` link moves (positions renumbered, duplicates dropped), one history row per touched Video, undoable per Video or all at once. The archive row is never deleted; a Proposed source left unreferenced is deleted through `write_proposed_artists` and logged.
 
+*(amended in #146)* Songs and Versions have no archive `repoint` op: their Repoint is one `writeLink` per pointer (`video.update` for a Video's Song or Version, `chapter.update` for a Chapter's), so each touched Video gets its own `video.song_changed` / `chapter.changed` row and Unshared Videos take the companion's routes. An Artist's Repoint is the one archive `repoint` call for the Shared links plus an `artists.set` per Unshared Video linking it; a **Local** Artist's Repoint is the companion's former merge (`POST /api/artists/:id/merge-into/:target`, Unshared Videos only, the Local Artist goes). The target of a Repoint that touches a Shared Video is never a Local row. A Proposed Song or Version is deleted after its Repoint only when the Repoint came from the delete prompt; a Proposed Artist always (as above).
+
 ### 4.7 Undo
 
 An ordinary new write with the inverse op, never an edit of history, checked against `updated_at` like any write, logged as its own event pointing at the one it reverses. Not undoable: `video.scanned`, `*.suggested`, `*.elevated`, `video.migrated`.
@@ -355,6 +357,17 @@ A small marker on a Video with Shelved edits opens a read-only drawer listing th
 ### 7.5 Proposed and Exposed in the UI
 
 Proposed Songs, Versions and Artists carry the Proposed mark wherever their name appears (grid tags, Now playing, search results, pickers). An Exposed hidden Song reads as any other Song to a Member. The Elevate and Expose controls live on the Song where its archive actions would be, shown only to accounts that may use them.
+
+*(amended in #146)* As built (`src/web/ProposedRows.tsx`; pure rules in `writeOps.ts`: `rowCall`, `rowRoles`, `candidateRows`, `repointPlan`; I/O in `writeLink.ts`: `writeRow`, `repointRow`):
+- **Where a Proposed row is made**: the Song and Artist pickers of a **Shared** Video (Now playing's Song and Artist rows, the lyrics drawer's relink, a Chapter's Song) create a Proposed row, and hide Local rows; an Unshared Video's pickers and the Songs page keep making Local rows. A Proposed Version is made from the lyrics drawer ("+ Proposed Version", a label only); its lyrics text is not edited in the app yet.
+- **Roles**, from the Session record: Proposed rows and Repoint on Shared links need `grant_level = 'editor'`; Elevate needs the editor grant and `archive_role` admin or moderator; Expose needs `archive_role = 'admin'` (any grant). The controls are enabled only while edits are (`canEdit`).
+- **The prompt** lists `VD422`'s candidates archive rows first, then Proposed, each once, never the row itself; "Use this one" points at the candidate, "Create … anyway" re-sends with `force`. Elevation lists archive candidates only: "Elevate into this one" (`use_existing`) or "Elevate as a new …" (`force`).
+- **Delete** asks first; `VD423` shows the count and offers Repoint…, which deletes the Proposed row once nothing points at it.
+- **Edit** of a Proposed row is a rename (name or label) with the row's `updated_at` as the stamp.
+- **Elevate** of a Version under a public archive Song says the Version becomes public and sends `confirm_public: true` only after that confirm; under a Proposed Song it is refused in the browser.
+- **Expose** shows on a hidden or Exposed archive Song (and Artist); its state is read from the Local copy's `video_exposed_songs`.
+- `GET /api/rows/:table/:id` (`table` song, version or artist) gives the controls the row's kind, a Proposed row's stamp and columns, hidden / Exposed, a Version's parent, and every Video, Chapter and Artist link using it.
+- The Artists page's "merge into…" is now "repoint…" (Local) or "actions…" (Video Editors and admins).
 
 ### 7.6 The TV Server as a Member
 

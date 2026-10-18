@@ -9,14 +9,17 @@ import type { ArchiveError, WireWord } from "../shared/archiveWire";
 import type { SessionResponse } from "../shared/session";
 import type { ChapterDto, VideoDto } from "../shared/types";
 import { afterWrite, archiveRpc, requestSync } from "./session";
-import { api, removeVideo, replaceVideo } from "./data";
+import type { RowInfo } from "../server/sharedWrites";
+import { api, forgetSong, loadArtists, loadVideos, removeVideo, replaceVideo } from "./data";
 import { decodeValue, groupWrites, type HistoryEntry } from "../shared/editHistory";
 import {
-  applyMineStamp, archiveCall, conflictReducer, IDLE_CONFLICT, inverseOf, kindsNeeded, localRequest, NOTHING_TO_CHANGE, routeFor, SIGNED_OUT_WRITE_LINE, undoBlock, writeErrorLine,
-  type ConflictAction, type ConflictEntry, type ConflictState, type Kinds, type LinkOp, type LinkVideo, type SuggestPatch, type UndoEntry, type WriteMode,
+  applyMineStamp, archiveCall, artistRepointPlan, conflictReducer, IDLE_CONFLICT, inverseOf, kindsNeeded, LOCAL_TARGET_LINE, localRepointRequest, localRequest, NOTHING_TO_CHANGE, repointPlan,
+  routeFor, rowCall, rowKindsNeeded, rowRefusal, rowRoles, SIGNED_OUT_WRITE_LINE, undoBlock, writeErrorLine,
+  type ConflictAction, type ConflictEntry, type ConflictState, type Kinds, type LinkOp, type LinkVideo, type NamedRow, type RowOp, type RowTable, type SuggestPatch, type UndoEntry,
+  type WriteMode,
 } from "./writeOps";
 
-export type { LinkOp, LinkVideo } from "./writeOps";
+export type { LinkOp, LinkVideo, RowOp, RowTable } from "./writeOps";
 
 /** What a write resolves to, per op: the fresh Video, the fresh Chapter, or nothing to read back. */
 export type LinkResult<O extends LinkOp> = O["kind"] extends "chapter.add" | "chapter.update" | "chapter.confirm"
@@ -49,15 +52,19 @@ export interface WriteLinkOptions {
   quiet?: boolean;
 }
 
-async function machineMode(): Promise<WriteMode> {
+async function sessionRecord(): Promise<SessionResponse["record"] | null> {
   try {
     const r = await fetch("/api/session");
-    if (!r.ok) return "standalone";
-    const s = (await r.json()) as SessionResponse;
-    return !s.record ? "standalone" : (s.record.grantLevel ?? "no-grant");
+    if (!r.ok) return null;
+    return ((await r.json()) as SessionResponse).record ?? null;
   } catch {
-    return "standalone";
+    return null;
   }
+}
+
+async function machineMode(): Promise<WriteMode> {
+  const record = await sessionRecord();
+  return !record ? "standalone" : (record.grantLevel ?? "no-grant");
 }
 
 async function fetchKinds(need: { songs: string[]; versions: string[]; artists: string[] }): Promise<Kinds> {
@@ -304,6 +311,138 @@ export async function drainSharedSuggestions(): Promise<number> {
     } catch {}
   }
   return n;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Row writes: Proposed rows, Elevate, Expose, Repoint (§3.4, §3.5, §4.4, §4.6; ticket #146)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** `GET /api/rows/:table/:id`: the row's kind, stamp, exposure and every Video, Chapter and Artist link using it. */
+export async function readRow(table: RowTable, id: string): Promise<RowInfo | null> {
+  const r = await fetch(`/api/rows/${table}/${encodeURIComponent(id)}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new WriteLinkError(`could not read the ${table} (${r.status})`, "local");
+  return (await r.json()) as RowInfo;
+}
+
+/** Drops what a row write changed from the page caches: Song pages, the Artist list, and the Videos an Elevation or Repoint moved. */
+async function refreshAfterRow(op: RowOp, bundle: { tables?: Record<string, unknown[] | undefined> } | null) {
+  const songIds = new Set<string>();
+  if (op.kind !== "artists.repoint" && (op.kind === "exposure" ? op.target === "song" : op.table !== "artist")) {
+    if ("id" in op) songIds.add(op.id);
+    if (op.kind === "proposed.create" && op.fields.song_id) songIds.add(op.fields.song_id);
+    if (op.kind === "elevate" && op.parent) songIds.add(op.parent.id);
+  }
+  for (const id of songIds) forgetSong(id);
+  const t = bundle?.tables ?? {};
+  if (op.kind === "artists.repoint" || ("table" in op && op.table === "artist") || (op.kind === "exposure" && op.target === "artist")) void loadArtists();
+  if ((t.videos?.length ?? 0) > 0 || op.kind === "elevate" || op.kind === "artists.repoint") void loadVideos();
+  announce(((t.videos ?? []) as { id?: string }[]).map((v) => v.id).filter((id): id is string => !!id));
+}
+
+/** Tells open pages (Now playing, the Chapter strip) that these Videos changed under them. */
+const announce = (videoIds: Iterable<string>) => {
+  for (const videoId of new Set(videoIds)) window.dispatchEvent(new CustomEvent(RELOADED_EVENT, { detail: { videoId } }));
+};
+
+/**
+ * One row write (§4.1): through the archive and `/api/cache/apply`, like `writeLink`. `proposed.create` resolves to the
+ * minted id. A Local Artist's repoint (Unshared Videos only) is the companion's merge route. Throws `WriteLinkError`;
+ * `duplicate-candidate` and `in-use` carry the archive's DETAIL for the prompts (ProposedRows.tsx).
+ */
+export async function writeRow(op: RowOp, opts: { stamp?: string | null } = {}): Promise<{ id: string | null }> {
+  if (op.kind === "artists.repoint") {
+    const kinds = await fetchKinds(rowKindsNeeded(op));
+    if (kinds.artists[op.from.id] === "local") {
+      if (kinds.artists[op.to.id] === "local") throw new WriteLinkError(LOCAL_TARGET_LINE, "refused");
+      await sendLocal(localRepointRequest(op));
+      await Promise.all([loadArtists(), loadVideos()]);
+      return { id: op.to.id };
+    }
+  }
+  const refusal = rowRefusal(op, rowRoles(await sessionRecord()));
+  if (refusal) throw new WriteLinkError(refusal, "refused");
+  const rpc = archiveRpc();
+  if (!rpc) throw new WriteLinkError(SIGNED_OUT_WRITE_LINE, "refused");
+  const kinds = await fetchKinds(rowKindsNeeded(op));
+  const spec = rowCall(op, kinds, { stamp: opts.stamp, newId: op.kind === "proposed.create" ? crypto.randomUUID() : undefined });
+  if ("refused" in spec) {
+    if (spec.refused === NOTHING_TO_CHANGE) return { id: "id" in op ? op.id : null };
+    throw new WriteLinkError(spec.refused, "refused");
+  }
+  const out = await callWrite(rpc, spec.fn, spec.args as never);
+  if (!out.ok) throw new WriteLinkError(writeErrorLine(out.error, out), out.error.word, out.error);
+  const applied = await fetch("/api/cache/apply", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(out.value) });
+  if (!applied.ok) throw new WriteLinkError(`saved to the archive, but this machine could not take the rows (${applied.status}); Sync to see it`, "unknown");
+  void afterWrite();
+  await refreshAfterRow(op, out.value as never);
+  return { id: spec.minted ?? ("id" in op ? op.id : op.kind === "artists.repoint" ? op.to.id : null) };
+}
+
+export interface RepointOutcome {
+  moved: number;
+  failed: { title: string; line: string }[];
+  /** The Proposed source was deleted afterwards (nothing pointed at it any more). */
+  deleted: boolean;
+}
+
+/**
+ * Repoint (§4.6): every Video, Chapter and Artist link on `from` moves to `to`. An Artist is one archive `repoint`
+ * for the Shared Videos plus `artists.set` on each Unshared one (a Local Artist: the companion's merge); a Song or
+ * Version is a `writeLink` per pointer. A Proposed source left unreferenced is deleted (`deleteAfter`, always for an
+ * Artist), through `write_proposed_*`, logged.
+ */
+export async function repointRow(table: RowTable, from: NamedRow, to: NamedRow & { songId?: string | null }, o: { deleteAfter?: boolean } = {}): Promise<RepointOutcome> {
+  const info = await readRow(table, from.id);
+  if (!info) throw new WriteLinkError(`that ${table} is no longer in the library`, "not-found");
+  const failed: RepointOutcome["failed"] = [];
+  let moved = 0;
+  if (table === "artist") {
+    if (info.kind === "local") {
+      await writeRow({ kind: "artists.repoint", from, to });
+      return { moved: info.uses.artistLinks.length, failed, deleted: true };
+    }
+    const plan = artistRepointPlan(info, to.id);
+    if (plan.archive) {
+      await writeRow({ kind: "artists.repoint", from, to });
+      moved += info.uses.artistLinks.filter((l) => l.shared).length;
+    }
+    for (const s of plan.local) {
+      try {
+        await writeLink(s.video, s.op, { quietConflict: true });
+        moved++;
+      } catch (e) {
+        failed.push({ title: s.video.title ?? s.video.id, line: (e as Error).message });
+      }
+    }
+    void loadArtists();
+  } else {
+    const target = await readRow(table, to.id);
+    const plan = repointPlan(info, { id: to.id, kind: target?.kind ?? null, songId: to.songId ?? target?.parent?.id ?? null });
+    if ("refused" in plan) throw new WriteLinkError(plan.refused, "refused");
+    for (const s of plan) {
+      try {
+        await writeLink(s.video, s.op, { quietConflict: true });
+        moved++;
+      } catch (e) {
+        failed.push({ title: s.video.title ?? s.video.id, line: (e as Error).message });
+      }
+    }
+    forgetSong(from.id);
+    forgetSong(to.id);
+    if (to.songId) forgetSong(to.songId);
+  }
+  let deleted = false;
+  if (info.kind === "proposed" && (o.deleteAfter || table === "artist") && !failed.length) {
+    const left = await readRow(table, from.id);
+    if (left && left.uses.videos.length + left.uses.chapters.length + left.uses.artistLinks.length === 0) {
+      await writeRow({ kind: "proposed.delete", table, id: from.id, name: from.name, stamp: left.updatedAt });
+      deleted = true;
+    }
+  }
+  void loadVideos();
+  announce([...info.uses.videos.map((v) => v.id), ...info.uses.chapters.map((c) => c.videoId), ...info.uses.artistLinks.map((l) => l.videoId)]);
+  return { moved, failed, deleted };
 }
 
 export function useConflict(): ConflictState {

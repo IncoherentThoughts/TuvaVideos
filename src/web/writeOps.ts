@@ -3,7 +3,8 @@
 // the archive function, payload, stamp and Edits a Shared Video's write becomes (`archiveCall`), the human line for
 // every wire word (`writeErrorLine`) and the conflict notice's reducer (`conflictReducer`). No I/O: src/web/writeLink.ts
 // does the calls.
-import type { ArchiveError, ConflictDetail, EditInput, WriteFunction } from "../shared/archiveWire";
+import type { ArchiveError, ConflictDetail, DuplicateCandidate, EditInput, WriteFunction } from "../shared/archiveWire";
+import type { RowInfo, RowTable } from "../server/sharedWrites";
 import type { VideoType } from "../shared/filters";
 import { latinByTable } from "../shared/translit";
 import type { HistoryEntry } from "../shared/editHistory";
@@ -598,3 +599,290 @@ export function conflictLines(detail: ConflictDetail | null, me: string | null, 
   const change = last.field_name ? `${last.field_name}: ${show(last.old_value)} → ${show(last.new_value)}` : last.event_type;
   return { who, when, change };
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Proposed rows, Elevate, Expose, Repoint (§3.4, §3.5, §4.4, §4.6; ticket #146): writes of a row, not of one Video
+// ---------------------------------------------------------------------------------------------------------------
+
+export type { RowTable };
+export const TABLE_WORD: Record<RowTable, string> = { song: "Song", version: "Version", artist: "Artist" };
+
+/** A named row, as a Repoint names its ends. */
+export interface NamedRow {
+  id: string;
+  name: string;
+}
+
+/**
+ * Every write of a Song, Version or Artist row. `fields` use the archive's column names (`name`, `english_name`,
+ * `alternate_titles`, `notes` / `label`, `song_id` (the effective parent id), `source`). `proposed.create` mints its
+ * id client-side (`CallOptions.newId`), like a Chapter.
+ */
+export type RowOp =
+  | { kind: "proposed.create"; table: RowTable; fields: Record<string, string | null>; force?: boolean }
+  | { kind: "proposed.update"; table: RowTable; id: string; stamp: string | null; before: Record<string, unknown>; fields: Record<string, string | null> }
+  | { kind: "proposed.delete"; table: RowTable; id: string; name: string; stamp?: string | null }
+  | { kind: "elevate"; table: RowTable; id: string; name: string; useExisting?: string; force?: boolean; confirmPublic?: boolean; parent?: RowInfo["parent"] }
+  | { kind: "exposure"; target: "song" | "artist"; id: string; name: string; expose: boolean }
+  | { kind: "artists.repoint"; from: NamedRow; to: NamedRow };
+
+/** Who may use which control (§3.5, §4.4, §7.5), from the Session record. */
+export interface RowRoles {
+  /** Create, edit, delete Proposed rows and Repoint on Shared Videos: a Video Editor. */
+  propose: boolean;
+  /** Elevate: a Video Editor holding the archive's admin or moderator role. */
+  elevate: boolean;
+  /** Expose / Unexpose a hidden Song or Artist: an archive admin. */
+  expose: boolean;
+}
+
+export const NO_ROLES: RowRoles = { propose: false, elevate: false, expose: false };
+
+export function rowRoles(record: { grantLevel: string | null; archiveRole: string | null } | null): RowRoles {
+  if (!record) return NO_ROLES;
+  const editor = record.grantLevel === "editor";
+  const role = record.archiveRole;
+  return { propose: editor, elevate: editor && (role === "admin" || role === "moderator"), expose: role === "admin" };
+}
+
+export const PROPOSE_ROLE_LINE = "Proposed Songs, Versions and Artists are made by Video Editors; this machine is not signed in as one.";
+export const ELEVATE_ROLE_LINE = "Elevating needs a Video Editor who is also an archive admin or moderator.";
+export const EXPOSE_ROLE_LINE = "Exposing a hidden Song needs an archive admin.";
+export const ELEVATE_SONG_FIRST_LINE = "This Version's Song is still Proposed: elevate the Song first (or with it).";
+export const CONFIRM_PUBLIC_LINE = "This Version's Song is public on the lyrics website, so the Version will be public as soon as it is elevated.";
+export const LOCAL_TARGET_LINE = "A Local Song, Version or Artist is this machine's own; it cannot replace a Shared one. Pick an archive or Proposed row.";
+
+/** The browser's own refusal of a row write the account may not make (the archive's `42501` is the backstop). */
+export function rowRefusal(op: RowOp, roles: RowRoles): string | null {
+  switch (op.kind) {
+    case "elevate":
+      return roles.elevate ? null : ELEVATE_ROLE_LINE;
+    case "exposure":
+      return roles.expose ? null : EXPOSE_ROLE_LINE;
+    default:
+      return roles.propose ? null : PROPOSE_ROLE_LINE;
+  }
+}
+
+/** A Local Artist's repoint: the companion's merge (its links are on Unshared Videos only; the Local Artist goes). */
+export const localRepointRequest = (op: Extract<RowOp, { kind: "artists.repoint" }>): LocalRequest => ({
+  method: "POST",
+  url: `/api/artists/${op.from.id}/merge-into/${op.to.id}`,
+});
+
+/** The ids whose kind `rowCall` needs (`GET /api/kinds`). */
+export function rowKindsNeeded(op: RowOp): { songs: string[]; versions: string[]; artists: string[] } {
+  const none = { songs: [] as string[], versions: [] as string[], artists: [] as string[] };
+  if (op.kind === "proposed.create" && op.table === "version" && op.fields.song_id) return { ...none, songs: [op.fields.song_id] };
+  if (op.kind === "artists.repoint") return { ...none, artists: [...new Set([op.from.id, op.to.id])] };
+  return none;
+}
+
+const NAME_COL: Record<RowTable, "name" | "label"> = { song: "name", version: "label", artist: "name" };
+const COLUMNS: Record<RowTable, readonly string[]> = {
+  song: ["name", "english_name", "alternate_titles", "notes"],
+  version: ["label", "source"],
+  artist: ["name"],
+};
+
+/** Trimmed text, whitespace collapsed; "" becomes null (a name column is checked separately). */
+const cleanField = (v: string | null | undefined) => {
+  const t = (v ?? "").trim().replace(/\s+/g, " ");
+  return t ? t : null;
+};
+
+/** One row write as the archive function, payload, stamp and Edits (§4.1). */
+export function rowCall(op: RowOp, kinds: Kinds = NO_KINDS, opts: CallOptions = {}): ArchiveCallSpec | { refused: string } {
+  const call = (fn: WriteFunction, p_op: string, p_target: string | null, p_payload: Record<string, unknown>, p_expected_updated_at: string | null, p_edits: EditInput[]): ArchiveCallSpec => ({
+    fn, args: { p_op, p_target, p_payload, p_expected_updated_at, p_edits },
+  });
+  switch (op.kind) {
+    case "proposed.create": {
+      const t = op.table;
+      const word = TABLE_WORD[t];
+      if (!opts.newId) return { refused: "a new row needs a minted id" };
+      const payload: Record<string, unknown> = {};
+      for (const c of COLUMNS[t]) {
+        const v = cleanField(op.fields[c]);
+        if (v != null) payload[c] = v;
+      }
+      const name = payload[NAME_COL[t]] as string | undefined;
+      if (!name) return { refused: `a Proposed ${word} needs a ${NAME_COL[t]}` };
+      if (t === "version") {
+        const parent = op.fields.song_id;
+        if (!parent) return { refused: "a Proposed Version needs its Song" };
+        const k = kinds.songs[parent] ?? "archive";
+        if (k === "local") return { refused: LOCAL_ROW_LINE };
+        payload[k === "proposed" ? "proposed_song_id" : "song_id"] = parent;
+      }
+      if (op.force) payload.force = true;
+      const spec = call(`write_proposed_${t}s` as WriteFunction, "create", opts.newId, payload, null, [
+        { event_type: `proposed.${t}_created` as EditInput["event_type"], field_name: NAME_COL[t], new_value: name, description: `Proposed ${word} created: ${name}` },
+      ]);
+      return { ...spec, minted: opts.newId };
+    }
+    case "proposed.update": {
+      const t = op.table;
+      const word = TABLE_WORD[t];
+      const payload: Record<string, unknown> = {};
+      const edits: EditInput[] = [];
+      for (const c of COLUMNS[t]) {
+        if (!(c in op.fields)) continue;
+        const v = cleanField(op.fields[c]);
+        if (c === NAME_COL[t] && !v) return { refused: `a Proposed ${word}'s ${NAME_COL[t]} cannot be empty` };
+        const was = (op.before[c] as string | null | undefined) ?? null;
+        if (v === was) continue;
+        payload[c] = v;
+        edits.push({ event_type: `proposed.${t}_changed` as EditInput["event_type"], field_name: c, old_value: was, new_value: v, description: `Proposed ${word} ${c.replace("_", " ")}: ${was ?? "—"} → ${v ?? "—"}` });
+      }
+      if (!edits.length) return { refused: NOTHING_TO_CHANGE };
+      const stamp = opts.stamp !== undefined ? opts.stamp : op.stamp;
+      if (!stamp) return { refused: "this Proposed row has no stamp yet; Sync, then edit it" };
+      return call(`write_proposed_${t}s` as WriteFunction, "update", op.id, payload, stamp, edits);
+    }
+    case "proposed.delete": {
+      const t = op.table;
+      return call(`write_proposed_${t}s` as WriteFunction, "delete", op.id, {}, op.stamp ?? null, [
+        { event_type: `proposed.${t}_deleted` as EditInput["event_type"], field_name: NAME_COL[t], old_value: op.name, description: `Proposed ${TABLE_WORD[t]} deleted: ${op.name}` },
+      ]);
+    }
+    case "elevate": {
+      const payload: Record<string, unknown> = {};
+      if (op.table === "version") {
+        if (op.parent?.kind === "proposed") return { refused: ELEVATE_SONG_FIRST_LINE };
+        if (op.parent?.kind === "local") return { refused: LOCAL_ROW_LINE };
+        // song_lyrics has no is_hidden: a Version under a public Song is public at once (§4.4)
+        if (op.parent && !op.parent.hidden) {
+          if (!op.confirmPublic) return { refused: CONFIRM_PUBLIC_LINE };
+          payload.confirm_public = true;
+        }
+      }
+      if (op.useExisting) payload.use_existing = op.useExisting;
+      if (op.force) payload.force = true;
+      return call(`elevate_${op.table}` as WriteFunction, "elevate", op.id, payload, null, []);
+    }
+    case "exposure":
+      return call("set_song_exposure", op.expose ? "expose" : "unexpose", op.id, op.target === "artist" ? { kind: "artist" } : {}, null, [
+        {
+          event_type: op.expose ? "exposure.exposed" : "exposure.unexposed",
+          field_name: op.target === "artist" ? "artist_id" : "song_id",
+          new_value: op.id,
+          description: `${op.expose ? "Exposed" : "Unexposed"} ${op.target === "artist" ? "Artist" : "Song"} ${op.name}`,
+        },
+      ]);
+    case "artists.repoint": {
+      if (op.from.id === op.to.id) return { refused: "an Artist cannot be repointed to itself" };
+      const ref = (id: string) => {
+        const k = kinds.artists[id] ?? "archive";
+        return k === "local" ? null : k === "proposed" ? { proposed_artist_id: id } : { artist_id: id };
+      };
+      const from = ref(op.from.id);
+      const to = ref(op.to.id);
+      if (!to) return { refused: LOCAL_TARGET_LINE };
+      if (!from) return { refused: LOCAL_ROW_LINE };
+      // the per-Video template: the archive files it once for every Video it touches (§4.1)
+      return call("write_video_artists", "repoint", null, { from, to }, null, [
+        { event_type: "artist_link.repointed", field_name: "artist_id", old_value: op.from.id, new_value: op.to.id, description: `Repointed ${op.from.name} → ${op.to.name}` },
+      ]);
+    }
+  }
+}
+
+// ---- the "use existing / create anyway" prompt (§3.4, §4.2's VD422)
+
+export interface CandidateRow {
+  id: string;
+  name: string;
+  kind: DuplicateCandidate["kind"];
+  /** "in the archive" or "Proposed". */
+  where: string;
+}
+
+/**
+ * The candidates the prompt lists: archive rows first, then Proposed ones, each once, by name; never the row itself
+ * (`exclude`). Elevation folds only into an archive row (`archiveOnly`, `use_existing`).
+ */
+export function candidateRows(detail: readonly DuplicateCandidate[], o: { exclude?: string; archiveOnly?: boolean } = {}): CandidateRow[] {
+  const seen = new Set<string>();
+  const out: CandidateRow[] = [];
+  for (const c of detail) {
+    if (!c?.id || seen.has(c.id) || c.id === o.exclude || (o.archiveOnly && c.kind !== "archive")) continue;
+    seen.add(c.id);
+    out.push({ id: c.id, name: c.name || "(unnamed)", kind: c.kind, where: c.kind === "archive" ? "in the archive" : "Proposed" });
+  }
+  return out.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "archive" ? -1 : 1));
+}
+
+/** The prompt's words: a create offers "use this one / create anyway"; an Elevation "elevate into this one / as a new one". */
+export function duplicatePrompt(table: RowTable, name: string, mode: "create" | "elevate", rows: readonly CandidateRow[]) {
+  const word = TABLE_WORD[table];
+  const one = rows.length === 1;
+  return mode === "create"
+    ? {
+        title: `${one ? `A ${word}` : `${rows.length} ${word}s`} like “${name}” already ${one ? "exists" : "exist"}.`,
+        use: "Use this one",
+        force: `Create “${name}” anyway`,
+      }
+    : {
+        title: `The archive already has ${one ? `a ${word}` : `${rows.length} ${word}s`} like “${name}”.`,
+        use: "Elevate into this one",
+        force: `Elevate as a new ${word}`,
+      };
+}
+
+/** The delete prompt's line on `VD423` (§3.4): the count, and the offer to Repoint first. */
+export function inUseLine(table: RowTable, name: string, count: number | null): string {
+  const n = count == null ? "some" : String(count);
+  const what = table === "artist" ? `Video${count === 1 ? "" : "s"}` : `Video${count === 1 ? "" : "s"} or Chapter${count === 1 ? "" : "s"}`;
+  return `“${name}” is still used by ${n} ${what}, so it cannot be deleted. Repoint ${count === 1 ? "it" : "them"} to another ${TABLE_WORD[table]} first?`;
+}
+
+// ---- Repoint (§4.6)
+
+export interface RepointStep {
+  video: LinkVideo;
+  op: LinkOp;
+}
+
+/** The target of a Song or Version repoint; a Version carries its Song. */
+export interface RepointTarget {
+  id: string;
+  kind: RowKind | null;
+  /** For a Version: the Song it belongs to. */
+  songId?: string | null;
+}
+
+/**
+ * A Song or Version repoint as `writeLink` ops (there is no archive `repoint` for them): every Video pointer becomes a
+ * `video.update`, every Chapter pointer a `chapter.update`. An Artist repoint is one archive call for the Shared
+ * Videos plus an `artists.set` for each Unshared Video linking it (`artistRepointPlan`).
+ */
+export function repointPlan(info: Pick<RowInfo, "table" | "uses">, to: RepointTarget): RepointStep[] | { refused: string } {
+  if (info.table === "artist") return { refused: "an Artist is repointed with artistRepointPlan" };
+  const anyShared = info.uses.videos.some((v) => v.shared) || info.uses.chapters.some((c) => c.shared);
+  if (to.kind === "local" && anyShared) return { refused: LOCAL_TARGET_LINE };
+  const patch = info.table === "song" ? { songId: to.id } : { songId: to.songId ?? null, versionId: to.id };
+  const steps: RepointStep[] = [];
+  for (const v of info.uses.videos)
+    steps.push({ video: { id: v.id, shared: v.shared, updatedAt: v.updatedAt, title: v.title, songId: v.songId, versionId: v.versionId }, op: { kind: "video.update", patch } });
+  for (const c of info.uses.chapters)
+    steps.push({
+      video: { id: c.videoId, shared: c.shared, updatedAt: c.updatedAt },
+      op: { kind: "chapter.update", chapter: { id: c.id, videoId: c.videoId, startS: c.startS, title: c.title, suggested: c.suggested, updatedAt: c.updatedAt, songId: c.songId, versionId: c.versionId }, patch },
+    });
+  return steps;
+}
+
+/** An Artist repoint: whether the archive call is needed (any Shared link), and each Unshared Video's new list. */
+export function artistRepointPlan(info: Pick<RowInfo, "id" | "uses">, toId: string): { archive: boolean; local: RepointStep[] } {
+  const local: RepointStep[] = [];
+  for (const l of info.uses.artistLinks) {
+    if (l.shared) continue;
+    const ids = [...new Set(l.artistIds.map((a) => (a === info.id ? toId : a)))];
+    local.push({ video: { id: l.videoId, shared: false, updatedAt: l.updatedAt }, op: { kind: "artists.set", artistIds: ids } });
+  }
+  return { archive: info.uses.artistLinks.some((l) => l.shared), local };
+}
+
+/** How many Videos and Chapters point at the row (what the archive's `VD423` counts for a Proposed row). */
+export const useCount = (info: Pick<RowInfo, "uses">) => info.uses.videos.length + info.uses.chapters.length + info.uses.artistLinks.length;

@@ -13,7 +13,7 @@ import type { TvServer } from "./tv";
 import { factsOfRow, parseDecision } from "./tvJudge";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
 import { deleteVideo, removeCopies } from "./deleteVideo";
-import { deletedMatches, kindsOf, sharedSuggestions } from "./sharedWrites";
+import { deletedMatches, kindsOf, rowInfo, sharedSuggestions } from "./sharedWrites";
 import { clearShelved, dropShelved, listEdits, shelvedItems, videoHistory } from "./editHistory";
 import { serveFile } from "./stream";
 import type { KeyframeIndex } from "./keyframes";
@@ -440,6 +440,10 @@ export function createHandler(s: Services) {
         if (p === "/api/videos") return json(allVideos());
         // The client write seam's reads (sharing-spec §4.3, §4.5, §4.9; src/server/sharedWrites.ts).
         if (p === "/api/kinds") return json(kindsOf(s.db, url.searchParams));
+        if ((m = p.match(/^\/api\/rows\/(song|version|artist)\/([0-9a-zA-Z_-]{8,64})$/))) {
+          const r = rowInfo(s.db, m[1] as "song" | "version" | "artist", m[2]!);
+          return r ? json(r) : json({ error: "no such row" }, 404);
+        }
         if (p === "/api/videos/deleted-matches") return json(deletedMatches(s.db, s.roots));
         if (p === "/api/suggestions/shared") return json(machineMode(readSessionRecord(s.db)) === "editor" ? sharedSuggestions(s.db) : []);
         // Edit history and Shelved edits (sharing-spec §4.7, §4.8, §7.4; src/server/editHistory.ts).

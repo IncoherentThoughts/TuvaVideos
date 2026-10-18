@@ -10,6 +10,8 @@ import { TypeTag, artistSlot, artistTitle } from "./ui";
 import { Link } from "./router";
 import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
 import { writeLink, WriteLinkError } from "./writeLink";
+import { createRowFor } from "./ProposedRows";
+import { ProposedMark } from "./ui";
 
 type Change = (v: VideoDto) => void;
 export type SongRow = Extract<SearchRow, { kind: "song" }>;
@@ -113,18 +115,24 @@ export const songPickerRow = (r: SongRow) => (
   </>
 );
 
-/** The Picker's create row for Songs: makes a Local Song named `q` (or returns the one already so named) and hands it on. */
-export const createSongRow = (onCreated: (id: string) => void, onError?: (msg: string) => void) => (q: string) => ({
-  label: `add '${q}' as local song`,
-  run: async () => {
-    try {
-      const s = await api.createSong({ name: q });
-      onCreated(s.id);
-    } catch (e) {
-      onError?.(apiError(e));
-    }
-  },
-});
+/**
+ * The Picker's create row for Songs: on a Shared Video a Proposed Song (sharing-spec §3.4, with the "use existing /
+ * create anyway" prompt), otherwise a Local Song named `q` (or the one already so named); hands the id on.
+ */
+export const createSongRow = (onCreated: (id: string) => void, onError?: (msg: string) => void, shared = false) => (q: string) => {
+  const c = createRowFor("song", q, shared);
+  return {
+    label: c.label,
+    run: async () => {
+      try {
+        const id = await c.make();
+        if (id) onCreated(id);
+      } catch (e) {
+        onError?.(apiError(e));
+      }
+    },
+  };
+};
 
 export function rowsOf<K extends "song" | "artist">(kind: K) {
   return async (q: string): Promise<Extract<SearchRow, { kind: K }>[]> => {
@@ -319,6 +327,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
           >
             {s.name ?? <span class="dim">unknown song</span>}
             {s.englishName && <span class="en"> · {s.englishName}</span>}
+            {s.proposed && <ProposedMark tag />}
           </Link>
           <button class="x" title="Clear the Song" aria-label="Clear the Song" onClick={() => void patch({ songId: null })}>
             <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
@@ -335,20 +344,20 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
           + add
         </button>
       )}
-      {!s && picking && <SongPicker onPick={(id) => (setPicking(false), void patch({ songId: id }))} onClose={() => setPicking(false)} />}
+      {!s && picking && <SongPicker shared={v.shared} onPick={(id) => (setPicking(false), void patch({ songId: id }))} onClose={() => setPicking(false)} />}
     </span>
   );
 }
 
-/** Search Songs (or make a Local one) and hand back the chosen id. */
-export function SongPicker({ onPick, onClose }: { onPick: (songId: string) => void; onClose: () => void }) {
+/** Search Songs (or make one: Proposed for a Shared Video, Local otherwise) and hand back the chosen id. */
+export function SongPicker({ onPick, onClose, shared = false }: { onPick: (songId: string) => void; onClose: () => void; shared?: boolean }) {
   return (
     <Picker<SongRow>
       placeholder="Search Songs…"
-      search={rowsOf("song")}
+      search={async (q) => (await rowsOf("song")(q)).filter((r) => !shared || !r.local)}
       row={songPickerRow}
       onPick={(r) => onPick(r.id)}
-      create={createSongRow(onPick)}
+      create={createSongRow(onPick, undefined, shared)}
       onClose={onClose}
     />
   );
@@ -369,6 +378,7 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
         <span class={`achip tag${a.suggested ? " sug" : ""}`} key={a.id} style={{ "--c": `var(--t${artistSlot(a.name)})` }} title={artistTitle(a)}>
           <Link href={`/${libraryQuery({ ...defaultLibraryState(), artist: a.name })}`} class="achip-main taglink" title={`Every Video by ${a.name}`}>
             {a.name}
+            {a.proposed && <ProposedMark tag />}
             {a.suggested && <i class="sugmark">suggested</i>}
           </Link>
           <button class="x" aria-label={a.suggested ? `Reject ${a.name}` : `Remove ${a.name}`} title={a.suggested ? "Reject this suggestion" : "Remove"} onClick={() => void apply(() => writeLink(v, { kind: "artists.remove", artistId: a.id })).then((ok) => ok && void loadArtists())}>
@@ -389,7 +399,7 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
       {adding && (
         <Picker<ArtistRow>
           placeholder="Search Artists…"
-          search={async (q) => (await rowsOf("artist")(q)).filter((r) => !ids.includes(r.id))}
+          search={async (q) => (await rowsOf("artist")(q)).filter((r) => !ids.includes(r.id) && !(v.shared && r.local))}
           row={(r) => (
             <>
               <span>{r.name}</span>
@@ -397,16 +407,22 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
             </>
           )}
           onPick={(r) => (setAdding(false), void save([...confirmed, ...ids.filter((i) => !confirmed.includes(i)), r.id]))}
-          create={(q) => ({
-            label: `add '${q}' as local artist`,
-            run: async () => {
-              try {
-                const a = await api.createArtist(q);
-                setAdding(false);
-                await save(ids.includes(a.id) ? ids : [...ids, a.id]);
-              } catch {}
-            },
-          })}
+          create={(q) => {
+            // a Proposed Artist on a Shared Video (sharing-spec §3.4), a Local one otherwise
+            const c = createRowFor("artist", q, v.shared);
+            return {
+              label: c.label,
+              run: async () => {
+                try {
+                  const id = await c.make();
+                  setAdding(false);
+                  if (id) await save(ids.includes(id) ? ids : [...ids, id]);
+                } catch (e) {
+                  void apply(() => Promise.reject(e)); // shows the line under the row
+                }
+              },
+            };
+          }}
           onClose={() => setAdding(false)}
         />
       )}

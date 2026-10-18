@@ -174,7 +174,7 @@ async function readArchive(c: Conn): Promise<ArchiveSnapshot> {
   const get = (q: string) => call(c, "GET", `/rest/v1/${q}`) as Promise<never>;
   const [songs, versions, artists] = await Promise.all([
     get("songs?select=id,name&order=id&limit=300"),
-    get("song_lyrics?select=id,song_id,label&order=id&limit=1000"),
+    get("song_lyrics?select=id,song_id,label:version_label&order=id&limit=1000"),
     get("artists?select=id,name&order=id&limit=300"),
   ]);
   return { songs, versions, artists };

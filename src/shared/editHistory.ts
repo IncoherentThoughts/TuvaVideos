@@ -1,6 +1,7 @@
 // Edit history as the browser reads it (docs/sharing-spec.md §3.6, §4.7, §4.8, §7.4; ticket #147): the rows of
 // `video_edit_history` in the Local copy as DTOs, grouped into the writes that made them, and the Shelved edits the
 // drawer lists. Pure: the companion's reads are src/server/editHistory.ts, the inversion table is writeOps.ts.
+import type { DiffRow } from "./shelvedDiff";
 
 /** One `video_edit_history` row (`GET /api/videos/:id/history`, `GET /api/edits`). Values are decoded JSON. */
 export interface HistoryEntry {
@@ -110,4 +111,6 @@ export interface ShelvedItem {
   payload: Record<string, unknown>;
   /** One line: what this edit was. */
   summary: string;
+  /** The kept value (red) against what the Video says now (green), #157. */
+  diff: DiffRow;
 }

@@ -8,6 +8,8 @@ import { chipView, type ChipView, endedLine, FORGOT_URL, shelveLine, submitBlock
 import { useSession } from "./session";
 import { clearShelvedEdits, fetchShelved, onShelvedChange, openShelved } from "./History";
 import { navigate } from "./router";
+import { ShelvedExplainer, VideoDiffList } from "./ShelvedDiff";
+import type { VideoDiff } from "../shared/shelvedDiff";
 
 // One dialog for the whole app: the chip's "Sign in", the banner's and the first-launch panel's all open it.
 let dialogOpen = false;
@@ -169,7 +171,11 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
   );
 }
 
-type Step = { at: "form" } | { at: "confirm"; count: number; mustChangePassword: boolean; noGrant: boolean };
+type Step =
+  | { at: "form" }
+  | { at: "confirm"; count: number; videos: number; diffs: VideoDiff[]; mustChangePassword: boolean; noGrant: boolean }
+  // #157: after the sign-in Sync, once per reconciliation: what was shelved, the same rows.
+  | { at: "done"; count: number; videos: number; diffs: VideoDiff[] };
 
 /** §5.1: email and password, the three inline errors, then the reconciliation confirmation; Cancel signs out. */
 function SignInDialog({ onClose }: { onClose: () => void }) {
@@ -204,7 +210,10 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
       await s.signOut();
       return void setErr(rec?.error ?? SIGN_IN_ERRORS.unreachable);
     }
-    setStep({ at: "confirm", count: rec.counts.shelved, mustChangePassword: r.mustChangePassword, noGrant: rec.record ? rec.record.grantLevel === null : false });
+    setStep({
+      at: "confirm", count: rec.counts.shelved, videos: rec.counts.shelvedVideos, diffs: rec.diffs ?? [],
+      mustChangePassword: r.mustChangePassword, noGrant: rec.record ? rec.record.grantLevel === null : false,
+    });
   };
 
   const onDialogClose = () => {
@@ -220,7 +229,10 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
     // A failed reconciliation changed nothing: say why and stay on the confirmation (Cancel still signs out).
     if (!r.reconcile?.ok) return void setErr(r.reconcile?.error ?? SIGN_IN_ERRORS.unreachable);
     confirmed.current = true;
-    box.current?.close();
+    // Nothing shelved: nothing to explain. Otherwise the popup says what happened (the Sync has finished by now).
+    const c = r.reconcile.counts;
+    if (c.shelved > 0) setStep({ at: "done", count: c.shelved, videos: c.shelvedVideos, diffs: r.reconcile.diffs ?? [] });
+    else box.current?.close();
   };
 
   return (
@@ -264,10 +276,27 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </form>
+      ) : step.at === "done" ? (
+        <div class="sd-popup">
+          <h3>Signed in: your edits were shelved</h3>
+          <ShelvedExplainer />
+          <p>{shelveLine(step.count, step.videos, true)}</p>
+          <VideoDiffList diffs={step.diffs} />
+          <div class="actions">
+            <button class="btn" onClick={() => (box.current?.close(), openShelved(null))}>
+              Open Shelved edits
+            </button>
+            <button class="btn primary" autoFocus onClick={() => box.current?.close()}>
+              OK
+            </button>
+          </div>
+        </div>
       ) : (
         <>
           <h3>Bring in the shared library?</h3>
-          <p>{shelveLine(step.count)}</p>
+          {step.count > 0 && <ShelvedExplainer />}
+          <p>{shelveLine(step.count, step.videos)}</p>
+          <VideoDiffList diffs={step.diffs} />
           {err && (
             <p class="err" role="alert">
               {err}

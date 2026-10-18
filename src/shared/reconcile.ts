@@ -1,6 +1,7 @@
 // The wire shapes of sign-in reconciliation (docs/sharing-spec.md §2.3; ticket #149), answered by the companion's
 // `GET /api/reconcile/preview` and `POST /api/reconcile` and read by the sign-in dialog's confirmation (#131).
 import type { SessionRecord } from "./session";
+import type { VideoDiff } from "./shelvedDiff";
 
 /** What reconciliation will do (preview) or did (confirm) to this machine's Videos. */
 export interface ReconcileCounts {
@@ -29,4 +30,9 @@ export interface ReconcileResponse {
   /** `video_whoami().must_change_password`, for the dialog's notice. */
   mustChangePassword: boolean;
   counts: ReconcileCounts;
+  /**
+   * What will be (preview) or was (confirm) shelved, per Video: each attribute's local value against the Shared one
+   * (#157). Absent from a companion older than #157.
+   */
+  diffs?: VideoDiff[];
 }

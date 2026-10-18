@@ -13,6 +13,8 @@ import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, SpecTags, Tags } from "./ui";
 import { useWindowed } from "./windowed";
 import { FirstLaunchPanel, NoRootBar, useOnboarding } from "./Onboarding";
+import { openSignIn } from "./Account";
+import { useSession } from "./session";
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
@@ -41,7 +43,11 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
 
 export function Library({ search }: { search: string }) {
   const { videos } = useStore();
-  const onboarding = useOnboarding();
+  const fetched = useOnboarding();
+  const session = useSession();
+  // The server's onboarding answer was read at load; a sign-in in this tab with the grant turns the panel into the
+  // bar (rootSetup.ts onboardingFor), and any record hides the panel's Sign in card.
+  const onboarding = fetched && fetched.show === "panel" && session.record?.grantLevel ? { ...fetched, show: "bar" as const } : fetched;
   const st =useMemo(() => parseLibrarySearch(search), [search]);
   // `?song=`: the Videos performing that Song (its Song pointer, or a Chapter), from the Song's own record.
   const [song, setSong] = useState<SongDto | null | undefined>(undefined);
@@ -131,7 +137,7 @@ export function Library({ search }: { search: string }) {
         </button>
       </div>
       {onboarding?.show === "bar" && <NoRootBar />}
-      {onboarding?.show === "panel" && <FirstLaunchPanel />}
+      {onboarding?.show === "panel" && <FirstLaunchPanel signIn={session.record ? undefined : openSignIn} />}
       {videos && videos.length === 0 && onboarding && onboarding.show !== "none" ? null :videos && shown.length === 0 ? (
         <div class="empty-state">
           No Videos match these filters.{" "}

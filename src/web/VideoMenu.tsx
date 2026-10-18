@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { VideoDto } from "../shared/types";
 import { api, replaceVideo, useStore } from "./data";
 import { DeleteVideoDialog } from "./DeleteVideo";
+import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
+import { useSession } from "./session";
 
 interface Open {
   id: string;
@@ -22,6 +24,7 @@ export function VideoMenu() {
   const [err, setErr] = useState<string | null>(null);
   const [del, setDel] = useState<VideoDto | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  const session = useSession();
 
   useEffect(() => {
     const onCtx = (e: MouseEvent) => {
@@ -62,6 +65,7 @@ export function VideoMenu() {
   if (!open) return dialog;
   const v = videos?.find((x) => x.id === open.id);
   if (!v) return dialog;
+  const gate = editGate(v, session);
 
   const reset = async () => {
     setBusy(true);
@@ -81,8 +85,8 @@ export function VideoMenu() {
       <button role="menuitem" disabled={busy || v.viewCount === 0} onClick={() => void reset()}>
         Reset view count
       </button>
-      {open.grid && (
-        <button role="menuitem" class="vm-danger" onClick={() => (setOpen(null), setDel(v))}>
+      {open.grid && gate !== "hidden" && (
+        <button role="menuitem" class="vm-danger" disabled={gate === "disabled"} title={gate === "disabled" ? EDIT_DISABLED_NOTICE : undefined} onClick={() => (setOpen(null), setDel(v))}>
           Delete from library…
         </button>
       )}

@@ -3,6 +3,7 @@ import type { ScanDto } from "../shared/types";
 import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { TvButton } from "./TvButton";
+import { AccountChip } from "./Account";
 import { Link, type Route } from "./router";
 import { THEMES, useTheme } from "./theme";
 
@@ -125,6 +126,7 @@ export function TopBar({ route }: { route: Route }) {
             <path d="M4.9 3.9a5.2 5.2 0 1 0 6.2 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
           </svg>
         </button>
+        <AccountChip />
       </div>
       {off && (
         <div class="off-page" role="status">

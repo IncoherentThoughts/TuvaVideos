@@ -13,6 +13,7 @@ import { installKeys } from "./keys";
 import { matchRoute, useLocation } from "./router";
 import { applyThemeFromUrl } from "./theme";
 import { startSession } from "./session";
+import { EndedBanner } from "./Account";
 
 function App() {
   const loc = useLocation();
@@ -23,6 +24,7 @@ function App() {
       <TopBar route={route} />
       <VideoMenu />
       <main>
+        <EndedBanner />
         {error && <div class="empty-state">Server problem: {error}</div>}
         {route.name === "library" && <Library search={loc.search} />}
         {route.name === "favorites" && <Favorites search={loc.search} />}

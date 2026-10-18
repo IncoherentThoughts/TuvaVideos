@@ -21,6 +21,8 @@ import { RelocateButton } from "./Relocate";
 import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
 import { AudioPanel } from "./AudioPanel";
 import { DeleteVideoDialog } from "./DeleteVideo";
+import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
+import { useSession } from "./session";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
@@ -33,6 +35,7 @@ let panelSeenStart = 0;
 export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t: number | null; lyrics: string | null; lyricsVersion: string | null }) {
   const { videos } = useStore();
   const [v, setV] = useState<VideoDto | null | undefined>(undefined);
+  const session = useSession();
 
   // load, then poll: Root availability changes under a playing Copy are seen here (spec 4.2)
   useEffect(() => {
@@ -306,6 +309,10 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
   if (v === undefined) return <div class="np"><p class="muted">Loading…</p></div>;
   if (v === null || v.id !== videoId) return <div class="empty-state">No such Video.</div>;
 
+  // §7.3: edit controls on a Shared Video follow the session (hidden for a Member, disabled when offline or unsettled).
+  const gate = editGate(v, session);
+  const gated = (el: preact.ComponentChild) => (gate === "enabled" ? el : gate === "disabled" ? <fieldset class="editgate" disabled title={EDIT_DISABLED_NOTICE}>{el}</fieldset> : null);
+
   return (
     <div class="np">
       <div class="np-main">
@@ -313,7 +320,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">
-              <HeaderTitle video={v} onChange={setV} />
+              <HeaderTitle video={v} onChange={setV} locked={gate !== "enabled"} />
               {v.titleLatin && <div class="latin muted">{v.titleLatin}</div>}
             </div>
             <span class="from mono" title="< and > step through this list">
@@ -335,14 +342,17 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
             >
               <FavoriteBadge off={!v.favoritedAt} />
             </button>
-            <RelocateButton video={v} onChange={setV} />
+            {gated(<RelocateButton video={v} onChange={setV} />)}
             <span class="mono dim">{fmtDuration(v.durationS)}</span>
             <button class={`btn small lyricsbtn${drawer ? " on" : ""}`} aria-pressed={drawer} aria-controls="lyrbody" title="Lyrics drawer (y while the Player has focus)" onClick={() => (drawer ? closeDrawer() : (setDrawer(true), setFocusDrawer(true)))}>
               Lyrics
             </button>
-            <AcceptAll video={v} onChange={setV} />
+            {gated(<AcceptAll video={v} onChange={setV} />)}
           </div>
-          <HeaderFields video={v} onChange={setV} />
+          <fieldset class="editgate" data-edit={gate} disabled={gate !== "enabled"}>
+            <HeaderFields video={v} onChange={setV} />
+          </fieldset>
+          {gate === "disabled" && <p class="edit-notice dim">{EDIT_DISABLED_NOTICE}</p>}
         </div>
         <ChapterStrip video={v} chapters={chapters} curId={curId} ctl={ctl} newId={newId} onList={acceptChapters} onAdd={() => void addChapter()} onNewDone={() => setNewId(null)} />
         {v.youtubeId && (
@@ -361,11 +371,13 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
             </a>
           </div>
         )}
-        <div class="np-delete">
-          <button class="btn small danger" onClick={() => setDeleting(true)}>
-            Delete from library…
-          </button>
-        </div>
+        {gate !== "hidden" && (
+          <div class="np-delete">
+            <button class="btn small danger" disabled={gate === "disabled"} title={gate === "disabled" ? EDIT_DISABLED_NOTICE : undefined} onClick={() => setDeleting(true)}>
+              Delete from library…
+            </button>
+          </div>
+        )}
         {deleting && (
           <DeleteVideoDialog
             video={v}

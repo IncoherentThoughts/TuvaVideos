@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { openDb } from "../src/server/db";
 import { dataDirFor } from "../src/server/config";
 import { parseFilename } from "../src/server/filename";
-import { applyShared, heldIsNewer, REBUILD_THRESHOLD, tsMicros } from "../src/server/localCopy/apply";
+import { heldIsNewer, REBUILD_THRESHOLD, tsMicros } from "../src/server/localCopy/apply";
+import { applyFlat } from "./helpers/archive";
 import { legacyIdOf, legacyUuid } from "../src/server/localCopy/ids";
 import {
   clearSessionRecord, clearShelved, listShelved, localSharedSchema, machineMode, pendingShareIds, readSessionRecord, setPendingShare, SHARED_SCHEMA, shelve, writeSessionRecord,
@@ -28,8 +29,8 @@ const video = (id: string, o: Partial<SharedVideoRow> = {}): SharedVideoRow => (
   suggestion_source: null, poster_path: null, deleted_at: null, deleted_by: null, delete_reason: null, created_at: T(1), updated_at: T(10), ...o,
 });
 const chapter = (id: string, videoId: string, startS: number, o: Partial<SharedChapterRow> = {}): SharedChapterRow => ({
-  id, video_id: videoId, start_s: startS, title: `ch ${startS}`, title_latin: null, title_latin_source: null, song_id: null, proposed_song_id: null,
-  version_id: null, proposed_version_id: null, suggested: false, source: "manual", updated_at: T(10), ...o,
+  id, video_id: videoId, start_s: startS, title: `ch ${startS}`, title_latin: null, song_id: null, proposed_song_id: null,
+  version_id: null, proposed_version_id: null, suggested: false, source: "manual", created_at: T(1), updated_at: T(10), ...o,
 });
 const SV1 = "11111111-1111-4111-8111-111111111111";
 const SV2 = "22222222-2222-4222-8222-222222222222";
@@ -80,7 +81,7 @@ describe("timestamps and the skip guard", () => {
 describe("applyShared", () => {
   test("a Video arrives Shared, with its children; its side row is created and marked shared", () => {
     const db = open();
-    const r = applyShared(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0), chapter(CH(2), SV1, 60)] });
+    const r = applyFlat(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0), chapter(CH(2), SV1, 60)] });
     expect(r.applied).toEqual({ videos: 1, video_chapters: 2 });
     expect(r.watermark).toBe(T(10));
     expect(db.query("SELECT shared, pending_share FROM video_full WHERE id = ?").get(SV1)).toEqual({ shared: 1, pending_share: 0 });
@@ -90,10 +91,10 @@ describe("applyShared", () => {
 
   test("children are replaced per bumped parent: missing ones go, kept ones keep this machine's Favorite", () => {
     const db = open();
-    applyShared(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0), chapter(CH(2), SV1, 60)] });
+    applyFlat(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0), chapter(CH(2), SV1, 60)] });
     db.query("INSERT INTO chapter_local (chapter_id, favorited_at) VALUES (?, 'fav')").run(CH(1));
     db.query("UPDATE video_local SET view_count = 5 WHERE video_id = ?").run(SV1);
-    const r = applyShared(db, { videos: [video(SV1, { updated_at: T(11) })], video_chapters: [chapter(CH(1), SV1, 0, { title: "renamed" }), chapter(CH(3), SV1, 120)] });
+    const r = applyFlat(db, { videos: [video(SV1, { updated_at: T(11) })], video_chapters: [chapter(CH(1), SV1, 0, { title: "renamed" }), chapter(CH(3), SV1, 120)] });
     expect(r.removed).toBe(1);
     expect(db.query("SELECT id, title, favorited_at FROM chapter_full ORDER BY start_s").all()).toEqual([
       { id: CH(1), title: "renamed", favorited_at: "fav" },
@@ -101,32 +102,32 @@ describe("applyShared", () => {
     ]);
     expect(db.query("SELECT view_count FROM video_full WHERE id = ?").get(SV1)).toEqual({ view_count: 5 }); // the side table is untouched
     // a bumped parent with no children left loses them all
-    applyShared(db, { videos: [video(SV1, { updated_at: T(12) })] });
+    applyFlat(db, { videos: [video(SV1, { updated_at: T(12) })] });
     expect(db.query("SELECT COUNT(*) n FROM video_chapters").get()).toEqual({ n: 0 });
     expect(db.query("SELECT COUNT(*) n FROM search WHERE kind = 'chapter'").get()).toEqual({ n: 0 });
   });
 
   test("the guard: an older or equal Video is skipped with its children; children without their Video are upserted one by one", () => {
     const db = open();
-    applyShared(db, { videos: [video(SV1, { updated_at: T(10) })], video_chapters: [chapter(CH(1), SV1, 0)] });
-    const r = applyShared(db, { videos: [video(SV1, { title: "stale", updated_at: T(9) })], video_chapters: [chapter(CH(9), SV1, 30, { updated_at: T(9) })] });
+    applyFlat(db, { videos: [video(SV1, { updated_at: T(10) })], video_chapters: [chapter(CH(1), SV1, 0)] });
+    const r = applyFlat(db, { videos: [video(SV1, { title: "stale", updated_at: T(9) })], video_chapters: [chapter(CH(9), SV1, 30, { updated_at: T(9) })] });
     expect(r.applied).toEqual({});
     expect(r.skipped).toEqual({ videos: 1, video_chapters: 1 });
     expect(db.query("SELECT title FROM videos").get()).toEqual({ title: "T 1111" });
     expect(db.query("SELECT COUNT(*) n FROM video_chapters").get()).toEqual({ n: 1 });
     // a lone Chapter (the parent not in the batch): applied when newer, skipped when not, nothing else removed
-    applyShared(db, { video_chapters: [chapter(CH(1), SV1, 0, { title: "newer", updated_at: T(11) }), chapter(CH(2), SV1, 5, { updated_at: T(11) })] });
+    applyFlat(db, { video_chapters: [chapter(CH(1), SV1, 0, { title: "newer", updated_at: T(11) }), chapter(CH(2), SV1, 5, { updated_at: T(11) })] });
     expect(db.query("SELECT id, title FROM video_chapters ORDER BY start_s").all()).toEqual([{ id: CH(1), title: "newer" }, { id: CH(2), title: "ch 5" }]);
-    expect(applyShared(db, { video_chapters: [chapter(CH(1), SV1, 0, { title: "older", updated_at: T(10) })] }).skipped).toEqual({ video_chapters: 1 });
+    expect(applyFlat(db, { video_chapters: [chapter(CH(1), SV1, 0, { title: "older", updated_at: T(10) })] }).skipped).toEqual({ video_chapters: 1 });
   });
 
   test("a Chapter that moved onto another's start replaces it; a Video whose identity is held under another id refuses the batch", () => {
     const db = open();
-    applyShared(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0), chapter(CH(2), SV1, 60)] });
-    applyShared(db, { videos: [video(SV1, { updated_at: T(11) })], video_chapters: [chapter(CH(2), SV1, 0)] });
+    applyFlat(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0), chapter(CH(2), SV1, 60)] });
+    applyFlat(db, { videos: [video(SV1, { updated_at: T(11) })], video_chapters: [chapter(CH(2), SV1, 0)] });
     expect(db.query("SELECT id, start_s FROM video_chapters").all()).toEqual([{ id: CH(2), start_s: 0 }]);
     insertVideo(db, { id: 5, youtube_id: "aaaaaaaaaaa", title: "Unshared here" });
-    expect(() => applyShared(db, { videos: [video(SV2, { youtube_id: "aaaaaaaaaaa", content_hash: null })] })).toThrow(/reconcile/);
+    expect(() => applyFlat(db, { videos: [video(SV2, { youtube_id: "aaaaaaaaaaa", content_hash: null })] })).toThrow(/reconcile/);
     expect(db.query("SELECT COUNT(*) n FROM videos WHERE id = ?").get(SV2)).toEqual({ n: 0 });
   });
 
@@ -135,12 +136,12 @@ describe("applyShared", () => {
     const PS = U(901);
     const PV = U(902);
     const PA = U(903);
-    applyShared(db, {
-      video_proposed_songs: [{ id: PS, name: "zz-test Song", english_name: null, alternate_titles: null, notes: null, updated_at: T(5) }],
-      video_proposed_versions: [{ id: PV, song_id: null, proposed_song_id: PS, version_label: "Complete", lyrics_cyrillic: "<p>Сөс</p>", lyrics_transliteration: null, lyrics_translation: null, footnotes_cyrillic: [{ id: 1, text: "n" }], footnotes_transliteration: null, updated_at: T(5) }],
-      video_proposed_artists: [{ id: PA, name: "zz-test Artist", updated_at: T(5) }],
+    applyFlat(db, {
+      video_proposed_songs: [{ id: PS, name: "zz-test Song", english_name: null, alternate_titles: null, notes: null, created_by: null, created_at: T(5), updated_at: T(5) }],
+      video_proposed_versions: [{ id: PV, song_id: null, proposed_song_id: PS, label: "Complete", lyrics_cyrillic: "<p>Сөс</p>", lyrics_transliteration: null, lyrics_translation: null, source: null, footnotes_cyrillic: [{ id: 1, text: "n" }], footnotes_transliteration: null, footnotes_translation: [], created_by: null, created_at: T(5), updated_at: T(5) }],
+      video_proposed_artists: [{ id: PA, name: "zz-test Artist", created_by: null, created_at: T(5), updated_at: T(5) }],
       videos: [video(SV1, { proposed_song_id: PS, proposed_version_id: PV })],
-      video_artists: [{ id: U(904), video_id: SV1, artist_id: null, proposed_artist_id: PA, position: 0, suggested: true, updated_at: T(10) }],
+      video_artists: [{ id: U(904), video_id: SV1, artist_id: null, proposed_artist_id: PA, position: 0, suggested: true, created_at: T(10), updated_at: T(10) }],
     });
     expect(db.query("SELECT kind FROM song_all WHERE id = ?").get(PS)).toEqual({ kind: "proposed" });
     expect(db.query("SELECT song_id, label, kind, footnotes_cyrillic, footnotes_transliteration FROM version_all WHERE id = ?").get(PV)).toEqual({
@@ -151,23 +152,27 @@ describe("applyShared", () => {
     expect(db.query("SELECT artist_id, suggested FROM video_artist_full WHERE video_id = ?").get(SV1)).toEqual({ artist_id: PA, suggested: 1 });
     expect(songPointers(db, PS, PV)).toEqual({ song_id: null, proposed_song_id: PS, version_id: null, proposed_version_id: PV });
     // an elevated Song leaves the Proposed table (its archive row keeps the id); a deleted Artist goes
-    const r = applyShared(db, {
+    const r = applyFlat(db, {
       songs: [{ id: PS, name: "zz-test Song", slug: "zz-test-song", is_hidden: true, updated_at: T(6) }],
-      tombstones: [{ table_name: "video_proposed_songs", row_id: PS, kind: "elevated", at: T(6) }, { table: "video_proposed_artists", row_id: PA, kind: "deleted", at: T(6) }],
+      tombstones: [
+        { id: U(910), table_name: "video_proposed_songs", row_id: PS, kind: "elevated", replaced_by: PS, at: T(6) },
+        { id: U(911), table_name: "video_proposed_artists", row_id: PA, kind: "deleted", replaced_by: null, at: T(6) },
+      ],
     });
     expect(r.tombstones).toBe(2);
     expect(db.query("SELECT kind FROM song_all WHERE id = ?").all(PS)).toEqual([{ kind: "archive" }]);
     expect(db.query("SELECT COUNT(*) n FROM artist_all WHERE id = ?").get(PA)).toEqual({ n: 0 });
-    expect(db.query("SELECT table_name, kind FROM shared_tombstone ORDER BY table_name").all()).toEqual([
-      { table_name: "video_proposed_artists", kind: "deleted" }, { table_name: "video_proposed_songs", kind: "elevated" },
+    expect(db.query("SELECT id, table_name, kind, replaced_by FROM shared_tombstone ORDER BY table_name").all()).toEqual([
+      { id: U(911), table_name: "video_proposed_artists", kind: "deleted", replaced_by: null },
+      { id: U(910), table_name: "video_proposed_songs", kind: "elevated", replaced_by: PS },
     ]);
-    expect(() => applyShared(db, { tombstones: [{ table_name: "videos", row_id: SV1, kind: "deleted", at: T(7) }] })).toThrow(/unknown table/);
+    expect(() => applyFlat(db, { tombstones: [{ id: U(912), table_name: "videos" as any, row_id: SV1, kind: "deleted", replaced_by: null, at: T(7) }] })).toThrow(/unknown table/);
   });
 
   test("a soft-deleted Video leaves the views and the index; it stays in the Local copy", () => {
     const db = open();
-    applyShared(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0)] });
-    applyShared(db, { videos: [video(SV1, { deleted_at: T(11), delete_reason: "duplicate", updated_at: T(11) })], video_chapters: [chapter(CH(1), SV1, 0)] });
+    applyFlat(db, { videos: [video(SV1)], video_chapters: [chapter(CH(1), SV1, 0)] });
+    applyFlat(db, { videos: [video(SV1, { deleted_at: T(11), delete_reason: "duplicate", updated_at: T(11) })], video_chapters: [chapter(CH(1), SV1, 0)] });
     expect(db.query("SELECT COUNT(*) n FROM video_full").get()).toEqual({ n: 0 });
     expect(db.query("SELECT COUNT(*) n FROM chapter_full").get()).toEqual({ n: 0 });
     expect(db.query("SELECT COUNT(*) n FROM videos").get()).toEqual({ n: 1 });
@@ -176,20 +181,20 @@ describe("applyShared", () => {
 
   test("a changed Song reindexes its Videos; above the threshold the index is rebuilt once", () => {
     const db = open();
-    applyShared(db, { songs: [{ id: U(1), name: "Мезегей", slug: "m", updated_at: T(1) }], videos: [video(SV1, { song_id: U(1), title: "Untitled" })] });
+    applyFlat(db, { songs: [{ id: U(1), name: "Мезегей", slug: "m", updated_at: T(1) }], videos: [video(SV1, { song_id: U(1), title: "Untitled" })] });
     expect((db.query("SELECT text FROM search WHERE kind = 'video' AND ref_id = ?").get(SV1) as any).text).toContain("Мезегей");
-    const r = applyShared(db, { songs: [{ id: U(1), name: "Межегей", slug: "m", updated_at: T(2) }] });
+    const r = applyFlat(db, { songs: [{ id: U(1), name: "Межегей", slug: "m", updated_at: T(2) }] });
     expect(r.reindex).toBe("rows");
     expect((db.query("SELECT text FROM search WHERE kind = 'video' AND ref_id = ?").get(SV1) as any).text).toContain("Межегей");
     const many = Array.from({ length: REBUILD_THRESHOLD + 1 }, (_, i) => video(`aaaaaaaa-0000-4000-8000-${String(i).padStart(12, "0")}`));
-    expect(applyShared(db, { videos: many }).reindex).toBe("rebuild");
+    expect(applyFlat(db, { videos: many }).reindex).toBe("rebuild");
     expect(db.query("SELECT COUNT(*) n FROM search WHERE kind = 'video'").get()).toEqual({ n: REBUILD_THRESHOLD + 2 });
   });
 
   test("columns the Local copy does not hold are ignored; history rows are kept once", () => {
     const db = open();
-    const h = { id: U(50), video_id: SV1, target_type: "video", target_id: SV1, editor_id: U(60), event_type: "video.scanned", field_name: null, old_value: null, new_value: { title: "x" }, description: null, created_at: T(10) };
-    applyShared(db, { videos: [{ ...video(SV1), created_by: "someone" } as any], video_edit_history: [h, h] });
+    const h = { id: U(50), video_id: SV1, target_type: "video", target_id: SV1, editor_id: U(60), event_type: "video.scanned", field_name: null, old_value: null, new_value: { title: "x" }, description: "scanned", reverses: null, created_at: T(10), updated_at: T(10) };
+    applyFlat(db, { videos: [{ ...video(SV1), created_by: "someone" } as any], video_edit_history: [h, h] });
     expect(db.query("SELECT event_type, new_value FROM video_edit_history").all()).toEqual([{ event_type: "video.scanned", new_value: '{"title":"x"}' }]);
   });
 });

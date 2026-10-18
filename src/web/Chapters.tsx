@@ -12,9 +12,14 @@ import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
 import { RELOADED_EVENT, writeLink, WriteLinkError } from "./writeLink";
 import { FavoriteBadge, StripFrame } from "./ui";
+import { EDIT_DISABLED_NOTICE, type EditGate } from "./chipView";
 
 interface StripProps {
   video: VideoDto;
+  /** §7.3: the Video's edit gate. "hidden" (a Member on a Shared Video) leaves the strip read-only with no edit
+   *  controls; "disabled" (a Video Editor offline or unsettled) shows them disabled with the notice. Seek, Space and
+   *  Favorite (everyone's) keep working. */
+  gate?: EditGate;
   chapters: ChapterDto[];
   /** The Chapter the playhead is in. */
   curId: string | null;
@@ -48,7 +53,9 @@ export function catchTyping() {
   el.focus({ preventScroll: true });
 }
 
-export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd, onNewDone }: StripProps) {
+export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd, onNewDone, gate = "enabled" }: StripProps) {
+  const locked = gate !== "enabled";
+  const lockTitle = gate === "disabled" ? EDIT_DISABLED_NOTICE : undefined;
   const scroller = useRef<HTMLDivElement>(null);
   const wantFocus = useRef<string | null>(null);
   const [pickFor, setPickFor] = useState<string | null>(null);
@@ -129,11 +136,13 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
         <h2>
           Chapters <span class="dim">{chapters.length ? `· ${chapters.length}` : ""}</span>
         </h2>
-        <button class="btn small" title="Add a Chapter at the playhead (c, with the Player focused)" onClick={onAdd}>
-          + Add at playhead
-        </button>
-        {suggestedN > 0 && (
-          <button class="btn small" title="Confirm every Suggested Chapter of this Video" onClick={() => void run(() => writeLink(video, { kind: "chapters.confirmAll" }))}>
+        {gate !== "hidden" && (
+          <button class="btn small" disabled={locked} title={lockTitle ?? "Add a Chapter at the playhead (c, with the Player focused)"} onClick={onAdd}>
+            + Add at playhead
+          </button>
+        )}
+        {gate !== "hidden" && suggestedN > 0 && (
+          <button class="btn small" disabled={locked} title={lockTitle ?? "Confirm every Suggested Chapter of this Video"} onClick={() => void run(() => writeLink(video, { kind: "chapters.confirmAll" }))}>
             Confirm all ({suggestedN})
           </button>
         )}
@@ -142,7 +151,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
       <div class="chs-wrap">
         <input id={SINK_ID} class="chs-sink" tabIndex={-1} aria-hidden="true" autocomplete="off" />
         <div class="chs-scroll" ref={scroller}>
-          {chapters.length === 0 && <span class="dim chs-empty">No Chapters yet. Press <kbd>c</kbd> while the Player has focus to add one at the playhead.</span>}
+          {chapters.length === 0 && (locked ? <span class="dim chs-empty">No Chapters.</span> : <span class="dim chs-empty">No Chapters yet. Press <kbd>c</kbd> while the Player has focus to add one at the playhead.</span>)}
           {chapters.map((c) => (
             <ChapterCard
               key={c.id}
@@ -157,6 +166,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
               keepFocus={(id) => (wantFocus.current = id)}
               afterDelete={focusNeighbour}
               pickSong={() => setPickFor(c.id)}
+              gate={gate}
             />
           ))}
         </div>
@@ -203,10 +213,15 @@ interface CardProps {
   keepFocus(id: string): void;
   afterDelete(id: string): void;
   pickSong(): void;
+  gate: EditGate;
 }
 
-function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, keepFocus, afterDelete, pickSong }: CardProps) {
-  const [mode, setMode] = useState<Mode>(autoEdit ? "title" : "view");
+function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, keepFocus, afterDelete, pickSong, gate }: CardProps) {
+  const locked = gate !== "enabled";
+  const lockTitle = gate === "disabled" ? EDIT_DISABLED_NOTICE : undefined;
+  const [mode, setModeRaw] = useState<Mode>(autoEdit && !locked ? "title" : "view");
+  // a locked card never leaves "view": no title, time or delete mode
+  const setMode = (m: Mode) => setModeRaw(locked && m !== "view" ? "view" : m);
   const [err, setErr] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const fresh = useRef(autoEdit); // opened by `c`: Esc removes it, and focus returns to the Player afterwards
@@ -310,6 +325,13 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
       return;
     }
     if (mode !== "view") return;
+    if (locked) {
+      // read-only (§7.3): seek, Favorite and Esc only
+      if (k === " ") (handled(), ctl.current?.seekTo(c.startS));
+      else if (k === "f" || k === "F") (handled(), void toggleFavorite("chapter", c.id).then(() => run(async () => {})));
+      else if (k === "Escape") (handled(), ctl.current?.focus());
+      return;
+    }
     if (k === "ArrowLeft") (handled(), nudge(-1));
     else if (k === "ArrowRight") (handled(), nudge(1));
     else if (k === ".") (handled(), void setToPlayhead());
@@ -354,7 +376,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
               onCancel={toView}
             />
           ) : (
-            <button class="chtime mono" tabIndex={-1} title="Click to type a time (m:ss, h:mm:ss or seconds)" onClick={() => setMode("time")}>
+            <button class="chtime mono" tabIndex={-1} disabled={locked} title={locked ? lockTitle : "Click to type a time (m:ss, h:mm:ss or seconds)"} onClick={() => setMode("time")}>
               {formatStart(c.startS)}
             </button>
           )}
@@ -373,7 +395,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
         {mode === "title" ? (
           <InlineInput class="chtitle-in" label="Chapter title" initial={typedAhead.current || c.title} caretEnd={!!typedAhead.current} placeholder="Title…" onSave={saveTitle} onCancel={cancelTitle} />
         ) : (
-          <div class={`chtitle${c.title ? "" : " dim"}`} title={c.title || "Untitled: press Enter to name it"} onDblClick={() => setMode("title")}>
+          <div class={`chtitle${c.title ? "" : " dim"}`} title={c.title || (locked ? "Untitled" : "Untitled: press Enter to name it")} onDblClick={() => setMode("title")}>
             {c.title || "untitled"}
           </div>
         )}
@@ -387,7 +409,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
             {versions.map((x, i) => {
               const on = c.versionId ? c.versionId === x.id : i === 0;
               return (
-                <button key={x.id} class={`pill${on ? " on" : ""}`} tabIndex={-1} aria-pressed={on} onClick={() => void tryPatch({ versionId: x.id })}>
+                <button key={x.id} class={`pill${on ? " on" : ""}`} tabIndex={-1} aria-pressed={on} disabled={locked} title={lockTitle} onClick={() => void tryPatch({ versionId: x.id })}>
                   {x.label}
                 </button>
               );
@@ -404,8 +426,8 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
               Cancel <kbd>esc</kbd>
             </button>
           </div>
-        ) : (
-          <div class="chact">
+        ) : gate === "hidden" ? null : (
+          <fieldset class="chact" disabled={locked} title={lockTitle}>
             {c.suggested && (
               <>
                 <button class="chbtn ok" tabIndex={-1} title="Confirm this Chapter (y)" onClick={() => (keepFocus(c.id), void run(() => writeLink(video, { kind: "chapter.confirm", chapter: c })))}>
@@ -429,7 +451,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
                 {TRASH}
               </button>
             )}
-          </div>
+          </fieldset>
         )}
         {err && (
           <div class="edit-err chrerr" role="alert">

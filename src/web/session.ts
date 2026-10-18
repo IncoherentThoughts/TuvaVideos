@@ -7,12 +7,16 @@
 import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "preact/hooks";
 import type { RpcClient } from "../shared/archive";
+import type { ReconcileResponse } from "../shared/reconcile";
 import {
   AUTH_SETTLE_MS, classifySignedOut, decodeTab, editAccess, encodeTab, INITIAL_SESSION_STATE, probeOutcome,
   SIGN_IN_ERRORS, signInFailure, sessionReducer, syncWanted, tabAction, TAB_KEY,
   type BrowserSession, type EndedReason, type ProbeOutcome, type SchemaMismatch, type SessionAction, type SessionRecord, type SessionResponse,
   type SessionState, type SyncProgress, type SyncRequest, type SyncResponse, type SyncTrigger, type TabMessage,
 } from "../shared/session";
+import { shareStep, type DrainResult, type PendingShareSummary, type ShareEvent } from "../shared/share";
+import type { PosterUploadResult } from "../shared/posters";
+import { readShareSummary, runDrain, runPosterUpload, scanBusy, setShareAuto } from "./sharing";
 
 // ---------------------------------------------------------------------------------------------------------------
 // The store
@@ -192,6 +196,8 @@ function runSync(full: boolean): Promise<SyncResponse | null> {
     broadcast({ kind: "record", record: res.record });
     // §6.2: a 401 runs the revocation probe (a revoked session ends here; an expired token just refreshes).
     if (res.unauthorized) void probe();
+    // §6.5, §6.6: at each Sync the queue is drained (or the one question asked) and local posters go up.
+    if (res.ok) void afterSyncShare();
     return res;
   })().finally(() => {
     syncInFlight = null;
@@ -225,9 +231,40 @@ export interface SignInResult {
   sync: SyncResponse | null;
   /** `video_whoami().must_change_password`: show the notice linking to songsofthesteppe.org; the session stays. */
   mustChangePassword: boolean;
+  /** §2.3: what Continue will shelve (`GET /api/reconcile/preview`); null when no preview ran. */
+  reconcile?: ReconcileResponse | null;
 }
 
-/** §5.1: `signInWithPassword`, then a Sync that writes the record. Reconciliation's count and confirm are #131/#115's. */
+/**
+ * §2.3 (#149): the companion's reconcile routes with this browser's access token. `confirm` is Continue: reconcile
+ * and apply, then the Sync of "sign-in completes". The record the companion wrote reaches every tab.
+ */
+async function reconcileCall(confirm: boolean): Promise<ReconcileResponse | null> {
+  const token = client ? (await client.auth.getSession()).data.session?.access_token : null;
+  if (!token) return null;
+  try {
+    const r = await (confirm
+      ? fetch("/api/reconcile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ access_token: token }) })
+      : fetch("/api/reconcile/preview", { headers: { authorization: `Bearer ${token}` } }));
+    if (!r.ok) return null;
+    const res = (await r.json()) as ReconcileResponse;
+    dispatch({ type: "record", record: res.record });
+    broadcast({ kind: "record", record: res.record });
+    return res;
+  } catch {
+    return null;
+  }
+}
+
+/** Continue on the reconciliation confirm (§2.3, §5.1): reconcile, then Sync. */
+export async function confirmSignIn(): Promise<{ reconcile: ReconcileResponse | null; sync: SyncResponse | null }> {
+  const reconcile = await reconcileCall(true);
+  if (!reconcile?.ok) return { reconcile, sync: null };
+  firstSyncAfterSignIn = true; // §6.6: the question may ride on the first Sync after the confirmed sign-in
+  return { reconcile, sync: await runSync(false) };
+}
+
+/** §5.1: `signInWithPassword`, then the reconciliation preview (which writes the record); Continue is `confirmSignIn`. */
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   const c = await (clientReady ?? startSession());
   if (!c) return { ok: false, error: SIGN_IN_ERRORS.unreachable, sync: null, mustChangePassword: false };
@@ -241,8 +278,9 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   expectSignedOut = false;
   dispatch({ type: "auth", session: toBrowser(result.data.session) });
   dispatch({ type: "reach", reachable: true });
-  const sync = await runSync(false); // §6.4: sign-in completes (the record may not name this user yet)
-  return { ok: true, error: null, sync, mustChangePassword: sync?.mustChangePassword === true };
+  // §5.1: whoami (the record) and the count of what reconciliation will shelve; the Sync waits for Continue.
+  const reconcile = await reconcileCall(false);
+  return { ok: true, error: null, sync: null, reconcile, mustChangePassword: reconcile?.mustChangePassword === true };
 }
 
 /** Sign out, and Cancel on the reconciliation confirm (§2.4, §5.1): record cleared first, then the local session. */
@@ -267,6 +305,162 @@ export function dismissEnded() {
 export function archiveRpc(): RpcClient | null {
   const c = client;
   return c ? { rpc: (fn, args) => c.rpc(fn as never, args as never) as never } : null;
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// `pending_share` and posters (§6.5, §6.6; #140)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The upload's progress for the chip ("posters n of m"); `last` is the previous run's outcome. */
+export interface PosterUploadState {
+  running: boolean;
+  done: number;
+  total: number;
+  last: PosterUploadResult | null;
+}
+
+let shareSummary: PendingShareSummary | null = null;
+let shareQuestionOpen = false;
+let draining: Promise<DrainResult | null> | null = null;
+let lastDrain: DrainResult | null = null;
+let posterState: PosterUploadState = { running: false, done: 0, total: 0, last: null };
+let posterRun: Promise<PosterUploadResult | null> | null = null;
+let firstSyncAfterSignIn = false;
+const ASKED_KEY = "tuva.share.askedNewestAt";
+const notify = () => {
+  for (const l of listeners) l();
+};
+function askedNewestAt(): string | null {
+  try {
+    return localStorage.getItem(ASKED_KEY);
+  } catch {
+    return null;
+  }
+}
+function rememberAsked(at: string | null) {
+  try {
+    if (at) localStorage.setItem(ASKED_KEY, at);
+  } catch {}
+}
+
+const shareReady = () => editAccess(state, Date.now()).enabled && state.reachable === true;
+
+/** Re-reads the queue's counts from the companion (the chip row and the question read them). */
+export async function refreshPendingShare(): Promise<PendingShareSummary | null> {
+  const s = await readShareSummary();
+  if (s) {
+    shareSummary = s;
+    if (!s.count) shareQuestionOpen = false;
+    notify();
+  }
+  return s;
+}
+
+/** Applies §6.6's rule to one event: asks the one question, drains, or does nothing. */
+async function considerShare(event: ShareEvent): Promise<DrainResult | null> {
+  const first = event === "sync" && firstSyncAfterSignIn;
+  if (event === "sync") firstSyncAfterSignIn = false;
+  const summary = await refreshPendingShare();
+  if (!summary) return null;
+  const step = shareStep(
+    event,
+    { canEdit: editAccess(state, Date.now()).enabled, online: state.reachable === true, scanning: await scanBusy(), summary },
+    { firstSyncAfterSignIn: first, askedNewestAt: askedNewestAt() },
+  );
+  if (step === "ask") {
+    rememberAsked(summary.newestAt);
+    shareQuestionOpen = true;
+    notify();
+  } else if (step === "drain") return drain();
+  return null;
+}
+
+async function drain(): Promise<DrainResult | null> {
+  if (draining) return draining;
+  draining = (async () => {
+    // §6.6: never offline, never mid-scan; the queue waits.
+    if (!shareReady() || (await scanBusy())) return null;
+    const rpc = archiveRpc();
+    if (!rpc) return null;
+    const r = await runDrain(rpc);
+    lastDrain = r;
+    if (r?.errors.length) console.warn(`share: ${r.errors.join("; ")}`);
+    await refreshPendingShare();
+    return r;
+  })().finally(() => {
+    draining = null;
+    notify();
+  });
+  notify();
+  const r = await draining;
+  // The new Shared Videos' posters, then the after-write Sync (§6.4) for what others changed meanwhile.
+  if (r && r.shared > 0) {
+    await uploadPostersNow();
+    void afterWrite();
+  }
+  return r;
+}
+
+/**
+ * The question's "Share" (§6.6): this machine answers once, later drains run without asking. Drains now.
+ */
+export async function shareNow(): Promise<DrainResult | null> {
+  shareQuestionOpen = false;
+  const s = await setShareAuto("", true);
+  if (s) shareSummary = s;
+  notify();
+  return drain();
+}
+
+/** The question's "Not now": the queue waits and the Videos stay Unshared; the chip row reopens the question. */
+export function declineShare() {
+  shareQuestionOpen = false;
+  notify();
+}
+
+/** The chip row **Share n new Videos…** (#131 owns the row): opens the same question while the queue is non-empty. */
+export async function openShareQuestion(): Promise<void> {
+  await considerShare("open");
+}
+
+/** Uploads this machine's local posters of Shared Videos that have none (§6.5), 4 at a time, in the background. */
+export function uploadPostersNow(): Promise<PosterUploadResult | null> {
+  if (posterRun) return posterRun;
+  posterRun = (async () => {
+    if (!shareReady() || !client) return null;
+    const rpc = archiveRpc();
+    if (!rpc) return null;
+    posterState = { ...posterState, running: true, done: 0, total: 0 };
+    notify();
+    const r = await runPosterUpload(client, rpc, "", (done, total) => {
+      posterState = { ...posterState, done, total };
+      notify();
+    });
+    if (r?.errors.length) console.warn(`posters: ${r.errors.join("; ")}`);
+    posterState = { ...posterState, running: false, last: r ?? posterState.last };
+    return r;
+  })().finally(() => {
+    posterRun = null;
+    posterState = { ...posterState, running: false };
+    notify();
+  });
+  return posterRun;
+}
+
+async function afterSyncShare() {
+  await considerShare("sync");
+  await uploadPostersNow();
+}
+
+/**
+ * A scan just finished (the top bar's scan poll calls this): §6.6's scan-end rule, then the poster upload. True when
+ * Local copy rows changed (the caller reloads the grid).
+ */
+export async function afterScan(): Promise<boolean> {
+  const d = await considerShare("scan-end");
+  const u = await uploadPostersNow();
+  return (d?.shared ?? 0) + (u?.uploaded ?? 0) > 0;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -300,12 +494,28 @@ export interface UseSession {
   schemaMismatch: SchemaMismatch | null;
   signIn: typeof signIn;
   signOut: typeof signOut;
+  /** Continue on the reconciliation confirm. */
+  confirmSignIn: typeof confirmSignIn;
   requestSync: typeof requestSync;
   dismissEnded: typeof dismissEnded;
   /** Call after a Video Editor's own write (#116). */
   afterWrite: typeof afterWrite;
   /** Settings' "Refresh all Shared data". */
   refreshAll: typeof refreshAll;
+  /** §6.6: the `pending_share` queue's counts (null until read). The chip row shows while `count` > 0. */
+  pendingShare: PendingShareSummary | null;
+  /** §6.6: the one question is showing ("Share n new Videos from <folder>?"). */
+  shareQuestion: boolean;
+  /** A drain is running. */
+  sharing: boolean;
+  /** The last drain's outcome, null before one ran. */
+  lastShare: DrainResult | null;
+  shareNow: typeof shareNow;
+  declineShare: typeof declineShare;
+  openShareQuestion: typeof openShareQuestion;
+  /** §6.5: the background poster upload. */
+  posterUpload: PosterUploadState;
+  uploadPosters: typeof uploadPostersNow;
 }
 
 export function useSession(): UseSession {
@@ -322,6 +532,8 @@ export function useSession(): UseSession {
     record: s.record, recordLoaded: s.recordLoaded, authSettled: s.authSettled, canEdit: access.enabled, editorView: access.shown,
     browserSignedIn: !!s.browser, reachable: s.reachable, syncing: s.syncing, lastSyncError: s.lastSyncError, ended: s.ended,
     progress: s.progress, lastSyncAt: s.record?.lastSyncAt ?? null, schemaMismatch: s.schemaMismatch,
-    signIn, signOut, requestSync, dismissEnded, afterWrite, refreshAll,
+    signIn, signOut, confirmSignIn, requestSync, dismissEnded, afterWrite, refreshAll,
+    pendingShare: shareSummary, shareQuestion: shareQuestionOpen, sharing: draining != null, lastShare: lastDrain,
+    shareNow, declineShare, openShareQuestion, posterUpload: posterState, uploadPosters: uploadPostersNow,
   };
 }

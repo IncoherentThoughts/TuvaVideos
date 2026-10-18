@@ -262,13 +262,16 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     // ---- Videos, then their children
     const appliedVideos = new Set<string>();
     const skippedVideos = new Set<string>();
-    const markShared = db.prepare("INSERT INTO video_local (video_id, shared) VALUES (?, 1) ON CONFLICT(video_id) DO UPDATE SET shared = 1");
+    // A Video the archive holds is Shared: it leaves the `pending_share` queue (§6.6, the drain's insert comes back here).
+    const markShared = db.prepare("INSERT INTO video_local (video_id, shared, pending_share) VALUES (?, 1, 0) ON CONFLICT(video_id) DO UPDATE SET shared = 1, pending_share = 0");
     for (const v of changes.videos ?? []) {
       if (put("videos", v as Row)) {
         appliedVideos.add(v.id);
-        markShared.run(v.id);
         changed.videos.add(v.id);
       } else skippedVideos.add(v.id);
+      // Shared either way: a row the guard skipped (a drained insert whose server stamp is not newer than the scan's
+      // local one) still names a Video the archive holds.
+      markShared.run(v.id);
     }
     for (const table of CHILDREN) {
       const rows = (changes[table] ?? []) as Row[];

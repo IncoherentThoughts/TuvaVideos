@@ -52,6 +52,7 @@ export function writeSessionRecord(db: Db, rec: Partial<SessionRecord> & { userI
       ? cur
       : { userId: rec.userId, email: null, displayName: null, avatarUrl: null, grantLevel: null, archiveRole: null, lastVerifiedAt: null, lastSyncAt: null, watermark: null };
   const next: SessionRecord = { ...base, ...Object.fromEntries(Object.entries(rec).filter(([, v]) => v !== undefined)) } as SessionRecord;
+  if (cur && cur.userId === next.userId && cur.grantLevel === "editor" && next.grantLevel !== "editor") loseEditorGrant(db);
   db.query(
     `INSERT INTO session_record (id, user_id, email, display_name, avatar_url, grant_level, archive_role, last_verified_at, last_sync_at, watermark)
      VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -60,6 +61,15 @@ export function writeSessionRecord(db: Db, rec: Partial<SessionRecord> & { userI
        last_verified_at = excluded.last_verified_at, last_sync_at = excluded.last_sync_at, watermark = excluded.watermark`,
   ).run(next.userId, next.email, next.displayName, next.avatarUrl, next.grantLevel, next.archiveRole, next.lastVerifiedAt, next.lastSyncAt, next.watermark);
   return next;
+}
+
+/**
+ * Losing the grant (§2.5): a Video Editor whose re-read grant (sign-in, every Sync, a write's permission error) is no
+ * longer `editor` is a Member. The Videos queued to be shared stay Unshared, taggable locally; there are no local
+ * forks of Shared Videos to undo (a Member never edits them). Returns how many left the queue.
+ */
+export function loseEditorGrant(db: Db): number {
+  return db.query("UPDATE video_local SET pending_share = 0 WHERE pending_share = 1").run().changes;
 }
 
 /** Sign out, a SIGNED_OUT event or a cancelled reconciliation (§2.4, §5.4). The Local copy stays, read-only. */

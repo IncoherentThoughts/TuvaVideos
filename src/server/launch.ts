@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { Config } from "./config";
 import { startApp } from "./app";
 import { initLog, log } from "./log";
+import { openCommandFor } from "./platform";
 
 async function healthAnswers(port: number): Promise<boolean> {
   try {
@@ -14,7 +15,9 @@ async function healthAnswers(port: number): Promise<boolean> {
 }
 
 function openTab(port: number) {
-  spawn("open", [`http://localhost:${port}`], { stdio: "ignore", detached: true }).unref();
+  // `open` / `xdg-open` / `cmd /c start` (sharing-spec §8.2).
+  const { cmd, args } = openCommandFor(process.platform, `http://localhost:${port}`);
+  spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
 }
 
 /** `bun run start`: if TuvaVideos already answers on the port only open the tab, else serve and open it. */

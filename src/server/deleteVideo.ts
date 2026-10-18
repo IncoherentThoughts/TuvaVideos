@@ -9,6 +9,7 @@ import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config";
 import type { Db } from "./db";
+import { NO_TRASH_NOTICE, resolveTrash } from "./platform";
 import { run } from "./proc";
 import type { Roots } from "./roots";
 
@@ -20,6 +21,8 @@ export interface DeleteResult {
   kept: { path: string; reason: string }[];
   /** True when the identity was recorded so a scan skips the files left behind. */
   tombstoned: boolean;
+  /** Set when a media delete found no trash command on this machine (sharing-spec §8.2): every file was kept. */
+  notice?: string;
 }
 
 interface CopyRow {
@@ -46,14 +49,17 @@ export async function deleteVideo(
 
   const trashed: string[] = [];
   const kept: DeleteResult["kept"] = [];
+  const trash = opts.media ? resolveTrash(cfg.trash) : null;
   for (const c of copies) {
     const root = roots.get(c.root_id);
     const path = join(root?.path ?? "", c.rel_path);
     if (!opts.media) kept.push({ path, reason: "kept" });
     else if (c.missing_since) continue; // nothing on disk to keep or trash
     else if (!root || !roots.isAvailable(c.root_id)) kept.push({ path, reason: "drive not mounted" });
+    else if (!trash) kept.push({ path, reason: "no trash command" });
     else {
-      const r = await run(cfg.trash, [path], { timeout: 30_000 });
+      const { cmd, args } = trash.argv(path);
+      const r = await run(cmd, args, { timeout: 30_000 });
       if (r.code === 0) trashed.push(path);
       else kept.push({ path, reason: r.err.trim() || `trash exited ${r.code}` });
     }
@@ -80,7 +86,7 @@ export async function deleteVideo(
     // Chapters, Artist links, rejections, the side tables, audio settings and Shelved edits go with the row (ON DELETE CASCADE).
     db.prepare("DELETE FROM videos WHERE id = ?").run(videoId);
   })();
-  return { deleted: true, trashed, kept, tombstoned };
+  return { deleted: true, trashed, kept, tombstoned, ...(opts.media && !trash ? { notice: NO_TRASH_NOTICE } : {}) };
 }
 
 /** The scanner's check: a file with this identity belongs to a deleted Video. */

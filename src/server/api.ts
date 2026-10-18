@@ -12,7 +12,8 @@ import type { Scanner } from "./scan";
 import type { TvServer } from "./tv";
 import { factsOfRow, parseDecision } from "./tvJudge";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
-import { deleteVideo } from "./deleteVideo";
+import { deleteVideo, removeCopies } from "./deleteVideo";
+import { deletedMatches, kindsOf, sharedSuggestions } from "./sharedWrites";
 import { serveFile } from "./stream";
 import type { KeyframeIndex } from "./keyframes";
 import { NO_TRASH_NOTICE, resolveTrash } from "./platform";
@@ -102,6 +103,7 @@ interface VideoDbRow {
   instagram_id: string | null;
   rutube_id: string | null;
   shared: number;
+  updated_at: string;
   title: string;
   title_latin: string | null;
   title_latin_source: "archive" | "table" | "manual" | null;
@@ -186,6 +188,7 @@ export function createHandler(s: Services) {
       instagramId: v.instagram_id,
       rutubeId: v.rutube_id,
       shared: !!v.shared,
+      updatedAt: v.updated_at,
       title: v.title,
       titleLatin: v.title_latin,
       titleLatinSource: v.title_latin_source,
@@ -245,10 +248,10 @@ export function createHandler(s: Services) {
     };
     const only = videoIds ? new Set(videoIds) : null;
     for (const r of s.db
-      .query("SELECT va.video_id, va.suggested, a.id, a.name, a.name_latin, a.kind FROM video_artist_full va JOIN artist_all a ON a.id = va.artist_id ORDER BY va.video_id, va.suggested, va.position")
-      .all() as { video_id: string; suggested: number; id: string; name: string; name_latin: string | null; kind: string }[]) {
+      .query("SELECT va.link_id, va.video_id, va.suggested, a.id, a.name, a.name_latin, a.kind FROM video_artist_full va JOIN artist_all a ON a.id = va.artist_id ORDER BY va.video_id, va.suggested, va.position")
+      .all() as { link_id: string; video_id: string; suggested: number; id: string; name: string; name_latin: string | null; kind: string }[]) {
       if (only && !only.has(r.video_id)) continue;
-      get(r.video_id).artists.push({ id: r.id, name: r.name, nameLatin: r.name_latin, local: r.kind === "local", proposed: r.kind === "proposed", suggested: !!r.suggested });
+      get(r.video_id).artists.push({ id: r.id, name: r.name, nameLatin: r.name_latin, local: r.kind === "local", proposed: r.kind === "proposed", suggested: !!r.suggested, linkId: r.link_id });
     }
     for (const r of s.db.query("SELECT video_id, COUNT(*) n FROM chapter_full GROUP BY video_id").all() as { video_id: string; n: number }[]) {
       if (only && !only.has(r.video_id)) continue;
@@ -434,6 +437,10 @@ export function createHandler(s: Services) {
         if (p === "/api/health") return json(health());
         if (p === "/api/tv") return json(s.tv.state());
         if (p === "/api/videos") return json(allVideos());
+        // The client write seam's reads (sharing-spec §4.3, §4.5, §4.9; src/server/sharedWrites.ts).
+        if (p === "/api/kinds") return json(kindsOf(s.db, url.searchParams));
+        if (p === "/api/videos/deleted-matches") return json(deletedMatches(s.db, s.roots));
+        if (p === "/api/suggestions/shared") return json(machineMode(readSessionRecord(s.db)) === "editor" ? sharedSuggestions(s.db) : []);
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
           const v = s.db.query("SELECT * FROM video_full WHERE id = ?").get(m[1]!) as VideoDbRow | null;
           if (!v) return json({ error: "no such video" }, 404);
@@ -643,6 +650,13 @@ export function createHandler(s: Services) {
       if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/view$/))) {
         if (!resetViews(s.db, m[1]!)) return json({ error: "no such video" }, 404);
         return videoResponse(m[1]!);
+      }
+      if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/copies$/))) {
+        // This machine's Copies to the Trash; the Video stays, Not on this machine (sharing-spec §4.5). Same-origin only.
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const r = await removeCopies(s.db, s.cfg, s.roots, m[1]!);
+        return r ? json(r) : json({ error: "no such video" }, 404);
       }
       if (req.method === "DELETE" && (m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
         // Delete a Video from the library; `media: true` also moves its files to the Trash (deleteVideo.ts).

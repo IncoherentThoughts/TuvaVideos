@@ -14,6 +14,7 @@ import { matchRoute, useLocation } from "./router";
 import { applyThemeFromUrl } from "./theme";
 import { startSession } from "./session";
 import { EndedBanner } from "./Account";
+import { ConflictNotice, DeletedMatchNotice } from "./ConflictNotice";
 import { ShareQuestion } from "./ShareQuestion";
 
 function App() {
@@ -26,6 +27,8 @@ function App() {
       <VideoMenu />
       <main>
         <EndedBanner />
+        <ConflictNotice />
+        <DeletedMatchNotice />
         <ShareQuestion />
         {error && <div class="empty-state">Server problem: {error}</div>}
         {route.name === "library" && <Library search={loc.search} />}

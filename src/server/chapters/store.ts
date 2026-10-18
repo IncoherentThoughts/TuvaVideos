@@ -32,12 +32,13 @@ export interface ChapterRow {
   suggested: number;
   source: ChapterDto["source"];
   favorited_at: string | null;
+  updated_at: string;
 }
 
 export function chapterDto(db: Db, c: ChapterRow): ChapterDto {
   return {
     id: c.id, videoId: c.video_id, startS: c.start_s, title: c.title, titleLatin: c.title_latin, suggested: !!c.suggested,
-    source: c.source, songId: c.song_id, versionId: c.version_id, song: songRef(db, c.song_id), favoritedAt: c.favorited_at,
+    source: c.source, songId: c.song_id, versionId: c.version_id, song: songRef(db, c.song_id), favoritedAt: c.favorited_at, updatedAt: c.updated_at,
   };
 }
 

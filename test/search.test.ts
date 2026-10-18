@@ -120,7 +120,7 @@ describe("html to lyric lines and alternates", () => {
 });
 
 const vid = (id: number, o: Partial<VideoDto> = {}): VideoDto => ({
-  id: V(id), youtubeId: null, instagramId: null, rutubeId: null, shared: false, title: `V${id}`, titleLatin: null, titleLatinSource: null, type: "other", typeSuggested: false, songId: null, versionId: null, song: null, songSuggested: false, suggestionSource: null, favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, loop: null,
+  id: V(id), youtubeId: null, instagramId: null, rutubeId: null, shared: false, updatedAt: "2026-01-01T00:00:00Z", title: `V${id}`, titleLatin: null, titleLatinSource: null, type: "other", typeSuggested: false, songId: null, versionId: null, song: null, songSuggested: false, suggestionSource: null, favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, loop: null,
   createdAt: "2026-01-01T00:00:00Z", addedAt: `2026-01-0${id}T00:00:00Z`, chapterCount: 0, artists: [], availability: null,
   durationS: id * 100, available: false, preferredCopyId: null, width: null, height: null, thumbnail: null, copies: [], ...o,
 });

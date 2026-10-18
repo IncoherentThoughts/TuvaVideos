@@ -25,7 +25,13 @@ export interface SongSuggestRow {
   window: string;
 }
 
-export function suggestSongsFromTitles(db: Db, opts: { videoId?: string; dryRun?: boolean; report?: SongSuggestRow[]; touched?: string[] } = {}): SongSuggestStats {
+/**
+ * `scope: "shared"` (a Video Editor's machine, §4.3) reads the Shared Videos that never had a Song or a manual value
+ * and writes nothing (implies `dryRun`): the matches go to `report` for the browser to write through `write_videos`.
+ */
+export function suggestSongsFromTitles(db: Db, opts: { videoId?: string; dryRun?: boolean; report?: SongSuggestRow[]; touched?: string[]; scope?: "unshared" | "shared" } = {}): SongSuggestStats {
+  const shared = opts.scope === "shared";
+  if (shared) opts = { ...opts, dryRun: true };
   const stats: SongSuggestStats = { videos: 0, suggested: 0, changed: 0, cleared: 0 };
   const rows = db.query("SELECT id, name, english_name, alternate_titles, alternate_spellings FROM song_all WHERE is_hidden = 0").all() as {
     id: string;
@@ -42,7 +48,7 @@ export function suggestSongsFromTitles(db: Db, opts: { videoId?: string; dryRun?
   const videos = db
     .query(
       `SELECT id, title, song_id, suggestion_source FROM video_full
-        WHERE shared = 0 AND ((song_id IS NULL AND suggestion_source IS NULL) OR suggestion_source = 'title') ${opts.videoId != null ? "AND id = ?" : ""}
+        WHERE ${shared ? "shared = 1 AND song_id IS NULL AND suggestion_source IS NULL" : "shared = 0 AND ((song_id IS NULL AND suggestion_source IS NULL) OR suggestion_source = 'title')"} ${opts.videoId != null ? "AND id = ?" : ""}
         ORDER BY created_at, id`,
     )
     .all(...(opts.videoId != null ? [opts.videoId] : [])) as { id: string; title: string; song_id: string | null; suggestion_source: string | null }[];

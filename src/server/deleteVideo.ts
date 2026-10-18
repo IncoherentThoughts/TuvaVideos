@@ -47,23 +47,8 @@ export async function deleteVideo(
   if (v.shared) return { refused: "a Shared Video is deleted through the archive, not here" };
   const copies = db.query("SELECT id, root_id, rel_path, fallback_file, missing_since FROM copy WHERE video_id = ?").all(videoId) as CopyRow[];
 
-  const trashed: string[] = [];
-  const kept: DeleteResult["kept"] = [];
   const trash = opts.media ? resolveTrash(cfg.trash) : null;
-  for (const c of copies) {
-    const root = roots.get(c.root_id);
-    const path = join(root?.path ?? "", c.rel_path);
-    if (!opts.media) kept.push({ path, reason: "kept" });
-    else if (c.missing_since) continue; // nothing on disk to keep or trash
-    else if (!root || !roots.isAvailable(c.root_id)) kept.push({ path, reason: "drive not mounted" });
-    else if (!trash) kept.push({ path, reason: "no trash command" });
-    else {
-      const { cmd, args } = trash.argv(path);
-      const r = await run(cmd, args, { timeout: 30_000 });
-      if (r.code === 0) trashed.push(path);
-      else kept.push({ path, reason: r.err.trim() || `trash exited ${r.code}` });
-    }
-  }
+  const { trashed, kept } = await trashFiles(roots, copies, opts.media ? trash : "keep");
 
   // Caches only: removed outright.
   const caches = [
@@ -87,6 +72,65 @@ export async function deleteVideo(
     db.prepare("DELETE FROM videos WHERE id = ?").run(videoId);
   })();
   return { deleted: true, trashed, kept, tombstoned, ...(opts.media && !trash ? { notice: NO_TRASH_NOTICE } : {}) };
+}
+
+type TrashCommand = NonNullable<ReturnType<typeof resolveTrash>>;
+
+/** Moves each Copy's file to the Trash (`"keep"`: none; null: no trash command). Missing Copies are skipped. */
+async function trashFiles(roots: Roots, copies: CopyRow[], trash: TrashCommand | null | "keep") {
+  const trashed: string[] = [];
+  const kept: DeleteResult["kept"] = [];
+  const trashedIds: number[] = [];
+  for (const c of copies) {
+    const root = roots.get(c.root_id);
+    const path = join(root?.path ?? "", c.rel_path);
+    if (trash === "keep") kept.push({ path, reason: "kept" });
+    else if (c.missing_since) continue; // nothing on disk to keep or trash
+    else if (!root || !roots.isAvailable(c.root_id)) kept.push({ path, reason: "drive not mounted" });
+    else if (!trash) kept.push({ path, reason: "no trash command" });
+    else {
+      const { cmd, args } = trash.argv(path);
+      const r = await run(cmd, args, { timeout: 30_000 });
+      if (r.code === 0) (trashed.push(path), trashedIds.push(c.id));
+      else kept.push({ path, reason: r.err.trim() || `trash exited ${r.code}` });
+    }
+  }
+  return { trashed, kept, trashedIds };
+}
+
+export interface RemoveCopiesResult {
+  /** Files moved to the Trash. */
+  trashed: string[];
+  /** Files left where they are (an unmounted drive, `trash` failed), with why. */
+  kept: { path: string; reason: string }[];
+  /** Copies still held for the Video after the call. */
+  remaining: number;
+  notice?: string;
+}
+
+/**
+ * `DELETE /api/videos/:id/copies` (sharing-spec §4.5), local and for everyone: moves this machine's Copies of the Video
+ * to the Trash after the browser's confirmation named the files and sizes. The Video stays (Not on this machine,
+ * §7.1); a later scan that finds a file of it brings the Copy back. Missing Copies' rows go too (nothing on disk).
+ * With no trash command nothing is touched.
+ */
+export async function removeCopies(db: Db, cfg: Pick<Config, "remuxDir" | "trash">, roots: Roots, videoId: string): Promise<RemoveCopiesResult | null> {
+  if (!db.query("SELECT 1 FROM video_full WHERE id = ?").get(videoId)) return null;
+  const copies = db.query("SELECT id, root_id, rel_path, fallback_file, missing_since FROM copy WHERE video_id = ?").all(videoId) as CopyRow[];
+  const trash = resolveTrash(cfg.trash);
+  if (!trash) return { trashed: [], kept: copies.filter((c) => !c.missing_since).map((c) => ({ path: join(roots.get(c.root_id)?.path ?? "", c.rel_path), reason: "no trash command" })), remaining: copies.length, notice: NO_TRASH_NOTICE };
+  const { trashed, kept, trashedIds } = await trashFiles(roots, copies, trash);
+  const gone = new Set([...trashedIds, ...copies.filter((c) => c.missing_since).map((c) => c.id)]);
+  await Promise.all(copies.filter((c) => gone.has(c.id) && c.fallback_file).map((c) => unlink(join(cfg.remuxDir, c.fallback_file!)).catch(() => {})));
+  const del = db.prepare("UPDATE video_local SET thumbnail_copy_id = NULL WHERE video_id = ? AND thumbnail_copy_id = ?");
+  const drop = db.prepare("DELETE FROM copy WHERE id = ?");
+  db.transaction(() => {
+    for (const id of gone) {
+      del.run(videoId, id);
+      drop.run(id);
+    }
+  })();
+  return { trashed, kept, remaining: copies.length - gone.size };
 }
 
 /** The scanner's check: a file with this identity belongs to a deleted Video. */

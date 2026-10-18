@@ -4,6 +4,8 @@ import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { TvButton } from "./TvButton";
 import { AccountChip } from "./Account";
+import { refreshDeletedMatches } from "./ConflictNotice";
+import { drainSharedSuggestions } from "./writeLink";
 import { afterScan } from "./session";
 import { Link, type Route } from "./router";
 import { THEMES, useTheme } from "./theme";
@@ -33,6 +35,7 @@ export function TopBar({ route }: { route: Route }) {
   const [scan, setScan] = useState<ScanDto | null>(null);
   const [busy, setBusy] = useState(false);
   const wasRunning = useRef(false);
+  const lastFinished = useRef<string | null | undefined>(undefined);
 
   // Poll GET /api/scan: quickly while a scan runs, lazily otherwise. A scan that just finished reloads the library.
   useEffect(() => {
@@ -52,6 +55,11 @@ export function TopBar({ route }: { route: Route }) {
             if (changed) void reloadAll();
           });
         }
+        // a scan finished (even one too quick to be seen running): the deleted-match warning, then the matchers on
+        // Shared Videos written through the archive (sharing-spec §4.3, §4.5)
+        if (lastFinished.current !== undefined && s.lastFinishedAt !== lastFinished.current && !s.running)
+          void refreshDeletedMatches().then(() => drainSharedSuggestions()).then((n) => void (n && reloadAll()));
+        lastFinished.current = s.lastFinishedAt;
         wasRunning.current = s.running;
       } catch {}
       if (alive) timer = setTimeout(tick, next);

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import { log } from "./log";
-import { matchTvRoute } from "./tvRoutes";
+import { excludeNotHere, matchTvRoute, notHereVideoIds, tvListOf } from "./tvRoutes";
 import type { TvBundle } from "./web";
 import type { ApprovedTvDto, TvStateDto } from "../shared/types";
 
@@ -203,6 +203,14 @@ export class TvServer {
     if (route.kind === "live") return json({ error: "the Live remux is not built yet" }, 404);
     if (!this.handler) return json({ error: "not ready" }, 503);
     const res = await this.handler(req);
+    // §7.6: the video lists leave out Not on this machine Videos (Unmounted ones stay).
+    const list = tvListOf(req.method, path);
+    if (list && res.ok && res.headers.get("content-type")?.includes("application/json")) {
+      const body = excludeNotHere(list, await res.json(), notHereVideoIds(this.deps.db));
+      const headers = new Headers(res.headers);
+      headers.delete("content-length");
+      return new Response(req.method === "HEAD" ? null : JSON.stringify(body), { status: res.status, headers });
+    }
     // The TV samples poster colours on a canvas, which needs a CORS-clean image.
     if (path.startsWith("/thumbs/")) res.headers.set("access-control-allow-origin", "*");
     return res;

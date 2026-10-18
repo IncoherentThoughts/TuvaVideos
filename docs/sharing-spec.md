@@ -309,13 +309,19 @@ A scanned Video the Local copy does not know is inserted with `pending_share` in
 - **Unmounted**: a Copy exists on a Root that is not mounted. Card and Player as today: dashed drive icon, "plug the drive in" overlay, auto-resume when the Root returns.
 - **Not on this machine**: no Copy row, or every Copy `missing_since`, or trashed. The card is the existing greyed poster (`.thumb.unavail`) plus **one small download mark** in the corner; title and tags stay; the "n copies" and availability icons go. The click-through is the ordinary card link: where the Player would be, a panel over the blurred poster says "Not on this machine", carries the message ("This Video's link data is here; its file is not. Download it into one of your Roots and it plays.") and the Video's source link (YouTube watch URL, Instagram post or `rutube.ru/video/<id>/`). Title, tags, Chapters, the history tab and the Lyrics drawer sit under it as usual. The panel gives way live when a scan finds a Copy, as the unmounted overlay does today.
 
+As built (#148, `src/shared/presence.ts`): the state is derived per Video from its DTO, `available` → plays; else any Copy not Missing → Unmounted; else Not on this machine. "Trashed" needs no case of its own: trashing a Copy removes its row. This holds in every mode, so a Standalone library whose every Copy is Missing now shows the panel instead of "Copy unavailable". Now playing also drops the availability icon for such a Video and lists a Rutube source line beside YouTube and Instagram. The panel gives way through Now playing's existing 3 s poll.
+
 ### 7.2 Filters
 
 The "Available only" chip becomes **"On this machine"**, default off, hidden when it would select nothing. The `#available` search token keeps working.
 
+As built (#148): the chip and `#available` select the same set, Videos with an Available Copy (an Unmounted Video is not selected: it cannot play now). "Would select nothing" = no Video in the list has an Available Copy; the chip stays visible while it is on so a URL with `?available=1` can still turn it off. The Favorites page's chip follows the same rule.
+
 ### 7.3 What a Member sees
 
 A Member's library reads like the owner's: the grid as today with the one mark. Edit controls (`+ add`, Relocate, Delete from library, Rescan of Shared rows, confirm and reject) are **hidden** for a Member; for a Video Editor they are **disabled with a notice** when offline or unsettled. Trash this machine's Copies, Favorites, Resume, Audio, Playlists and Studio are everyone's.
+
+As built (#131, #148): one rule, `editGate(video, session)` in `chipView.ts` (Unshared Videos stay editable). It covers the title, Type/Song/Artist fields, Accept all, Relocate, Delete from library (Now playing and the grid's right-click menu), the Chapter strip (`+ Add at playhead`, Confirm all, and each card's time, title, Version pills, Song, confirm/reject and delete; the `c` key adds nothing), and the Lyrics drawer's Song relink and Version pick. A locked Chapter card still seeks, stars (`f`) and hands focus back. Toolbar **Rescan** stays everyone's: it scans this machine's Roots, which is how a Member's Copy is found. Local Versions, Local Songs and Local Artists are this machine's rows and stay editable.
 
 ### 7.4 Shelved edits
 
@@ -328,6 +334,8 @@ Proposed Songs, Versions and Artists carry the Proposed mark wherever their name
 ### 7.6 The TV Server as a Member
 
 The TV Server reads the Local copy unchanged through the same handle; its video lists exclude Not on this machine Videos and keep Unmounted ones as today. Nothing else in the TV spec changes.
+
+As built (#148, `tvRoutes.ts`): the localhost handler is unchanged; the TV Server filters the answers of `/api/videos`, `/api/favorites`, `/api/search` (Video and Chapter rows, a Song row's Video list; the group total drops by the rows removed) and `/api/songs/:id` (its Video list) against one query, Videos with no Copy whose `missing_since` is null. `/api/artists`' Video counts are not adjusted.
 
 ---
 

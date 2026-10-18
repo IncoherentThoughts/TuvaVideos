@@ -1,0 +1,586 @@
+{
+  "video_access": [
+    {
+      "name": "profile_id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "level",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "granted_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_proposed_songs": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "name",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "english_name",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "alternate_titles",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "notes",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "created_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_proposed_versions": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "song_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "proposed_song_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "label",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "lyrics_cyrillic",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "lyrics_transliteration",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "lyrics_translation",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "source",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "footnotes_cyrillic",
+      "type": "jsonb",
+      "notNull": true
+    },
+    {
+      "name": "footnotes_transliteration",
+      "type": "jsonb",
+      "notNull": true
+    },
+    {
+      "name": "footnotes_translation",
+      "type": "jsonb",
+      "notNull": true
+    },
+    {
+      "name": "created_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_proposed_artists": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "name",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "created_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "videos": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "youtube_id",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "content_hash",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "instagram_id",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "rutube_id",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "title",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "title_latin",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "title_latin_source",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "type",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "type_suggested",
+      "type": "boolean",
+      "notNull": true
+    },
+    {
+      "name": "song_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "proposed_song_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "version_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "proposed_version_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "song_suggested",
+      "type": "boolean",
+      "notNull": true
+    },
+    {
+      "name": "suggestion_source",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "poster_path",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "deleted_at",
+      "type": "timestamptz",
+      "notNull": false
+    },
+    {
+      "name": "deleted_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "delete_reason",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_chapters": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "video_id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "start_s",
+      "type": "double precision",
+      "notNull": true
+    },
+    {
+      "name": "title",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "title_latin",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "song_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "proposed_song_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "version_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "proposed_version_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "suggested",
+      "type": "boolean",
+      "notNull": true
+    },
+    {
+      "name": "source",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_artists": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "video_id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "artist_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "proposed_artist_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "position",
+      "type": "smallint",
+      "notNull": true
+    },
+    {
+      "name": "suggested",
+      "type": "boolean",
+      "notNull": true
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_chapter_rejections": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "video_id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "source",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "start_s",
+      "type": "double precision",
+      "notNull": true
+    },
+    {
+      "name": "created_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_artist_rejections": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "video_id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "artist_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "proposed_artist_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "created_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_exposed_songs": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "song_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "artist_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "exposed_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "exposed_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "video_edit_history": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "video_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "target_type",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "target_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "editor_id",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "event_type",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "field_name",
+      "type": "text",
+      "notNull": false
+    },
+    {
+      "name": "old_value",
+      "type": "jsonb",
+      "notNull": false
+    },
+    {
+      "name": "new_value",
+      "type": "jsonb",
+      "notNull": false
+    },
+    {
+      "name": "description",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "reverses",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "notNull": true
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ],
+  "shared_tombstone": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "table_name",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "row_id",
+      "type": "uuid",
+      "notNull": true
+    },
+    {
+      "name": "kind",
+      "type": "text",
+      "notNull": true
+    },
+    {
+      "name": "replaced_by",
+      "type": "uuid",
+      "notNull": false
+    },
+    {
+      "name": "at",
+      "type": "timestamptz",
+      "notNull": true
+    }
+  ]
+}

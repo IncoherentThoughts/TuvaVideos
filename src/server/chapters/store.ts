@@ -114,7 +114,7 @@ const cleanTitle = (t: string) => t.trim().replace(/\s+/g, " ");
 /** Tombstones a rejected Chapter suggestion (video, source, start) so the next suggest run does not bring it back. */
 export function rejectChapterAt(db: Db, videoId: string, source: string, startS: number) {
   const now = nowIso();
-  db.prepare("INSERT OR IGNORE INTO video_chapter_rejections (id, video_id, source, start_s, rejected_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(newUuid(), videoId, source, startS, now, now);
+  db.prepare("INSERT OR IGNORE INTO video_chapter_rejections (id, video_id, source, start_s, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(newUuid(), videoId, source, startS, now, now);
 }
 
 export function patchChapter(db: Db, id: string, body: ChapterPatch & Record<string, unknown>): Result<ChapterDto> {

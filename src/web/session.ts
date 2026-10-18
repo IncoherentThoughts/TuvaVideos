@@ -7,6 +7,7 @@
 import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "preact/hooks";
 import type { RpcClient } from "../shared/archive";
+import type { ReconcileResponse } from "../shared/reconcile";
 import {
   AUTH_SETTLE_MS, classifySignedOut, decodeTab, editAccess, encodeTab, INITIAL_SESSION_STATE, probeOutcome,
   SIGN_IN_ERRORS, signInFailure, sessionReducer, syncWanted, tabAction, TAB_KEY,
@@ -230,9 +231,40 @@ export interface SignInResult {
   sync: SyncResponse | null;
   /** `video_whoami().must_change_password`: show the notice linking to songsofthesteppe.org; the session stays. */
   mustChangePassword: boolean;
+  /** §2.3: what Continue will shelve (`GET /api/reconcile/preview`); null when no preview ran. */
+  reconcile?: ReconcileResponse | null;
 }
 
-/** §5.1: `signInWithPassword`, then a Sync that writes the record. Reconciliation's count and confirm are #131/#115's. */
+/**
+ * §2.3 (#149): the companion's reconcile routes with this browser's access token. `confirm` is Continue: reconcile
+ * and apply, then the Sync of "sign-in completes". The record the companion wrote reaches every tab.
+ */
+async function reconcileCall(confirm: boolean): Promise<ReconcileResponse | null> {
+  const token = client ? (await client.auth.getSession()).data.session?.access_token : null;
+  if (!token) return null;
+  try {
+    const r = await (confirm
+      ? fetch("/api/reconcile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ access_token: token }) })
+      : fetch("/api/reconcile/preview", { headers: { authorization: `Bearer ${token}` } }));
+    if (!r.ok) return null;
+    const res = (await r.json()) as ReconcileResponse;
+    dispatch({ type: "record", record: res.record });
+    broadcast({ kind: "record", record: res.record });
+    return res;
+  } catch {
+    return null;
+  }
+}
+
+/** Continue on the reconciliation confirm (§2.3, §5.1): reconcile, then Sync. */
+export async function confirmSignIn(): Promise<{ reconcile: ReconcileResponse | null; sync: SyncResponse | null }> {
+  const reconcile = await reconcileCall(true);
+  if (!reconcile?.ok) return { reconcile, sync: null };
+  firstSyncAfterSignIn = true; // §6.6: the question may ride on the first Sync after the confirmed sign-in
+  return { reconcile, sync: await runSync(false) };
+}
+
+/** §5.1: `signInWithPassword`, then the reconciliation preview (which writes the record); Continue is `confirmSignIn`. */
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   const c = await (clientReady ?? startSession());
   if (!c) return { ok: false, error: SIGN_IN_ERRORS.unreachable, sync: null, mustChangePassword: false };
@@ -244,11 +276,11 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   }
   if (result.error) return { ok: false, error: SIGN_IN_ERRORS[signInFailure(result.error)], sync: null, mustChangePassword: false };
   expectSignedOut = false;
-  firstSyncAfterSignIn = true; // §6.6: the question may ride on this sign-in's first Sync
   dispatch({ type: "auth", session: toBrowser(result.data.session) });
   dispatch({ type: "reach", reachable: true });
-  const sync = await runSync(false); // §6.4: sign-in completes (the record may not name this user yet)
-  return { ok: true, error: null, sync, mustChangePassword: sync?.mustChangePassword === true };
+  // §5.1: whoami (the record) and the count of what reconciliation will shelve; the Sync waits for Continue.
+  const reconcile = await reconcileCall(false);
+  return { ok: true, error: null, sync: null, reconcile, mustChangePassword: reconcile?.mustChangePassword === true };
 }
 
 /** Sign out, and Cancel on the reconciliation confirm (§2.4, §5.1): record cleared first, then the local session. */
@@ -462,6 +494,8 @@ export interface UseSession {
   schemaMismatch: SchemaMismatch | null;
   signIn: typeof signIn;
   signOut: typeof signOut;
+  /** Continue on the reconciliation confirm. */
+  confirmSignIn: typeof confirmSignIn;
   requestSync: typeof requestSync;
   dismissEnded: typeof dismissEnded;
   /** Call after a Video Editor's own write (#116). */
@@ -498,7 +532,7 @@ export function useSession(): UseSession {
     record: s.record, recordLoaded: s.recordLoaded, authSettled: s.authSettled, canEdit: access.enabled, editorView: access.shown,
     browserSignedIn: !!s.browser, reachable: s.reachable, syncing: s.syncing, lastSyncError: s.lastSyncError, ended: s.ended,
     progress: s.progress, lastSyncAt: s.record?.lastSyncAt ?? null, schemaMismatch: s.schemaMismatch,
-    signIn, signOut, requestSync, dismissEnded, afterWrite, refreshAll,
+    signIn, signOut, confirmSignIn, requestSync, dismissEnded, afterWrite, refreshAll,
     pendingShare: shareSummary, shareQuestion: shareQuestionOpen, sharing: draining != null, lastShare: lastDrain,
     shareNow, declineShare, openShareQuestion, posterUpload: posterState, uploadPosters: uploadPostersNow,
   };

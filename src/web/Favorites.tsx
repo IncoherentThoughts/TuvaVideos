@@ -11,6 +11,7 @@ import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, StripFrame, Tags, fmtDuration } from "./ui";
+import { showOnThisMachineChip } from "../shared/presence";
 
 const SORT_LABEL: Record<FavSort, string> = { starred: "Date starred", title: "Title", duration: "Duration", added: "Date added", views: "Views" };
 const SHOW_LABEL = { both: "Videos and Chapters", videos: "Videos", chapters: "Chapters" } as const;
@@ -131,9 +132,11 @@ export function Favorites({ search }: { search: string }) {
           </button>
         ))}
         <span class="sep" />
-        <button class={`chip${st.availableOnly ? " on" : ""}`} aria-pressed={st.availableOnly} onClick={() => go({ availableOnly: !st.availableOnly })}>
-          {st.availableOnly ? "Available only" : "All Videos"}
-        </button>
+        {showOnThisMachineChip(items?.map((i) => i.video), st.availableOnly) && (
+          <button class={`chip${st.availableOnly ? " on" : ""}`} aria-pressed={st.availableOnly} title="Only Favorites with a Copy that plays now" onClick={() => go({ availableOnly: !st.availableOnly })}>
+            On this machine
+          </button>
+        )}
         <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by title…" label="Filter Favorites by title" />
         <span class="sep" />
         <SortControls sorts={FAV_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />

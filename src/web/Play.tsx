@@ -23,6 +23,8 @@ import { AudioPanel } from "./AudioPanel";
 import { DeleteVideoDialog } from "./DeleteVideo";
 import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
 import { useSession } from "./session";
+import { NotHerePanel } from "./NotHere";
+import { isNotHere } from "../shared/presence";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
@@ -312,11 +314,14 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
   // §7.3: edit controls on a Shared Video follow the session (hidden for a Member, disabled when offline or unsettled).
   const gate = editGate(v, session);
   const gated = (el: preact.ComponentChild) => (gate === "enabled" ? el : gate === "disabled" ? <fieldset class="editgate" disabled title={EDIT_DISABLED_NOTICE}>{el}</fieldset> : null);
+  // §7.1: Not on this machine puts the panel where the Player would be; the poll above swaps the Player in when a
+  // scan finds a Copy.
+  const notHere = isNotHere(v);
 
   return (
     <div class="np">
       <div class="np-main">
-        <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={(at) => void addChapter(at)} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />
+        {notHere ? <NotHerePanel video={v} /> : <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={gate === "enabled" ? (at) => void addChapter(at) : undefined} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />}
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">
@@ -329,7 +334,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
             </span>
           </div>
           <div class="np-meta">
-            <AvailabilityIcon availability={v.availability} />
+            {!notHere && <AvailabilityIcon availability={v.availability} />}
             <button
               class="favtoggle"
               aria-pressed={!!v.favoritedAt}
@@ -354,7 +359,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
           </fieldset>
           {gate === "disabled" && <p class="edit-notice dim">{EDIT_DISABLED_NOTICE}</p>}
         </div>
-        <ChapterStrip video={v} chapters={chapters} curId={curId} ctl={ctl} newId={newId} onList={acceptChapters} onAdd={() => void addChapter()} onNewDone={() => setNewId(null)} />
+        <ChapterStrip video={v} chapters={chapters} curId={curId} ctl={ctl} newId={newId} onList={acceptChapters} onAdd={() => void addChapter()} gate={gate} onNewDone={() => setNewId(null)} />
         {v.youtubeId && (
           <div class="np-source dim">
             YouTube:{" "}
@@ -368,6 +373,14 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
             Instagram:{" "}
             <a href={`https://www.instagram.com/p/${v.instagramId}/`} target="_blank" rel="noopener noreferrer" title="Open the Instagram post in your browser">
               instagram.com/p/{v.instagramId}
+            </a>
+          </div>
+        )}
+        {v.rutubeId && (
+          <div class="np-source dim">
+            Rutube:{" "}
+            <a href={`https://rutube.ru/video/${v.rutubeId}/`} target="_blank" rel="noopener noreferrer" title="Open the Rutube page in your browser">
+              rutube.ru/video/{v.rutubeId}/
             </a>
           </div>
         )}
@@ -408,7 +421,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
           {!drawer && stateOpen && <div class="drawer statehost" ref={stateHost} />}
           {drawer &&
             (target ? (
-              <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={!target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void api.patchVideo(v.id, { versionId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={!target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void api.patchVideo(v.id, { songId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
+              <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void api.patchVideo(v.id, { versionId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void api.patchVideo(v.id, { songId }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} />
             ) : (
               <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
                 <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>

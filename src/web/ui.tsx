@@ -165,6 +165,19 @@ export function AvailabilityIcon({ availability }: { availability: "local" | "ex
   );
 }
 
+/** §7.1: the one small download mark in a Not on this machine card's corner. */
+export function NotHereMark() {
+  return (
+    <span class="nothere-mark" title="Not on this machine" aria-label="Not on this machine">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3v12" />
+        <path d="M7 10l5 5 5-5" />
+        <path d="M4 21h16" />
+      </svg>
+    </span>
+  );
+}
+
 /** A placeholder tint from a Video id: its last 8 hex digits (a legacy id keeps its old integer's tint). */
 export const phColor = (id: string) => `var(--t${((parseInt(id.slice(-8), 16) || 0) % 8) + 1})`;
 

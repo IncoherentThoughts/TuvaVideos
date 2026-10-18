@@ -194,6 +194,11 @@ export class Thumbnails {
     return n;
   }
 
+  /** The Video has a Shared poster: its `poster_path` is set (§6.5), so the pool must not generate one. */
+  hasSharedPoster(videoId: string): boolean {
+    return !!(this.db.query("SELECT poster_path FROM videos WHERE id = ?").get(videoId) as { poster_path: string | null } | null)?.poster_path;
+  }
+
   posterPath(videoId: string) {
     return join(this.cfg.thumbsDir, `${videoId}.poster.webp`);
   }
@@ -416,8 +421,13 @@ export class Thumbnails {
     try {
       const t0 = Date.now();
       const dur = src.duration_s;
-      const p = await this.makePoster(abs, dur, posterTmp, src.root_id);
-      if (!p.ok) return fail("poster", p);
+      // §6.5: a Video with a Shared poster (`poster_path`) gets its poster from Sync's download; the pool makes only
+      // its strip. A local poster is generated only when there is no `poster_path`.
+      const shared = this.hasSharedPoster(videoId);
+      if (!shared) {
+        const p = await this.makePoster(abs, dur, posterTmp, src.root_id);
+        if (!p.ok) return fail("poster", p);
+      }
       const g = stripGeometry(dur);
       let frameH: number | null = null;
       if (g && dur) {
@@ -429,7 +439,7 @@ export class Thumbnails {
         const dims = await webpSize(stripTmp);
         frameH = dims ? Math.round(dims.h / g.rows) : null;
       }
-      await rename(posterTmp, this.posterPath(videoId));
+      if (!shared) await rename(posterTmp, this.posterPath(videoId));
       if (g) await rename(stripTmp, this.stripPath(videoId));
       else await rm(this.stripPath(videoId), { force: true });
       this.db

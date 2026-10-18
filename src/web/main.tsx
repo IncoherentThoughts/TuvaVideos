@@ -14,6 +14,7 @@ import { matchRoute, useLocation } from "./router";
 import { applyThemeFromUrl } from "./theme";
 import { startSession } from "./session";
 import { EndedBanner } from "./Account";
+import { ShareQuestion } from "./ShareQuestion";
 
 function App() {
   const loc = useLocation();
@@ -25,6 +26,7 @@ function App() {
       <VideoMenu />
       <main>
         <EndedBanner />
+        <ShareQuestion />
         {error && <div class="empty-state">Server problem: {error}</div>}
         {route.name === "library" && <Library search={loc.search} />}
         {route.name === "favorites" && <Favorites search={loc.search} />}

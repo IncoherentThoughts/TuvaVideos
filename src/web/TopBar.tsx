@@ -4,6 +4,7 @@ import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { TvButton } from "./TvButton";
 import { AccountChip } from "./Account";
+import { afterScan } from "./session";
 import { Link, type Route } from "./router";
 import { THEMES, useTheme } from "./theme";
 
@@ -44,7 +45,13 @@ export function TopBar({ route }: { route: Route }) {
         if (!alive) return;
         setScan(s);
         if (s.running) next = 1000;
-        if (wasRunning.current && !s.running) void reloadAll();
+        if (wasRunning.current && !s.running) {
+          void reloadAll();
+          // §6.6, §6.5: a finished scan drains the pending_share queue (or asks once) and uploads local posters.
+          void afterScan().then((changed) => {
+            if (changed) void reloadAll();
+          });
+        }
         wasRunning.current = s.running;
       } catch {}
       if (alive) timer = setTimeout(tick, next);

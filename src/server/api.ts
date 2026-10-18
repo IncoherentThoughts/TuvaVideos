@@ -35,6 +35,8 @@ import type { SharedChanges } from "../shared/sharedRows";
 import { applyShared } from "./localCopy/apply";
 import { hostError, localRequestError } from "./localOnly";
 import { createSync } from "./sync";
+import { pendingShareBatch, pendingShareSummary, setShareAuto } from "./share";
+import { posterUploadCandidates } from "./posters";
 import { looksLikeJwt } from "../shared/archive";
 import type { SessionResponse } from "../shared/session";
 import { checkRootPath, onboardingFor, ROOT_BAR_DISMISSED } from "./rootSetup";
@@ -116,6 +118,7 @@ interface VideoDbRow {
   loop_b_s: number | null;
   created_at: string;
   thumbnail_generated_at: string | null;
+  poster_hash: string | null;
   thumbnail_copy_id: number | null;
   strip_frames: number | null;
   strip_columns: number | null;
@@ -129,7 +132,7 @@ const COPY_SQL = `SELECT c.id, c.video_id, c.root_id, r.kind AS root_kind, c.rel
   FROM copy c JOIN root r ON r.id = c.root_id`;
 
 export function createHandler(s: Services) {
-  const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir });
+  const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
@@ -208,14 +211,15 @@ export function createHandler(s: Services) {
       height: (preferred ?? ranked[0])?.height ?? null,
       // `?v=` is the generation time: the files are served with a day-long cache, so a regenerated Thumbnail needs a
       // new URL (before migration 0015 integer ids were also reused after a delete).
-      thumbnail: v.thumbnail_generated_at
+      // A downloaded Shared poster (§6.5) counts before any local Thumbnail exists, and its hash is its cache key.
+      thumbnail: v.thumbnail_generated_at || v.poster_hash
         ? {
-            generatedAt: v.thumbnail_generated_at,
+            generatedAt: v.thumbnail_generated_at ?? v.poster_hash!,
             copyId: v.thumbnail_copy_id,
-            poster: thumbUrl(v.id, "poster", v.thumbnail_generated_at),
+            poster: thumbUrl(v.id, "poster", v.poster_hash ?? v.thumbnail_generated_at!),
             strip: hasStrip
               ? {
-                  url: thumbUrl(v.id, "strip", v.thumbnail_generated_at),
+                  url: thumbUrl(v.id, "strip", v.thumbnail_generated_at ?? ""),
                   frames: v.strip_frames!,
                   columns: v.strip_columns ?? 10,
                   rows: v.strip_rows ?? 1,
@@ -751,6 +755,24 @@ export function createHandler(s: Services) {
         } catch (e) {
           return json({ error: `nothing was applied: ${(e as Error).message ?? e}` }, 422);
         }
+      }
+      // The `pending_share` queue (sharing-spec §6.6, #140): its counts for the one question and the chip row, the
+      // inserts the browser drains it with, and the machine's "Share once, then automatic" answer. Posters (§6.5):
+      // the local posters a Video Editor's browser uploads. This machine's pages only (Host; writes also Origin).
+      if (req.method === "GET" && (p === "/api/share" || p === "/api/share/pending" || p === "/api/posters/upload")) {
+        const refused = hostError(req);
+        if (refused) return json({ error: refused }, 403);
+        if (p === "/api/share") return json(pendingShareSummary(s.db));
+        if (p === "/api/share/pending") return json(pendingShareBatch(s.db));
+        return json({ candidates: posterUploadCandidates(s.db, s.cfg.thumbsDir) });
+      }
+      if (req.method === "POST" && p === "/api/share/auto") {
+        const refused = localRequestError(req);
+        if (refused) return json({ error: refused }, 403);
+        const body = await readJson(req);
+        if (!body || typeof body.auto !== "boolean") return json({ error: "body must be {auto: boolean}" }, 400);
+        setShareAuto(s.db, body.auto);
+        return json(pendingShareSummary(s.db));
       }
       // The Session record (sharing-spec §5.2): read by every tab on launch and window focus. Token-free, but it names
       // the account, so only this machine's pages (the Host check; a same-origin GET sends no Origin).

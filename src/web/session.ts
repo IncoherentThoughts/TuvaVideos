@@ -13,6 +13,9 @@ import {
   type BrowserSession, type EndedReason, type ProbeOutcome, type SchemaMismatch, type SessionAction, type SessionRecord, type SessionResponse,
   type SessionState, type SyncProgress, type SyncRequest, type SyncResponse, type SyncTrigger, type TabMessage,
 } from "../shared/session";
+import { shareStep, type DrainResult, type PendingShareSummary, type ShareEvent } from "../shared/share";
+import type { PosterUploadResult } from "../shared/posters";
+import { readShareSummary, runDrain, runPosterUpload, scanBusy, setShareAuto } from "./sharing";
 
 // ---------------------------------------------------------------------------------------------------------------
 // The store
@@ -192,6 +195,8 @@ function runSync(full: boolean): Promise<SyncResponse | null> {
     broadcast({ kind: "record", record: res.record });
     // §6.2: a 401 runs the revocation probe (a revoked session ends here; an expired token just refreshes).
     if (res.unauthorized) void probe();
+    // §6.5, §6.6: at each Sync the queue is drained (or the one question asked) and local posters go up.
+    if (res.ok) void afterSyncShare();
     return res;
   })().finally(() => {
     syncInFlight = null;
@@ -239,6 +244,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   }
   if (result.error) return { ok: false, error: SIGN_IN_ERRORS[signInFailure(result.error)], sync: null, mustChangePassword: false };
   expectSignedOut = false;
+  firstSyncAfterSignIn = true; // §6.6: the question may ride on this sign-in's first Sync
   dispatch({ type: "auth", session: toBrowser(result.data.session) });
   dispatch({ type: "reach", reachable: true });
   const sync = await runSync(false); // §6.4: sign-in completes (the record may not name this user yet)
@@ -267,6 +273,162 @@ export function dismissEnded() {
 export function archiveRpc(): RpcClient | null {
   const c = client;
   return c ? { rpc: (fn, args) => c.rpc(fn as never, args as never) as never } : null;
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// `pending_share` and posters (§6.5, §6.6; #140)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The upload's progress for the chip ("posters n of m"); `last` is the previous run's outcome. */
+export interface PosterUploadState {
+  running: boolean;
+  done: number;
+  total: number;
+  last: PosterUploadResult | null;
+}
+
+let shareSummary: PendingShareSummary | null = null;
+let shareQuestionOpen = false;
+let draining: Promise<DrainResult | null> | null = null;
+let lastDrain: DrainResult | null = null;
+let posterState: PosterUploadState = { running: false, done: 0, total: 0, last: null };
+let posterRun: Promise<PosterUploadResult | null> | null = null;
+let firstSyncAfterSignIn = false;
+const ASKED_KEY = "tuva.share.askedNewestAt";
+const notify = () => {
+  for (const l of listeners) l();
+};
+function askedNewestAt(): string | null {
+  try {
+    return localStorage.getItem(ASKED_KEY);
+  } catch {
+    return null;
+  }
+}
+function rememberAsked(at: string | null) {
+  try {
+    if (at) localStorage.setItem(ASKED_KEY, at);
+  } catch {}
+}
+
+const shareReady = () => editAccess(state, Date.now()).enabled && state.reachable === true;
+
+/** Re-reads the queue's counts from the companion (the chip row and the question read them). */
+export async function refreshPendingShare(): Promise<PendingShareSummary | null> {
+  const s = await readShareSummary();
+  if (s) {
+    shareSummary = s;
+    if (!s.count) shareQuestionOpen = false;
+    notify();
+  }
+  return s;
+}
+
+/** Applies §6.6's rule to one event: asks the one question, drains, or does nothing. */
+async function considerShare(event: ShareEvent): Promise<DrainResult | null> {
+  const first = event === "sync" && firstSyncAfterSignIn;
+  if (event === "sync") firstSyncAfterSignIn = false;
+  const summary = await refreshPendingShare();
+  if (!summary) return null;
+  const step = shareStep(
+    event,
+    { canEdit: editAccess(state, Date.now()).enabled, online: state.reachable === true, scanning: await scanBusy(), summary },
+    { firstSyncAfterSignIn: first, askedNewestAt: askedNewestAt() },
+  );
+  if (step === "ask") {
+    rememberAsked(summary.newestAt);
+    shareQuestionOpen = true;
+    notify();
+  } else if (step === "drain") return drain();
+  return null;
+}
+
+async function drain(): Promise<DrainResult | null> {
+  if (draining) return draining;
+  draining = (async () => {
+    // §6.6: never offline, never mid-scan; the queue waits.
+    if (!shareReady() || (await scanBusy())) return null;
+    const rpc = archiveRpc();
+    if (!rpc) return null;
+    const r = await runDrain(rpc);
+    lastDrain = r;
+    if (r?.errors.length) console.warn(`share: ${r.errors.join("; ")}`);
+    await refreshPendingShare();
+    return r;
+  })().finally(() => {
+    draining = null;
+    notify();
+  });
+  notify();
+  const r = await draining;
+  // The new Shared Videos' posters, then the after-write Sync (§6.4) for what others changed meanwhile.
+  if (r && r.shared > 0) {
+    await uploadPostersNow();
+    void afterWrite();
+  }
+  return r;
+}
+
+/**
+ * The question's "Share" (§6.6): this machine answers once, later drains run without asking. Drains now.
+ */
+export async function shareNow(): Promise<DrainResult | null> {
+  shareQuestionOpen = false;
+  const s = await setShareAuto("", true);
+  if (s) shareSummary = s;
+  notify();
+  return drain();
+}
+
+/** The question's "Not now": the queue waits and the Videos stay Unshared; the chip row reopens the question. */
+export function declineShare() {
+  shareQuestionOpen = false;
+  notify();
+}
+
+/** The chip row **Share n new Videos…** (#131 owns the row): opens the same question while the queue is non-empty. */
+export async function openShareQuestion(): Promise<void> {
+  await considerShare("open");
+}
+
+/** Uploads this machine's local posters of Shared Videos that have none (§6.5), 4 at a time, in the background. */
+export function uploadPostersNow(): Promise<PosterUploadResult | null> {
+  if (posterRun) return posterRun;
+  posterRun = (async () => {
+    if (!shareReady() || !client) return null;
+    const rpc = archiveRpc();
+    if (!rpc) return null;
+    posterState = { ...posterState, running: true, done: 0, total: 0 };
+    notify();
+    const r = await runPosterUpload(client, rpc, "", (done, total) => {
+      posterState = { ...posterState, done, total };
+      notify();
+    });
+    if (r?.errors.length) console.warn(`posters: ${r.errors.join("; ")}`);
+    posterState = { ...posterState, running: false, last: r ?? posterState.last };
+    return r;
+  })().finally(() => {
+    posterRun = null;
+    posterState = { ...posterState, running: false };
+    notify();
+  });
+  return posterRun;
+}
+
+async function afterSyncShare() {
+  await considerShare("sync");
+  await uploadPostersNow();
+}
+
+/**
+ * A scan just finished (the top bar's scan poll calls this): §6.6's scan-end rule, then the poster upload. True when
+ * Local copy rows changed (the caller reloads the grid).
+ */
+export async function afterScan(): Promise<boolean> {
+  const d = await considerShare("scan-end");
+  const u = await uploadPostersNow();
+  return (d?.shared ?? 0) + (u?.uploaded ?? 0) > 0;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -306,6 +468,20 @@ export interface UseSession {
   afterWrite: typeof afterWrite;
   /** Settings' "Refresh all Shared data". */
   refreshAll: typeof refreshAll;
+  /** §6.6: the `pending_share` queue's counts (null until read). The chip row shows while `count` > 0. */
+  pendingShare: PendingShareSummary | null;
+  /** §6.6: the one question is showing ("Share n new Videos from <folder>?"). */
+  shareQuestion: boolean;
+  /** A drain is running. */
+  sharing: boolean;
+  /** The last drain's outcome, null before one ran. */
+  lastShare: DrainResult | null;
+  shareNow: typeof shareNow;
+  declineShare: typeof declineShare;
+  openShareQuestion: typeof openShareQuestion;
+  /** §6.5: the background poster upload. */
+  posterUpload: PosterUploadState;
+  uploadPosters: typeof uploadPostersNow;
 }
 
 export function useSession(): UseSession {
@@ -323,5 +499,7 @@ export function useSession(): UseSession {
     browserSignedIn: !!s.browser, reachable: s.reachable, syncing: s.syncing, lastSyncError: s.lastSyncError, ended: s.ended,
     progress: s.progress, lastSyncAt: s.record?.lastSyncAt ?? null, schemaMismatch: s.schemaMismatch,
     signIn, signOut, requestSync, dismissEnded, afterWrite, refreshAll,
+    pendingShare: shareSummary, shareQuestion: shareQuestionOpen, sharing: draining != null, lastShare: lastDrain,
+    shareNow, declineShare, openShareQuestion, posterUpload: posterState, uploadPosters: uploadPostersNow,
   };
 }

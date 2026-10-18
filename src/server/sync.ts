@@ -4,7 +4,8 @@
 // `applyShared` in one SQLite transaction (the tombstones and the ids-only reconcile of `archive_ids` ride in the same
 // batch). Only a fully applied pull moves the watermark and `last_sync_at`. The repair cases of §6.4 (first Sync of an
 // account, a Shared schema change, a watermark older than tombstone retention, Settings' "Refresh all Shared data")
-// pull everything instead, after wiping the Shared rows in the same transaction. The posters are #140's.
+// pull everything instead, after wiping the Shared rows in the same transaction. The poster download (#140, §6.5) is
+// the job's second half: after the apply, with the same token, until the job ends or the token's `exp`.
 //
 // The token lives in this job's local variables only: never stored, never logged, gone when the job ends. One Sync at
 // a time per companion; requests arriving during one are coalesced into a single follow-up run.
@@ -16,6 +17,7 @@ import type { Db } from "./db";
 import { applyShared, tsMicros } from "./localCopy/apply";
 import { runArchiveFollowUps } from "./localCopy/followUps";
 import { getMeta, readSessionRecord, SHARED_SCHEMA, setMeta, writeSessionRecord } from "./localCopy/meta";
+import { downloadPosters, type PosterDownloadResult } from "./posters";
 
 /**
  * One run at a time; calls arriving during a run share one follow-up run, made with the newest argument (the newest
@@ -147,6 +149,8 @@ export interface SyncOptions {
   cacheDir?: string;
   /** Where a failed follow-up is reported (they never fail the Sync). */
   warn?: (line: string) => void;
+  /** `Config.thumbsDir`: where downloaded posters go (§6.5). Without it Sync downloads no poster. */
+  thumbsDir?: string;
 }
 
 const refusal = (r: Extract<ArchiveCall<unknown>, { ok: false }>, what: string) => `The archive refused ${what} (${r.error.code ?? r.error.word})`;
@@ -245,7 +249,16 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
         warn(`sync: follow-ups after the pull failed: ${(e as Error)?.message ?? e}`);
       }
     }
-    return { ...base, record, ok: true, pulled: true, error: null, full: reason != null, applied };
+    // The second half (§6.5): posters, 4 at a time, while the token lives. A failure here never fails the Sync.
+    let posters: PosterDownloadResult | null = null;
+    if (opts.thumbsDir) {
+      try {
+        posters = await downloadPosters(db, endpoint, accessToken, { thumbsDir: opts.thumbsDir, fetchImpl: opts.fetchImpl, now, expMs: exp == null ? null : exp * 1000 });
+      } catch (e) {
+        warn(`sync: poster download failed: ${(e as Error)?.message ?? e}`);
+      }
+    }
+    return { ...base, record, ok: true, pulled: true, error: null, full: reason != null, applied, posters };
   };
   return coalesce(once, (a, b) => ({ accessToken: b.accessToken, full: a.full === true || b.full === true }));
 }

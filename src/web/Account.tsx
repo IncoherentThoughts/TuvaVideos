@@ -271,11 +271,13 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
             <a href={FORGOT_URL} target="_blank" rel="noopener noreferrer">
               Forgot password
             </a>
-            {" · "}No account? Create one on{" "}
-            <a href={FORGOT_URL} target="_blank" rel="noopener noreferrer">
-              songsofthesteppe.org
-            </a>{" "}
-            and ask the owner for video access.
+            <span class="si-noacct">
+              No account? Create one on{" "}
+              <a href={FORGOT_URL} target="_blank" rel="noopener noreferrer">
+                songsofthesteppe.org
+              </a>{" "}
+              and ask the owner for video access.
+            </span>
           </p>
           <div class="actions">
             <button type="button" class="btn" disabled={busy} onClick={() => box.current?.close()}>

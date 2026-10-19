@@ -803,7 +803,8 @@ fieldset.chact:disabled .chbtn { opacity: .45; cursor: default; }
 .delconfirm h4 { margin: 14px 0 4px; }
 
 /* Proposed rows, Elevate, Expose, Repoint (ProposedRows.tsx; sharing-spec §7.5) */
-.propmark { color: var(--t6, var(--t4)); border-style: dashed; }
+.propmark { color: var(--t6, var(--t4)); border-style: dashed; font-style: normal; }
+.achip-main .propmark { font-weight: 500; font-size: .78em; letter-spacing: .06em; text-transform: uppercase; opacity: .8; margin-left: 5px; }
 .tag .propmark { margin-left: 5px; }
 .rowacts-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 2px; }
 .rowacts { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -819,7 +820,7 @@ dialog.rowprompt .picker { position: relative; }
 
 /* Edit history, undo and Shelved edits (sharing-spec §4.7, §4.8, §7.4; #147) */
 .stp-tabs { display: inline-flex; gap: 2px; font-family: var(--font-ui); }
-.stp-tabs button { background: none; border: 1px solid transparent; border-radius: 6px; padding: 1px 8px; color: var(--fg3); font: inherit; font-weight: 600; cursor: pointer; }
+.stp-tabs button { display: inline-flex; align-items: center; white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; padding: 1px 8px; color: var(--fg3); font: inherit; font-weight: 600; cursor: pointer; }
 .stp-tabs button.on { color: var(--fg); border-color: var(--line); background: var(--bg3); }
 .vhist { font-family: var(--font-ui); max-height: 420px; overflow: auto; }
 .hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -858,6 +859,7 @@ dialog.shelf .row-end { display: flex; justify-content: flex-end; gap: 8px; marg
 
 /* Shelved diffs (#157): one row per attribute a Video lost to the Shared row: local value (red) → Shared (green).
    Used by the sign-in confirmation, its post-Sync popup and the Shelved drawer (src/web/ShelvedDiff.tsx). */
+.si-noacct { display: block; margin-top: 4px; }
 .sd-explain { font-size: .9em; color: var(--fg2); margin: 6px 0 10px; }
 .sd-key { white-space: nowrap; }
 .sd-list { max-height: 45vh; overflow: auto; margin: 8px 0; padding-right: 4px; }
@@ -865,9 +867,9 @@ dialog.signin { max-width: min(640px, calc(100vw - 32px)); }
 .sd-video { margin: 8px 0; }
 .sd-title { font-weight: 600; font-size: .92em; }
 ul.sd-rows { list-style: none; margin: 4px 0; padding: 0 0 0 10px; font-size: .9em; }
-.sd-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; margin: 4px 0; }
+.sd-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin: 4px 0; }
 .sd-label { color: var(--fg3); min-width: 6.5em; }
-.sd-vals { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; min-width: 0; }
+.sd-vals { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-width: 0; }
 .sd-before, .sd-after { padding: 0 5px; border-radius: 4px; overflow-wrap: anywhere; }
 .sd-before { color: var(--no); background: color-mix(in srgb, var(--no) 14%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--no) 60%, transparent); }
 .sd-after { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); text-decoration: none; }

@@ -634,7 +634,7 @@ button.st-main:hover { background: var(--bg3); }
 .vsrc { display: flex; align-items: center; gap: 8px; font-size: .85em; margin-bottom: 12px; color: var(--fg2); }
 .vsrc.local { padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--t4) 45%, var(--line)); border-left: 3px solid var(--t4); border-radius: 6px; background: color-mix(in srgb, var(--t4) 7%, transparent); }
 .vsrc .linkbtn { margin-left: auto; }
-.vsrc-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.vsrc.proposed { padding: 6px 10px; border: 1px dashed color-mix(in srgb, var(--t6, var(--t4)) 45%, var(--line)); border-left: 3px solid var(--t6, var(--t4)); border-radius: 6px; background: color-mix(in srgb, var(--t6, var(--t4)) 7%, transparent); }
 .drawer .ttl .ttl-btn { cursor: pointer; border-bottom: 1px dashed var(--line); }
 .drawer .ttl .ttl-btn:hover { border-bottom-color: var(--fg2); }
 .drawer .ttl .ttl-in { display: block; width: 100%; font: inherit; }

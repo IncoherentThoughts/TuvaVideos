@@ -312,7 +312,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
           </p>
         )}
         {!editing && version && (
-          <div class={`vsrc${version.local ? " local" : ""}`} role="note">
+          <div class={`vsrc${version.local ? " local" : version.proposed ? " proposed" : ""}`} role="note">
             {version.local ? (
               <>
                 <span class="localmark">local</span>
@@ -321,10 +321,8 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
               </>
             ) : version.proposed ? (
               <>
-                <span class="vsrc-stack">
-                  <ProposedMark />
-                  <span>Member readable, not on the lyrics website</span>
-                </span>
+                <ProposedMark />
+                <span>Member readable, not on the lyrics website.</span>
                 <RowActions key={`v${version.id}${reload}`} table="version" id={version.id} compact onChanged={() => (setPick(null), setReload((n) => n + 1))} />
               </>
             ) : (

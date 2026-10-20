@@ -21,7 +21,10 @@ const when = (iso: string) => {
 function change(e: HistoryEntry): string | null {
   if (!e.fieldName || (e.oldValue == null && e.newValue == null) || e.description.includes("→")) return null;
   if (e.fieldName === "song_id" || e.fieldName === "version_id" || e.fieldName === "artist_id") return null; // ids say nothing
-  return `${showValue(e.oldValue)} → ${showValue(e.newValue)}`;
+  const before = showValue(e.oldValue), after = showValue(e.newValue);
+  if (before === "—") return after; // set from nothing: just the new value, not "— → x"
+  if (after === "—") return `cleared (was ${before})`;
+  return `${before} → ${after}`;
 }
 
 /** A write's coloured action pills (#159): edit, create, soft delete, undo, Repoint, share, Elevate, expose, … */

@@ -13,7 +13,7 @@ import type { SongDto } from "../shared/types";
 import { api, apiError } from "./data";
 import { SongPicker } from "./HeaderEdit";
 import { LyricsEditor } from "./LyricsEditor";
-import { AddProposedVersion, RowActions } from "./ProposedRows";
+import { AddProposedVersion, RowActions, useRowRoles } from "./ProposedRows";
 import { ProposedMark } from "./ui";
 
 const SCRIPT_STORE = "tuva.lyricsScript";
@@ -65,6 +65,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
   const body = useRef<HTMLDivElement>(null);
 
   const [reload, setReload] = useState(0);
+  const roles = useRowRoles();
   useEffect(() => {
     let alive = true;
     if (!reload) setSong(undefined);
@@ -256,6 +257,13 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
             <AddProposedVersion songId={song.id} onAdded={(id) => (setPick(id), setReload((n) => n + 1))} />
           </div>
         )}
+        {song && !editing && version?.proposed && roles.propose && (
+          // A Proposed Version's own controls (it elevates apart from its Song, §4.4)
+          <div class="rowacts-line">
+            <span class="dim rowacts-lbl">Version “{version.label}”:</span>
+            <RowActions key={`v${version.id}${reload}`} table="version" id={version.id} onChanged={() => (setPick(null), setReload((n) => n + 1))} />
+          </div>
+        )}
         {onChangeSong && relinking && (
           <div class="relink-row">
             <span class="lbl">Song:</span>
@@ -323,7 +331,6 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
               <>
                 <ProposedMark />
                 <span>Member readable, not on the lyrics website.</span>
-                <RowActions key={`v${version.id}${reload}`} table="version" id={version.id} compact onChanged={() => (setPick(null), setReload((n) => n + 1))} />
               </>
             ) : (
               <span class="dim">From the archive Mirror.</span>

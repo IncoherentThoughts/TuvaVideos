@@ -861,7 +861,7 @@ dialog.shelf .row-end { display: flex; justify-content: flex-end; gap: 8px; marg
 /* Shelved diffs (#157): one row per attribute a Video lost to the Shared row: local value (red) → Shared (green).
    Used by the sign-in confirmation, its post-Sync popup and the Shelved drawer (src/web/ShelvedDiff.tsx). */
 .si-noacct { display: block; margin-top: 4px; }
-.sd-explain { font-size: .9em; color: var(--fg2); margin: 6px 0 10px; }
+.sd-explain { font-size: .8em; line-height: 1.45; color: var(--fg2); margin: 6px 0 10px; padding: 7px 11px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--t3) 40%, var(--line)); border-left: 3px solid var(--t3); background: color-mix(in srgb, var(--t3) 8%, transparent); }
 .sd-key { white-space: nowrap; }
 .sd-list { max-height: 45vh; overflow: auto; margin: 8px 0; padding-right: 4px; }
 dialog.signin { max-width: min(640px, calc(100vw - 32px)); }

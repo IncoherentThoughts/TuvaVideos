@@ -889,9 +889,8 @@ dialog.shelf .sd-row .btn { margin-left: auto; }
 .stp-tabs button.shelf-new { color: var(--t3); background: color-mix(in srgb, var(--t3) 14%, transparent); border-color: color-mix(in srgb, var(--t3) 55%, transparent); }
 .card .ttl .shelf-dot { margin-right: 5px; }
 .apills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.apill { --c: var(--fg2); display: inline-flex; align-items: center; font-size: .78em; font-weight: 600; line-height: 1; padding: 2px 7px 3px; border-radius: 999px; white-space: nowrap; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
-/* Centre on the x-height: "new" has no ascenders, so line-box centring left it sitting low. */
-@supports (text-box: trim-both ex alphabetic) { .apill { text-box: trim-both ex alphabetic; padding: 3px 7px; } }
+.apill { --c: var(--fg2); display: inline-flex; align-items: center; font-size: .78em; font-weight: 600; line-height: 1; padding: .12em .6em .32em; border-radius: 999px; white-space: nowrap; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+/* Extra bottom padding lifts lowercase labels ("new") to the optical centre; text-box trim does not apply to a flex box. */
 .apill.edit { --c: var(--t6); }
 .apill.create { --c: var(--t4); }
 .apill.delete { --c: var(--t1); }

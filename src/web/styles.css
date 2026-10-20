@@ -807,6 +807,7 @@ fieldset.chact:disabled .chbtn { opacity: .45; cursor: default; }
 .achip-main .propmark { font-weight: 500; font-size: .78em; letter-spacing: .06em; text-transform: uppercase; opacity: .8; margin-left: 5px; }
 .tag .propmark { margin-left: 5px; }
 .rowacts-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 2px; }
+.rowacts-lbl { font-size: .9em; }
 .rowacts { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .rowacts.compact .btn { padding: 1px 7px; }
 .rowacts .btn.on { border-color: var(--accent, var(--line)); }

@@ -885,7 +885,7 @@ dialog.shelf .sd-row .btn { margin-left: auto; }
 .shelf-mark.unseen { border-style: solid; background: color-mix(in srgb, var(--t3) 16%, transparent); font-weight: 600; }
 .cbtn.statebtn.shelf-new { border-color: color-mix(in srgb, var(--t3) 70%, var(--line)); }
 .cbtn.statebtn .shelf-dot { margin: 0; }
-.stp-tabs .shelf-dot { margin: 0 0 0 6px; }
+.stp-tabs button.shelf-new { color: var(--t3); background: color-mix(in srgb, var(--t3) 14%, transparent); border-color: color-mix(in srgb, var(--t3) 55%, transparent); }
 .card .ttl .shelf-dot { margin-right: 5px; }
 .apills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .apill { --c: var(--fg2); display: inline-block; font-size: .78em; font-weight: 600; line-height: 1.35; padding: 0 7px; border-radius: 999px; white-space: nowrap; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }

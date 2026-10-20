@@ -199,7 +199,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
       <div class="stp-head">
         <div class="stp-tabs" role="tablist">
           <button role="tab" tabIndex={-1} aria-selected={tab === "state"} class={tab === "state" ? "on" : ""} onClick={() => setTab("state")}>State</button>
-          <button role="tab" tabIndex={-1} aria-selected={tab === "history"} class={tab === "history" ? "on" : ""} onClick={() => setTab("history")}>History{shelfNew && <span class="shelf-dot" aria-label="New Shelved edits" />}</button>
+          <button role="tab" tabIndex={-1} aria-selected={tab === "history"} class={`${tab === "history" ? "on" : ""}${shelfNew ? " shelf-new" : ""}`} title={shelfNew ? "New Shelved edits" : undefined} aria-label={shelfNew ? "History, new Shelved edits" : undefined} onClick={() => setTab("history")}>History</button>
         </div>
         {v && !v.paused && !v.ended ? <span class="live on"><i /> live</span> : <span class="live"><i /> {v?.ended ? "ended" : "paused"}</span>}
         <span class="dim">press <kbd>i</kbd> to hide</span>

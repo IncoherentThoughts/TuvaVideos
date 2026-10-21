@@ -12,3 +12,7 @@ html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; backgro
 #shell .field { min-width: 760px; padding: 18px 36px; font: 600 72px/1.2 "JetBrains Mono", ui-monospace, monospace; background: var(--bg2); border: 3px solid var(--accent); letter-spacing: .04em; }
 #shell .field i { display: inline-block; width: 4px; height: 70px; margin-left: 4px; vertical-align: -10px; background: var(--accent); }
 #shell .err { color: var(--accent); font-size: 36px; }
+#shell .pad { display: grid; grid-template-columns: repeat(3, 150px); gap: 14px; margin-top: 8px; }
+#shell .pad span { height: 80px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: var(--bg3); font: 600 46px/1 "JetBrains Mono", ui-monospace, monospace; }
+#shell .pad span.go { grid-column: 1 / -1; font: 600 36px/1 "IBM Plex Sans", "Inter", system-ui, sans-serif; }
+#shell .pad span.f { background: var(--accent); color: var(--accent-fg); }

@@ -91,6 +91,7 @@ Its menu: **Turn off**, and the **Approved TVs** with a Remove per row (removing
 - **Resume**: the same rule as the browser (`src/shared/resume.ts`): written every 5 s while playing and on pause, seek, Copy switch and leaving the Player; within 30 s of the end stores 0. One `resume_s` per Video shared by both players, last writer wins, no conflict handling.
 - **View**: one `POST /api/videos/:id/view` the first time playback starts on a Player visit, as the browser does.
 - Playing inside a Playlist writes no Resume (spec §4.8); views are still counted.
+- **A player sitting paused follows the other one**: when the position stored for the open Video moves by more than a second and this player has not written in the last 4 s, the browser Player (its 3 s poll) and the TV Player (its 10 s poll) seek there and flash "Resume moved to m:ss by another player" (`adoptResume` in `src/shared/resume.ts`). Without it, a browser tab left paused on a Video kept its old position and wrote it back over the TV's on the next play or when leaving.
 
 ---
 
@@ -158,7 +159,7 @@ In order, each step with a 2 s timeout:
 
 1. the **last address** the shell stored (`localStorage`), `GET http://‹addr›:4401/api/health`;
 2. a **sweep of the TV's own /24** on 4401 (the TV's address from `webapis.network`, else the last address's subnet), 32 requests in flight at a time;
-3. **typed**: the shell shows a D-pad numeric field (digits, dot, Back deletes) for the Mac's address. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`) and Up types the dot, since the remote has none. When nothing answers the looking screen sits on this step and offers the field with Enter (§4.3); the sequence keeps retrying every 5 s except while the field is open.
+3. **typed**: the shell shows a numeric field for the Mac's address with an **on-screen number pad** under it (1–9, dot, 0, delete, then Connect), walked with the arrows and pressed with Enter, since newer remotes hide their digits behind a 123 panel; the remote's digits type too and Back deletes. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`). When nothing answers the looking screen sits on this step and offers the field with Enter (§4.3); the sequence keeps retrying every 5 s except while the field is open.
 
 The first health answer naming "TuvaVideos TV Server" wins and is stored. The shell then requests `/api/videos`; a 403 shows "Approve this TV on the Mac" and retries every 3 s until the user clicks Allow.
 
@@ -215,7 +216,7 @@ Verdict of #51 (Player variant B "Overlay", reshaped) plus the control decisions
 
 - The **whole video stays visible**, letterboxed in the left column at the Copy's aspect ratio. When lyrics are shown, a **standalone lyrics column** stands on the right; it is not an overlay on the video.
 - **Lyrics column width**: sized to its longest line measured unwrapped, between **720 and 1060 px**; past 900 px the type shrinks first (**44 px down to 34 px**) and only then does the column widen, so lines wrap only beyond both limits. The video column takes the rest.
-- Shown **only when the current Chapter's (else the Video's) Song has lyrics**: one Script at a time, no line numbers, no current line (no timings exist), the lines paged by **Channel ▲▼**, "page n of m" at the foot. The lyrics follow the Chapter the playhead is in. The title (Song, English name dimmed) and the Version pills head the column, opening on the Chapter's Version else the first; Versions are not switched from the remote (later, §10).
+- Shown **only when the current Chapter's (else the Video's) Song has lyrics**: one Script at a time, no line numbers, no current line (no timings exist), the lines paged by **Channel ▲▼**, "page n of m" at the foot. The lyrics follow the Chapter the playhead is in. The title (Song, a "local" pill beside it for a local Song, the English name under it) and the Version pills head the column, opening on the Chapter's Version else the first. **Right in the lyrics zone with the column shown, or Red, steps to the next Version** (wrapping; the choice holds for that Song until the Player closes). The video's right edge fades into the column's ground and the backdrop fades in from it, so the seam is a gradient, not a line.
 - **Type size at 3 m**: 44 px with 10 to 12 lines visible is the starting value; **tuned on the real TV** in the Player build ticket's HITL step, and the result written back here. The size is one CSS variable, **`--lyr-size`** (default `44px`, with the shrink floor **`--lyr-size-min`**, `34px`), at the top of `src/tv/styles.css`: change it there and restart the server (it builds the bundle at start); the column measures its longest line at that size and does the shrinking and widening itself (`src/tv/lyrics.ts` `fitLyrics`). The pages break between whole lines, never through one.
 
 ### 6.2 Column backdrop
@@ -234,31 +235,31 @@ The Player has one base zone and four reachable ones. **Back** always closes the
 
 | From the video (base) | |
 |---|---|
-| Left / Right | seek −/+ **10 s**; pressed again within a second **30, 60, then 120 s**, the step shown large in the middle of the video; MediaRewind / MediaFastForward 60 s |
+| Left / Right | seek −/+ **10 s**; kept pressing (each press within a second of the last) **four presses on each rung, then 30, 60 and 120 s**, the step shown large in the middle of the video; MediaRewind / MediaFastForward 60 s |
 | Enter / MediaPlayPause | pause and play |
 | Up | **lyrics zone** (§6.4) |
 | Down | **button row** under the scrub bar (§6.5) |
 | Channel ▲▼ | page the lyrics |
 | `<` `>` (MediaTrackPrevious / Next) | step Playing from, or the Playlist when one is active |
-| Yellow / Blue | lyrics on and off / cycle Script (also reachable without the 123 panel, below) |
+| Yellow / Blue / Red | lyrics on and off / cycle Script / next Version (also reachable without the 123 panel, below) |
 
 Held arrows are throttled as in the browser: one seek in flight, the latest target wins. Notes from the build (#100): the acceleration restarts at 10 s when the direction changes, not only after a second's pause (`src/tv/seekStep.ts`); MediaRewind/FastForward are keyframe seeks like the arrows (Chapters, Resume and the Copy switch are the exact ones); the zones are a pure reducer over the key table (`src/tv/zones.ts`), Yellow, Blue, Green, Channel, the track keys and play/pause mean the same in every zone, and Enter in the lyrics zone also toggles the lyrics. The lyrics on/off and the Script chosen last stay for the rest of the session (module state, not stored). The hints bar at the foot of the screen is not shown in the Player (the OSD owns the screen).
 
 ### 6.4 Lyrics zone and tag row (Up)
 
-- **Up** from the video reaches the **lyrics zone** with the top band shown: there **Right pulls the lyrics column in** and **Left hides it** (the chosen two-press gesture, since the colour keys sit in the 123 panel). The band names the state ("Lyrics ▸" / "◂ Lyrics"); when the Song has no lyrics the zone says why and the arrows do nothing. Down or Back returns to the video.
+- **Up** from the video reaches the **lyrics zone** with the top band shown: there **Right pulls the lyrics column in** (and, once it is in, steps to the next Version when the Song has several) and **Left hides it** (the chosen two-press gesture, since the colour keys sit in the 123 panel). The band names the state ("Lyrics ▸" / "◂ Lyrics"); when the Song has no lyrics the zone says why and the arrows do nothing. Down or Back returns to the video.
 - A second **Up** reaches the **tag row** in the top band (Type, Artists, ♪ Song, then the Copy's container/codecs/resolution/Root as text, and "Playing from ‹list›"): Left/Right walk the tags, **Enter on a tag opens the grid** of that Type / Artist / Song's Videos, leaving the Player. Down returns to the lyrics zone, Back to the video. Notes from the build (#100): the grid *replaces* the Player on the screen stack (Back from it returns to where the Video was opened from, not to the Player); a Type tag opens a new fixed grid kind (`{ kind: "type" }`, the Videos of that Type); only confirmed Artists are tags; the Resume position is written on the way out. The audio state (§6.8) is text after the Copy's facts.
 
 ### 6.5 Button row and Chapter list (Down)
 
 - **Down** from the video pins the bottom bar and focuses the **button row under the scrub bar**: **[Shuffle] [Repeat] [Copy]**. Left/Right move, Enter acts (§6.7 for Shuffle and Repeat), Up returns to the video, Back returns to the video.
-- **Down again** opens the **Chapter list** when the Video has Chapters (nothing otherwise): a vertical list over the video's left edge with time, title, a ♪ note for a Chapter with a Song, a dashed "suggested" mark; the current Chapter marked and scrolled into view; Up/Down move, **Enter jumps** (exact seek), Back or Left closes back to the button row. The title band hides while the list is open.
+- **Down again** opens the **Chapter list** when the Video has Chapters (nothing otherwise): a vertical list of filled rounded rows (the Samsung tile look every menu option on the TV shares, no instruction line under it) over the video's left edge with time, title, a ♪ note for a Chapter with a Song, a dashed "suggested" mark; the current Chapter marked and scrolled into view; Up/Down move, **Enter jumps** (exact seek), Back or Left closes back to the button row. The title band hides while the list is open.
 - **Copy** opens a list in the same place: one row per Copy (container, codecs, resolution, size, Root), the playing one marked, a Copy the TV profile cannot play as-is marked **"via remux"** and greyed until Live remux is built. Enter switches **for this play only at the same timestamp**; nothing is remembered, as in the browser. Notes from the build (#100): Enter on a Chapter jumps and closes the list back to the video (the prototype did the same); Down with no Chapters, and Green, flash "No chapters"; a via-remux or unavailable Copy row is greyed and Enter on it flashes the not-built message or "Copy unavailable" and leaves the list open; the Copy to start with is the best Copy the TV plays as-is, so a local Copy that needs the remux does not shut out an external one that plays (`pickPlayable`), and the Player falls over to the next such Copy when one is lost.
 
 ### 6.6 OSD
 
-- A **Netflix-style bottom bar** that fades after **3 s** and is **pinned while paused or while a zone is open**: the current Chapter's title and span, **"Next: ‹title›" in the last 20 s** (the next Chapter, or the next Playlist Entry when one is active), time and duration, a scrub bar with Chapter ticks and the Resume marker, then the button row.
-- A **top band** with the Video title, the tag row and "Playing from" shows with the bar.
+- A **Netflix-style bottom bar** that fades after **3 s** and is **pinned while paused**. A zone (lyrics, tag row, button row, the Chapter and Copy lists) fades the same way: 3 s without a key closes it back to the video along with the OSD: the current Chapter's title and span, **"Next: ‹title›" in the last 20 s** (the next Chapter, or the next Playlist Entry when one is active), time and duration, a scrub bar with Chapter ticks and the Resume marker, then the button row.
+- A **top band** with the Video title, the tag row and "Playing from" shows with the bar, on a dark rounded panel so it reads over a light video.
 - Shuffle and Repeat changes, the seek step, "Resuming at m:ss", "Playlist ended", "No chapters", a Copy switch and errors flash in the OSD.
 - "Next:" is read as: in the last 20 s of a Playlist Entry (a Chapter Entry's end, else the Video's) the next Entry's Video title; otherwise, in the last 20 s of a Chapter that has a next one, that Chapter; the last Chapter of a Video with no Playlist names nothing. A Repeat-list wrap names nothing (the reshuffle happens only when it does).
 - **"Press Enter to play"** shows when autoplay is refused and clears on the first `play` event. A Copy that fails shows "This Copy did not play (container codecs)"; a Copy needing a Live remux before it exists shows "This Copy needs the TV Server's remux (not built yet)". A Root that unmounts mid-play follows spec §4.2 (next Available Copy at the same time, else "Copy unavailable").
@@ -309,7 +310,7 @@ Registered by the shell (§4.1); one map shared by the shell and the UI (`src/tv
 | Yellow (405) | — | lyrics on / off |
 | Blue (406) | — | cycle Script |
 | Green (404) | — | Chapter list (same as Down, Down) |
-| Red (403) | — | unused (the prototype's variant switch) |
+| Red (403) | — | next Version of the lyrics |
 | Info (457) | state overlay (debug; kept, dimmed) | state overlay |
 | Digits (48–57) | typed-address field in the shell; typed into the Search keyboard; otherwise unused | unused |
 
@@ -337,7 +338,6 @@ Decided out of the TV build, kept as the next tickets when wanted:
 - the **Playlist panel** on the TV ("show played", jumping to an Entry);
 - a stored Playlist per Approved TV that survives a relaunch;
 - **themes** on the TV;
-- switching Versions from the remote;
 - an in-app certificate-expiry warning;
 - re-downloading 4K and AV1 Copies at 1080p (#61) is unrelated to the TV, which plays them as-is.
 

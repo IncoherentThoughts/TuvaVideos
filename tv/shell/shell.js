@@ -55,6 +55,30 @@
   // ---- screens -------------------------------------------------------------------------------------------------
 
   let typed = ""
+  // The on-screen number pad of the typing screen: the remote's arrows and Enter type the address, so a remote whose
+  // digits hide behind a 123 panel never needs it. Three columns of keys, then Connect across the bottom row.
+  const PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫", "Connect"]
+  let pad = 0
+  function padMove(dir) {
+    const connect = PAD.length - 1
+    if (pad === connect) {
+      if (dir === "up") pad = 10
+      return
+    }
+    const r = Math.floor(pad / 3)
+    const c = pad % 3
+    if (dir === "left" && c > 0) pad--
+    else if (dir === "right" && c < 2) pad++
+    else if (dir === "up" && r > 0) pad -= 3
+    else if (dir === "down") pad = r < 3 ? pad + 3 : connect
+  }
+  function padHtml() {
+    return (
+      `<div class="pad">` +
+      PAD.map((k, i) => `<span class="${i === pad ? "f" : ""}${k === "Connect" ? " go" : ""}">${k}</span>`).join("") +
+      `</div>`
+    )
+  }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c])
   const key = (label) => `<b>${label}</b>`
 
@@ -76,7 +100,8 @@
       el.innerHTML =
         `<h1>The Mac's address</h1><div class="field">${esc(typed)}<i></i></div>` +
         (s.error ? `<div class="err">${esc(s.error)}</div>` : `<div class="step">Port 4401 is added for you</div>`) +
-        `<div class="hint">${key("0–9")} digits &nbsp; ${key("▲")} dot &nbsp; ${key("Back")} delete &nbsp; ${key("Enter")} connect</div>`
+        padHtml() +
+        `<div class="hint">${key("◀ ▲ ▼ ▶")} choose &nbsp; ${key("Enter")} press &nbsp; ${key("Back")} delete</div>`
     } else if (s.kind === "denied") {
       el.innerHTML =
         `<h1>Approve this TV on the Mac</h1><div class="step">Click Allow in the TuvaVideos window on the Mac.</div>` +
@@ -124,7 +149,10 @@
       const entering = s.kind === "typing" && prevKind !== "typing"
       prevKind = s.kind
       if (s.kind === "ready") return loadUi(s.base)
-      if (entering) typed = s.prefix || ""
+      if (entering) {
+        typed = s.prefix || ""
+        pad = 0
+      }
       render(s)
     },
   })
@@ -143,13 +171,22 @@
       }
       if (s.kind === "typing") {
         eat()
-        if (/^[0-9]$/.test(name)) typed += name
-        else if (name === "ArrowUp" || e.key === "." || e.keyCode === 190 || e.keyCode === 110) typed += "."
-        else if (name === "Back" || e.key === "Backspace") {
+        const del = () => {
           if (typed) typed = typed.slice(0, -1)
           else disc.closeTyped()
-        } else if (name === "Enter") disc.submitTyped(typed)
-        if (name !== "Enter" && disc.state() && disc.state().kind === "typing") render({ kind: "typing", prefix: s.prefix })
+        }
+        const arrow = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[name]
+        if (/^[0-9]$/.test(name)) typed += name
+        else if (e.key === "." || e.keyCode === 190 || e.keyCode === 110) typed += "."
+        else if (arrow) padMove(arrow)
+        else if (name === "Back" || e.key === "Backspace") del()
+        else if (name === "Enter") {
+          const k = PAD[pad]
+          if (k === "Connect") return disc.submitTyped(typed)
+          if (k === "⌫") del()
+          else typed += k
+        }
+        if (disc.state() && disc.state().kind === "typing") render({ kind: "typing", prefix: s.prefix })
         return
       }
       if (name === "Back" || name === "Exit") {

@@ -23,6 +23,10 @@ export const initialZone = (): ZoneState => ({ zone: "video", tag: 0, button: 0,
 /** What the reducer needs to know about the Video on screen. */
 export interface ZoneCtx {
   hasLyrics: boolean
+  /** The lyrics column is on screen. */
+  lyricsShown: boolean
+  /** Versions of the Song in the column (Right with the column shown, and Red, step through them). */
+  versionCount: number
   /** Focusable tags (Type, Artists, Song). */
   tagCount: number
   chapterCount: number
@@ -42,6 +46,8 @@ export type Fx =
   | { t: "page"; dir: 1 | -1 }
   | { t: "lyrics"; on: boolean | "toggle" }
   | { t: "script" }
+  /** The next Version of the Song in the lyrics column. */
+  | { t: "version" }
   /** `<` `>`: the Playlist when one is active, else Playing from. */
   | { t: "step"; dir: 1 | -1 }
   | { t: "tag"; index: number }
@@ -92,6 +98,8 @@ export function reduceZone(s: ZoneState, k: TvAction, c: ZoneCtx): ZoneResult {
       return stay(s, { t: "lyrics", on: "toggle" })
     case "blue":
       return stay(s, { t: "script" })
+    case "red":
+      return stay(s, { t: "version" })
     case "green":
       return s.zone === "chapters" ? go(s, { zone: "video" }) : openChapters(s, c)
     case "rewind":
@@ -120,7 +128,8 @@ export function reduceZone(s: ZoneState, k: TvAction, c: ZoneCtx): ZoneResult {
     case "lyrics":
       switch (k) {
         case "right":
-          return c.hasLyrics ? stay(s, { t: "lyrics", on: true }) : stay(s)
+          if (!c.hasLyrics) return stay(s)
+          return c.lyricsShown && c.versionCount > 1 ? stay(s, { t: "version" }) : stay(s, { t: "lyrics", on: true })
         case "left":
           return c.hasLyrics ? stay(s, { t: "lyrics", on: false }) : stay(s)
         case "enter":
@@ -199,9 +208,5 @@ export function reduceZone(s: ZoneState, k: TvAction, c: ZoneCtx): ZoneResult {
       break
   }
   // a key this zone has no use for: Back still leaves from anywhere unhandled above; the rest is the app's (Info, Exit)
-  return { state: s, fx: [], handled: k !== "info" && k !== "exit" && k !== "red" && k !== "char" && k !== "backspace" }
+  return { state: s, fx: [], handled: k !== "info" && k !== "exit" && k !== "char" && k !== "backspace" }
 }
-
-/** The bottom bar stays up in the zones that live in it; the top band in the zones that live there. */
-export const pinsBottom = (z: Zone): boolean => z === "buttons" || z === "chapters" || z === "copies"
-export const pinsTop = (z: Zone): boolean => z === "lyrics" || z === "tags"

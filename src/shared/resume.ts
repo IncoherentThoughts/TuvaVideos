@@ -50,3 +50,18 @@ export class ResumeClock {
     this.last = Number.NEGATIVE_INFINITY;
   }
 }
+
+/** After its own write, a player ignores the stored position this long: a read in flight may still carry the older one. */
+export const ADOPT_QUIET_MS = 4000;
+
+/**
+ * A Resume position another player wrote while this one sat paused on the same Video (the TV after the browser, or the
+ * other way round): where to move to, else null. `known` is the position this player last read or wrote; the stored
+ * position counts as foreign only when it differs from that by more than a second and this player has not written
+ * for `ADOPT_QUIET_MS`. A finished position elsewhere (0) is adopted too: the other player watched to the end.
+ */
+export function adoptResume(o: { stored: number | null; known: number | null; paused: boolean; now: number; wroteAt: number }): number | null {
+  if (!o.paused || o.stored == null || !Number.isFinite(o.stored) || o.now - o.wroteAt < ADOPT_QUIET_MS) return null;
+  if (o.known != null && Math.abs(o.stored - o.known) <= 1) return null;
+  return o.stored;
+}

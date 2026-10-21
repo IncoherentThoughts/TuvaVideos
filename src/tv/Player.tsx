@@ -10,7 +10,7 @@ import { clampTime, fmtClock, keyframeSeekTarget } from "../shared/playerMath"
 import { stepFrom, type PlayingFrom } from "../shared/playingFrom"
 import { current, widenToVideo, type Playlist } from "../shared/playlist"
 import { ENDED_LABEL, entryRange, nextEntry, nextLabel, openAt, prevEntry, prevLabel, reachedEnd, resumeAllowed, seekWidens } from "../shared/playlistPlayer"
-import { ResumeClock, RESUME_INTERVAL_MS, storedResume } from "../shared/resume"
+import { ResumeClock, RESUME_INTERVAL_MS, adoptResume, storedResume } from "../shared/resume"
 import { SeekThrottle } from "../shared/seekThrottle"
 import type { ChapterDto, CopyDto, SongDto, VideoDto } from "../shared/types"
 import { AudioEngine } from "../web/audioEngine"
@@ -29,7 +29,7 @@ import { libraryOrder } from "./rails"
 import type { Nav } from "./screen"
 import { REW_FF_S, nextSeekStep, stepLabel, type SeekRamp } from "./seekStep"
 import { focusableTags, infoTexts, playingFromText } from "./tags"
-import { BUTTONS, initialZone, pinsBottom, pinsTop, reduceZone, type Fx, type ZoneCtx, type ZoneState } from "./zones"
+import { BUTTONS, initialZone, reduceZone, type Fx, type ZoneCtx, type ZoneState } from "./zones"
 
 /** Desktop development runs muted (no stray sound while testing); on the TV the Player is not muted. */
 const muted = () => typeof window !== "undefined" && (!window.tuvaTv || /[?&]mute=1\b/.test(location.search))
@@ -91,6 +91,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const [badge, setBadge] = useState<string | null>(null)
   const [lyricsOn, setLyricsOnState] = useState(lyricsOnPref)
   const [scriptTick, setScriptTick] = useState(0)
+  const [verPick, setVerPick] = useState<{ songId: string; idx: number } | null>(null) // a Version chosen with the remote, for this Song
   const [song, setSong] = useState<SongDto | null | undefined>(undefined)
   const [audioMode, setAudioMode] = useState<AudioMode>("none")
   const [resumeMark, setResumeMark] = useState<number | null>(null)
@@ -107,6 +108,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     failed: new Set<number>(),
     retried: new Set<number>(),
     lastPos: 0,
+    known: null as number | null, // the Resume position as this Player last read or wrote it
+    wroteAt: 0,
     hold: 0, // position kept while "Copy unavailable"
     token: 0, // bumped by every load and on unmount: a stale keyframe poll stops when it sees a newer one
     copyId: null as number | null,
@@ -158,14 +161,15 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const range = pl ? entryRange(current(pl), chapters, duration) : null
   const { chapter: curChapter, target } = songTarget(chapters, t, video ?? { songId: null, versionId: null })
   const targetId = target?.songId ?? null
-  const lview = useMemo(() => (song ? lyricsView(song, target?.versionId ?? null, scriptPref) : null), [song, target?.versionId, scriptTick])
+  const picked = song && verPick?.songId === song.id ? (song.versions[verPick.idx]?.id ?? null) : null
+  const lview = useMemo(() => (song ? lyricsView(song, picked ?? target?.versionId ?? null, scriptPref) : null), [song, picked, target?.versionId, scriptTick])
   const hasLyrics = !!lview && lview.script != null && lview.lines.length > 0
   const reason: string | null = hasLyrics ? null : targetId && song === undefined ? "Loading lyrics…" : (noLyricsReason(target, song) ?? (lview ? "This Version has no text" : null))
   const showLyrics = lyricsOn && hasLyrics
   const tags = video ? focusableTags(video) : []
   const rows = copyRows(copies, copyId)
   const chIdx = curChapter ? chapters.indexOf(curChapter) : -1
-  const zctx: ZoneCtx = { hasLyrics, tagCount: tags.length, chapterCount: chapters.length, currentChapter: chIdx, copySwitchable: rows.map((r) => r.switchable), currentCopy: Math.max(0, rows.findIndex((r) => r.playing)) }
+  const zctx: ZoneCtx = { hasLyrics, lyricsShown: showLyrics, versionCount: lview?.versions.length ?? 0, tagCount: tags.length, chapterCount: chapters.length, currentChapter: chIdx, copySwitchable: rows.map((r) => r.switchable), currentCopy: Math.max(0, rows.findIndex((r) => r.playing)) }
   const S = useRef({ video, copies, chapters, range, duration, playable, zctx })
   S.current = { video, copies, chapters, range, duration, playable, zctx }
 
@@ -173,7 +177,11 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const wake = () => {
     setAwakeAt(Date.now())
     clearTimeout(R.current.awakeTimer)
-    R.current.awakeTimer = setTimeout(() => setTick((n) => n + 1), OSD_FADE_MS + 60)
+    R.current.awakeTimer = setTimeout(() => {
+      // the OSD fades and takes the focus with it: a zone left alone closes back to the video, as the scrub bar does
+      if (ZS.current.zone !== "video") setZone({ ...ZS.current, zone: "video" })
+      setTick((n) => n + 1)
+    }, OSD_FADE_MS + 60)
   }
   const say = (text: string, ms = 2400) => {
     const r = R.current
@@ -205,7 +213,9 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     const v = vid.current
     const pos = v && v.readyState > 0 ? v.currentTime : r.lastPos
     clock.current.wrote(Date.now())
-    writes.resume(videoId, storedResume(pos, S.current.duration), r.copyId)
+    r.known = storedResume(pos, S.current.duration)
+    r.wroteAt = Date.now()
+    writes.resume(videoId, r.known, r.copyId)
   }
 
   // ---- loading a Copy ----
@@ -396,6 +406,13 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         setLyricsOn(on)
         return say(on ? "Lyrics on" : "Lyrics off", 1400)
       }
+      case "version": {
+        if (!song || !lview || lview.versions.length < 2) return say(hasLyrics ? "Only one Version of this Song" : (reason ?? "No lyrics"), 1800)
+        const idx = (lview.versionIdx + 1) % lview.versions.length
+        setVerPick({ songId: song.id, idx })
+        if (!lyricsOn) setLyricsOn(true)
+        return say(`Version: ${lview.versions[idx]!.label}`, 1600)
+      }
       case "script": {
         if (!lview || !lview.script) return say(reason ?? "No lyrics to switch")
         const n = nextScript(lview.present, lview.script)
@@ -560,6 +577,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     lose(id, intact, pos, play)
   }
   E.current.writeResume = writeResume
+  E.current.seekTo = (to: number) => seekTo(to, "exact", undefined, false, true)
+  E.current.say = say
 
   // ---- mount: media listeners ----
   useEffect(() => {
@@ -597,6 +616,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
       if (!fresh) return setPhase("unavailable")
       S.current.video = fresh
       S.current.copies = fresh.copies
+      r.known = fresh.resumeS
       setVideo(fresh)
       const picked = pickPlayable(fresh.copies)
       if (!picked) {
@@ -629,6 +649,14 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
           S.current.video = v
           S.current.copies = v.copies
           setVideo(v)
+          // the browser moved the Resume position while this Player sat paused: follow it
+          const el = vid.current
+          const to = r.started && el && resumeAllowed(!!PL.current) ? adoptResume({ stored: v.resumeS, known: r.known, paused: el.paused, now: Date.now(), wroteAt: r.wroteAt }) : null
+          if (to != null) {
+            r.known = to
+            E.current.seekTo!(to)
+            E.current.say!(`Resume moved to ${fmtClock(to)} by another player`, 2600)
+          }
         })
         .catch(() => {})
     }, 10_000)
@@ -685,7 +713,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
 
   // ---- render ----
   const z = zs.zone
-  const pinned = paused || pinsTop(z) || pinsBottom(z) || phase !== "ready"
+  const pinned = paused || phase !== "ready"
   const osdOn = osdVisible({ now: Date.now(), wokeAt: awakeAt, paused: pinned, zonePinned: false })
   const listOpen = z === "chapters" || z === "copies"
   const topOn = osdOn && !listOpen
@@ -733,7 +761,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
           </div>
         )}
 
-        <div class={`pl-top${topOn ? " on" : ""}${z === "tags" || z === "lyrics" ? " pin" : ""}`}>
+        <div class={`pl-top${topOn ? " on" : ""}`}>
+          <div class="meta">
           <div class="t1">{video?.title ?? ""}</div>
           <div class="tagrow">
             {tags.map((tg, i) => (
@@ -752,10 +781,11 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
             ))}
           </div>
           <div class="from">{playingFromText(playingFrom, videoId, pl)}</div>
+          </div>
           {z === "lyrics" && (
             <div class="lyrband">
               <b>{showLyrics ? "◂ Lyrics" : "Lyrics ▸"}</b>
-              <span>{showLyrics ? "◂ hides them" : (reason ?? "▸ shows them")}</span>
+              <span>{showLyrics ? ((lview?.versions.length ?? 0) > 1 ? "▸ next Version · ◂ hides them" : "◂ hides them") : (reason ?? "▸ shows them")}</span>
             </div>
           )}
           {z === "tags" && (
@@ -765,7 +795,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
           )}
         </div>
 
-        <div class={`pl-bar${osdOn ? " on" : ""}${pinsBottom(z) ? " pin" : ""}`}>
+        <div class={`pl-bar${osdOn ? " on" : ""}`}>
           <div class="row">
             <span class="chap">{chapterLine(chapters, t, duration)}</span>
             <span class="sp" />
@@ -794,8 +824,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
           </div>
         </div>
 
-        {z === "chapters" && <PlList title="Chapters" rows={chapterRows} focus={zs.row} hint="▲▼ choose · Enter jumps · ◀ or Back closes" />}
-        {z === "copies" && <PlList title="Copies" rows={copyListRows} focus={zs.row} hint="▲▼ choose · Enter switches for this play · ◀ or Back closes" />}
+        {z === "chapters" && <PlList title="Chapters" rows={chapterRows} focus={zs.row} />}
+        {z === "copies" && <PlList title="Copies" rows={copyListRows} focus={zs.row} />}
       </div>
       {showLyrics && lview && <LyricsColumn view={lview} poster={poster} ctl={lyricsCtl} />}
     </div>

@@ -11,7 +11,7 @@ import type { CopyDto, SongDto, VideoDto } from "../src/shared/types"
 import { AudioChain, audioTag, type ChainDeps } from "../src/tv/audioChain"
 import { pickPlayable, failedMessage } from "../src/tv/copies"
 import { copyRows, fmtSize } from "../src/tv/copyList"
-import { SAMPLE_N, blobColors, hueGap, hueMoved, liftedColor, matchSlots, sampleHues, stripHues, tileCells, windowTiles } from "../src/tv/hues"
+import { ORBS, SAMPLE_N, colorsAt, ease, frameColors, groundColor, orbColor, rgbToHsl, stripColors, type FrameColors, type Rgb } from "../src/tv/hues"
 import { actionFor, type TvAction } from "../src/tv/keys"
 import { LYR_W_MAX, LYR_W_MIN, clampPage, fitLyrics, lyricsView, nextScript, noLyricsReason, pageLabel, paginate, stripMarkers } from "../src/tv/lyrics"
 import { chapterLine, listOffset, nextUp, osdVisible, pct } from "../src/tv/osd"
@@ -480,78 +480,69 @@ describe("lyrics column (spec 6.1)", () => {
 /** RGBA for a list of [r,g,b]. */
 const px = (...cells: [number, number, number][]) => Uint8ClampedArray.from(cells.flatMap(([r, g, b]) => [r, g, b, 255]))
 
-describe("backdrop hues (spec 6.2)", () => {
-  test("the most vivid cells are picked (red among them); the picked hues are 25 degrees apart or more", () => {
-    const hues = sampleHues(px([220, 30, 30], [225, 35, 35], [30, 200, 40], [40, 60, 210], [220, 200, 20], [230, 25, 25]))
-    expect(hues).toHaveLength(4)
-    expect(hues.some((h) => h.h < 10 || h.h > 350)).toBe(true)
-    for (let i = 0; i < hues.length; i++) for (let j = i + 1; j < hues.length; j++) expect(hueGap(hues[i]!.h, hues[j]!.h)).toBeGreaterThanOrEqual(25)
+describe("backdrop colours (spec 6.2)", () => {
+  /** A SAMPLE_N frame painted by `paint(x, y)`. */
+  const frame = (paint: (x: number, y: number) => Rgb) => {
+    const px = new Uint8ClampedArray(SAMPLE_N * SAMPLE_N * 4)
+    for (let y = 0; y < SAMPLE_N; y++) for (let x = 0; x < SAMPLE_N; x++) px.set([...paint(x, y), 255], (y * SAMPLE_N + x) * 4)
+    return px
+  }
+  const near = (a: Rgb, b: Rgb, tol = 2) => a.every((v, i) => Math.abs(v - b[i]!) <= tol)
+
+  test("each orb takes its region of the frame: three across, two down", () => {
+    const f = frameColors(frame((x, y) => (y < 6 ? (x < 4 ? [220, 30, 30] : x < 8 ? [30, 200, 40] : [40, 60, 210]) : [200, 180, 20])))
+    expect(f.orbs).toHaveLength(ORBS)
+    expect(near(f.orbs[0]!, [220, 30, 30])).toBe(true)
+    expect(near(f.orbs[1]!, [30, 200, 40])).toBe(true)
+    expect(near(f.orbs[2]!, [40, 60, 210])).toBe(true)
+    expect(f.orbs.slice(3).every((c) => near(c, [200, 180, 20]))).toBe(true)
   })
 
-  test("near-duplicate hues count once", () => {
-    const hues = sampleHues(px([220, 30, 30], [220, 40, 30], [221, 35, 32]))
-    expect(hues.filter((h) => hueGap(h.h, hues[0]!.h) < 25)).toHaveLength(1)
+  test("vivid cells outweigh grey and black ones in a region", () => {
+    const f = frameColors(frame((x) => (x === 0 ? [30, 60, 220] : [20, 20, 20])))
+    expect(Math.abs(rgbToHsl(...f.orbs[0]!)[0] - rgbToHsl(30, 60, 220)[0])).toBeLessThan(1)
+    expect(rgbToHsl(...f.orbs[0]!)[1]).toBeGreaterThan(0.5)
   })
 
-  test("a grey poster falls back to warm hues spread round the wheel", () => {
-    const grey = sampleHues(px([128, 128, 128], [20, 20, 20], [240, 240, 240], [100, 102, 100]))
-    expect(grey.map((h) => h.h)).toEqual([25, 60, 95, 130])
-    expect(sampleHues(new Uint8ClampedArray(0)).map((h) => h.h)).toEqual([25, 60, 95, 130])
-  })
-
-  test("fewer than four colours: the rest are warm hues spread from the first", () => {
-    const hues = sampleHues(px([30, 60, 220]))
-    expect(hues).toHaveLength(4)
-    expect(hueGap(hues[1]!.h, (hues[0]!.h + 35) % 360)).toBeLessThan(0.001)
-  })
-
-  test("lifted to lightness 56 for the first, 48 for the rest, saturation at least 65 %", () => {
-    expect(liftedColor({ h: 200, s: 0.3, l: 0.2 }, 0)).toBe("hsl(200 65% 56%)")
-    expect(liftedColor({ h: 10.4, s: 0.9, l: 0.9 }, 2)).toBe("hsl(10 90% 48%)")
-    const cols = blobColors(px([220, 30, 30], [30, 200, 40], [40, 60, 210], [220, 200, 20]))
-    expect(cols).toHaveLength(4)
-    expect(cols[0]).toMatch(/ 56%\)$/)
-    expect(cols.slice(1).every((c) => / 48%\)$/.test(c))).toBe(true)
-    expect(SAMPLE_N).toBe(12)
-  })
-
-  test("transparent cells are ignored", () => {
-    const p = Uint8ClampedArray.from([200, 20, 20, 0])
-    expect(sampleHues(p)[0]!.h).toBe(25)
-  })
-})
-
-describe("backdrop following the playhead (spec 6.2)", () => {
-  test("the window is ±30 s of slice centres, or one slice when slices are longer", () => {
-    expect(windowTiles(120, 240, 100)).toEqual(Array.from({ length: 26 }, (_, i) => 37 + i)) // 2.4 s slices, centres 90 s to 150 s
-    expect(windowTiles(3600, 7200, 100)).toEqual([49, 50]) // 72 s slices
-    expect(windowTiles(0, 7200, 100)).toEqual([0])
-    expect(windowTiles(7200, 7200, 100)).toEqual([99])
-  })
-
-  test("a tile's cells come out of the downscaled strip", () => {
+  test("a strip's frames are read tile by tile", () => {
     const cols = 3
-    const strip = new Uint8ClampedArray(cols * SAMPLE_N * 2 * SAMPLE_N * 4)
-    for (let y = SAMPLE_N; y < 2 * SAMPLE_N; y++)
-      for (let x = SAMPLE_N; x < 2 * SAMPLE_N; x++) strip.set([10, 200, 30, 255], (y * cols * SAMPLE_N + x) * 4) // tile 4
-    const cells = tileCells(strip, cols, 4)
-    expect(cells.length).toBe(SAMPLE_N * SAMPLE_N * 4)
-    expect([...cells.slice(0, 4)]).toEqual([10, 200, 30, 255])
-    expect(tileCells(strip, cols, 3).every((v) => v === 0)).toBe(true)
-    expect(hueGap(stripHues(strip, cols, [3, 4])[0]!.h, 127)).toBeLessThan(2)
+    const stride = cols * SAMPLE_N
+    const px = new Uint8ClampedArray(stride * 2 * SAMPLE_N * 4)
+    for (let y = SAMPLE_N; y < 2 * SAMPLE_N; y++) for (let x = SAMPLE_N; x < 2 * SAMPLE_N; x++) px.set([10, 200, 30, 255], (y * stride + x) * 4) // tile 4
+    const fs = stripColors(px, cols, 5)
+    expect(fs).toHaveLength(5)
+    expect(near(fs[4]!.orbs[0]!, [10, 200, 30])).toBe(true)
+    expect(near(fs[3]!.mean, [0, 0, 0])).toBe(true)
   })
 
-  test("slots keep the nearest hue, so blobs drift instead of swapping", () => {
-    const h = (...hs: number[]) => hs.map((x) => ({ h: x, s: 0.8, l: 0.5 }))
-    expect(matchSlots(h(0, 90, 180, 270), h(185, 275, 5, 95)).map((x) => x.h)).toEqual([5, 95, 185, 275])
+  test("the colours at a time blend the frames around it, continuously", () => {
+    const solid = (c: Rgb): FrameColors => ({ orbs: Array.from({ length: ORBS }, () => [...c] as Rgb), mean: [...c] as Rgb })
+    const fs = [...Array.from({ length: 50 }, () => solid([255, 0, 0])), ...Array.from({ length: 50 }, () => solid([0, 0, 255]))]
+    const D = 7200 // 72 s slices: the Gaussian is 50 s wide
+    expect(near(colorsAt(fs, 600, D).orbs[0]!, [255, 0, 0])).toBe(true)
+    expect(near(colorsAt(fs, 3600, D).orbs[0]!, [127.5, 0, 127.5])).toBe(true) // the seam: half and half
+    let prev = colorsAt(fs, 3400, D).orbs[0]![0]
+    for (let t = 3410; t <= 3800; t += 10) {
+      const r = colorsAt(fs, t, D).orbs[0]![0]
+      expect(prev - r).toBeLessThan(25) // no step across the seam (a cut would be 255)
+      expect(r).toBeLessThanOrEqual(prev + 1e-9)
+      prev = r
+    }
   })
 
-  test("a slot moves only past a hue or saturation step", () => {
-    const a = { h: 100, s: 0.8, l: 0.5 }
-    expect(hueMoved(a, { ...a, h: 108 })).toBe(false)
-    expect(hueMoved(a, { ...a, h: 115 })).toBe(true)
-    expect(hueMoved({ ...a, s: 0.2 }, { ...a, s: 0.5 })).toBe(false) // both lift to 65 %
-    expect(hueMoved(a, { ...a, s: 0.6 })).toBe(true)
+  test("orbs glow in the region's hue; the ground stays dark", () => {
+    const o = rgbToHsl(...orbColor([60, 20, 10]))
+    expect(Math.abs(o[0] - rgbToHsl(60, 20, 10)[0])).toBeLessThan(1)
+    expect(o[2]).toBeGreaterThanOrEqual(0.4)
+    expect(o[1]).toBeGreaterThanOrEqual(0.6)
+    expect(rgbToHsl(...orbColor([120, 120, 120]))[1]).toBe(0) // grey stays grey
+    expect(rgbToHsl(...groundColor([250, 250, 250]))[2]).toBeLessThanOrEqual(0.13)
+  })
+
+  test("easing moves part of the way, more with a longer step", () => {
+    const a = ease([0, 0, 0], [100, 100, 100], 6, 6)
+    expect(a[0]).toBeCloseTo(100 * (1 - Math.exp(-1)), 6)
+    expect(ease([0, 0, 0], [100, 0, 0], 0.033, 6)[0]).toBeLessThan(1)
   })
 })
 

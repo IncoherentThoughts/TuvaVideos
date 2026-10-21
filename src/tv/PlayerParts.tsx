@@ -17,33 +17,19 @@ const cssPx = (el: HTMLElement, name: string, fallback: number): number => {
   return Number.isFinite(v) && v > 0 ? v : fallback
 }
 
-/**
- * The poster blurred and drifting, four blobs in its sampled hues, vignette, tint and grain (spec 6.2); with a scrub
- * strip the frame underneath and the blobs follow the playhead, crossfading slowly (glow.ts).
- */
+/** Orbs flowing in the colours of the video around the playhead, then vignette, tint and grain (spec 6.2, glow.ts). */
 function Backdrop({ poster, strip, durationS, at }: { poster: string | null; strip: StripDto | null; durationS: number | null; at: number }) {
-  const root = useRef<HTMLDivElement>(null)
-  const glow = useRef<Glow | null>(null)
+  const canvas = useRef<HTMLCanvasElement>(null)
   const time = useRef(at)
   time.current = at
   useEffect(() => {
-    const g = (glow.current = new Glow(root.current!, () => time.current))
-    g.follow(strip, strip ? url(strip.url) : null, durationS)
+    const g = new Glow(canvas.current!, strip?.url ?? poster ?? "", () => time.current)
+    g.follow(strip, strip ? url(strip.url) : null, poster, durationS)
     return () => g.stop()
-  }, [strip?.url, durationS])
+  }, [strip?.url, poster, durationS])
   return (
-    <div class="glow" ref={root} aria-hidden="true">
-      <div class="drift">
-        {poster && <img src={poster} crossOrigin="anonymous" alt="" onLoad={(e) => glow.current?.poster(e.currentTarget as HTMLImageElement)} />}
-        <canvas />
-        <canvas />
-      </div>
-      {[1, 2, 3, 4].map((n) => (
-        <i key={n} class={`blob b${n}`}>
-          <b class="on" />
-          <b />
-        </i>
-      ))}
+    <div class="glow" aria-hidden="true">
+      <canvas ref={canvas} />
       <div class="vig" />
       <div class="tint" />
       <div class="grain" />

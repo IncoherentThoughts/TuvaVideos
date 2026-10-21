@@ -1,26 +1,33 @@
-// The lyrics column's backdrop colours (docs/tv-spec.md 6.2). A dark poster blurs to black, so the poster is sampled
-// into a small canvas (12x12), its four most vivid hues (25 degrees apart or more) are lifted to a fixed lightness and
-// saturation, and those colours drive four drifting blobs. A grey poster (black-and-white footage) has no hue worth
-// keeping: warm hues spread round the wheel. Pure: RGBA pixels in, colours out, so a test feeds synthetic arrays.
+// The lyrics column's backdrop colours (docs/tv-spec.md 6.2). Each frame of the Video's scrub strip (or the poster,
+// without one) is sampled into SAMPLE_N x SAMPLE_N cells; each of the ORBS orbs takes the chroma-weighted mean of its
+// region of the frame, so the colours move continuously with the picture (nothing is ranked, so nothing flips). The
+// colours at a time are the frames around it blended with Gaussian weights, then styled into glowing orbs on a dark
+// ground. Pure: RGBA pixels in, colours out, so a test feeds synthetic arrays.
 
-/** The canvas the poster is drawn into. */
+/** Cells a frame is sampled into, each way. */
 export const SAMPLE_N = 12
-/** Hues closer than this (degrees) count as one. */
-export const MIN_HUE_GAP = 25
-/** A cell this grey carries no hue. */
-export const GREY_S = 0.15
-/** Lifted lightness (percent) of the first blob and of the other three; saturation never below this (percent). */
-export const LIFT_L = [56, 48, 48, 48] as const
-export const LIFT_S_MIN = 65
 
-export interface Hue {
-  /** Degrees 0..360. */
-  h: number
-  /** 0..1 */
-  s: number
-  /** 0..1 */
-  l: number
+export type Rgb = [number, number, number]
+
+/** A frame's colours: one per orb (its region's), and the frame's mean for the ground. */
+export interface FrameColors {
+  orbs: Rgb[]
+  mean: Rgb
 }
+
+/** The regions of a frame (in cells, [x0, y0, x1, y1)) the orbs take their colour from: three across, two down. */
+export const REGIONS: readonly (readonly [number, number, number, number])[] = [
+  [0, 0, 4, 6],
+  [4, 0, 8, 6],
+  [8, 0, 12, 6],
+  [0, 6, 4, 12],
+  [4, 6, 8, 12],
+  [8, 6, 12, 12],
+]
+export const ORBS = REGIONS.length
+
+/** Half-width of the Gaussian the frames around the playhead are blended with (seconds), never under 0.7 of a slice. */
+export const BLEND_S = 20
 
 export function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   r /= 255
@@ -36,48 +43,93 @@ export function rgbToHsl(r: number, g: number, b: number): [number, number, numb
   return [h * 60, s, l]
 }
 
-/** Angular distance between two hues, 0..180. */
-export const hueGap = (a: number, b: number): number => {
-  const d = Math.abs(a - b) % 360
-  return Math.min(d, 360 - d)
+export function hslToRgb(h: number, s: number, l: number): Rgb {
+  const k = (n: number) => (n + h / 30) % 12
+  const a = s * Math.min(l, 1 - l)
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))
+  return [f(0) * 255, f(8) * 255, f(4) * 255]
 }
 
-/** Warm hues, 35 degrees apart from `base`: what a poster without colour gets. */
-export const WARM_BASE = 25
-export const WARM_STEP = 35
+/** How much a cell counts towards its region: vivid mid-light cells most, grey, black and white ones barely. */
+export function cellWeight(r: number, g: number, b: number): number {
+  const [, s, l] = rgbToHsl(r, g, b)
+  return 0.02 + s * s * Math.max(0.1, 1 - Math.abs(l - 0.5) * 1.6)
+}
+
+/** The colours of one frame from its SAMPLE_N x SAMPLE_N RGBA cells, read from `px` at cell `offset` in rows `stride` cells wide. */
+export function frameColors(px: ArrayLike<number>, stride = SAMPLE_N, offset = 0): FrameColors {
+  const at = (x: number, y: number) => (offset + y * stride + x) * 4
+  const orbs = REGIONS.map(([x0, y0, x1, y1]): Rgb => {
+    let w = 0
+    const sum: Rgb = [0, 0, 0]
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        const i = at(x, y)
+        const r = px[i] ?? 0
+        const g = px[i + 1] ?? 0
+        const b = px[i + 2] ?? 0
+        const k = cellWeight(r, g, b)
+        sum[0] += r * k
+        sum[1] += g * k
+        sum[2] += b * k
+        w += k
+      }
+    return [sum[0] / w, sum[1] / w, sum[2] / w]
+  })
+  const mean: Rgb = [0, 0, 0]
+  for (let y = 0; y < SAMPLE_N; y++)
+    for (let x = 0; x < SAMPLE_N; x++) for (let c = 0; c < 3; c++) mean[c] += (px[at(x, y) + c] ?? 0) / (SAMPLE_N * SAMPLE_N)
+  return { orbs, mean }
+}
+
+/** Every frame of a strip drawn at SAMPLE_N cells a tile (`columns * SAMPLE_N` wide). */
+export function stripColors(px: ArrayLike<number>, columns: number, frames: number): FrameColors[] {
+  const stride = columns * SAMPLE_N
+  return Array.from({ length: frames }, (_, i) => frameColors(px, stride, Math.floor(i / columns) * SAMPLE_N * stride + (i % columns) * SAMPLE_N))
+}
+
+/** The frames around `t` blended with Gaussian weights over their slice centres: continuous in `t`. */
+export function colorsAt(frames: FrameColors[], t: number, durationS: number): FrameColors {
+  if (frames.length === 1) return frames[0]!
+  const slice = durationS / frames.length
+  const sigma = Math.max(BLEND_S, slice * 0.7)
+  const out: FrameColors = { orbs: Array.from({ length: ORBS }, (): Rgb => [0, 0, 0]), mean: [0, 0, 0] }
+  let total = 0
+  frames.forEach((f, i) => {
+    const d = (slice * (i + 0.5) - t) / sigma
+    if (Math.abs(d) > 3) return
+    const w = Math.exp(-0.5 * d * d)
+    total += w
+    f.orbs.forEach((c, o) => c.forEach((v, k) => (out.orbs[o]![k] += v * w)))
+    f.mean.forEach((v, k) => (out.mean[k] += v * w))
+  })
+  if (total === 0) return frames[Math.min(frames.length - 1, Math.max(0, Math.floor(t / slice)))]!
+  for (const c of [...out.orbs, out.mean]) for (let k = 0; k < 3; k++) c[k] /= total
+  return out
+}
 
 /**
- * The four hues of a poster from its RGBA pixels (any length, normally SAMPLE_N * SAMPLE_N * 4): cells ranked by
- * saturation, preferring mid lightness; picked greedily at least MIN_HUE_GAP apart; missing ones filled with warm hues
- * spread from the first (or from WARM_BASE for a grey poster).
+ * An orb's colour as drawn: the region's hue (turned `fan` degrees), saturation pushed up to at least 60 % (a grey region
+ * stays grey), lightness lifted to 40-60 % but still following the picture.
  */
-export function sampleHues(pixels: ArrayLike<number>, count = 4): Hue[] {
-  const cells: (Hue & { score: number })[] = []
-  for (let i = 0; i + 3 < pixels.length; i += 4) {
-    if ((pixels[i + 3] ?? 255) < 128) continue // transparent
-    const [h, s, l] = rgbToHsl(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!)
-    if (s <= GREY_S || l < 0.06 || l > 0.94) continue // grey, black or white: no hue to keep
-    cells.push({ h, s, l, score: s * (1 - Math.abs(l - 0.45)) })
-  }
-  cells.sort((a, b) => b.score - a.score)
-  const picked: Hue[] = []
-  for (const c of cells) {
-    if (picked.length === count) break
-    if (picked.every((p) => hueGap(p.h, c.h) >= MIN_HUE_GAP)) picked.push({ h: c.h, s: c.s, l: c.l })
-  }
-  const base = picked[0]?.h ?? WARM_BASE
-  while (picked.length < count) picked.push({ h: (base + WARM_STEP * picked.length) % 360, s: 0.55, l: 0.4 })
-  return picked
+export function orbColor([r, g, b]: Rgb, fan = 0): Rgb {
+  const [h, s, l] = rgbToHsl(r, g, b)
+  const floor = 0.6 * Math.min(1, s / 0.12) // a grey region has no hue to push: it stays grey
+  return hslToRgb((h + fan + 360) % 360, Math.max(floor, Math.min(0.9, 0.3 + s * 1.6)) * Math.min(1, s / 0.04), 0.4 + 0.2 * Math.sqrt(l))
 }
 
-/** A picked hue lifted to the fixed lightness (56 % for the first blob, 48 % for the rest) and S of at least 65 %. */
-export function liftedColor(hue: Hue, index: number): string {
-  const l = LIFT_L[Math.min(index, LIFT_L.length - 1)]!
-  return `hsl(${Math.round(hue.h)} ${Math.round(Math.max(LIFT_S_MIN, hue.s * 100))}% ${l}%)`
+/** The ground under the orbs: the frame's mean, very dark. */
+export function groundColor([r, g, b]: Rgb): Rgb {
+  const [h, s, l] = rgbToHsl(r, g, b)
+  return hslToRgb(h, Math.min(0.5, s), 0.05 + 0.08 * l)
 }
 
-/** The four blob colours of a poster. */
-export const blobColors = (pixels: ArrayLike<number>): string[] => sampleHues(pixels).map(liftedColor)
+/** `c` eased towards `target` over `dtS` seconds with time constant `tauS` (in place). */
+export function ease(c: Rgb, target: Rgb, dtS: number, tauS: number): Rgb {
+  const k = 1 - Math.exp(-dtS / tauS)
+  for (let i = 0; i < 3; i++) c[i] += (target[i]! - c[i]!) * k
+  return c
+}
 
 /** Draws `img` into a SAMPLE_N canvas and returns its pixels; throws on a tainted canvas (no CORS), which callers ignore. */
 export function samplePixels(img: CanvasImageSource): Uint8ClampedArray {
@@ -87,60 +139,3 @@ export function samplePixels(img: CanvasImageSource): Uint8ClampedArray {
   g.drawImage(img, 0, 0, SAMPLE_N, SAMPLE_N)
   return g.getImageData(0, 0, SAMPLE_N, SAMPLE_N).data
 }
-
-// ---- following the playhead (spec 6.2): the scrub strip stands in for the frames, sampled once ----
-
-/** Half the span of the strip the colours are pooled from (seconds), never under one slice. */
-export const WINDOW_S = 30
-/** A slot repaints only when its hue moves this far (degrees) or its lifted saturation this much. */
-export const HUE_STEP = 12
-export const SAT_STEP = 0.15
-
-/** The tiles whose slice centres lie within WINDOW_S (or one slice, if longer) of `t`; at least the tile under `t`. */
-export function windowTiles(t: number, durationS: number, frames: number): number[] {
-  const slice = durationS / frames
-  const half = Math.max(WINDOW_S, slice)
-  const lo = Math.max(0, Math.ceil((t - half) / slice - 0.5))
-  const hi = Math.min(frames - 1, Math.floor((t + half) / slice - 0.5))
-  if (lo > hi) return [Math.min(frames - 1, Math.max(0, Math.floor(t / slice)))]
-  return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
-}
-
-/** The RGBA cells of tile `i` from the strip drawn at `n` cells a tile (`columns * n` wide), as one run. */
-export function tileCells(strip: ArrayLike<number>, columns: number, i: number, n = SAMPLE_N): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(n * n * 4)
-  const col = i % columns
-  const row = Math.floor(i / columns)
-  const width = columns * n
-  for (let y = 0; y < n; y++) {
-    const from = ((row * n + y) * width + col * n) * 4
-    for (let k = 0; k < n * 4; k++) out[y * n * 4 + k] = strip[from + k] ?? 0
-  }
-  return out
-}
-
-/** The hues of tiles `tiles` pooled into one sample. */
-export function stripHues(strip: ArrayLike<number>, columns: number, tiles: number[]): Hue[] {
-  const pooled = new Uint8ClampedArray(tiles.length * SAMPLE_N * SAMPLE_N * 4)
-  tiles.forEach((i, k) => pooled.set(tileCells(strip, columns, i), k * SAMPLE_N * SAMPLE_N * 4))
-  return sampleHues(pooled)
-}
-
-const permutations = (n: number): number[][] =>
-  n <= 1 ? [[0]] : permutations(n - 1).flatMap((p) => Array.from({ length: n }, (_, i) => [...p.slice(0, i), n - 1, ...p.slice(i)]))
-
-/** `next` reordered so each slot takes the hue nearest the one it shows (least total hue travel): blobs drift, never swap. */
-export function matchSlots(prev: Hue[], next: Hue[]): Hue[] {
-  if (prev.length !== next.length || next.length > 6) return next
-  let best = next
-  let cost = Infinity
-  for (const p of permutations(next.length)) {
-    const c = p.reduce((sum, j, i) => sum + hueGap(prev[i]!.h, next[j]!.h), 0)
-    if (c < cost) [cost, best] = [c, p.map((j) => next[j]!)]
-  }
-  return best
-}
-
-/** Whether a slot showing `a` should move to `b`, compared as lifted. */
-export const hueMoved = (a: Hue, b: Hue): boolean =>
-  hueGap(a.h, b.h) >= HUE_STEP || Math.abs(Math.max(LIFT_S_MIN / 100, a.s) - Math.max(LIFT_S_MIN / 100, b.s)) >= SAT_STEP

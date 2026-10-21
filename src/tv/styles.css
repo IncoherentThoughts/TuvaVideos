@@ -201,7 +201,7 @@ mark { background: color-mix(in srgb, var(--accent) 35%, transparent); color: in
 .pl.lyrics .pl-vid::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 140px; background: linear-gradient(90deg, transparent, #0d0c0b); z-index: 1; pointer-events: none; }
 .pl-lyr .glow::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 160px; background: linear-gradient(90deg, #0d0c0b, transparent); }
 /* the lyrics column: standalone, sized to its longest line (720-1060 px); type 44 px (--lyr-size) shrinking to --lyr-size-min first */
-.pl-lyr { --g1: hsl(25 70% 46%); --g2: hsl(200 60% 38%); --g3: hsl(45 70% 38%); --g4: hsl(330 55% 38%); position: relative; isolation: isolate; overflow: hidden; flex: none; width: 720px; display: flex; flex-direction: column; background: #0d0c0b; padding: 52px 64px 40px; }
+.pl-lyr { position: relative; isolation: isolate; overflow: hidden; flex: none; width: 720px; display: flex; flex-direction: column; background: #0d0c0b; padding: 52px 64px 40px; }
 .pl-lyr > :not(.glow) { position: relative; z-index: 1; }
 .pl-lyr .hd h2 { display: flex; align-items: center; gap: 14px; font-size: 34px; font-weight: 600; line-height: 1.2; text-shadow: 0 1px 2px #000a; }
 .pl-lyr .hd h2 .nm { min-width: 0; }
@@ -220,25 +220,11 @@ mark { background: color-mix(in srgb, var(--accent) 35%, transparent); color: in
 .pl-lyr .sp { height: 36px; }
 .pl-lyr .none { color: var(--fg3); font-size: 24px; }
 .pl-lyr .pager { margin-top: 10px; height: 1.4em; font: 22px var(--font-mono); color: var(--fg3); text-align: right; }
-/* the living backdrop: the poster (then the strip frame at the playhead) blurred and drifting, four blobs in its sampled
-   hues, then vignette, tint and grain. Each blob and the frame are two layers whose opacity swaps over --glow-fade
-   (glow.ts FADE_S): the colours follow the video by crossfading, which the compositor does alone */
-.pl-lyr .glow { --glow-fade: 14s; position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #0d0c0b; }
-.pl-lyr .glow .drift { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; opacity: .7; filter: blur(48px) saturate(2.4) brightness(1.1); will-change: transform; animation: glow-drift 38s ease-in-out infinite alternate; }
-.pl-lyr .glow .drift > * { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.pl-lyr .glow .drift canvas, .pl-lyr .blob > b { opacity: 0; transition: opacity var(--glow-fade) ease-in-out; }
-.pl-lyr .glow .drift canvas.on, .pl-lyr .blob > b.on { opacity: 1; }
-@keyframes glow-drift { from { transform: translate(-4%, -3%) rotate(-3deg) scale(1.05); } to { transform: translate(4%, 3%) rotate(3deg) scale(1.18); } }
-.pl-lyr .blob { position: absolute; width: 1000px; height: 1000px; border-radius: 50%; filter: blur(50px); mix-blend-mode: screen; will-change: transform; }
-.pl-lyr .blob > b { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, var(--c) 0%, transparent 62%); }
-.pl-lyr .b1 { --c: var(--g1); left: -300px; top: -200px; animation: blob-a 23s ease-in-out infinite alternate; }
-.pl-lyr .b2 { --c: var(--g2); right: -350px; top: 150px; animation: blob-b 29s ease-in-out infinite alternate; }
-.pl-lyr .b3 { --c: var(--g3); left: -200px; bottom: -350px; animation: blob-c 19s ease-in-out infinite alternate; }
-.pl-lyr .b4 { --c: var(--g4); right: -250px; bottom: -250px; animation: blob-d 34s ease-in-out infinite alternate; }
-@keyframes blob-a { from { transform: translate(0, 0) scale(1); opacity: .75; } to { transform: translate(220px, 160px) scale(1.25); opacity: 1; } }
-@keyframes blob-b { from { transform: translate(0, 0) scale(1.1); opacity: .8; } to { transform: translate(-200px, 260px) scale(.9); opacity: .95; } }
-@keyframes blob-c { from { transform: translate(0, 0) scale(.95); opacity: .7; } to { transform: translate(260px, -180px) scale(1.2); opacity: .95; } }
-@keyframes blob-d { from { transform: translate(0, 0) scale(1.15); opacity: .75; } to { transform: translate(-240px, -220px) scale(.95); opacity: .9; } }
+/* the living backdrop: orbs flowing in the colours of the video around the playhead, drawn into a tiny canvas
+   (glow.ts) stretched over the column, then vignette, tint and grain */
+.pl-lyr .glow { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #0d0c0b; }
+.pl-lyr .glow canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1.5s ease-out; }
+.pl-lyr .glow canvas.on { opacity: 1; }
 .pl-lyr .glow .vig { position: absolute; inset: 0; background:
   radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #0d0c0b33 100%),
   radial-gradient(ellipse 70% 60% at 50% 100%, transparent 0%, #0d0c0b33 100%),

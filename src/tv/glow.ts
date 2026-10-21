@@ -1,144 +1,150 @@
-// The lyrics backdrop following the playhead (docs/tv-spec.md 6.2). The scrub strip (up to 100 frames, one image) is
-// drawn once into a canvas of SAMPLE_N cells a tile; every LOOK_MS the colours of the strip around the playhead are
-// picked, and at most one slot (a blob, or the blurred frame underneath) crossfades towards them over FADE_S. Each slot
-// is two stacked layers whose opacity swaps, so the browser only composites: no per-frame script, no repaint of a
-// gradient mid-fade, no reading back the video.
+// The lyrics backdrop following the playhead (docs/tv-spec.md 6.2): orbs of colour flowing over a dark ground, drawn
+// into a tiny canvas (W x H) that the stylesheet stretches over the column. The scrub strip (one image, up to 100
+// frames) is sampled once (hues.ts); every RETARGET_MS the colours at the playhead are blended from the frames around
+// it, and every frame the shown colours ease towards them (TAU_S), so neither playing, scrubbing nor reopening the
+// column ever cuts. The cost is a few gradients on a few thousand pixels about 30 times a second; no frame is shown.
 import type { StripDto } from "../shared/types"
-import { tileForTime } from "../server/stripGeometry"
-import { SAMPLE_N, hueMoved, liftedColor, matchSlots, samplePixels, sampleHues, stripHues, windowTiles, type Hue } from "./hues"
+import { ORBS, SAMPLE_N, colorsAt, ease, frameColors, groundColor, orbColor, samplePixels, stripColors, type FrameColors, type Rgb } from "./hues"
 
-/** How long one crossfade lasts (seconds; the stylesheet's `--glow-fade` reads the same) and how often the playhead is looked at. */
-export const FADE_S = 14
-export const LOOK_MS = 2500
-/** The blurred frame underneath changes at most this often. */
-export const FRAME_HOLD_MS = 20000
+/** The canvas, in pixels: stretched over the column, the gradients stay smooth. */
+export const W = 90
+export const H = 120
+/** Time constant of the colours easing towards the playhead's (seconds), how often those are re-blended, the frame budget. */
+export const TAU_S = 6
+export const RETARGET_MS = 500
+export const FRAME_MS = 33
 
-interface Pair {
-  layers: HTMLElement[]
-  on: number
-  busyUntil: number
+/** Where each orb (in REGIONS order: top row of the frame, then bottom) wanders, as fractions of the canvas; seconds a cycle. */
+const PATHS = [
+  { x: 0.18, y: 0.16, ax: 0.16, ay: 0.09, px: 31, py: 23, r: 0.53 },
+  { x: 0.6, y: 0.1, ax: 0.2, ay: 0.08, px: 37, py: 29, r: 0.47 },
+  { x: 0.88, y: 0.36, ax: 0.1, ay: 0.12, px: 27, py: 41, r: 0.53 },
+  { x: 0.12, y: 0.66, ax: 0.12, ay: 0.12, px: 43, py: 26, r: 0.53 },
+  { x: 0.52, y: 0.5, ax: 0.22, ay: 0.14, px: 34, py: 47, r: 0.45 },
+  { x: 0.8, y: 0.88, ax: 0.14, ay: 0.08, px: 29, py: 38, r: 0.55 },
+] as const
+
+/** Degrees each orb's hue is turned from its region's, so a scene in one colour still glows in a few neighbouring ones. */
+const FAN = [-14, 10, 20, -20, 0, 14]
+
+interface Shown {
+  orbs: Rgb[]
+  ground: Rgb
 }
 
-/** Shows the other layer of `p` (already painted by the caller) and hides the current one. */
-function swap(p: Pair, now: number) {
-  const next = 1 - p.on
-  p.layers[next]!.classList.add("on")
-  p.layers[p.on]!.classList.remove("on")
-  p.on = next
-  p.busyUntil = now + FADE_S * 1000
-}
+const copy = (s: Shown): Shown => ({ orbs: s.orbs.map((c) => [...c] as Rgb), ground: [...s.ground] as Rgb })
+const rgba = ([r, g, b]: Rgb, a: number) => `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${a})`
+
+/** The colours last shown, so the column reopened on the same Video picks up where it was instead of starting over. */
+let memory: { key: string; shown: Shown } | null = null
 
 export class Glow {
-  private blobs: (Pair & { hue: Hue | null })[]
-  private frame: Pair & { tile: number; shownAt: number }
-  private strip: { img: HTMLImageElement; cells: Uint8ClampedArray; g: StripDto; fw: number; fh: number } | null = null
-  private cache = new Map<string, Hue[]>()
-  private turn = 0
-  private timer: ReturnType<typeof setInterval>
+  private g: CanvasRenderingContext2D | null
+  private frames: FrameColors[] | null = null
+  private duration = 1
+  private target: Shown | null = null
+  private shown: Shown | null
+  private raf = 0
+  private last = 0
+  private retargetAt = 0
   private img: HTMLImageElement | null = null
-  private duration = 0
 
-  constructor(root: HTMLElement, private time: () => number) {
-    this.blobs = [...root.querySelectorAll<HTMLElement>(".blob")].map((b) => ({
-      layers: [...b.children] as HTMLElement[],
-      on: 0,
-      busyUntil: 0,
-      hue: null,
-    }))
-    this.frame = { layers: [...root.querySelectorAll<HTMLElement>(".drift canvas")], on: 1, busyUntil: 0, tile: -1, shownAt: -Infinity }
-    this.timer = setInterval(() => this.look(), LOOK_MS)
+  constructor(
+    private canvas: HTMLCanvasElement,
+    private key: string,
+    private time: () => number,
+  ) {
+    canvas.width = W
+    canvas.height = H
+    this.g = canvas.getContext("2d")
+    this.shown = memory?.key === key ? copy(memory.shown) : null
+    this.raf = requestAnimationFrame(this.tick)
   }
 
-  /** The poster's colours, painted at once, until the strip takes over. A tainted canvas keeps the stylesheet's. */
-  poster(img: HTMLImageElement) {
-    if (this.strip) return
-    try {
-      const hues = sampleHues(samplePixels(img))
-      this.blobs.forEach((b, i) => {
-        b.hue = hues[i]!
-        b.layers[b.on]!.style.setProperty("--c", liftedColor(b.hue, i))
-      })
-    } catch {
-      /* no CORS on the poster */
-    }
+  /** Samples the strip (else, or when it fails, the poster) once; until then nothing is drawn and the ground shows. */
+  follow(strip: StripDto | null, stripSrc: string | null, posterSrc: string | null, durationS: number | null) {
+    const poster = () => posterSrc && this.load(posterSrc, (img) => [frameColors(samplePixels(img))], 1)
+    if (strip && stripSrc && durationS && strip.frames >= 2) {
+      this.load(
+        stripSrc,
+        (img) => {
+          const c = document.createElement("canvas")
+          c.width = strip.columns * SAMPLE_N
+          c.height = strip.rows * SAMPLE_N
+          const g = c.getContext("2d")!
+          g.imageSmoothingQuality = "high"
+          g.drawImage(img, 0, 0, c.width, c.height)
+          return stripColors(g.getImageData(0, 0, c.width, c.height).data, strip.columns, strip.frames)
+        },
+        durationS,
+        poster,
+      )
+    } else poster()
   }
 
-  /** Loads the Video's strip; once sampled the backdrop follows the playhead. */
-  follow(strip: StripDto | null, src: string | null, durationS: number | null) {
-    if (!strip || !src || !durationS || strip.frames < 2) return
+  private load(src: string, sample: (img: HTMLImageElement) => FrameColors[], durationS: number, fallback?: () => void) {
     const img = (this.img = new Image())
     img.crossOrigin = "anonymous"
     img.onload = () => {
       try {
-        const c = document.createElement("canvas")
-        c.width = strip.columns * SAMPLE_N
-        c.height = strip.rows * SAMPLE_N
-        const g = c.getContext("2d")!
-        g.imageSmoothingQuality = "high"
-        g.drawImage(img, 0, 0, c.width, c.height)
-        const cells = g.getImageData(0, 0, c.width, c.height).data
-        const fw = strip.frameWidth ?? img.naturalWidth / strip.columns
-        const fh = strip.frameHeight ?? img.naturalHeight / strip.rows
-        for (const l of this.frame.layers) Object.assign(l, { width: fw, height: fh })
-        this.strip = { img, cells, g: strip, fw, fh }
+        this.frames = sample(img)
         this.duration = durationS
-        this.look()
+        this.retargetAt = 0
       } catch {
-        /* tainted: the poster's colours stay */
+        fallback?.() // a tainted canvas (no CORS)
       }
     }
+    img.onerror = () => fallback?.()
     img.src = src
   }
 
-  /** Picks the colours around the playhead and starts at most one crossfade (round the slots in turn). */
-  private look() {
-    const s = this.strip
-    if (!s) return
-    const t = this.time()
-    const tiles = windowTiles(t, this.duration, s.g.frames)
-    const key = `${tiles[0]}-${tiles[tiles.length - 1]}`
-    let target = this.cache.get(key)
-    if (!target) this.cache.set(key, (target = stripHues(s.cells, s.g.columns, tiles)))
-    const shown = this.blobs.map((b, i) => b.hue ?? target![i]!)
-    const hues = matchSlots(shown, target)
-    const now = performance.now()
-    const n = this.blobs.length + 1
-    for (let k = 0; k < n; k++) {
-      const slot = (this.turn + k) % n
-      if (slot === this.blobs.length ? this.stepFrame(t, now) : this.stepBlob(slot, hues[slot]!, now)) {
-        this.turn = slot + 1
-        return
-      }
+  private tick = (now: number) => {
+    this.raf = requestAnimationFrame(this.tick)
+    if (now - this.last < FRAME_MS) return
+    const dt = this.last ? Math.min(0.25, (now - this.last) / 1000) : 0
+    this.last = now
+    if (this.frames && now >= this.retargetAt) {
+      const c = colorsAt(this.frames, this.time(), this.duration)
+      this.target = { orbs: c.orbs.map((o, i) => orbColor(o, FAN[i])), ground: groundColor(c.mean) }
+      this.retargetAt = now + RETARGET_MS
     }
+    if (!this.target) return
+    if (!this.shown) this.shown = copy(this.target)
+    else {
+      this.shown.orbs.forEach((c, i) => ease(c, this.target!.orbs[i]!, dt, TAU_S))
+      ease(this.shown.ground, this.target.ground, dt, TAU_S)
+    }
+    memory = { key: this.key, shown: this.shown }
+    this.draw(now / 1000)
   }
 
-  private stepBlob(i: number, hue: Hue, now: number): boolean {
-    const b = this.blobs[i]!
-    if (now < b.busyUntil) return false
-    if (b.hue && !hueMoved(b.hue, hue)) return false
-    b.hue = hue
-    b.layers[1 - b.on]!.style.setProperty("--c", liftedColor(hue, i))
-    swap(b, now)
-    return true
-  }
-
-  private stepFrame(t: number, now: number): boolean {
-    const s = this.strip!
-    const f = this.frame
-    const tile = tileForTime(t, this.duration, s.g)
-    if (tile.index === f.tile || now < f.busyUntil || now - f.shownAt < FRAME_HOLD_MS) return false
-    const c = f.layers[1 - f.on] as HTMLCanvasElement | undefined
-    const g = c?.getContext("2d")
-    if (!c || !g) return false
-    g.drawImage(s.img, tile.column * s.fw, tile.row * s.fh, s.fw, s.fh, 0, 0, c.width, c.height)
-    f.tile = tile.index
-    f.shownAt = now
-    swap(f, now)
-    return true
+  private draw(s: number) {
+    const g = this.g
+    const shown = this.shown
+    if (!g || !shown) return
+    g.globalCompositeOperation = "source-over"
+    g.fillStyle = rgba(shown.ground, 1)
+    g.fillRect(0, 0, W, H)
+    g.globalCompositeOperation = "screen"
+    for (let i = 0; i < ORBS; i++) {
+      const p = PATHS[i]!
+      const x = (p.x + p.ax * Math.sin((2 * Math.PI * s) / p.px + i)) * W
+      const y = (p.y + p.ay * Math.sin((2 * Math.PI * s) / p.py + i * 1.7)) * H
+      const r = p.r * W * (1 + 0.12 * Math.sin((2 * Math.PI * s) / (19 + i * 3)))
+      const c = shown.orbs[i]!
+      const grad = g.createRadialGradient(x, y, 0, x, y, r)
+      grad.addColorStop(0, rgba(c, 0.95))
+      grad.addColorStop(0.4, rgba(c, 0.7))
+      grad.addColorStop(0.75, rgba(c, 0.18))
+      grad.addColorStop(1, rgba(c, 0))
+      g.fillStyle = grad
+      g.fillRect(0, 0, W, H)
+    }
+    this.canvas.classList.add("on")
   }
 
   stop() {
-    clearInterval(this.timer)
-    if (this.img) this.img.onload = null
+    cancelAnimationFrame(this.raf)
+    if (this.img) this.img.onload = this.img.onerror = null
   }
 }

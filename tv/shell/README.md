@@ -23,7 +23,7 @@ cd tv/shell && python3 -m http.server 8081
 ```
 
 `?addr=` stands in for the address the TV would have stored. Use `127.0.0.1` (not `localhost`) as the page's own host.
-Keys: Enter, digits, ArrowUp (types a dot), Backspace (stands in for Back). The server must answer CORS for
+Keys: Enter, digits, the arrows (walk the on-screen number pad of the typing screen), Backspace (stands in for Back). The server must answer CORS for
 `X-Tuva-TV` from a page on another port; the packaged app on the TV has the same constraint.
 
 ## Install on the TV

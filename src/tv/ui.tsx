@@ -143,10 +143,11 @@ export function ShuffleCard({ zone, count, onOpen }: { zone: string; count: numb
   return (
     <Card tileKey="shuffle" zone={zone} onOpen={onOpen} class="more shuffle">
       <div class="po">
-        <div class="mid">
-          <b>⤮ Shuffle</b>
-          <span>{count} Video{count === 1 ? "" : "s"}</span>
-        </div>
+        <span class="glyph">⤮</span>
+      </div>
+      <div class="ttl">Shuffle</div>
+      <div class="sub">
+        {count} Video{count === 1 ? "" : "s"}
       </div>
     </Card>
   )
@@ -156,11 +157,9 @@ export function SeeAllCard({ tileKey, zone, label, onOpen }: { tileKey: string; 
   return (
     <Card tileKey={tileKey} zone={zone} onOpen={onOpen} class="more">
       <div class="po">
-        <div class="mid">
-          <b>{label}</b>
-          <span>›</span>
-        </div>
+        <span class="glyph">›</span>
       </div>
+      <div class="ttl">{label}</div>
     </Card>
   )
 }

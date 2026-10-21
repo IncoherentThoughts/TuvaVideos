@@ -10,7 +10,7 @@ import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
   AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
 } from "../shared/playerMath";
-import { RESUME_INTERVAL_MS, ResumeClock, startPosition } from "../shared/resume";
+import { RESUME_INTERVAL_MS, ResumeClock, adoptResume, startPosition, storedResume } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
 import { studioRoute, type SongStudioDto } from "../shared/studio";
 import type { CopyDto, VideoDto } from "../shared/types";
@@ -191,6 +191,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     failed: new Set<number>(),
     retries: new Map<number, number>(),
     lastPos: 0,
+    known: video.resumeS as number | null, // the Resume position as this player last read or wrote it
+    wroteAt: 0,
     hold: 0, // position kept while "Copy unavailable"
     keyframes: null as number[] | null, // the playing Copy's keyframe index, once fetched
     seekTarget: null as number | null, // the last requested seek while it is in flight or queued: held keys step from it
@@ -244,6 +246,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     const url = `/api/videos/${V.current.id}/resume`;
     const body = JSON.stringify({ resumeS: pos, copyId: r.copyId });
     clock.current.wrote(Date.now());
+    r.known = storedResume(pos, duration);
+    r.wroteAt = Date.now();
     try {
       if (beacon && navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
       else void fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
@@ -374,6 +378,18 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       }
     };
   }, []);
+
+  // the TV moved the Resume position while this Player sat paused (the poll in Play.tsx brings it): follow it
+  useEffect(() => {
+    const r = R.current;
+    const v = vid.current;
+    if (!r.started || !r.resumeOn || !v) return;
+    const to = adoptResume({ stored: video.resumeS, known: r.known, paused: v.paused, now: Date.now(), wroteAt: r.wroteAt });
+    if (to == null) return;
+    r.known = to;
+    seekTo(to, "exact", undefined, false, true);
+    say(`Resume moved to ${fmtClock(to)} by another player`, 2600);
+  }, [video.resumeS]);
 
   // a Playlist starting (or ending) under a playing Video: no Resume writes from now on (spec 4.8)
   useEffect(() => {

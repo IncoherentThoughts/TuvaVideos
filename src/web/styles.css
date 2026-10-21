@@ -851,7 +851,9 @@ dialog.shelf .row-end { display: flex; justify-content: flex-end; gap: 8px; marg
 
 /* Shared vs Unshared on the grid (#158): the Unshared exceptions carry one corner pill, mirrored from §7.1's mark */
 .card.unshared { position: relative; }
-.card.unshared .unshared-mark { position: absolute; right: 14px; top: 14px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; background: rgba(0,0,0,.72); color: var(--t3); font-size: .74em; font-weight: 600; letter-spacing: .02em; }
+.unshared-mark { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; background: rgba(0,0,0,.72); color: var(--t3); font-size: .74em; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+.card.unshared .unshared-mark { position: absolute; right: 14px; top: 14px; z-index: 1; }
+.np-meta .unshared-mark { background: color-mix(in srgb, var(--t3) 14%, transparent); border: 1px solid color-mix(in srgb, var(--t3) 40%, transparent); }
 .card.unshared .thumb { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--t3) 55%, transparent); }
 
 /* §6.4 schema gate banner (#158, SchemaBanner.tsx): persistent, not dismissable */

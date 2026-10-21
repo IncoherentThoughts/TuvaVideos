@@ -18,7 +18,7 @@ import { chapterLine, listOffset, nextUp, osdVisible, pct } from "../src/tv/osd"
 import { buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen } from "../src/tv/playlistOps"
 import { RAMP_S, REW_FF_S, nextSeekStep, stepLabel } from "../src/tv/seekStep"
 import { focusableTags, infoTexts, playingFromText, tagGrid } from "../src/tv/tags"
-import { BUTTONS, initialZone, pinsBottom, pinsTop, reduceZone, type ZoneCtx, type ZoneState } from "../src/tv/zones"
+import { BUTTONS, initialZone, reduceZone, type ZoneCtx, type ZoneState } from "../src/tv/zones"
 
 // ---- fixtures ----
 
@@ -28,25 +28,25 @@ const copy = (o: Partial<CopyDto> = {}): CopyDto =>
 // ---- seek acceleration ----
 
 describe("seek acceleration (spec 6.3)", () => {
-  test("the first press is 10 s, again within a second 30, 60, then 120 and it stays", () => {
+  test("10 s four times, then four presses each of 30 and 60, then 120 and it stays", () => {
     let ramp = null as ReturnType<typeof nextSeekStep>["ramp"] | null
     const steps: number[] = []
     let t = 1000
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 15; i++) {
       const x = nextSeekStep(ramp, 1, t)
       steps.push(x.step)
       ramp = x.ramp
       t += 400
     }
-    expect(steps).toEqual([10, 30, 60, 120, 120, 120])
+    expect(steps).toEqual([10, 10, 10, 10, 30, 30, 30, 30, 60, 60, 60, 60, 120, 120, 120])
     expect([...RAMP_S]).toEqual([10, 30, 60, 120])
   })
 
   test("a pause of more than a second starts over; exactly a second still climbs", () => {
-    const a = nextSeekStep(null, 1, 0)
-    const b = nextSeekStep(a.ramp, 1, 1000)
-    expect(b.step).toBe(30)
-    const c = nextSeekStep(b.ramp, 1, 2001)
+    let x = nextSeekStep(null, 1, 0)
+    for (let t = 1000; t <= 4000; t += 1000) x = nextSeekStep(x.ramp, 1, t)
+    expect(x.step).toBe(30)
+    const c = nextSeekStep(x.ramp, 1, 5001)
     expect(c.step).toBe(10)
   })
 
@@ -67,7 +67,7 @@ describe("seek acceleration (spec 6.3)", () => {
 
 // ---- zones ----
 
-const ctx = (o: Partial<ZoneCtx> = {}): ZoneCtx => ({ hasLyrics: true, tagCount: 3, chapterCount: 4, currentChapter: 2, copySwitchable: [true, false, true], currentCopy: 0, ...o })
+const ctx = (o: Partial<ZoneCtx> = {}): ZoneCtx => ({ hasLyrics: true, lyricsShown: false, versionCount: 1, tagCount: 3, chapterCount: 4, currentChapter: 2, copySwitchable: [true, false, true], currentCopy: 0, ...o })
 const press = (s: ZoneState, k: TvAction, c: ZoneCtx = ctx()) => reduceZone(s, k, c)
 const at = (zone: ZoneState["zone"], o: Partial<ZoneState> = {}): ZoneState => ({ ...initialZone(), zone, ...o })
 
@@ -204,16 +204,17 @@ describe("zones (spec 6.3 to 6.5)", () => {
     expect(closed).toEqual(["chapters", "buttons", "video", "leave"])
   })
 
-  test("Info, Exit and Red are the app's, not the Player's", () => {
+  test("Info and Exit are the app's, not the Player's; Red steps the Version", () => {
     expect(press(initialZone(), "info").handled).toBe(false)
     expect(press(initialZone(), "exit").handled).toBe(false)
-    expect(press(initialZone(), "red").handled).toBe(false)
+    expect(press(initialZone(), "red").fx).toEqual([{ t: "version" }])
   })
 
-  test("which zones pin which bar", () => {
-    expect(pinsBottom("buttons") && pinsBottom("chapters") && pinsBottom("copies")).toBe(true)
-    expect(pinsTop("lyrics") && pinsTop("tags")).toBe(true)
-    expect(pinsBottom("video") || pinsTop("video") || pinsTop("buttons")).toBe(false)
+  test("the lyrics zone: Right pulls the column in, then steps the Version when there are several", () => {
+    expect(press(at("lyrics"), "right").fx).toEqual([{ t: "lyrics", on: true }])
+    expect(press(at("lyrics"), "right", ctx({ lyricsShown: true, versionCount: 1 })).fx).toEqual([{ t: "lyrics", on: true }])
+    expect(press(at("lyrics"), "right", ctx({ lyricsShown: true, versionCount: 3 })).fx).toEqual([{ t: "version" }])
+    expect(press(at("lyrics"), "left", ctx({ lyricsShown: true, versionCount: 3 })).fx).toEqual([{ t: "lyrics", on: false }])
   })
 
   test("the remote's codes reach the reducer through the key table", () => {

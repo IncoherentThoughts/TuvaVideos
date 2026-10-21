@@ -5,7 +5,7 @@ import { positionIn, resolvePlayingFrom, stepFrom, uniqueIds, type PlayingFrom }
 import {
   AB_OFF, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, parseFrameRate, speedBy, storedLoop, volumeBy,
 } from "../src/shared/playerMath";
-import { FINISHED_WITHIN_S, RESUME_INTERVAL_MS, ResumeClock, isFinished, startPosition, storedResume } from "../src/shared/resume";
+import { FINISHED_WITHIN_S, RESUME_INTERVAL_MS, ResumeClock, isFinished, startPosition, storedResume, adoptResume, ADOPT_QUIET_MS } from "../src/shared/resume";
 import { SeekThrottle } from "../src/shared/seekThrottle";
 import { fmtSeconds, isPng, sanitizeTitle, screenshotName } from "../src/server/screenshot";
 
@@ -383,5 +383,19 @@ describe("screenshot file names", () => {
   test("PNG signature check", () => {
     expect(isPng(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]))).toBe(true);
     expect(isPng(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]))).toBe(false);
+  });
+});
+
+describe("a Resume position written by the other player (TV and browser)", () => {
+  const base = { stored: 300, known: 120, paused: true, now: 100_000, wroteAt: 0 };
+  test("a paused player follows a position that moved elsewhere", () => {
+    expect(adoptResume(base)).toBe(300);
+    expect(adoptResume({ ...base, stored: 0 })).toBe(0);
+  });
+  test("not while playing, not for its own position, not right after its own write", () => {
+    expect(adoptResume({ ...base, paused: false })).toBeNull();
+    expect(adoptResume({ ...base, stored: 120.5 })).toBeNull();
+    expect(adoptResume({ ...base, wroteAt: base.now - ADOPT_QUIET_MS + 1 })).toBeNull();
+    expect(adoptResume({ ...base, stored: null })).toBeNull();
   });
 });

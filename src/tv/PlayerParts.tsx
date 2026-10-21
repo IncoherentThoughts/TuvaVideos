@@ -40,7 +40,7 @@ function Backdrop({ poster, column }: { poster: string | null; column: { current
 }
 
 /**
- * The lyrics column: Song title (English name dimmed), Version pills, one Script, the lines without numbers, "page n of m".
+ * The lyrics column: Song title (a "local" pill beside it, the English name under it), Version pills, one Script, the lines without numbers, "page n of m".
  * Sized to its longest line measured unwrapped: 720 to 1060 px, the type 44 px (`--lyr-size`) shrinking to 34 px first.
  */
 export function LyricsColumn({ view, poster, ctl }: { view: LyricsView; poster: string | null; ctl: { current: LyricsCtl | null } }) {
@@ -89,10 +89,10 @@ export function LyricsColumn({ view, poster, ctl }: { view: LyricsView; poster: 
       <Backdrop poster={poster} column={root} />
       <div class="hd">
         <h2>
-          {view.songName}
-          {view.englishName && <span class="en"> {view.englishName}</span>}
-          {view.local && <span class="loc"> local</span>}
+          <span class="nm">{view.songName}</span>
+          {view.local && <span class="loc">local</span>}
         </h2>
+        {view.englishName && <div class="en">{view.englishName}</div>}
         {view.versions.length > 1 && (
           <div class="pills">
             {view.versions.map((v, i) => (
@@ -143,7 +143,7 @@ export const LIST_ROW_H = 64
 export const LIST_VIEW_H = 704
 
 /** The vertical list over the video's left edge: the Chapters and the Copies (spec 6.5). */
-export function PlList({ title, rows, focus, hint }: { title: string; rows: ListRow[]; focus: number; hint: string }) {
+export function PlList({ title, rows, focus }: { title: string; rows: ListRow[]; focus: number }) {
   const off = listOffset(focus, LIST_ROW_H, LIST_VIEW_H, rows.length)
   return (
     <div class="pl-list">
@@ -163,7 +163,6 @@ export function PlList({ title, rows, focus, hint }: { title: string; rows: List
           ))}
         </div>
       </div>
-      <div class="lh">{hint}</div>
     </div>
   )
 }

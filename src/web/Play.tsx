@@ -18,14 +18,14 @@ import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { RelocateButton } from "./Relocate";
-import { AvailabilityIcon, FavoriteBadge, fmtDuration } from "./ui";
+import { AvailabilityIcon, FavoriteBadge, UnsharedMark, fmtDuration } from "./ui";
 import { AudioPanel } from "./AudioPanel";
 import { DeleteVideoDialog } from "./DeleteVideo";
 import { RELOADED_EVENT, writeLink } from "./writeLink";
 import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
 import { useSession } from "./session";
 import { NotHerePanel } from "./NotHere";
-import { isNotHere } from "../shared/presence";
+import { isNotHere, sharingMark } from "../shared/presence";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
@@ -341,6 +341,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
           </div>
           <div class="np-meta">
             {!notHere && <AvailabilityIcon availability={v.availability} />}
+            {sharingMark(v, !!session.record?.grantLevel) === "unshared" && <UnsharedMark />}
             <button
               class="favtoggle"
               aria-pressed={!!v.favoritedAt}

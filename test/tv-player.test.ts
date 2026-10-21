@@ -11,7 +11,7 @@ import type { CopyDto, SongDto, VideoDto } from "../src/shared/types"
 import { AudioChain, audioTag, type ChainDeps } from "../src/tv/audioChain"
 import { pickPlayable, failedMessage } from "../src/tv/copies"
 import { copyRows, fmtSize } from "../src/tv/copyList"
-import { SAMPLE_N, blobColors, hueGap, liftedColor, sampleHues } from "../src/tv/hues"
+import { SAMPLE_N, blobColors, hueGap, hueMoved, liftedColor, matchSlots, sampleHues, stripHues, tileCells, windowTiles } from "../src/tv/hues"
 import { actionFor, type TvAction } from "../src/tv/keys"
 import { LYR_W_MAX, LYR_W_MIN, clampPage, fitLyrics, lyricsView, nextScript, noLyricsReason, pageLabel, paginate, stripMarkers } from "../src/tv/lyrics"
 import { chapterLine, listOffset, nextUp, osdVisible, pct } from "../src/tv/osd"
@@ -518,6 +518,40 @@ describe("backdrop hues (spec 6.2)", () => {
   test("transparent cells are ignored", () => {
     const p = Uint8ClampedArray.from([200, 20, 20, 0])
     expect(sampleHues(p)[0]!.h).toBe(25)
+  })
+})
+
+describe("backdrop following the playhead (spec 6.2)", () => {
+  test("the window is ±30 s of slice centres, or one slice when slices are longer", () => {
+    expect(windowTiles(120, 240, 100)).toEqual(Array.from({ length: 26 }, (_, i) => 37 + i)) // 2.4 s slices, centres 90 s to 150 s
+    expect(windowTiles(3600, 7200, 100)).toEqual([49, 50]) // 72 s slices
+    expect(windowTiles(0, 7200, 100)).toEqual([0])
+    expect(windowTiles(7200, 7200, 100)).toEqual([99])
+  })
+
+  test("a tile's cells come out of the downscaled strip", () => {
+    const cols = 3
+    const strip = new Uint8ClampedArray(cols * SAMPLE_N * 2 * SAMPLE_N * 4)
+    for (let y = SAMPLE_N; y < 2 * SAMPLE_N; y++)
+      for (let x = SAMPLE_N; x < 2 * SAMPLE_N; x++) strip.set([10, 200, 30, 255], (y * cols * SAMPLE_N + x) * 4) // tile 4
+    const cells = tileCells(strip, cols, 4)
+    expect(cells.length).toBe(SAMPLE_N * SAMPLE_N * 4)
+    expect([...cells.slice(0, 4)]).toEqual([10, 200, 30, 255])
+    expect(tileCells(strip, cols, 3).every((v) => v === 0)).toBe(true)
+    expect(hueGap(stripHues(strip, cols, [3, 4])[0]!.h, 127)).toBeLessThan(2)
+  })
+
+  test("slots keep the nearest hue, so blobs drift instead of swapping", () => {
+    const h = (...hs: number[]) => hs.map((x) => ({ h: x, s: 0.8, l: 0.5 }))
+    expect(matchSlots(h(0, 90, 180, 270), h(185, 275, 5, 95)).map((x) => x.h)).toEqual([5, 95, 185, 275])
+  })
+
+  test("a slot moves only past a hue or saturation step", () => {
+    const a = { h: 100, s: 0.8, l: 0.5 }
+    expect(hueMoved(a, { ...a, h: 108 })).toBe(false)
+    expect(hueMoved(a, { ...a, h: 115 })).toBe(true)
+    expect(hueMoved({ ...a, s: 0.2 }, { ...a, s: 0.5 })).toBe(false) // both lift to 65 %
+    expect(hueMoved(a, { ...a, s: 0.6 })).toBe(true)
   })
 })
 

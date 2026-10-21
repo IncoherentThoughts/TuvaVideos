@@ -2,7 +2,9 @@
 // vertical list the Chapters and the Copies share. Presentation only; the Player owns the state.
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks"
 import { SCRIPTS } from "../shared/lyrics/scripts"
-import { blobColors, samplePixels } from "./hues"
+import type { StripDto } from "../shared/types"
+import { url } from "./data"
+import { Glow } from "./glow"
 import { LYR_SIZE, LYR_SIZE_MIN, clampPage, fitLyrics, pageLabel, paginate, type LyricsView } from "./lyrics"
 import { listOffset } from "./osd"
 
@@ -15,23 +17,33 @@ const cssPx = (el: HTMLElement, name: string, fallback: number): number => {
   return Number.isFinite(v) && v > 0 ? v : fallback
 }
 
-/** The poster blurred and drifting, four blobs in its sampled hues, vignette, tint and grain (spec 6.2). */
-function Backdrop({ poster, column }: { poster: string | null; column: { current: HTMLElement | null } }) {
-  const paint = (img: HTMLImageElement) => {
-    try {
-      const colors = blobColors(samplePixels(img))
-      colors.forEach((c, i) => column.current?.style.setProperty(`--g${i + 1}`, c))
-    } catch {
-      /* a tainted canvas (no CORS on the poster): the blobs keep the warm colours of the stylesheet */
-    }
-  }
+/**
+ * The poster blurred and drifting, four blobs in its sampled hues, vignette, tint and grain (spec 6.2); with a scrub
+ * strip the frame underneath and the blobs follow the playhead, crossfading slowly (glow.ts).
+ */
+function Backdrop({ poster, strip, durationS, at }: { poster: string | null; strip: StripDto | null; durationS: number | null; at: number }) {
+  const root = useRef<HTMLDivElement>(null)
+  const glow = useRef<Glow | null>(null)
+  const time = useRef(at)
+  time.current = at
+  useEffect(() => {
+    const g = (glow.current = new Glow(root.current!, () => time.current))
+    g.follow(strip, strip ? url(strip.url) : null, durationS)
+    return () => g.stop()
+  }, [strip?.url, durationS])
   return (
-    <div class="glow" aria-hidden="true">
-      {poster && <img src={poster} crossOrigin="anonymous" alt="" onLoad={(e) => paint(e.currentTarget as HTMLImageElement)} />}
-      <i class="blob b1" />
-      <i class="blob b2" />
-      <i class="blob b3" />
-      <i class="blob b4" />
+    <div class="glow" ref={root} aria-hidden="true">
+      <div class="drift">
+        {poster && <img src={poster} crossOrigin="anonymous" alt="" onLoad={(e) => glow.current?.poster(e.currentTarget as HTMLImageElement)} />}
+        <canvas />
+        <canvas />
+      </div>
+      {[1, 2, 3, 4].map((n) => (
+        <i key={n} class={`blob b${n}`}>
+          <b class="on" />
+          <b />
+        </i>
+      ))}
       <div class="vig" />
       <div class="tint" />
       <div class="grain" />
@@ -43,7 +55,22 @@ function Backdrop({ poster, column }: { poster: string | null; column: { current
  * The lyrics column: Song title (a "local" pill beside it, the English name under it), Version pills, one Script, the lines without numbers, "page n of m".
  * Sized to its longest line measured unwrapped: 720 to 1060 px, the type 44 px (`--lyr-size`) shrinking to 34 px first.
  */
-export function LyricsColumn({ view, poster, ctl }: { view: LyricsView; poster: string | null; ctl: { current: LyricsCtl | null } }) {
+export function LyricsColumn({
+  view,
+  poster,
+  strip,
+  durationS,
+  at,
+  ctl,
+}: {
+  view: LyricsView
+  poster: string | null
+  strip: StripDto | null
+  durationS: number | null
+  /** The playhead, which the backdrop's colours follow. */
+  at: number
+  ctl: { current: LyricsCtl | null }
+}) {
   const root = useRef<HTMLElement>(null)
   const lines = useRef<HTMLDivElement>(null)
   const starts = useRef<number[]>([0])
@@ -86,7 +113,7 @@ export function LyricsColumn({ view, poster, ctl }: { view: LyricsView; poster: 
   const tryHint = pageLabel(pg.page, pg.pages)
   return (
     <aside class="pl-lyr" ref={root} lang={view.lang} aria-label="Lyrics">
-      <Backdrop poster={poster} column={root} />
+      <Backdrop poster={poster} strip={strip} durationS={durationS} at={at} />
       <div class="hd">
         <h2>
           <span class="nm">{view.songName}</span>

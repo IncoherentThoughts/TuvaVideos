@@ -827,7 +827,16 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         {z === "chapters" && <PlList title="Chapters" rows={chapterRows} focus={zs.row} />}
         {z === "copies" && <PlList title="Copies" rows={copyListRows} focus={zs.row} />}
       </div>
-      {showLyrics && lview && <LyricsColumn view={lview} poster={poster} ctl={lyricsCtl} />}
+      {showLyrics && lview && (
+        <LyricsColumn
+          view={lview}
+          poster={poster}
+          strip={video?.thumbnail?.strip ?? null}
+          durationS={video?.durationS ?? duration}
+          at={t}
+          ctl={lyricsCtl}
+        />
+      )}
     </div>
   )
 }

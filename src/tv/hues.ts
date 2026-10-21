@@ -87,3 +87,60 @@ export function samplePixels(img: CanvasImageSource): Uint8ClampedArray {
   g.drawImage(img, 0, 0, SAMPLE_N, SAMPLE_N)
   return g.getImageData(0, 0, SAMPLE_N, SAMPLE_N).data
 }
+
+// ---- following the playhead (spec 6.2): the scrub strip stands in for the frames, sampled once ----
+
+/** Half the span of the strip the colours are pooled from (seconds), never under one slice. */
+export const WINDOW_S = 30
+/** A slot repaints only when its hue moves this far (degrees) or its lifted saturation this much. */
+export const HUE_STEP = 12
+export const SAT_STEP = 0.15
+
+/** The tiles whose slice centres lie within WINDOW_S (or one slice, if longer) of `t`; at least the tile under `t`. */
+export function windowTiles(t: number, durationS: number, frames: number): number[] {
+  const slice = durationS / frames
+  const half = Math.max(WINDOW_S, slice)
+  const lo = Math.max(0, Math.ceil((t - half) / slice - 0.5))
+  const hi = Math.min(frames - 1, Math.floor((t + half) / slice - 0.5))
+  if (lo > hi) return [Math.min(frames - 1, Math.max(0, Math.floor(t / slice)))]
+  return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
+}
+
+/** The RGBA cells of tile `i` from the strip drawn at `n` cells a tile (`columns * n` wide), as one run. */
+export function tileCells(strip: ArrayLike<number>, columns: number, i: number, n = SAMPLE_N): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(n * n * 4)
+  const col = i % columns
+  const row = Math.floor(i / columns)
+  const width = columns * n
+  for (let y = 0; y < n; y++) {
+    const from = ((row * n + y) * width + col * n) * 4
+    for (let k = 0; k < n * 4; k++) out[y * n * 4 + k] = strip[from + k] ?? 0
+  }
+  return out
+}
+
+/** The hues of tiles `tiles` pooled into one sample. */
+export function stripHues(strip: ArrayLike<number>, columns: number, tiles: number[]): Hue[] {
+  const pooled = new Uint8ClampedArray(tiles.length * SAMPLE_N * SAMPLE_N * 4)
+  tiles.forEach((i, k) => pooled.set(tileCells(strip, columns, i), k * SAMPLE_N * SAMPLE_N * 4))
+  return sampleHues(pooled)
+}
+
+const permutations = (n: number): number[][] =>
+  n <= 1 ? [[0]] : permutations(n - 1).flatMap((p) => Array.from({ length: n }, (_, i) => [...p.slice(0, i), n - 1, ...p.slice(i)]))
+
+/** `next` reordered so each slot takes the hue nearest the one it shows (least total hue travel): blobs drift, never swap. */
+export function matchSlots(prev: Hue[], next: Hue[]): Hue[] {
+  if (prev.length !== next.length || next.length > 6) return next
+  let best = next
+  let cost = Infinity
+  for (const p of permutations(next.length)) {
+    const c = p.reduce((sum, j, i) => sum + hueGap(prev[i]!.h, next[j]!.h), 0)
+    if (c < cost) [cost, best] = [c, p.map((j) => next[j]!)]
+  }
+  return best
+}
+
+/** Whether a slot showing `a` should move to `b`, compared as lifted. */
+export const hueMoved = (a: Hue, b: Hue): boolean =>
+  hueGap(a.h, b.h) >= HUE_STEP || Math.abs(Math.max(LIFT_S_MIN / 100, a.s) - Math.max(LIFT_S_MIN / 100, b.s)) >= SAT_STEP

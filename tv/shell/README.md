@@ -5,7 +5,7 @@ The thin, signed Tizen app (`TuvaVideos.TuvaTV`) that finds the TV Server on the
 
 | File | Job |
 |---|---|
-| `config.xml`, `icon.png` | package: `internet` + `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>`, olchey icon 512x423 |
+| `config.xml`, `icon.png` | package: `internet` + `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>`, olchey icon 512x423 (the knot on a full-bleed `#1f1e1d` fill) |
 | `index.html`, `shell.css` | CSP meta (as jellyfin-tizen ships), `webapis.js`, the 1920x1080 offline screens |
 | `discovery.js` | finding the server (last address, /24 sweep, typed), approval, "turned off"; no DOM, tested in `test/tv-shell.test.ts` |
 | `shell.js` | key registration, screens, loading `/tv.css` and `/tv.js` from the server, `window.tuvaTv = { base, keys, exit, restart }` |

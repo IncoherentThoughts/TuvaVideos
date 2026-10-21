@@ -148,7 +148,7 @@ Specified here, built last and deferrable (§9): no Copy in the library needs it
 
 ### 4.1 The shell
 
-- The installed app is a **thin signed shell** (`tv/shell/`, `.wgt`): `config.xml` with `<content src="index.html"/>`, the `internet` and `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>` (a Tizen access origin cannot be `http://*`; the address is only known at run time, so the discovery below is the restriction in practice), a permissive CSP meta tag as jellyfin-tizen ships, `webapis.js` injected, the olchey icon at 512×423 and app id `TuvaVideos.TuvaTV`.
+- The installed app is a **thin signed shell** (`tv/shell/`, `.wgt`): `config.xml` with `<content src="index.html"/>`, the `internet` and `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>` (a Tizen access origin cannot be `http://*`; the address is only known at run time, so the discovery below is the restriction in practice), a permissive CSP meta tag as jellyfin-tizen ships, `webapis.js` injected, the olchey icon at 512×423 (the knot centred on a full-bleed `#1f1e1d` fill, no rounded tile) and app id `TuvaVideos.TuvaTV`.
 - At launch it finds the TV Server (§4.2), then loads the UI **live from it**: `index.html` fetches `/tv.js` and `/tv.css` from the TV Server and runs them, so UI updates ship with the Mac code and only the shell needs the certificate. Tizen APIs stay available because the page is packaged, not hosted.
 - The shell registers the media keys (MediaPlayPause, MediaPlay, MediaPause, MediaRewind, MediaFastForward, MediaTrackPrevious, MediaTrackNext), the four colour keys, ChannelUp/Down, Info and the digits 0–9 (the typed-address field needs them) with `registerKeyBatch` (Exit, long Back, stays unregistered and the system handles it), and maps every key through one table (§8) that the UI code shares.
 - The UI is **Preact in `src/tv/`**, sharing `src/shared/` (resume, playingFrom, playlist, fold, filters, libraryView, playerMath, stripGeometry, the last imported from `src/server/stripGeometry.ts` where it lives) and bundled by `TvBundle` in `src/server/web.ts` at start next to the browser bundle, served as `/tv.js` and `/tv.css`; `/` on the TV listener is a page that loads both, so the UI also runs in a desktop browser at `http://127.0.0.1:4401/` (no `window.tuvaTv`: the base is the page origin and the Player is muted; `?mute=1` mutes in the shell too, `?play=<videoId>&t=<seconds>` opens that Video once the library has loaded, desktop only). The throwaway prototype in `tv/home-prototype/` and the hello-world in `tv/hello-world/` stay as history and are not shipped.
@@ -221,13 +221,16 @@ Verdict of #51 (Player variant B "Overlay", reshaped) plus the control decisions
 
 ### 6.2 Column backdrop
 
-A living take on the Lyrics Website album-page backdrop:
+Orbs of colour flowing over a dark ground, loosely following what is on screen (`src/tv/glow.ts`, `src/tv/hues.ts`):
 
-- the Video's poster **blurred (48 px, saturate 2.4)** and slowly drifting underneath;
-- the poster **sampled into a 12×12 canvas**, its **four most vivid hues** (25° apart or more) lifted to a fixed lightness (56 / 48 %) and saturation (≥ 65 %), driving **four radial blobs** that drift and breathe on 19 to 34 s cycles with screen blending; a grey poster (black-and-white footage) falls back to warm hues spread round the wheel;
+- **Source**: the Video's scrub strip (one image, up to 100 frames across the whole Video), drawn once into a canvas of 12×12 cells a frame; without a strip (or on a tainted canvas) the poster, as one frame. No frame is ever shown, only colours.
+- **Six orbs, one per region of the frame** (three across, two down): each takes its region's chroma-weighted mean (vivid mid-light cells count most, grey, black and white barely), so the colours move continuously with the picture and nothing is ranked or swapped. The ground is the frame's mean, very dark.
+- **Continuous in time**: the colours at the playhead are the frames around it blended with Gaussian weights (σ = 20 s, or 0.7 of a slice when slices are longer), re-blended every 0.5 s; the shown colours ease towards them with a **6 s time constant** every frame, so playing, scrubbing and seeking never cut, and a far seek rolls over in about 15 s. Reopening the column on the same Video picks up the colours it last showed.
+- **Styling**: each orb keeps its region's hue (fanned a few degrees per orb so a scene in one colour still glows in neighbouring ones), saturation pushed to at least 60 % (a grey region stays grey), lightness 40 to 60 % following the picture's.
+- **Cost**: the orbs are radial gradients drawn with screen blending into a **90×120 canvas at about 30 fps**, stretched over the column by the stylesheet: a few thousand pixels a frame, no blur filter, no read-back of the video.
 - then a light vignette, a dark tint gradient and faint grain.
 
-The text shadow stays tight (`0 1px 2px`): a wide one on dense 44 px text veils the backdrop. The poster `<img>` carries `crossorigin` so the canvas sample works from the TV Server's origin; the TV Server sends `Access-Control-Allow-Origin` for `/thumbs`.
+The text shadow stays tight (`0 1px 2px`): a wide one on dense 44 px text veils the backdrop. The strip and poster are loaded with `crossorigin` so the canvas sample works from the TV Server's origin; the TV Server sends `Access-Control-Allow-Origin` for `/thumbs`.
 
 ### 6.3 Zones and keys
 

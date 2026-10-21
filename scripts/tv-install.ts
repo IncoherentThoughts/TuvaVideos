@@ -38,7 +38,7 @@ type Step = { label: string; cmd: string[]; ok?: (out: string) => boolean; after
 export function planSteps(tv: TvConfig, opts: { permit: boolean; tizen: string; sdb: string }): Step[] {
   const { tizen, sdb } = opts
   const steps: Step[] = [
-    { label: "connect", cmd: [sdb, "connect", tv.ip], ok: (o) => /connected to/i.test(o) && !/fail|unable/i.test(o) },
+    { label: "connect", cmd: [sdb, "connect", tv.ip], ok: (o) => /connected to|already connected/i.test(o) && !/fail|unable/i.test(o) },
   ]
   if (opts.permit) steps.push({ label: "install-permit", cmd: [tizen, "install-permit", "-t", tv.target] })
   steps.push(

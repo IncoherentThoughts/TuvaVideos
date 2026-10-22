@@ -19,7 +19,7 @@ export type LinkVideo = Pick<VideoDto, "id" | "shared" | "updatedAt"> &
   Partial<Pick<VideoDto, "title" | "titleLatin" | "titleLatinSource" | "type" | "typeSuggested" | "songId" | "versionId" | "songSuggested" | "artists">>;
 
 /** What a write needs of a Chapter. */
-export type LinkChapter = Pick<ChapterDto, "id" | "videoId" | "startS" | "title" | "suggested" | "updatedAt"> & Partial<Pick<ChapterDto, "songId" | "versionId">>;
+export type LinkChapter = Pick<ChapterDto, "id" | "videoId" | "startS" | "title" | "suggested" | "updatedAt"> & Partial<Pick<ChapterDto, "songId" | "versionId" | "source">>;
 
 /** A matcher's Suggested values for a Shared Video (§4.3): written only where nothing was set. */
 export interface SuggestPatch {
@@ -34,10 +34,12 @@ export type LinkOp =
   | { kind: "video.delete"; reason: string }
   | { kind: "video.restore" }
   | { kind: "video.suggest"; patch: SuggestPatch }
-  | { kind: "artists.set"; artistIds: string[] }
+  // `suggested`: the ids written as Suggested (an undo puts the flags back); left out, each keeps its current flag
+  | { kind: "artists.set"; artistIds: string[]; suggested?: string[] }
   | { kind: "artists.remove"; artistId: string }
   | { kind: "artists.confirm" }
-  | { kind: "chapter.add"; chapter: ChapterCreate }
+  // `suggested` / `source` only when an undo adds back a deleted Chapter
+  | { kind: "chapter.add"; chapter: ChapterCreate & { suggested?: boolean; source?: ChapterDto["source"] } }
   | { kind: "chapter.update"; chapter: LinkChapter; patch: ChapterPatch }
   | { kind: "chapter.delete"; chapter: LinkChapter }
   | { kind: "chapter.confirm"; chapter: LinkChapter }
@@ -292,11 +294,12 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
     case "artists.set": {
       const prev = new Map((video.artists ?? []).map((a) => [a.id, a]));
       const ids = [...new Set(op.artistIds)];
-      const artists = ids.map((id) => ({ ...artistRef(kinds, id), suggested: prev.get(id)?.suggested ?? false }));
-      // ids with names, so an undo can put them back (§3.6: values sufficient to invert)
-      const named = (list: string[]) => list.map((id) => ({ id, name: prev.get(id)?.name ?? id }));
+      const suggestedOf = (id: string) => (op.suggested ? op.suggested.includes(id) : prev.get(id)?.suggested ?? false);
+      const artists = ids.map((id) => ({ ...artistRef(kinds, id), suggested: suggestedOf(id) }));
+      // ids with names and flags, so an undo can put them back (§3.6: values sufficient to invert)
+      const named = (list: string[], flag: (id: string) => boolean) => list.map((id) => ({ id, name: prev.get(id)?.name ?? id, suggested: flag(id) }));
       return call("write_video_artists", "replace", video.id, { artists }, vStamp, [
-        { event_type: "artists.replaced", field_name: "artists", old_value: named([...prev.keys()]), new_value: named(ids), description: "Artists changed" },
+        { event_type: "artists.replaced", field_name: "artists", old_value: named([...prev.keys()], (id) => prev.get(id)?.suggested ?? false), new_value: named(ids, suggestedOf), description: "Artists changed" },
       ]);
     }
     case "artists.remove": {
@@ -307,7 +310,7 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
         return call("write_video_artists", "reject", a.linkId, {}, null, [{ event_type: "artist_link.rejected", field_name: "artist_id", old_value: a.id, description: `Rejected ${a.name}` }]);
       const rest = (video.artists ?? []).filter((x) => x.id !== op.artistId);
       return call("write_video_artists", "replace", video.id, { artists: rest.map((x) => ({ ...artistRef(kinds, x.id), suggested: x.suggested })) }, vStamp, [
-        { event_type: "artists.replaced", field_name: "artists", old_value: (video.artists ?? []).map((x) => ({ id: x.id, name: x.name })), new_value: rest.map((x) => ({ id: x.id, name: x.name })), description: `Removed ${a.name}` },
+        { event_type: "artists.replaced", field_name: "artists", old_value: (video.artists ?? []).map((x) => ({ id: x.id, name: x.name, suggested: x.suggested })), new_value: rest.map((x) => ({ id: x.id, name: x.name, suggested: x.suggested })), description: `Removed ${a.name}` },
       ]);
     }
     case "artists.confirm":
@@ -318,7 +321,7 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
       const title = cleanTitle(c.title ?? "");
       const payload: Record<string, unknown> = {
         ...(id ? { id } : {}), start_s: c.startS, title, title_latin: latinOf(title).title_latin,
-        ...songPair(kinds, c.songId ?? null, c.versionId ?? null), suggested: false, source: "manual",
+        ...songPair(kinds, c.songId ?? null, c.versionId ?? null), suggested: c.suggested ?? false, source: c.source ?? "manual",
       };
       const spec = call("write_video_chapters", "add", video.id, payload, null, [{ event_type: "chapter.added", field_name: "start_s", new_value: c.startS, description: `Chapter added at ${c.startS}s` }]);
       return id ? { ...spec, minted: id } : spec;
@@ -343,7 +346,11 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
         const song = p.songId !== undefined ? p.songId ?? null : ch.songId ?? null;
         const version = p.versionId !== undefined ? p.versionId ?? null : song !== (ch.songId ?? null) ? null : ch.versionId ?? null;
         Object.assign(payload, songPair(kinds, song, version));
-        edits.push({ event_type: "chapter.changed", field_name: "song_id", old_value: ch.songId ?? null, new_value: song, description: song ? "Chapter Song set" : "Chapter Song cleared" });
+        if (song !== (ch.songId ?? null) || version === (ch.versionId ?? null))
+          edits.push({ event_type: "chapter.changed", field_name: "song_id", old_value: ch.songId ?? null, new_value: song, description: song ? "Chapter Song set" : "Chapter Song cleared" });
+        // its own Edit, so an undo puts the Version back too
+        if (version !== (ch.versionId ?? null))
+          edits.push({ event_type: "chapter.changed", field_name: "version_id", old_value: ch.versionId ?? null, new_value: version, description: version ? "Chapter Version set" : "Chapter Version cleared" });
       }
       if (!edits.length) return nothing;
       return call("write_video_chapters", "update", ch.id, payload, opts.stamp !== undefined ? opts.stamp : ch.updatedAt, edits);
@@ -351,7 +358,7 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
     case "chapter.delete":
       return call("write_video_chapters", "delete", op.chapter.id, {}, opts.stamp !== undefined ? opts.stamp : op.chapter.updatedAt, [
         // the whole Chapter, so an undo can add it back (§3.6: values sufficient to invert)
-        { event_type: "chapter.deleted", field_name: "chapter", old_value: { start_s: op.chapter.startS, title: op.chapter.title, song_id: op.chapter.songId ?? null, version_id: op.chapter.versionId ?? null }, description: `Chapter deleted: ${op.chapter.title}` },
+        { event_type: "chapter.deleted", field_name: "chapter", old_value: { start_s: op.chapter.startS, title: op.chapter.title, song_id: op.chapter.songId ?? null, version_id: op.chapter.versionId ?? null, suggested: op.chapter.suggested, source: op.chapter.source ?? null }, description: `Chapter deleted: ${op.chapter.title}` },
       ]);
     case "chapter.confirm":
       return call("write_video_chapters", "confirm", op.chapter.id, {}, opts.stamp !== undefined ? opts.stamp : op.chapter.updatedAt, [
@@ -441,8 +448,9 @@ export function inverseOf(entries: UndoEntry[], ctx: UndoContext): UndoPlan {
       return c ? { op: { kind: "chapter.delete", chapter: c }, reverses } : { refused: GONE_LINE };
     }
     case "chapter.deleted": {
-      const o = first.oldValue as { start_s: number; title?: string | null; song_id?: string | null; version_id?: string | null };
-      return { op: { kind: "chapter.add", chapter: { startS: Number(o.start_s), title: o.title ?? "", songId: o.song_id ?? null, versionId: o.version_id ?? null } }, reverses };
+      const o = first.oldValue as { start_s: number; title?: string | null; song_id?: string | null; version_id?: string | null; suggested?: boolean; source?: ChapterDto["source"] | null };
+      const flags = o.suggested ? { suggested: true, source: o.source ?? undefined } : {};
+      return { op: { kind: "chapter.add", chapter: { startS: Number(o.start_s), title: o.title ?? "", songId: o.song_id ?? null, versionId: o.version_id ?? null, ...flags } }, reverses };
     }
     case "chapter.changed": {
       const c = chapter();
@@ -452,6 +460,7 @@ export function inverseOf(entries: UndoEntry[], ctx: UndoContext): UndoPlan {
         if (e.fieldName === "title") patch.title = str(e.oldValue) ?? "";
         else if (e.fieldName === "start_s") patch.startS = Number(e.oldValue);
         else if (e.fieldName === "song_id") patch.songId = str(e.oldValue);
+        else if (e.fieldName === "version_id") patch.versionId = str(e.oldValue);
       }
       return { op: { kind: "chapter.update", chapter: c, patch }, reverses };
     }
@@ -459,8 +468,12 @@ export function inverseOf(entries: UndoEntry[], ctx: UndoContext): UndoPlan {
       return { op: { kind: "chapter.unreject", rejectionId: first.rejectionId! }, reverses };
     case "artist_link.rejected":
       return { op: { kind: "artists.unreject", rejectionId: first.rejectionId! }, reverses };
-    case "artists.replaced":
-      return { op: { kind: "artists.set", artistIds: (first.oldValue as { id: string }[]).map((a) => a.id) }, reverses };
+    case "artists.replaced": {
+      const old = first.oldValue as { id: string; suggested?: boolean }[];
+      // rows written before the flags were recorded keep each Artist's current flag
+      const suggested = old.some((a) => "suggested" in a) ? old.filter((a) => a.suggested).map((a) => a.id) : undefined;
+      return { op: { kind: "artists.set", artistIds: old.map((a) => a.id), ...(suggested ? { suggested } : {}) }, reverses };
+    }
     default: {
       // the video.* field changes of one update, as one update back
       const patch: VideoPatch = {};
@@ -468,9 +481,11 @@ export function inverseOf(entries: UndoEntry[], ctx: UndoContext): UndoPlan {
       const used: typeof reverses = [];
       for (const e of live) {
         if (e.eventType === "video.title_changed") patch.title = str(e.oldValue) ?? "";
-        // a Latin title that followed the title is regenerated from the old title; one typed alone is put back
+        // a Latin title that followed the title is regenerated from the old title; one typed alone is put back,
+        // as the table's form (cleared) when that is what it was, so it keeps following the title
         else if (e.eventType === "video.title_latin_changed") {
-          if (!titleChanged) patch.titleLatin = str(e.oldValue);
+          const old = str(e.oldValue);
+          if (!titleChanged) patch.titleLatin = old != null && old === latinByTable(ctx.video.title ?? "") ? null : old;
         } else if (e.eventType === "video.type_changed") patch.type = e.oldValue as VideoPatch["type"];
         else if (e.eventType === "video.song_changed") patch.songId = str(e.oldValue);
         else if (e.eventType === "video.version_changed") patch.versionId = str(e.oldValue);

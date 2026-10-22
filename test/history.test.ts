@@ -91,10 +91,12 @@ describe("the inversion table (§4.7)", () => {
     // undo-only ops never go to the companion's routes
     expect(routeFor({ shared: false }, c.op, "editor")).toEqual({ to: "refused", line: UNDO_SHARED_LINE });
   });
-  test("Artists replaced -> the old list (ids recorded with names)", () => {
+  test("Artists replaced -> the old list with its Suggested flags (ids recorded with names)", () => {
     const s = spec(video({ artists: [{ id: "A1", name: "Ай", nameLatin: null, local: false, proposed: false, suggested: false, linkId: "L1" }] }), { kind: "artists.set", artistIds: ["A2"] });
     const p = plan([E("artists.replaced", { fieldName: "artists", oldValue: s.args.p_edits[0]!.old_value, newValue: s.args.p_edits[0]!.new_value })]);
-    expect(p.op).toEqual({ kind: "artists.set", artistIds: ["A1"] });
+    expect(p.op).toEqual({ kind: "artists.set", artistIds: ["A1"], suggested: [] });
+    // rows recorded before the flags: each Artist keeps its current flag
+    expect(plan([E("artists.replaced", { fieldName: "artists", oldValue: [{ id: "A1", name: "Ай" }] })]).op).toEqual({ kind: "artists.set", artistIds: ["A1"] });
   });
   test("not undoable: scans, suggestions, elevations, the migration, confirmations, an undone write, unrecorded or gone rows", () => {
     for (const t of ["video.scanned", "video.migrated", "video.suggested", "chapter.suggested", "artists.suggested", "proposed.song_elevated", "proposed.migrated"])

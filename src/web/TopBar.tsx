@@ -8,7 +8,6 @@ import { refreshDeletedMatches } from "./ConflictNotice";
 import { drainSharedSuggestions } from "./writeLink";
 import { afterScan } from "./session";
 import { Link, type Route } from "./router";
-import { THEMES, useTheme } from "./theme";
 
 function ScanIndicator({ scan }: { scan: ScanDto }) {
   if (!scan.running) return null;
@@ -98,7 +97,6 @@ export function TopBar({ route }: { route: Route }) {
     window.close();
   };
 
-  const [theme, setTheme] = useTheme();
   const last = route.name === "play" ? route.videoId : getLastPlayed();
   const tab = (name: Route["name"], href: string | null, label: string) => (
     <Link href={href ?? "/"} class={`tab${route.name === name ? " on" : ""}${href === null ? " off" : ""}`} aria-current={route.name === name ? "page" : undefined} tabIndex={href === null ? -1 : undefined}>
@@ -121,27 +119,20 @@ export function TopBar({ route }: { route: Route }) {
       <div class="topright">
         {scan && <ScanIndicator scan={scan} />}
         <SearchBox />
-        <button class="btn" onClick={() => playRandom()} disabled={!anyAvailable} title="Play a random available Video (r)">
-          Random
-        </button>
-        <select class="btn theme" aria-label="Theme" title="Theme (docs/themes.md)" value={theme} onChange={(e) => setTheme((e.target as HTMLSelectElement).value)}>
-          {THEMES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-        </select>
         <TvButton />
         <button class="btn" onClick={rescan} disabled={busy || !!scan?.running} title="Scan the Roots for new files">
           Rescan
         </button>
+        <button class="btn" onClick={() => playRandom()} disabled={!anyAvailable} title="Play a random available Video (r)">
+          Random
+        </button>
+        <AccountChip />
         <button class="btn power" onClick={powerOff} disabled={busy} title="Stop TuvaVideos and close this tab" aria-label="Stop TuvaVideos and close this tab">
           <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
             <path d="M8 1.5v6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
             <path d="M4.9 3.9a5.2 5.2 0 1 0 6.2 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
           </svg>
         </button>
-        <AccountChip />
       </div>
       {off && (
         <div class="off-page" role="status">

@@ -763,6 +763,8 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .acct-menu .am-sync { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .88em; }
 .acct-menu .am-sync .btn { text-align: center; padding: 2px 10px; }
 .acct-menu .am-offline { color: var(--t2); }
+.acct-menu .am-theme { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .88em; }
+.acct-menu .am-theme select { padding-top: 2px; padding-bottom: 2px; }
 .acct-menu .am-err { color: var(--t1); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 dialog.signin .si-field { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
 dialog.signin .si-field span { font-size: .85em; color: var(--fg2); }

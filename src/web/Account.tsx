@@ -8,6 +8,7 @@ import { chipView, type ChipView, endedLine, FORGOT_URL, NO_ACCESS_HINT, NO_ACCE
 import { useSession } from "./session";
 import { clearShelvedEdits, fetchShelved, onShelvedChange, openShelved } from "./History";
 import { navigate } from "./router";
+import { THEMES, useTheme } from "./theme";
 import { ShelvedExplainer, VideoDiffList } from "./ShelvedDiff";
 import type { VideoDiff } from "../shared/shelvedDiff";
 
@@ -103,6 +104,7 @@ function useShelvedCount(open: boolean) {
 function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "chip" }>; open: boolean; setOpen: (on: boolean) => void; box: Ref<HTMLDivElement> }) {
   const s = useSession();
   const shelved = useShelvedCount(open);
+  const [theme, setTheme] = useTheme();
   const clearAll = async () => {
     if (!confirm(`Clear ${shelved} Shelved edit${shelved === 1 ? "" : "s"}? They are not in the Shared data and cannot be brought back.`)) return;
     setOpen(false);
@@ -159,6 +161,16 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
               Refresh all Shared data
             </button>
           )}
+          <label class="am-theme">
+            <span class="dim">Theme</span>
+            <select class="btn theme small" title="Theme (docs/themes.md)" value={theme} onChange={(e) => setTheme((e.target as HTMLSelectElement).value)}>
+              {THEMES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button role="menuitem" onClick={() => (setOpen(false), navigate("/edits"))}>
             Edits
           </button>

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config";
 import { log } from "./log";
@@ -87,6 +88,8 @@ export class TvBundle {
   serve(path: "/tv.js" | "/tv.css"): Response {
     const noStore = { "cache-control": "no-store" };
     if (path === "/tv.js") return new Response(this.js, { headers: { "content-type": "text/javascript; charset=utf-8", ...noStore } });
-    return new Response(Bun.file(join(this.dir, "styles.css")), { headers: { "content-type": "text/css; charset=utf-8", ...noStore } });
+    // fonts.css first: its @font-face rules load /fonts/* relative to /tv.css.
+    const css = ["fonts.css", "styles.css"].map((f) => readFileSync(join(this.dir, f), "utf8")).join("\n");
+    return new Response(css, { headers: { "content-type": "text/css; charset=utf-8", ...noStore } });
   }
 }

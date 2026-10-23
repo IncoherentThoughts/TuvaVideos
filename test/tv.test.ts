@@ -292,6 +292,17 @@ describe("TV Server listener", () => {
     expect((await fetch(`${local}/thumbs/${vid}/poster.webp`)).headers.get("access-control-allow-origin")).toBeNull();
   });
 
+  test("the UI's fonts: /tv.css declares them and /fonts/ serves them (LG webOS has none of them)", async () => {
+    const f = await tvReq("/fonts/symbols-misc.woff2", { headers: tvModel });
+    expect(f.status).toBe(200);
+    expect(f.headers.get("content-type")).toBe("font/woff2");
+    expect((await tvReq("/fonts/nope.woff2", { headers: tvModel })).status).toBe(404);
+    expect((await tvReq("/fonts/../tv.ts", { headers: tvModel })).status).toBe(404);
+    const css = await (await tvReq("/tv.css", { headers: tvModel })).text();
+    expect(css).toContain("font-family:'Tuva Symbols'");
+    expect(css).toContain("--font-ui: 'IBM Plex Sans', 'Tuva Symbols'");
+  });
+
   test("TV answers carry CORS and a preflight for X-Tuva-TV is answered (the LG shell runs from file://)", async () => {
     const pre = await tvReq("/api/videos", { method: "OPTIONS", headers: { origin: "null", "access-control-request-method": "GET", "access-control-request-headers": "x-tuva-tv" } });
     expect(pre.status).toBe(204);

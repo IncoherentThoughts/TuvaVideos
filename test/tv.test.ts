@@ -292,6 +292,15 @@ describe("TV Server listener", () => {
     expect((await fetch(`${local}/thumbs/${vid}/poster.webp`)).headers.get("access-control-allow-origin")).toBeNull();
   });
 
+  test("TV answers carry CORS and a preflight for X-Tuva-TV is answered (the LG shell runs from file://)", async () => {
+    const pre = await tvReq("/api/videos", { method: "OPTIONS", headers: { origin: "null", "access-control-request-method": "GET", "access-control-request-headers": "x-tuva-tv" } });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-origin")).toBe("*");
+    expect(pre.headers.get("access-control-allow-headers")).toContain("x-tuva-tv");
+    expect((await tvReq("/api/videos", { headers: tvModel })).headers.get("access-control-allow-origin")).toBe("*");
+    expect((await tvReq("/api/health")).headers.get("access-control-allow-origin")).toBe("*");
+  });
+
   test("the indicator: an Approved TV that just made a request is playing the Video whose stream it asked for", async () => {
     const v = (await j("/api/videos"))[0];
     await tvReq(`/api/videos/${v.id}`, { headers: tvModel });

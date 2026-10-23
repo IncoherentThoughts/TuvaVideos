@@ -1,6 +1,7 @@
 // The TV shell (docs/tv-spec.md §4): registers the remote keys, finds the TV Server (discovery.js), draws the
-// offline states, then loads /tv.css and /tv.js live from the server. Plain ES2020; also runs in a desktop browser
-// (no `tizen`/`webapis` there; add ?addr=<ip> to stand in for the stored address).
+// offline states, then loads /tv.css and /tv.js live from the server. Plain ES2020; runs on Samsung (Tizen), on LG
+// (webOS, packaged with appinfo.json) and in a desktop browser (neither there; add ?addr=<ip> to stand in for the
+// stored address).
 (function () {
   "use strict"
 
@@ -10,6 +11,8 @@
   const params = new URLSearchParams(location.search)
   const tizenApi = typeof window.tizen !== "undefined" ? window.tizen : null
   const webapi = typeof window.webapis !== "undefined" ? window.webapis : null
+  // webOS: the native bridge its own webOSTV.js wraps; luna calls go through it.
+  const palm = typeof window.PalmServiceBridge !== "undefined" ? window.PalmServiceBridge : null
 
   function exitApp() {
     try {
@@ -44,7 +47,36 @@
     return navigator.userAgent.replace(/[^\x20-\x7e]/g, "")
   }
 
+  // webOS has no sync IP call: ask the connection manager once, and start looking when it answers (or after 1.5 s).
+  let webosIp = null
+  function askWebosIp(then) {
+    if (!palm) return then()
+    let started = false
+    const go = () => {
+      if (started) return
+      started = true
+      then()
+    }
+    window.setTimeout(go, 1500)
+    try {
+      const bridge = new palm()
+      bridge.onservicecallback = (msg) => {
+        try {
+          const r = JSON.parse(msg)
+          const net = (r.wired && r.wired.state === "connected" && r.wired) || (r.wifi && r.wifi.state === "connected" && r.wifi)
+          if (net && net.ipAddress) webosIp = net.ipAddress
+        } catch {}
+        go()
+      }
+      bridge.call("luna://com.palm.connectionmanager/getStatus", "{}")
+      window.__tuvaBridge = bridge // keep it alive until it answers
+    } catch {
+      go()
+    }
+  }
+
   function localIp() {
+    if (webosIp) return webosIp
     try {
       return webapi.network.getIp() || null
     } catch {
@@ -202,5 +234,5 @@
   )
 
   registerKeys()
-  disc.start()
+  askWebosIp(() => disc.start())
 })()

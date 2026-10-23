@@ -1,11 +1,12 @@
 # TuvaVideos TV shell
 
-The thin, signed Tizen app (`TuvaVideos.TuvaTV`) that finds the TV Server on the Mac and loads the TV UI live from it
+The thin, signed Tizen app (`TuvaVideos.TuvaTV`), also packaged for LG webOS (`local.tuvavideos.tuvatv`), that finds the TV Server on the Mac and loads the TV UI live from it
 (`docs/tv-spec.md` §4). Plain ES2020 scripts, no bundler: what is in this folder is what runs on the TV.
 
 | File | Job |
 |---|---|
 | `config.xml`, `icon.png` | package: `internet` + `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>`, olchey icon 512x423 (the knot on a full-bleed `#1f1e1d` fill) |
+| `appinfo.json`, `icon-80.png`, `icon-130.png` | the LG (webOS) package: `disableBackHistoryAPI` so Back arrives as key 461; read by `lg-install` |
 | `index.html`, `shell.css` | CSP meta (as jellyfin-tizen ships), `webapis.js`, the 1920x1080 offline screens |
 | `discovery.js` | finding the server (last address, /24 sweep, typed), approval, "turned off"; no DOM, tested in `test/tv-shell.test.ts` |
 | `shell.js` | key registration, screens, loading `/tv.css` and `/tv.js` from the server, `window.tuvaTv = { base, keys, exit, restart }` |
@@ -40,6 +41,33 @@ Only changes in this folder need `tv-install`.
 Tools are expected at `~/tizen-studio` (Tizen Studio 6.1, Samsung Certificate Extension 2.0.75, TV Extensions 10.0),
 certificate profile `TuvaVideos` (Samsung, TV, Public; files in `~/SamsungCertificate/TuvaVideos/`). Back that folder
 up: updates must be signed with the same author certificate.
+
+## Install on an LG TV (webOS)
+
+The same shell, packaged as an `.ipk` instead of a `.wgt`. On LG no key needs registering (Back is 461, in `alt` in
+`src/tv/keys.ts`), the TV's own address comes from `luna://com.palm.connectionmanager/getStatus`, and the app runs
+from `file://`, so the TV Server answers CORS on every TV route.
+
+Once:
+
+1. `bunx npm@10 install --prefix ~/.webos-cli @webos-tools/cli` (the `ares-*` tools, in `~/.webos-cli/node_modules/.bin`;
+   `lg-install` finds them there). Not `bun add -g`: bun ignores the package's pinned dependencies and `ares-package`
+   fails with "mkdir is not a function".
+2. On the TV: sign in to an LG account, install **Developer Mode** from the LG Content Store, open it, sign in with
+   the same account and switch **Dev Mode Status** on (the TV restarts). Reopen it and switch **Key Server** on; note
+   the IP and the 6-character passphrase it shows.
+3. `~/.webos-cli/node_modules/.bin/ares-setup-device --add lgtv -i "host=<TV IP>" -i "port=9922" -i "username=prisoner"`, then
+   `~/.webos-cli/node_modules/.bin/ares-novacom --device lgtv --getkey` and type the passphrase.
+
+Then, and after every change in this folder:
+
+```bash
+bun run lg-install               # package, install, launch on the device named lgtv
+bun run lg-install otherdevice   # another ares-setup-device name
+```
+
+Developer Mode on LG lasts 50 hours: open the Developer Mode app and press **Extend** before it runs out, or the
+sideloaded app is removed. The first launch shows **Approve this TV on the Mac** like the Samsung one.
 
 ## Yearly certificate checklist
 

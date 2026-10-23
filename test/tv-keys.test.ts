@@ -7,7 +7,7 @@ test("every registered key has a Tizen code and no two keys share one", () => {
     expect(Number.isInteger(k.code) && k.code > 0).toBe(true)
     expect(k.name.length).toBeGreaterThan(0)
   }
-  const codes = TV_KEYS.map((k) => k.code)
+  const codes = TV_KEYS.flatMap((k) => [k.code, ...(k.alt ?? [])])
   expect(new Set(codes).size).toBe(codes.length)
   const names = TV_KEYS.map((k) => k.name)
   expect(new Set(names).size).toBe(names.length)
@@ -36,6 +36,8 @@ test("keyName looks a code up", () => {
   expect(keyName(405)).toBe("ColorF2Yellow")
   expect(keyName(48)).toBe("0")
   expect(keyName(1)).toBeUndefined()
+  expect(keyName(461)).toBe("Back") // LG webOS
+  expect(keyName(33)).toBe("ChannelUp")
 })
 
 test("tv/shell/keys.js is the generated copy of the table", async () => {

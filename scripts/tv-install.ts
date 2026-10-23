@@ -15,7 +15,7 @@ const KEYS_JS = join(SHELL_DIR, "keys.js")
 
 /** tv/shell/keys.js: the §8 table for the plain-JS shell and for the UI (window.TuvaKeys). Generated, not hand-edited. */
 export function renderKeysJs(): string {
-  const rows = TV_KEYS.map((k) => `  { name: ${JSON.stringify(k.name)}, code: ${k.code}, registered: ${k.registered} },`).join("\n")
+  const rows = TV_KEYS.map((k) => `  { name: ${JSON.stringify(k.name)}, code: ${k.code}, registered: ${k.registered}${k.alt ? `, alt: ${JSON.stringify(k.alt)}` : ""} },`).join("\n")
   return `// GENERATED from src/tv/keys.ts by \`bun run tv-install\` (or \`bun scripts/tv-install.ts --keys\`). Do not edit.
 (function (root) {
   "use strict"
@@ -23,7 +23,7 @@ export function renderKeysJs(): string {
 ${rows}
   ]
   function keyName(keyCode) {
-    const k = table.find((t) => t.code === keyCode)
+    const k = table.find((t) => t.code === keyCode || (t.alt && t.alt.includes(keyCode)))
     return k ? k.name : undefined
   }
   root.TuvaKeys = { table, keyName }

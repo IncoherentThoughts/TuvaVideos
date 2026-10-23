@@ -22,6 +22,7 @@
     "app": "bun scripts/make-app.ts",
     "tv-prototype": "bun tv/home-prototype/serve.ts",
     "tv-install": "bun scripts/tv-install.ts",
+    "lg-install": "bun scripts/lg-install.ts",
     "seed-shared": "bun scripts/seed-shared.ts"
   },
   "bin": {

@@ -1,0 +1,13 @@
+{
+  "id": "local.tuvavideos.tuvatv",
+  "version": "1.0.0",
+  "vendor": "TuvaVideos",
+  "type": "web",
+  "main": "index.html",
+  "title": "TuvaVideos",
+  "icon": "icon-80.png",
+  "largeIcon": "icon-130.png",
+  "bgColor": "#1f1e1d",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true
+}

@@ -186,7 +186,34 @@ export class TvServer {
     this.activity = { ip, model: model ?? (db.query("SELECT model FROM approved_tv WHERE ip = ?").get(ip) as { model: string | null } | null)?.model ?? null, at: now, title };
   }
 
+  // CORS for every TV route: the LG (webOS) shell runs from file:// and sends X-Tuva-TV, so its requests are
+  // preflighted; Tizen skips CORS through <access origin="*">. Access is still decided by the TV's IP.
   async fetch(req: Request, ip: string): Promise<Response> {
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, HEAD, POST, PUT, PATCH, DELETE",
+          "access-control-allow-headers": req.headers.get("access-control-request-headers") || "x-tuva-tv, content-type, range",
+          "access-control-max-age": "600",
+        },
+      });
+    }
+    const res = await this.respond(req, ip);
+    try {
+      res.headers.set("access-control-allow-origin", "*");
+      res.headers.set("access-control-expose-headers", "content-length, content-range, accept-ranges");
+    } catch {
+      // immutable headers (a passed-through fetch Response): copy it
+      const copy = new Response(res.body, res);
+      copy.headers.set("access-control-allow-origin", "*");
+      return copy;
+    }
+    return res;
+  }
+
+  private async respond(req: Request, ip: string): Promise<Response> {
     const path = new URL(req.url).pathname;
     const route = matchTvRoute(req.method, path);
     if (!route) return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "content-type": "application/json", "cache-control": "no-store", "x-tv-route": "unlisted" } });
@@ -211,9 +238,7 @@ export class TvServer {
       headers.delete("content-length");
       return new Response(req.method === "HEAD" ? null : JSON.stringify(body), { status: res.status, headers });
     }
-    // The TV samples poster colours on a canvas, which needs a CORS-clean image.
-    if (path.startsWith("/thumbs/")) res.headers.set("access-control-allow-origin", "*");
-    return res;
+    return res; // CORS headers (which the poster-colour canvas also needs) are added by fetch()
   }
 
   /** The TV UI files: the bundle built at start (`TvBundle`), the olchey, and the page that loads them for a desktop browser. */

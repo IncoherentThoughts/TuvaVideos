@@ -1,5 +1,6 @@
 // The remote key table of docs/tv-spec.md §8, as data. The signed shell (tv/shell/, plain JS) registers every
 // `registered` key with tizen.tvinputdevice.registerKeyBatch and the UI maps keyCode -> name through the same table.
+// LG webOS sends most keys with the same codes and needs no registering; where its code differs it is in `alt`.
 // tv/shell/keys.js is generated from this file by `bun run tv-install` (and `bun scripts/tv-install.ts --keys`).
 
 export type TvKey = {
@@ -8,6 +9,8 @@ export type TvKey = {
   code: number
   /** True when the shell must register it; arrows, Enter and Back arrive on their own. */
   registered: boolean
+  /** The same key's code on LG webOS, where it differs from Tizen's. */
+  alt?: readonly number[]
 }
 
 export const TV_KEYS: readonly TvKey[] = [
@@ -16,10 +19,10 @@ export const TV_KEYS: readonly TvKey[] = [
   { name: "ArrowRight", code: 39, registered: false },
   { name: "ArrowDown", code: 40, registered: false },
   { name: "Enter", code: 13, registered: false },
-  { name: "Back", code: 10009, registered: false },
+  { name: "Back", code: 10009, registered: false, alt: [461] },
   { name: "Exit", code: 10182, registered: false },
-  { name: "ChannelUp", code: 427, registered: true },
-  { name: "ChannelDown", code: 428, registered: true },
+  { name: "ChannelUp", code: 427, registered: true, alt: [33] },
+  { name: "ChannelDown", code: 428, registered: true, alt: [34] },
   { name: "MediaPlayPause", code: 10252, registered: true },
   { name: "MediaPlay", code: 415, registered: true },
   { name: "MediaPause", code: 19, registered: true },
@@ -36,7 +39,7 @@ export const TV_KEYS: readonly TvKey[] = [
 ]
 
 export function keyName(keyCode: number): string | undefined {
-  return TV_KEYS.find((k) => k.code === keyCode)?.name
+  return TV_KEYS.find((k) => k.code === keyCode || k.alt?.includes(keyCode))?.name
 }
 
 /** Names the shell passes to tizen.tvinputdevice.registerKeyBatch. */

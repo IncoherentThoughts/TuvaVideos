@@ -7,10 +7,10 @@
   { name: "ArrowRight", code: 39, registered: false },
   { name: "ArrowDown", code: 40, registered: false },
   { name: "Enter", code: 13, registered: false },
-  { name: "Back", code: 10009, registered: false },
+  { name: "Back", code: 10009, registered: false, alt: [461] },
   { name: "Exit", code: 10182, registered: false },
-  { name: "ChannelUp", code: 427, registered: true },
-  { name: "ChannelDown", code: 428, registered: true },
+  { name: "ChannelUp", code: 427, registered: true, alt: [33] },
+  { name: "ChannelDown", code: 428, registered: true, alt: [34] },
   { name: "MediaPlayPause", code: 10252, registered: true },
   { name: "MediaPlay", code: 415, registered: true },
   { name: "MediaPause", code: 19, registered: true },
@@ -35,7 +35,7 @@
   { name: "9", code: 57, registered: true },
   ]
   function keyName(keyCode) {
-    const k = table.find((t) => t.code === keyCode)
+    const k = table.find((t) => t.code === keyCode || (t.alt && t.alt.includes(keyCode)))
     return k ? k.name : undefined
   }
   root.TuvaKeys = { table, keyName }

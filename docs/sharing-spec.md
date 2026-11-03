@@ -442,6 +442,8 @@ A Bun script in this repo, run once with the service-role key after the archive 
 
 Purge the seed and the test accounts; run the migration; confirm the exposure list; sign in on the owner's machine (reconciliation is a no-op); the Mirror tables were already renamed `archive_*` by the companion's migration (#112) and the first Sync refreshes them; `bun run import` and the backup import already left the README in #112. ADR 0001 is retired with the Mirror (ADR 0009).
 
+As run *(#121, 2026-10-22 to 2026-11-02)*: seed purged 2026-10-22; `migrate-shared.ts` carried the library from 04:01 UTC but stopped at the exposure prompt with the resume marker in place. Exposure was finished on 2026-11-02 against the **live** references rather than the run's snapshot (73 hidden Songs, not the dry run's 75: two had been repointed since), through `set_song_exposure` as the owner, and the marker removed by hand. The test accounts are deleted through the Auth admin API (`DELETE /auth/v1/admin/users/<id>`), not the archive's `delete-user` function, which wants an admin's user JWT and never removes an admin; `profiles` and `video_access` cascade. The owner's machine was already signed in as the Video Editor and syncing, with no `mirror_*` table left.
+
 ---
 
 ## 10. Implementation plan

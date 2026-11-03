@@ -332,7 +332,7 @@ async function deleteTestAccounts(a: SeedArgs, env: Record<string, string | unde
   if (!a.accounts.length) throw new Error("--delete-test-accounts needs a comma-separated list of emails");
   for (const e of a.accounts) assertTestEmail(e);
   if (a.dryRun) {
-    for (const e of a.accounts) say(`would delete ${e} through functions/v1/delete-user`);
+    for (const e of a.accounts) say(`would delete ${e} through the Auth admin API`);
     return;
   }
   const url = need(env, "TUVA_ARCHIVE_URL");
@@ -345,7 +345,9 @@ async function deleteTestAccounts(a: SeedArgs, env: Record<string, string | unde
       say(`${e}: no such account, skipped`);
       continue;
     }
-    await call(conn, "POST", "/functions/v1/delete-user", { userId: u.id });
+    // The Auth admin API, not the archive's delete-user function: that one wants an admin's user JWT (a secret key is
+    // refused) and never removes an admin account. profiles and video_access cascade; history keeps a null editor.
+    await call(conn, "DELETE", `/auth/v1/admin/users/${u.id}`);
     say(`${e}: deleted (${u.id})`);
   }
 }

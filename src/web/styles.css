@@ -760,6 +760,7 @@ dialog.delconfirm .actions { display: flex; justify-content: flex-end; gap: 8px;
 .acct-chip.pic { border: none; }
 .acct-menu .am-nogrant { display: grid; gap: 2px; font-size: .88em; }
 .acct-menu .am-nogrant-line { color: var(--t1); }
+.acct-menu .am-pw { font-size: .88em; }
 .acct-menu .am-sync { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .88em; }
 .acct-menu .am-sync .btn { text-align: center; padding: 2px 10px; }
 .acct-menu .am-offline { color: var(--t2); }

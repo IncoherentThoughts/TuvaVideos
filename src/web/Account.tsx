@@ -20,6 +20,12 @@ const setDialog = (on: boolean) => {
   for (const l of dialogListeners) l();
 };
 export const openSignIn = () => setDialog(true);
+// The password was accepted and the dialog stepped aside while the count and Continue run: the button says so.
+let checking = false;
+const setChecking = (on: boolean) => {
+  checking = on;
+  for (const l of dialogListeners) l();
+};
 
 function useDialogOpen() {
   const [, bump] = useState(0);
@@ -76,8 +82,8 @@ export function AccountChip() {
   const body =
     view.kind === "none" ? null
     : view.kind === "sign-in" ? (
-      <button class="btn" onClick={openSignIn}>
-        Sign in
+      <button class="btn" onClick={openSignIn} disabled={checking}>
+        {checking ? "Signing in…" : "Sign in"}
       </button>
     ) : (
       <Chip view={view} open={open} setOpen={setOpen} box={box} />
@@ -136,6 +142,14 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
             <div class="am-nogrant">
               <div class="am-nogrant-line">{NO_ACCESS_LINE}</div>
               <div class="dim">{NO_ACCESS_HINT}</div>
+            </div>
+          )}
+          {s.mustChangePassword && (
+            <div class="am-pw dim">
+              The archive asks you to change your password:{" "}
+              <a href={FORGOT_URL} target="_blank" rel="noopener noreferrer">
+                songsofthesteppe.org
+              </a>
             </div>
           )}
           <div class="am-sync" role="group" aria-label="Sync">
@@ -211,6 +225,13 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<Step>({ at: "form" });
   // Closing the confirmation by any path but Continue (Esc, the backdrop) is a Cancel: no half-signed-in state.
   const confirmed = useRef(false);
+  // The dialog is closed but the sign-in goes on behind it (the count, then Continue): its close is not a Cancel.
+  const background = useRef(false);
+  const reopen = () => {
+    setChecking(false);
+    background.current = false;
+    box.current?.showModal();
+  };
 
   useEffect(() => {
     box.current?.showModal();
@@ -226,19 +247,36 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
     setPassword("");
     setBusy(false);
     if (!r.ok) return void setErr(r.error ?? SIGN_IN_ERRORS.unreachable);
+    // The password is accepted: the dialog steps aside while the count and Continue run, and comes back only to ask.
+    background.current = true;
+    setChecking(true);
+    box.current?.close();
     // §2.3: the count of what reconciliation will shelve. No count, no confirmation: sign out again (no half-signed-in state).
-    const rec = r.reconcile;
+    const rec = await s.previewSignIn();
     if (!rec?.ok) {
       await s.signOut();
-      return void setErr(rec?.error ?? SIGN_IN_ERRORS.unreachable);
+      setErr(rec?.error ?? SIGN_IN_ERRORS.unreachable);
+      return reopen();
     }
+    const noGrant = rec.record ? rec.record.grantLevel === null : false;
     setStep({
       at: "confirm", count: rec.counts.shelved, videos: rec.counts.shelvedVideos, diffs: rec.diffs ?? [],
-      mustChangePassword: r.mustChangePassword, noGrant: rec.record ? rec.record.grantLevel === null : false,
+      mustChangePassword: rec.mustChangePassword, noGrant,
     });
+    // Something would be shelved, or there is no grant: ask. The change-password notice waits in the chip menu.
+    if (rec.counts.shelved > 0 || noGrant) return reopen();
+    const c = await s.confirmSignIn();
+    if (!c.reconcile?.ok) {
+      setErr(c.reconcile?.error ?? SIGN_IN_ERRORS.unreachable);
+      return reopen();
+    }
+    confirmed.current = true;
+    setChecking(false);
+    onClose();
   };
 
   const onDialogClose = () => {
+    if (background.current) return;
     if (step.at === "confirm" && !confirmed.current) void s.signOut();
     onClose();
   };
@@ -251,7 +289,7 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
     // A failed reconciliation changed nothing: say why and stay on the confirmation (Cancel still signs out).
     if (!r.reconcile?.ok) return void setErr(r.reconcile?.error ?? SIGN_IN_ERRORS.unreachable);
     confirmed.current = true;
-    // Nothing shelved: nothing to explain. Otherwise the popup says what happened (the Sync has finished by now).
+    // Nothing shelved: nothing to explain. Otherwise the popup says what happened (the Sync goes on behind it).
     const c = r.reconcile.counts;
     if (c.shelved > 0) setStep({ at: "done", count: c.shelved, videos: c.shelvedVideos, diffs: r.reconcile.diffs ?? [] });
     else box.current?.close();

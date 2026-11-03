@@ -28,7 +28,10 @@ import { schemaGateLine, type SessionRecord } from "../shared/session";
 import type { SharedChanges } from "../shared/sharedRows";
 import type { Db } from "./db";
 import { applyShared } from "./localCopy/apply";
-import { loseEditorGrant, readSessionRecord, SHARED_SCHEMA, setPendingShare, shelve, writeSessionRecord, type ShelvedPayload } from "./localCopy/meta";
+import { runArchiveFollowUps } from "./localCopy/followUps";
+import { getMeta, loseEditorGrant, readSessionRecord, setMeta, SHARED_SCHEMA, setPendingShare, shelve, writeSessionRecord, type ShelvedPayload } from "./localCopy/meta";
+import { SYNCED_SCHEMA_KEY, wipeShared } from "./sync";
+import { log } from "./log";
 import { reindexChapter, reindexVideo } from "./search";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -414,6 +417,9 @@ export interface ReconcileOptions {
   fetchImpl?: typeof fetch;
   now?: () => number;
   thumbsDir?: string;
+  /** For the follow-ups after the apply (as Sync's). */
+  cacheDir?: string;
+  warn?: (line: string) => void;
 }
 
 /** A preview's pull is reused by the Continue that follows it within this long (same account). */
@@ -448,7 +454,9 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
     // No grant: nothing to pull, nothing to reconcile; the library stays as it is, read-only (§5.1).
     if (!record.grantLevel) return { done: { ok: true, error: null, record, mustChangePassword, counts: NO_RECONCILE, diffs: [] } as ReconcileResponse };
     if (reuse && held && held.userId === record.userId && now() - held.at < PREVIEW_REUSE_MS) return { record, mustChangePassword, batch: held.batch };
+    const t0 = performance.now();
     const pull = await changesSince(c, null);
+    log(`reconcile: whole Shared set pulled in ${Math.round(performance.now() - t0)} ms`);
     if (!pull.ok) return { done: fail(pull.unreachable ? "The archive can't be reached" : refusal(pull, "the pull"), { record, mustChangePassword }) };
     const batch = pull.value as SharedChanges | null;
     if (!batch || typeof batch !== "object") return { done: fail("The archive's shared_changes_since() answered in an unknown shape", { record, mustChangePassword }) };
@@ -464,10 +472,17 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
       if ("done" in p) return p.done!;
       const editor = p.record.grantLevel === "editor";
       const plan = planFor(db, p.batch);
-      return { ok: true, error: null, record: p.record, mustChangePassword: p.mustChangePassword, counts: planCounts(plan, editor), diffs: planDiffs(db, plan, p.batch) };
+      const counts = planCounts(plan, editor);
+      log(`reconcile preview: ${JSON.stringify(counts)}`);
+      return { ok: true, error: null, record: p.record, mustChangePassword: p.mustChangePassword, counts, diffs: planDiffs(db, plan, p.batch) };
     },
-    /** `POST /api/reconcile`: reconciles and applies the Shared set in one transaction. The Sync that follows pulls. */
+    /**
+     * `POST /api/reconcile`: reconciles and applies the Shared set in one transaction, as a full refetch would (the
+     * wipe, the whole set, the watermark and the synced schema), so the Sync that follows pulls only what changed since
+     * the preview instead of the whole archive a second time.
+     */
     async confirm(token: string): Promise<ReconcileResponse> {
+      const t0 = performance.now();
       const p = await prepare(token, true);
       if ("done" in p) return p.done!;
       const editor = p.record.grantLevel === "editor";
@@ -481,7 +496,10 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
           // Read before the apply: the local values and the local_* names they point at are still where they were.
           diffs = planDiffs(db, plan, p.batch);
           const r = applyPlan(db, plan, { queueUnknown: editor, keepThumbnails: !!opts.thumbsDir });
-          applyShared(db, p.batch);
+          wipeShared(db);
+          const applied = applyShared(db, p.batch);
+          writeSessionRecord(db, { userId: p.record.userId, watermark: applied.watermark ?? null });
+          setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
           return r;
         })();
       } catch (e) {
@@ -489,6 +507,13 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
       }
       held = null;
       if (opts.thumbsDir) renameThumbnails(opts.thumbsDir, done.rekeyed);
+      // The wipe left the search index and the matchers behind, as after a full refetch. They never fail the sign-in.
+      try {
+        await runArchiveFollowUps(db, { cacheDir: opts.cacheDir });
+      } catch (e) {
+        (opts.warn ?? ((l: string) => console.warn(l)))(`reconcile: follow-ups after the apply failed: ${(e as Error)?.message ?? e}`);
+      }
+      log(`reconcile confirm: ${JSON.stringify(done.counts)} in ${Math.round(performance.now() - t0)} ms`);
       return { ok: true, error: null, record: readSessionRecord(db), mustChangePassword: p.mustChangePassword, counts: done.counts, diffs };
     },
   };

@@ -197,6 +197,7 @@ function runSync(full: boolean): Promise<SyncResponse | null> {
       dispatch({ type: "sync-end", reachable: state.reachable === true, error: `Sync failed: ${(e as Error).message}`, at: Date.now() });
       return null;
     }
+    if (res.reachable && !res.unauthorized) changePassword = res.mustChangePassword;
     dispatch({ type: "sync-end", record: res.record, reachable: res.reachable, error: res.error, schema: res.schema, at: Date.now() });
     broadcast({ kind: "record", record: res.record });
     // §6.2: a 401 runs the revocation probe (a revoked session ends here; an expired token just refreshes).
@@ -261,15 +262,18 @@ async function reconcileCall(confirm: boolean): Promise<ReconcileResponse | null
   }
 }
 
-/** Continue on the reconciliation confirm (§2.3, §5.1): reconcile, then Sync. */
-export async function confirmSignIn(): Promise<{ reconcile: ReconcileResponse | null; sync: SyncResponse | null }> {
+/**
+ * Continue on the reconciliation confirm (§2.3, §5.1): reconcile, then start the Sync without waiting for it. The
+ * reconcile already applied the Shared set; the Sync only tops it up and fetches posters, which can take minutes.
+ */
+export async function confirmSignIn(): Promise<{ reconcile: ReconcileResponse | null; sync: Promise<SyncResponse | null> | null }> {
   const reconcile = await reconcileCall(true);
   if (!reconcile?.ok) return { reconcile, sync: null };
   firstSyncAfterSignIn = true; // §6.6: the question may ride on the first Sync after the confirmed sign-in
-  return { reconcile, sync: await runSync(false) };
+  return { reconcile, sync: runSync(false) };
 }
 
-/** §5.1: `signInWithPassword`, then the reconciliation preview (which writes the record); Continue is `confirmSignIn`. */
+/** §5.1: `signInWithPassword` only; then `previewSignIn` (the count, which writes the record) and Continue, `confirmSignIn`. */
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   const c = await (clientReady ?? startSession());
   if (!c) return { ok: false, error: SIGN_IN_ERRORS.unreachable, sync: null, mustChangePassword: false };
@@ -283,14 +287,21 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   expectSignedOut = false;
   dispatch({ type: "auth", session: toBrowser(result.data.session) });
   dispatch({ type: "reach", reachable: true });
-  // §5.1: whoami (the record) and the count of what reconciliation will shelve; the Sync waits for Continue.
+  return { ok: true, error: null, sync: null, mustChangePassword: false };
+}
+
+/** §5.1: whoami (the record) and the count of what reconciliation will shelve; the Sync waits for Continue. */
+export async function previewSignIn(): Promise<ReconcileResponse | null> {
   const reconcile = await reconcileCall(false);
-  return { ok: true, error: null, sync: null, reconcile, mustChangePassword: reconcile?.mustChangePassword === true };
+  changePassword = reconcile?.mustChangePassword === true;
+  notify();
+  return reconcile;
 }
 
 /** Sign out, and Cancel on the reconciliation confirm (§2.4, §5.1): record cleared first, then the local session. */
 export async function signOut(): Promise<void> {
   await clearRecord();
+  changePassword = false;
   const c = await (clientReady ?? startSession());
   if (c) {
     expectSignedOut = true;
@@ -332,6 +343,8 @@ let lastDrain: DrainResult | null = null;
 let posterState: PosterUploadState = { running: false, done: 0, total: 0, last: null };
 let posterRun: Promise<PosterUploadResult | null> | null = null;
 let firstSyncAfterSignIn = false;
+/** `video_whoami().must_change_password`, from the sign-in preview and every Sync: the chip menu's notice (§5.1). */
+let changePassword = false;
 const ASKED_KEY = "tuva.share.askedNewestAt";
 const notify = () => {
   for (const l of listeners) l();
@@ -497,8 +510,12 @@ export interface UseSession {
   lastSyncAt: string | null;
   /** §6.4's schema gate: set while this checkout and the archive disagree; the banner (#131) reads `line`. */
   schemaMismatch: SchemaMismatch | null;
+  /** §5.1: the archive asks this account to change its password; the chip menu says where. */
+  mustChangePassword: boolean;
   signIn: typeof signIn;
   signOut: typeof signOut;
+  /** The reconciliation count after the password is accepted. */
+  previewSignIn: typeof previewSignIn;
   /** Continue on the reconciliation confirm. */
   confirmSignIn: typeof confirmSignIn;
   requestSync: typeof requestSync;
@@ -537,7 +554,8 @@ export function useSession(): UseSession {
     record: s.record, recordLoaded: s.recordLoaded, authSettled: s.authSettled, canEdit: access.enabled, editorView: access.shown,
     browserSignedIn: !!s.browser, reachable: s.reachable, syncing: s.syncing, lastSyncError: s.lastSyncError, ended: s.ended,
     progress: s.progress, lastSyncAt: s.record?.lastSyncAt ?? null, schemaMismatch: s.schemaMismatch,
-    signIn, signOut, confirmSignIn, requestSync, dismissEnded, afterWrite, refreshAll,
+    mustChangePassword: changePassword && !!s.record,
+    signIn, signOut, previewSignIn, confirmSignIn, requestSync, dismissEnded, afterWrite, refreshAll,
     pendingShare: shareSummary, shareQuestion: shareQuestionOpen, sharing: draining != null, lastShare: lastDrain,
     shareNow, declineShare, openShareQuestion, posterUpload: posterState, uploadPosters: uploadPostersNow,
   };

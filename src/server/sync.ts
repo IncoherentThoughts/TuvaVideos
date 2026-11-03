@@ -17,6 +17,7 @@ import type { Db } from "./db";
 import { applyShared, tsMicros } from "./localCopy/apply";
 import { runArchiveFollowUps } from "./localCopy/followUps";
 import { getMeta, readSessionRecord, SHARED_SCHEMA, setMeta, writeSessionRecord } from "./localCopy/meta";
+import { log } from "./log";
 import { downloadPosters, type PosterDownloadResult } from "./posters";
 import { reconcileBatch } from "./reconcile";
 
@@ -203,7 +204,9 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
       requested: full, watermark: record.watermark, syncedSchema: synced == null ? null : Number(synced), client: SHARED_SCHEMA,
       serverNowMs: serverNow == null ? now() : serverNow / 1000,
     });
+    const t0 = performance.now();
     const pull = await changesSince(c, reason ? null : pullSince(record.watermark));
+    log(`sync: ${reason ? `full (${reason})` : "incremental"} pull in ${Math.round(performance.now() - t0)} ms`);
     if (!pull.ok) {
       const out = { ...base, record, ok: false, pulled: false, full: reason != null };
       if (pull.unreachable) return { ...out, reachable: false, error: "The archive can't be reached" };
@@ -260,6 +263,7 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
         warn(`sync: poster download failed: ${(e as Error)?.message ?? e}`);
       }
     }
+    log(`sync: done in ${Math.round(performance.now() - t0)} ms, posters ${JSON.stringify(posters)}`);
     return { ...base, record, ok: true, pulled: true, error: null, full: reason != null, applied, posters };
   };
   return coalesce(once, (a, b) => ({ accessToken: b.accessToken, full: a.full === true || b.full === true }));

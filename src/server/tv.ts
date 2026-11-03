@@ -1,6 +1,7 @@
 // The TV Server (docs/tv-spec.md 2, ADR 0004): a second `Bun.serve` in this process on all IPv4 interfaces, started
 // and stopped from the browser's TV button, off at every launch. Every request is checked against the Approved TVs by
 // source IP; the routes are a fixed list (tvRoutes.ts) that reuses the localhost handler.
+import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import type { Config } from "./config";
@@ -248,6 +249,12 @@ export class TvServer {
     if (path === "/tv.js") return new Response("// TuvaVideos TV UI: not built\n", { headers: { "content-type": "text/javascript; charset=utf-8", ...noStore } });
     if (path === "/tv.css") return new Response("/* TuvaVideos TV UI: not built */\n", { headers: { "content-type": "text/css; charset=utf-8", ...noStore } });
     if (path === "/olchey.svg") return new Response(Bun.file(join(this.deps.cfg.webDir, "olchey.svg")), { headers: { "content-type": "image/svg+xml", "cache-control": "max-age=86400" } });
+    // src/tv/fonts (the route allows only [a-z0-9-]+.woff2): the TV may have none of the UI's fonts (LG webOS).
+    if (path.startsWith("/fonts/")) {
+      const file = join(this.deps.cfg.webDir, "..", "tv", path);
+      if (!existsSync(file)) return json({ error: "not found" }, 404);
+      return new Response(Bun.file(file), { headers: { "content-type": "font/woff2", "cache-control": "max-age=604800" } });
+    }
     // `/`: what a desktop browser opens (http://127.0.0.1:4401/) to run the UI without the shell. On the TV the shell
     // loads /tv.css and /tv.js itself; `#boot` (the server's name and address) is removed by the UI when it starts.
     const addrs = lanAddresses().map((a) => `${a}:${this.port}`);

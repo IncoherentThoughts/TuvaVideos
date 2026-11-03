@@ -1,6 +1,6 @@
 # TuvaVideos
 
-A single-user local player for a personal library of Tuvan music videos, browsed in the browser and enriched with artists, chapters, studio tracks and lyrics mirrored from the Tuvan Lyrics Archive. This glossary fixes the words the project uses for its own concepts; it is not a spec.
+A single-user local player for a personal library of Tuvan music videos, browsed in the browser and enriched with artists, chapters, studio tracks and lyrics from the Tuvan Lyrics Archive, whose link data it shares with other Members. This glossary fixes the words the project uses for its own concepts; it is not a spec.
 
 ## Language
 
@@ -73,32 +73,12 @@ The description, top comments and metadata fetched once for a Video's YouTube id
 _Avoid_: info json, metadata dump, scrape
 
 **Song matcher**:
-The step that attaches a Song (Mirror or Local) to a Chapter or Video from its title, preferring the Songs the Video's id already links to through Performances, and tolerating spelling and script differences. Its result is always Suggested.
+The step that attaches a Song (an archive Song or a Proposed one) to a Chapter or Video from its title, preferring the Songs the Video's id already links to through Performances, and tolerating spelling and script differences. Its result is always Suggested.
 _Avoid_: title matcher, fuzzy match, auto-link
-
-**Mirror**:
-The read-only copy of the Tuvan Lyrics Archive's entities (Song, Artist, Album, Track, Version, Footnote, Performance) imported from a backup. Edited only on the archive and re-imported; never edited here.
-_Avoid_: sync, cache, import (the act), upstream data
-_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 **Latin title**:
 The Latin-script form of a Cyrillic title on a Video, Chapter or Local Artist, used so the library can be searched from a Latin keyboard. Generated once, editable afterwards, empty when the title is already Latin. Uses the archive's spelling where the archive has one, otherwise the project's transliteration table.
 _Avoid_: transliteration (the act), romanized title, english title (the archive's English name is a translation, not a transliteration)
-
-**Local Artist**:
-An Artist created here because the Mirror has no row for them. Never exported to the archive.
-_Avoid_: custom artist, unknown artist, extra artist
-_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
-
-**Local Song**:
-A Song created here because the Mirror has none, pointed at by Videos and Chapters exactly like a Mirror Song. Renamable and deletable here (while nothing points at it); never exported. Its Versions are all Local Versions. Marked "local" wherever it is shown.
-_Avoid_: custom song, user song, unknown song (that is a dangling uuid)
-_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
-
-**Local Version**:
-A lyrics Version written here, attached to a Mirror Song or a Local Song, with the same three Scripts and Footnotes as a Mirror Version. Listed after the Song's Mirror Versions; editable and deletable; survives an import; never exported. The lyrics pane marks it "local" on its pill and above its lines.
-_Avoid_: custom lyrics, user lyrics, local lyrics (as the noun), override
-_Retired by the sharing spec (`docs/sharing-spec.md`, ADR-0009) at cutover; in force until then._
 
 ### Playback
 
@@ -139,11 +119,11 @@ An Entry the current Playlist has already finished or skipped past; hidden in th
 _Avoid_: history, watched, done
 
 **Studio track**:
-A Music.app track, held by its persistent id, that the Player can play for a Song. Either the match found for one of the Song's Mirror Tracks (at most one per Mirror Track; Suggested when found automatically after an import, confirmed when picked by hand) or a Local Studio track. Every Video and Chapter of the Song shows all of them.
+A Music.app track, held by its persistent id, that the Player can play for a Song. Either the match found for one of the Song's archive Tracks (at most one per archive Track; Suggested when found automatically, confirmed when picked by hand) or a Local Studio track. Every Video and Chapter of the Song shows all of them.
 _Avoid_: match, Music.app link, linked track, studio recording
 
 **Local Studio track**:
-A Studio track attached to a Song directly, without a Mirror Track behind it, because the archive lists no such Track. Never exported; absorbed into a match if a later import brings a Mirror Track with the same recording.
+A Studio track attached to a Song directly, without an archive Track behind it, because the archive lists no such Track. Never Shared; absorbed into a match if a later Sync brings an archive Track with the same recording.
 _Avoid_: custom track, manual track, extra track
 
 **Audio settings**:
@@ -186,7 +166,7 @@ _Avoid_: paired device, trusted client, whitelisted IP
 
 ### Sharing
 
-Terms settled while charting the sharing map (2026-10-16). They describe the planned shared library; the Mirror terms above describe the app as it is until that map is built.
+Terms settled while charting the sharing map (2026-10-16), in force since the cutover (#121). They replace the retired Mirror, Local Song, Local Version and Local Artist (ADR-0009).
 
 **Shared (data)**:
 The link data every Member sees and Video Editors maintain in the archive's database: a Video's identity, title, Type, Song and Version pointers, Artists and Chapters, plus the Proposed Songs, Versions and Artists added from here. Never the files, Copies, Roots, Thumbnails, Audio settings, Resume positions, Favorites or Studio tracks, which stay on each machine.

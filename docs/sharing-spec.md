@@ -301,7 +301,7 @@ How it is detected (#130): a `SIGNED_OUT` this tab did not start while the compa
 
 ### 6.3 Deletes and tombstones
 
-Videos arrive soft-deleted (§4.5): no Video tombstones. `shared_tombstone` only for Proposed rows (`deleted` or `elevated`), 90-day retention. An **ids-only reconcile** for the archive's rare hard deletes of Songs, Versions and Artists runs at **every Sync** (under 150 KB). *(amended in #126)* It rides in the pull as `archive_ids` (also Performances and Albums), and it also drops rows that left the caller's RLS view (an unexposed hidden Song). **No retention purge job exists yet**: migration 130 does not delete tombstones older than 90 days; until a console script or pg_cron job lands (ticket #127's list), tombstones only accumulate and "watermark older than retention" (§6.4) never triggers.
+Videos arrive soft-deleted (§4.5): no Video tombstones. `shared_tombstone` only for Proposed rows (`deleted` or `elevated`), 90-day retention. An **ids-only reconcile** for the archive's rare hard deletes of Songs, Versions and Artists runs at **every Sync** (under 150 KB). *(amended in #126)* It rides in the pull as `archive_ids` (also Performances and Albums), and it also drops rows that left the caller's RLS view (an unexposed hidden Song). *(amended in #127)* The purge is archive migration **141** (applied live 2026-11-02): `purge_shared_tombstones()` deletes tombstones older than 90 days, run daily at 04:23 UTC by the pg_cron job `purge-shared-tombstones`. Its 90 days and `TOMBSTONE_RETENTION_MS` (`src/server/sync.ts`) are one contract: a watermark older than that takes the full refetch of §6.4.
 
 ### 6.4 Triggers and repair
 

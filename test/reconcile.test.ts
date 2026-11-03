@@ -6,11 +6,11 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { openDb, type Db } from "../src/server/db";
 import { applyShared } from "../src/server/localCopy/apply";
-import { listShelved, pendingShareIds, readSessionRecord, setPendingShare, writeSessionRecord } from "../src/server/localCopy/meta";
+import { getMeta, listShelved, pendingShareIds, readSessionRecord, setPendingShare, SHARED_SCHEMA, writeSessionRecord } from "../src/server/localCopy/meta";
 import {
   applyPlan, createReconcile, matchVideo, planCounts, planDiffs, planFor, planReconcile, sharedIndex, shelvedFor, type ReconcileVideo,
 } from "../src/server/reconcile";
-import { createSync } from "../src/server/sync";
+import { createSync, SYNCED_SCHEMA_KEY } from "../src/server/sync";
 import type { SharedChanges, SharedChapterRow, SharedVideoArtistRow, SharedVideoRow } from "../src/shared/sharedRows";
 import { insertChapter, insertCopy, insertVideo, linkArtist, U } from "./helpers/seed";
 
@@ -242,11 +242,13 @@ function mock(batch: SharedChanges, who: Record<string, unknown> = {}) {
   const m = {
     who: { user_id: USER, email: "ed@example.org", display_name: "Ed", avatar_url: null, must_change_password: false, archive_role: "user", grant_level: "editor", shared_schema: 1, server_time: T(12), ...who },
     pulls: 0,
-    fetchImpl: (async (url: string) => {
+    sinces: [] as unknown[],
+    fetchImpl: (async (url: string, init?: RequestInit) => {
       const fn = new URL(url).pathname.split("/").pop();
       if (fn === "video_whoami") return new Response(JSON.stringify(m.who), { status: 200 });
       if (fn === "shared_changes_since") {
         m.pulls++;
+        m.sinces.push(init?.body ? JSON.parse(String(init.body)).p_since : undefined);
         return new Response(JSON.stringify(batch), { status: 200 });
       }
       return new Response("{}", { status: 404 });
@@ -271,7 +273,24 @@ describe("preview and confirm", () => {
     expect(c.diffs).toEqual(p.diffs!);
     expect(m.pulls).toBe(1);
     expect(listShelved(db).length).toBe(4);
-    expect(readSessionRecord(db)?.watermark).toBeNull(); // the Sync that follows pulls and sets it
+    // Applied as a full refetch: the Sync that follows pulls only what changed since the preview.
+    expect(readSessionRecord(db)?.watermark).toBe("2026-10-12T00:00:00.000000+00:00");
+    expect(getMeta(db, SYNCED_SCHEMA_KEY)).toBe(String(SHARED_SCHEMA));
+  });
+
+  test("the Sync after Continue pulls only what changed since the preview, not the whole archive again", async () => {
+    const { db } = library();
+    const m = mock(bundle());
+    const rc = createReconcile(db, { url: "http://archive.test", key: "k" }, { fetchImpl: m.fetchImpl });
+    await rc.preview(TOKEN);
+    await rc.confirm(TOKEN);
+    const sync = createSync(db, { url: "http://archive.test", key: "k" }, { fetchImpl: m.fetchImpl, warn: () => {} });
+    const r = await sync.request({ accessToken: TOKEN });
+    expect(r.ok).toBe(true);
+    expect(r.full).toBe(false);
+    expect(m.sinces[0]).toBeNull(); // the preview's pull is whole
+    expect(m.sinces[1]).toEqual(expect.any(String));
+    expect(listShelved(db).length).toBe(4); // the Sync does not shelve again
   });
 
   test("#157: the diff rows say each local value against the Shared one, names from the batch first", () => {

@@ -232,10 +232,13 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
       await s.signOut();
       return void setErr(rec?.error ?? SIGN_IN_ERRORS.unreachable);
     }
+    const noGrant = rec.record ? rec.record.grantLevel === null : false;
     setStep({
       at: "confirm", count: rec.counts.shelved, videos: rec.counts.shelvedVideos, diffs: rec.diffs ?? [],
-      mustChangePassword: r.mustChangePassword, noGrant: rec.record ? rec.record.grantLevel === null : false,
+      mustChangePassword: r.mustChangePassword, noGrant,
     });
+    // Nothing to shelve and nothing to tell: no question to ask, Continue at once.
+    if (rec.counts.shelved === 0 && !r.mustChangePassword && !noGrant) await cont();
   };
 
   const onDialogClose = () => {
@@ -251,7 +254,7 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
     // A failed reconciliation changed nothing: say why and stay on the confirmation (Cancel still signs out).
     if (!r.reconcile?.ok) return void setErr(r.reconcile?.error ?? SIGN_IN_ERRORS.unreachable);
     confirmed.current = true;
-    // Nothing shelved: nothing to explain. Otherwise the popup says what happened (the Sync has finished by now).
+    // Nothing shelved: nothing to explain. Otherwise the popup says what happened (the Sync goes on behind it).
     const c = r.reconcile.counts;
     if (c.shelved > 0) setStep({ at: "done", count: c.shelved, videos: c.shelvedVideos, diffs: r.reconcile.diffs ?? [] });
     else box.current?.close();

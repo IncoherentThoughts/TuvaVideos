@@ -137,7 +137,7 @@ const COPY_SQL = `SELECT c.id, c.video_id, c.root_id, r.kind AS root_kind, c.rel
 
 export function createHandler(s: Services) {
   const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
-  const reconcile = createReconcile(s.db, s.cfg.archive, { thumbsDir: s.cfg.thumbsDir });
+  const reconcile = createReconcile(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;

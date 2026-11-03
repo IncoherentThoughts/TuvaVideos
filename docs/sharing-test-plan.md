@@ -152,7 +152,7 @@ Machine B, signed in as the test Member, holding the Standalone library of S13.
 | # | Action | Expected result | Checks |
 |---|---|---|---|
 | MD1 | Owner revokes the Member's sessions in the archive console; focus B. | Chip reverts to "Sign in"; dismissable banner "Your session ended. Sign in again."; Session record cleared; everything else kept, read-only. | §5.4 |
-| MD2 | Sign in again. | Normal reconciliation: a no-op confirmation, or one counting only Unshared Videos scanned meanwhile (MO3). | §5.4 |
+| MD2 | Sign in again. | Normal reconciliation: no confirmation when nothing would be shelved; signed in within seconds (posters already held). | §5.4 |
 | MD3 | Check Dashboard, Auth, Sessions. | Session time-box and inactivity limit both off; record it in §8. | §5.3 |
 
 ---

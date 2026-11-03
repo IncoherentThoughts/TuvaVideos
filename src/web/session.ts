@@ -261,12 +261,15 @@ async function reconcileCall(confirm: boolean): Promise<ReconcileResponse | null
   }
 }
 
-/** Continue on the reconciliation confirm (§2.3, §5.1): reconcile, then Sync. */
-export async function confirmSignIn(): Promise<{ reconcile: ReconcileResponse | null; sync: SyncResponse | null }> {
+/**
+ * Continue on the reconciliation confirm (§2.3, §5.1): reconcile, then start the Sync without waiting for it. The
+ * reconcile already applied the Shared set; the Sync only tops it up and fetches posters, which can take minutes.
+ */
+export async function confirmSignIn(): Promise<{ reconcile: ReconcileResponse | null; sync: Promise<SyncResponse | null> | null }> {
   const reconcile = await reconcileCall(true);
   if (!reconcile?.ok) return { reconcile, sync: null };
   firstSyncAfterSignIn = true; // §6.6: the question may ride on the first Sync after the confirmed sign-in
-  return { reconcile, sync: await runSync(false) };
+  return { reconcile, sync: runSync(false) };
 }
 
 /** §5.1: `signInWithPassword`, then the reconciliation preview (which writes the record); Continue is `confirmSignIn`. */

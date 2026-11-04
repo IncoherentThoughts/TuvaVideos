@@ -9,9 +9,16 @@ The thin, signed Tizen app (`TuvaVideos.TuvaTV`), also packaged for LG webOS (`l
 | `appinfo.json`, `icon-80.png`, `icon-130.png` | the LG (webOS) package: `disableBackHistoryAPI` so Back arrives as key 461; read by `lg-install` |
 | `index.html`, `shell.css` | CSP meta (as jellyfin-tizen ships), `webapis.js`, the 1920x1080 offline screens |
 | `discovery.js` | finding the server (last address, /24 sweep, typed), approval, "turned off"; no DOM, tested in `test/tv-shell.test.ts` |
-| `shell.js` | key registration, screens, loading `/tv.css` and `/tv.js` from the server, `window.tuvaTv = { base, keys, exit, restart }` |
+| `shell.js` | key registration, screens, loading `/tv.css` and `/tv.js` from the server (and the error screen when it fails), `window.tuvaTv = { base, keys, exit, restart, ready }` |
 | `keys.js` | **generated** from `src/tv/keys.ts` by `bun run tv-install` (or `bun scripts/tv-install.ts --keys`); a test fails when it is stale |
 | `tv.json` | the TV: `ip`, `target` (model code for `-t`), `duid`, `mac` (the Mac's address, for reference); read by `tv-install` |
+
+## Minimum TV
+
+Chromium 94: Samsung Tizen 7.0 (2023 sets) or later, enforced by `required_version="7.0"` in `config.xml`; LG webOS 23
+or later (webOS has no install gate). The UI bundle comes from `Bun.build`, which cannot lower syntax: its script needs
+Chromium 85 (`?.`, `??`, `??=`) and its stylesheet Chromium 88 (`inset`, `aspect-ratio`). On an older engine the shell
+still draws (plain ES2020, no `inset`) and says which Chrome the TV has and what is needed.
 
 ## Develop in a desktop browser
 
@@ -24,6 +31,7 @@ cd tv/shell && python3 -m http.server 8081
 ```
 
 `?addr=` stands in for the address the TV would have stored. Use `127.0.0.1` (not `localhost`) as the page's own host.
+Approving 127.0.0.1 needs `TUVA_TV_LOOPBACK=1` on the server (development only: loopback approvals are refused otherwise).
 Keys: Enter, digits, the arrows (walk the on-screen number pad of the typing screen), Backspace (stands in for Back). The server must answer CORS for
 `X-Tuva-TV` from a page on another port; the packaged app on the TV has the same constraint.
 
@@ -92,8 +100,14 @@ After a **Tizen OS upgrade** the TV may wipe sideloaded apps: re-enable Develope
 
 - **Looking for TuvaVideos on the Mac…** with the step it is on (last address, sweep of the TV's /24 on 4401, 32 at a
   time with 2 s timeouts); the whole sequence repeats every 5 s. Enter opens the typed field, Back exits.
-- **The Mac's address**: the TV's own subnet is pre-filled, so `83` is enough; digits type, Up types a dot, Back deletes
-  (and leaves the field when empty), Enter connects.
+- **The Mac's address**: opens by itself the first time nothing answers, with the number pad focused. The TV's own
+  subnet is pre-filled, so the last number is enough (the Mac's TV button menu shows the address with that number
+  highlighted). The arrows walk the pad and Enter presses a key; the remote's digits type too; Back deletes (and leaves
+  the field when empty); Connect connects. The search keeps retrying behind the field, so a TV Server switched on
+  meanwhile is found without typing.
+- **Starting TuvaVideos…**: the UI is loading from the Mac; it goes away once the UI has drawn.
+- **The TV app could not start**: `/tv.js` did not load, did not parse, threw while starting, or drew nothing within
+  20 s. Enter tries again, Back exits.
 - **Approve this TV on the Mac**: a 403 from `/api/videos`; retried every 3 s until Allow is clicked.
 - **TV Server turned off**: the health check missed twice (5 s apart) after a success; Enter reloads the shell and
   looks again, Back exits.

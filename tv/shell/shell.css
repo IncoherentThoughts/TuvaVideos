@@ -2,7 +2,7 @@
 :root { --bg: #1f1e1d; --bg2: #262624; --bg3: #30302e; --line: #3d3c3a; --fg: #d9d8d5; --fg2: #93918c; --accent: #d97757; --accent-fg: #1a0f0a; }
 html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--fg);
   font: 40px/1.4 "IBM Plex Sans", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-#shell { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; background: var(--bg); text-align: center; }
+#shell { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; background: var(--bg); text-align: center; }
 #shell.over { background: rgba(31, 30, 29, .94); }
 #shell[hidden] { display: none; }
 #shell h1 { margin: 0; font-size: 64px; font-weight: 600; }

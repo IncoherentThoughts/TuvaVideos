@@ -84,7 +84,7 @@ The top bar's TV button shows one of:
 | approval pending | **Allow TV at ‹IP›? Allow / Deny** |
 | on, an Approved TV made a request in the last 60 s | **TV · ‹model› · playing ‹title›** (title of the Video whose `/copy` or `/live` stream was last requested; "browsing" when none) |
 
-Its menu: **Turn off**, and the **Approved TVs** with a Remove per row (removing one puts its next request back through the prompt).
+Its menu: **Turn off**; **This Mac, for the TV**: every LAN address with the port, the last number highlighted, and a line saying what to press on the TV's number pad if it asks (§4.2); **Waiting for approval**: every pending TV with Allow and Deny (the top bar raises only the first); and the **Approved TVs** with a Remove per row (removing one puts its next request back through the prompt). The menu opens by itself when the TV Server is turned on, so pairing is done from the Mac: start the TV app, read the address here if it asks, click Allow. Nothing is approved without that click (the approval rules of §2.2 and §2.6 are unchanged).
 
 ### 2.5 Writes
 
@@ -158,6 +158,8 @@ Specified here, built last and deferrable (§9): no Copy in the library needs it
 
 - The installed app is a **thin signed shell** (`tv/shell/`, `.wgt`): `config.xml` with `<content src="index.html"/>`, the `internet` and `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>` (a Tizen access origin cannot be `http://*`; the address is only known at run time, so the discovery below is the restriction in practice), a permissive CSP meta tag as jellyfin-tizen ships, `webapis.js` injected, the olchey icon at 512×423 (the knot centred on a full-bleed `#1f1e1d` fill, no rounded tile) and app id `TuvaVideos.TuvaTV`.
 - At launch it finds the TV Server (§4.2), then loads the UI **live from it**: `index.html` fetches `/tv.js` and `/tv.css` from the TV Server and runs them, so UI updates ship with the Mac code and only the shell needs the certificate. Tizen APIs stay available because the page is packaged, not hosted.
+- The shell stays on screen ("Starting TuvaVideos…", Back exits) until the UI has run: `/tv.js` loaded, ran without throwing and drew into `#tv`, or called `window.tuvaTv.ready()` (the UI calls it after its first render; older shells lack it, so the UI guards the call). A load error, a parse or boot error, or nothing drawn within 20 s shows **"The TV app could not start"** with Enter to try again and Back to exit, never a black screen with dead keys (audit TV-4). On an engine older than Chrome 94 it also names the TV's version and the minimum.
+- **Minimum engine: Chromium 94**, so `config.xml` sets `required_version="7.0"` (Tizen 7.0, 2023 sets; LG has no install gate, the minimum there is webOS 23). The UI bundle cannot be lowered (`Bun.build` has no syntax target): its script uses `?.`, `??` and `??=` (Chromium 85) and its stylesheet `inset` and `aspect-ratio` (Chromium 88); `color-mix` tints (Chromium 111) only fade out on older engines. The shell itself is plain ES2020 without `inset`, so its screens draw on older engines too.
 - The shell registers the media keys (MediaPlayPause, MediaPlay, MediaPause, MediaRewind, MediaFastForward, MediaTrackPrevious, MediaTrackNext), the four colour keys, ChannelUp/Down, Info and the digits 0–9 (the typed-address field needs them) with `registerKeyBatch` (Exit, long Back, stays unregistered and the system handles it), and maps every key through one table (§8) that the UI code shares.
 - The UI is **Preact in `src/tv/`**, sharing `src/shared/` (resume, playingFrom, playlist, fold, filters, libraryView, playerMath, stripGeometry, the last imported from `src/server/stripGeometry.ts` where it lives) and bundled by `TvBundle` in `src/server/web.ts` at start next to the browser bundle, served as `/tv.js` and `/tv.css`; `/` on the TV listener is a page that loads both, so the UI also runs in a desktop browser at `http://127.0.0.1:4401/` when the app is started with `TUVA_TV_LOOPBACK=1` (§2.6; no `window.tuvaTv`: the base is the page origin and the Player is muted; `?mute=1` mutes in the shell too, `?play=<videoId>&t=<seconds>` opens that Video once the library has loaded, desktop only). The throwaway prototype in `tv/home-prototype/` and the hello-world in `tv/hello-world/` stay as history and are not shipped.
 
@@ -167,20 +169,21 @@ In order, each step with a 2 s timeout:
 
 1. the **last address** the shell stored (`localStorage`), `GET http://‹addr›:4401/api/health`;
 2. a **sweep of the TV's own /24** on 4401 (the TV's address from `webapis.network`, else the last address's subnet), 32 requests in flight at a time;
-3. **typed**: the shell shows a numeric field for the Mac's address with an **on-screen number pad** under it (1–9, dot, 0, delete, then Connect), walked with the arrows and pressed with Enter, since newer remotes hide their digits behind a 123 panel; the remote's digits type too and Back deletes. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`). When nothing answers the looking screen sits on this step and offers the field with Enter (§4.3); the sequence keeps retrying every 5 s except while the field is open.
+3. **typed**: the shell shows a numeric field for the Mac's address with an **on-screen number pad** under it (1–9, dot, 0, delete, then Connect), walked with the arrows and pressed with Enter, since newer remotes hide their digits behind a 123 panel; the remote's digits type too and Back deletes. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`), so only the last number is typed; it says the Mac's TV button shows the address (§2.4). **The first time nothing answers after a launch, the field opens by itself** with the pad focused, so no Enter or remote menu is needed; Back on the empty field returns to the looking screen, which offers the field again with Enter (§4.3) and does not reopen it by itself. The sequence keeps retrying every 5 s **also while the field is open**: a TV Server switched on meanwhile, or a sweep that succeeds on a later round, takes the screen without anything typed. Any state other than looking (Approve, ready, turned off) replaces the field.
 
 The first health answer naming "TuvaVideos TV Server" wins and is stored. The shell then requests `/api/videos`; a 403 shows "Approve this TV on the Mac" and retries every 3 s until the user clicks Allow.
 
 ### 4.3 Offline states
 
-- No server found: **"Looking for TuvaVideos on the Mac…"** with the step it is on; retries the whole sequence every 5 s; Enter opens the typed field; Back exits the app.
+- No server found: **"Looking for TuvaVideos on the Mac…"** with the step it is on; retries the whole sequence every 5 s; the first time nothing answers the typed field opens by itself (§4.2); Enter opens it again; Back exits the app.
+- The UI did not start (§4.1): **"The TV app could not start"** with the reason; Enter reloads the shell, Back exits.
 - Server stops mid-session (health stops answering twice in a row, 5 s apart; the shell watches it after every success and the UI may call `window.tuvaTv.restart()` on a 403 or a dead stream): the shell shows **"TV Server turned off"** over the paused frame or the current screen, keeps the last Resume write, and offers Enter to look again (back to the discovery screen) or Back to exit.
 - Denied (a 403 after an earlier success, or Remove in the menu): the same "Approve this TV on the Mac" screen.
 
 ### 4.4 Install and update
 
 - `bun run tv-install` (`scripts/tv-install.ts`): `sdb connect ‹tv›` → `tizen build-web` → `tizen package -t wgt -s TuvaVideos` → `tizen install -n TuvaTV.wgt -t ‹target›` → `tizen run`. `tizen install-permit` runs once per certificate. Installing a newer version uninstalls the previous one. TV and target names come from `tv/shell/tv.json` (ip, target, duid), not from the code.
-- **UI changes need no reinstall**: the shell loads the UI from the TV Server at every launch. Only changes under `tv/shell/` do.
+- **UI changes need no reinstall**: the shell loads the UI from the TV Server at every launch. Only changes under `tv/shell/` do (the 2026-11 audit fixes to discovery, the boot error screen and `required_version` are such a change).
 - **Certificate renewal is a yearly chore, not automated** (it needs a Samsung account sign-in in Certificate Manager): the shell's README carries the checklist (quit Certificate Manager before `sdb connect`, Developer Mode on with the Mac's IP, Apps › App Settings › 12345, re-create the distributor certificate with the DUID, `install-permit`, reinstall). The expiry date **2027-10-14** is recorded there. A major Tizen upgrade may wipe sideloaded apps: reinstall after one. No in-app warning.
 
 ### 4.5 LG webOS (added after the build, 2026-10-22)
@@ -217,6 +220,7 @@ Verdict of #50 (variant B "Rails"); the prototype's `tv/home-prototype/variants.
 - **Favorites** mixes **Video tiles and Chapter tiles**: a Chapter tile shows the parent Video's strip frame at the Chapter's time, the Chapter title over the Video's title dimmed, and opens the Video at the Chapter; order is the order starred, as in the browser.
 - **A Song anywhere** (search result, Song tile, the ♪ tag in the Player) opens the grid of its Videos, Chapters included; it never autoplays. An Artist tile opens the grid of their Videos.
 - **Back** from a grid returns to where it was opened from (rails, pane, search results, Player).
+- **Focus survives a reload**: the library is read again after the Player, which can reorder a grid (Most watched, Continue watching) and move the focused tile out of the rendered window; the grid puts focus back on the same Video wherever it moved (scrolling to it), else on the tile now at the old index, and the next key acts from there.
 - **Up** from the top row reaches the header (Search, Random) or the grid's chip row when it has one.
 
 ### 5.4 Playing from
@@ -306,7 +310,7 @@ The browser's Playlist (spec §4.8) **without the panel**; the pure state in `sr
 ## 7. Search
 
 - Opened from the header or the side pane. **On-screen keyboard** on the left, driven by the D-pad: Latin, Cyrillic (with ө ү ң) and digits layers, space, backspace, a layer switch; a physical keyboard types too. **Right at the keyboard's right edge** reaches the results.
-- Typing: Enter on a key types it; a physical keyboard types too and so do the remote's digit keys; Backspace deletes. The query is searched 220 ms after the last key.
+- Typing: Enter on a key types it; a physical keyboard types too and so do the remote's digit keys; Backspace deletes. The query is searched 220 ms after the last key. Enter on a layer switch (or space, backspace, clear) leaves focus on that key.
 - Results on the right from `/api/search`, grouped **Songs / Videos / Artists** (the browser's Tracks and Albums groups are not shown), the matched text marked, lyric line under a Song matched through lyrics, counts per group. The browser's folding and ranking apply unchanged.
 - Enter on a **Video** plays it (Playing from = the results); on a **Song** opens the grid of its Videos; on an **Artist** the grid of theirs. Back from results returns to the keyboard, Back again leaves Search.
 - No voice input, no typed-letter jump list.

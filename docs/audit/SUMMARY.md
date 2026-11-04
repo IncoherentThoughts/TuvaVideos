@@ -66,4 +66,4 @@ No Critical findings. Two cross-report duplicates: **PLAY-1 = TV-1** (same `/cop
 
 ## Repro material
 
-`repros/NN/` holds the auditors' throwaway scripts and tests (for example `repros/02/sync.audit.test.ts`, 11 tests that pass while the sync bugs exist; `repros/01/repro.sh`). They were written against scratch paths in the audit container, so treat them as reference for writing real regression tests, not as a runnable suite.
+`repros/NN/` holds the auditors' throwaway scripts and tests (for example `repros/02/sync.audit.repro.ts`, 11 tests that pass while the sync bugs exist; `repros/01/repro.sh`). They were written against scratch paths in the audit container, so treat them as reference for writing real regression tests, not as a runnable suite. Test files are renamed `*.repro.ts` so `bun test` does not pick them up.

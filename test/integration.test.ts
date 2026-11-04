@@ -16,9 +16,11 @@ const trashDir = join(base, "trash");
 const trashBin = join(base, "fake-trash.sh");
 mkdirSync(localDir, { recursive: true });
 mkdirSync(extDir, { recursive: true });
+// The same lookup the app uses (/opt/homebrew/bin, /usr/local/bin, then PATH), not a hard-coded Intel Homebrew path.
+const { ffmpeg, ffprobe } = loadConfig({});
 
 async function ff(...args: string[]) {
-  const p = Bun.spawn(["/usr/local/bin/ffmpeg", "-v", "error", "-y", ...args], { stdout: "ignore", stderr: "pipe" });
+  const p = Bun.spawn([ffmpeg, "-v", "error", "-y", ...args], { stdout: "ignore", stderr: "pipe" });
   const code = await p.exited;
   if (code !== 0) throw new Error(await new Response(p.stderr).text());
 }
@@ -34,7 +36,7 @@ beforeAll(async () => {
   // id-less file -> SHA-256 identity; E-AC3 audio -> transcode
   await ff(...src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "eac3", join(localDir, "No Id Concert.mkv"));
   // piped (non-seekable) webm: no duration, no Cues -> remux, made lazily on first play
-  const p = Bun.spawn(["/usr/local/bin/ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=4", "-c:v", "libvpx-vp9", "-f", "webm", "pipe:1"], { stdout: Bun.file(join(localDir, "Live [bbbbbbbbbbb].webm")), stderr: "ignore" });
+  const p = Bun.spawn([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=4", "-c:v", "libvpx-vp9", "-f", "webm", "pipe:1"], { stdout: Bun.file(join(localDir, "Live [bbbbbbbbbbb].webm")), stderr: "ignore" });
   await p.exited;
   writeFileSync(join(localDir, "Song One [aaaaaaaaaaa].f251.webm"), "partial");
   writeFileSync(join(localDir, "._Song One [aaaaaaaaaaa].mp4"), "appledouble");
@@ -52,7 +54,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await app.stop();
+  await app?.stop(); // a failed beforeAll leaves no app; don't mask its error
   rmSync(base, { recursive: true, force: true });
 });
 
@@ -204,7 +206,7 @@ describe("fallback queue", () => {
     expect(res.status).toBe(206);
     expect(res.headers.get("content-type")).toBe("video/x-matroska");
     await res.arrayBuffer();
-    const probe = Bun.spawnSync(["/usr/local/bin/ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", join(dataDir, "remux", c.id + ".mkv")]);
+    const probe = Bun.spawnSync([ffprobe, "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", join(dataDir, "remux", c.id + ".mkv")]);
     expect(probe.stdout.toString()).toContain("aac");
   });
 });
@@ -222,7 +224,7 @@ describe("lazy remux", () => {
     expect(res.status).toBe(206);
     expect(res.headers.get("content-type")).toBe("video/webm");
     await res.arrayBuffer();
-    const probe = Bun.spawnSync(["/usr/local/bin/ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dataDir, "remux", live.copies[0].id + ".webm")]);
+    const probe = Bun.spawnSync([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dataDir, "remux", live.copies[0].id + ".webm")]);
     expect(parseFloat(probe.stdout.toString())).toBeGreaterThan(3);
   });
 });

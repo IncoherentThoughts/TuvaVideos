@@ -62,6 +62,17 @@ export class Roots {
     return this.get(id)!;
   }
 
+  /**
+   * The first-launch Root, only while there is none: the check and the insert are one statement, so two requests in
+   * flight cannot both add one (audit DB-13). Null when a Root already exists.
+   */
+  addFirst(path: string): RootRow | null {
+    const r = this.db.query("INSERT INTO root (path, kind) SELECT ?, 'local' WHERE NOT EXISTS (SELECT 1 FROM root)").run(path);
+    if (!r.changes) return null;
+    log(`root local added: ${path}`);
+    return this.get(Number(r.lastInsertRowid))!;
+  }
+
   list(): RootRow[] {
     return this.db.query("SELECT id, path, kind FROM root ORDER BY id").all() as RootRow[];
   }

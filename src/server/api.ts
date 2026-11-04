@@ -898,7 +898,8 @@ export function createHandler(s: Services) {
         if (s.roots.list().length > 0) return json({ error: "This machine already has a videos folder" }, 409);
         const checked = await checkRootPath(body.path, homedir());
         if (!checked.ok) return json({ error: checked.error }, 422);
-        const root = s.roots.add(checked.path);
+        const root = s.roots.addFirst(checked.path); // null: another request added one meanwhile
+        if (!root) return json({ error: "This machine already has a videos folder" }, 409);
         // The check's first "available" already queues the scan through the remount listener (app.ts); a passive
         // server has no listener, so queue it here unless it is running or queued.
         await s.roots.check(root.id);

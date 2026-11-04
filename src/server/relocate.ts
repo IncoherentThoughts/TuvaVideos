@@ -2,8 +2,8 @@
 // edit, tag, Chapter and Favorite. The new path must lie inside a Root (a Copy is always Root + path inside it).
 // When a scan already took the moved file in as a separate Video (its name lost the [id], or the bytes changed), the
 // caller must ask to merge: that file's Copy joins this Video, and the stray Video is removed once it has no Copy left.
-import { unlink, stat } from "node:fs/promises";
-import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { realpath, unlink, stat } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import type { EditResult } from "./edit";
@@ -92,10 +92,22 @@ export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxD
   if (!st) return bad(`no file at ${abs}`, 404);
   if (!st.isFile()) return bad("that path is a folder, not a video file");
   if (parseFilename(basename(abs)).skip) return bad("that is not a video file (mp4, mkv, webm, mov or m4v)");
-  const root = rootFor(roots, abs);
+  let root = rootFor(roots, abs);
+  let inRoot = abs;
+  if (!root) {
+    // A Root, or the given path, reached through a symlink or spelled in another case (audit DB-13): compare the
+    // canonical paths, and express the file under the Root's recorded path.
+    const real = await realpath(abs).catch(() => abs);
+    const canon = await Promise.all(roots.map(async (r) => ({ ...r, path: await realpath(r.path).catch(() => r.path) })));
+    const hit = rootFor(canon, real);
+    if (hit) {
+      root = roots.find((r) => r.id === hit.id)!;
+      inRoot = join(root.path, relative(resolve(hit.path), real));
+    }
+  }
   if (!root) return bad(`that file is outside the library folders (${roots.map((r) => r.path).join(", ")}); move it into one of them first`);
   // The spelling as given, which is what opens the file on a byte-comparing filesystem (audit DB-2).
-  const rel = relative(resolve(root.path), abs);
+  const rel = relative(resolve(root.path), inRoot);
   const orphans: string[] = [];
 
   const dest = copyAt(db, root.id, rel);

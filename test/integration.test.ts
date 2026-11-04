@@ -405,6 +405,7 @@ describe("resume endpoint", () => {
     expect((await post(id, { resumeS: -1 })).status).toBe(400);
     expect((await post(id, { resumeS: "12" })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
+    for (const bad of [null, [], 3, "x"]) expect((await post(id, bad)).status).toBe(400); // JSON, but not an object: a 400, never a 500
     expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { resumeS: 1 })).status).toBe(404);
     expect(row(id).resume_s).toBe(33);
@@ -439,6 +440,7 @@ describe("loop endpoint", () => {
     expect((await post(id, { loop: { a: 2, b: 2.01 } })).status).toBe(400);
     expect((await post(id, { loop: { a: "1", b: 2 } })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
+    for (const bad of [null, [], 3, "x"]) expect((await post(id, bad)).status).toBe(400); // JSON, but not an object: a 400, never a 500
     expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { loop: null })).status).toBe(404);
     expect(row(id)).toEqual({ loop_a_s: null, loop_b_s: null });

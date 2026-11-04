@@ -13,6 +13,7 @@ mock.module(join(import.meta.dir, "..", "src", "web", "session.ts"), () => ({
     return null;
   },
   archiveRpc: () => ({ rpc: async (fn: string, args: unknown) => (calls.rpc.push({ fn, args }), rpcAnswer()) }),
+  useSession: () => null, // imported by src/web/data.ts (the post-Sync reload, WEB-6); never called here
 }));
 
 const VID = "aaaaaaaa-0000-4000-8000-000000000001";
@@ -36,6 +37,18 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 afterAll(() => {
   globalThis.fetch = realFetch;
 });
+// Our own data layer: writeLink.test.ts mocks this module process-wide, and its `api.video` would answer the re-read.
+mock.module(join(import.meta.dir, "..", "src", "web", "data.ts"), () => ({
+  api: {
+    video: async (id: string) => (await fetch(`/api/videos/${id}`)).json(),
+    chapters: async () => [],
+  },
+  forgetSong: () => {},
+  loadArtists: async () => {},
+  loadVideos: async () => {},
+  removeVideo: () => {},
+  replaceVideo: () => {},
+}));
 
 const { writeLink } = await import("../src/web/writeLink");
 const { copyBackOp } = await import("../src/web/writeOps");

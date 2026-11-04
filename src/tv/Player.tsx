@@ -27,7 +27,7 @@ import { LyricsColumn, PlList, type ListRow, type LyricsCtl } from "./PlayerPart
 import { activePlaylist, buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen, setActivePlaylist } from "./playlistOps"
 import { libraryOrder } from "./rails"
 import type { Nav } from "./screen"
-import { REW_FF_S, nextSeekStep, stepLabel, type SeekRamp } from "./seekStep"
+import { REW_FF_S, heldSeekStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "./seekStep"
 import { focusableTags, infoTexts, playingFromText } from "./tags"
 import { BUTTONS, initialZone, reduceZone, type Fx, type ZoneCtx, type ZoneState } from "./zones"
 
@@ -104,6 +104,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     keyframes: null as number[] | null, // the playing Copy's keyframe index, once fetched
     seekTarget: null as number | null, // the last requested seek while in flight or queued: held keys step from it
     ramp: null as SeekRamp | null,
+    flatAt: null as number | null, // the last MediaRewind/FastForward step: a held one steps at the hold pace
     entryDone: false, // the Playlist Entry's end was handled once; cleared when the playhead is back inside it
     failed: new Set<number>(),
     retried: new Set<number>(),
@@ -304,14 +305,20 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     throttle.current.request(c, throttled)
     setT(c)
   }
-  const seekBy = (dir: 1 | -1, kind: "ramp" | "flat") => {
+  /** `held`: an auto-repeat of the key (input.ts), which keeps the rung and the hold pace instead of climbing (spec 6.3). */
+  const seekBy = (dir: 1 | -1, kind: "ramp" | "flat", held = false) => {
     const v = vid.current
     if (!v || !R.current.started) return
+    const now = performance.now()
     let stepS = REW_FF_S
     if (kind === "ramp") {
-      const x = nextSeekStep(R.current.ramp, dir, performance.now())
+      const x = held ? heldSeekStep(R.current.ramp, dir, now) : nextSeekStep(R.current.ramp, dir, now)
+      if (!x) return
       R.current.ramp = x.ramp
       stepS = x.step
+    } else {
+      if (held && !repeatDue(R.current.flatAt, now)) return
+      R.current.flatAt = now
     }
     const base = R.current.seekTarget ?? v.currentTime // a held key steps from the seek already requested
     seekTo(base + dir * stepS, "keyframe", base, true)
@@ -393,12 +400,12 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   }
 
   // ---- the effects of a key (zones.ts decides, this does) ----
-  const runFx = (fx: Fx) => {
+  const runFx = (fx: Fx, held = false) => {
     switch (fx.t) {
       case "toggle": return toggle()
       case "play": return void vid.current?.play().catch(() => setNeedsEnter(true))
       case "pause": return vid.current?.pause()
-      case "seek": return seekBy(fx.dir, fx.kind)
+      case "seek": return seekBy(fx.dir, fx.kind, held)
       case "page": return lyricsCtl.current?.page(fx.dir)
       case "lyrics": {
         if (!hasLyrics) return say(reason ?? "No lyrics")
@@ -464,7 +471,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     }
     const res = reduceZone(ZS.current, k.action, S.current.zctx)
     if (res.state !== ZS.current) setZone(res.state)
-    for (const fx of res.fx) runFx(fx)
+    for (const fx of res.fx) runFx(fx, k.repeat === true)
     return res.handled
   })
 

@@ -238,7 +238,7 @@ The Player has one base zone and four reachable ones. **Back** always closes the
 
 | From the video (base) | |
 |---|---|
-| Left / Right | seek −/+ **10 s**; kept pressing (each press within a second of the last) **four presses on each rung, then 30, 60 and 120 s**, the step shown large in the middle of the video; MediaRewind / MediaFastForward 60 s |
+| Left / Right | seek −/+ **10 s**; kept pressing (separate presses, each within a second of the last) **four presses on each rung, then 30, 60 and 120 s**, the step shown large in the middle of the video; **holding** the key never climbs: it scrubs on the rung it was pressed at, one step per 250 ms (from rest 10 s, so 40 s per second held); MediaRewind / MediaFastForward 60 s, held at the same pace |
 | Enter / MediaPlayPause | pause and play |
 | Up | **lyrics zone** (§6.4) |
 | Down | **button row** under the scrub bar (§6.5) |
@@ -246,7 +246,7 @@ The Player has one base zone and four reachable ones. **Back** always closes the
 | `<` `>` (MediaTrackPrevious / Next) | step Playing from, or the Playlist when one is active |
 | Yellow / Blue / Red | lyrics on and off / cycle Script / next Version (also reachable without the 123 panel, below) |
 
-Held arrows are throttled as in the browser: one seek in flight, the latest target wins. Notes from the build (#100): the acceleration restarts at 10 s when the direction changes, not only after a second's pause (`src/tv/seekStep.ts`); MediaRewind/FastForward are keyframe seeks like the arrows (Chapters, Resume and the Copy switch are the exact ones); the zones are a pure reducer over the key table (`src/tv/zones.ts`), Yellow, Blue, Green, Channel, the track keys and play/pause mean the same in every zone, and Enter in the lyrics zone also toggles the lyrics. The lyrics on/off and the Script chosen last stay for the rest of the session (module state, not stored). The hints bar at the foot of the screen is not shown in the Player (the OSD owns the screen).
+Held arrows are throttled as in the browser: one seek in flight, the latest target wins. A key's auto-repeat is told from a press by `KeyboardEvent.repeat`, or by a second keydown with no keyup in between (`src/tv/input.ts`, for a remote that does not set `repeat`); only presses count towards the ramp (audit TV-3: counting repeats as presses threw a 1.5 s hold about 26 minutes). Notes from the build (#100): the acceleration restarts at 10 s when the direction changes, not only after a second's pause (`src/tv/seekStep.ts`); MediaRewind/FastForward are keyframe seeks like the arrows (Chapters, Resume and the Copy switch are the exact ones); the zones are a pure reducer over the key table (`src/tv/zones.ts`), Yellow, Blue, Green, Channel, the track keys and play/pause mean the same in every zone, and Enter in the lyrics zone also toggles the lyrics. The lyrics on/off and the Script chosen last stay for the rest of the session (module state, not stored). The hints bar at the foot of the screen is not shown in the Player (the OSD owns the screen).
 
 ### 6.4 Lyrics zone and tag row (Up)
 

@@ -16,7 +16,8 @@ import { actionFor, type TvAction } from "../src/tv/keys"
 import { LYR_W_MAX, LYR_W_MIN, clampPage, fitLyrics, lyricsView, nextScript, noLyricsReason, pageLabel, paginate, stripMarkers } from "../src/tv/lyrics"
 import { chapterLine, listOffset, nextUp, osdVisible, pct } from "../src/tv/osd"
 import { buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen } from "../src/tv/playlistOps"
-import { RAMP_S, REW_FF_S, nextSeekStep, stepLabel } from "../src/tv/seekStep"
+import { HOLD_REPEAT_MS, RAMP_S, REW_FF_S, heldSeekStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "../src/tv/seekStep"
+import { HELD_GAP_MS, HeldKeys } from "../src/tv/input"
 import { focusableTags, infoTexts, playingFromText, tagGrid } from "../src/tv/tags"
 import { BUTTONS, initialZone, reduceZone, type ZoneCtx, type ZoneState } from "../src/tv/zones"
 
@@ -56,6 +57,74 @@ describe("seek acceleration (spec 6.3)", () => {
     expect(stepLabel(1, 30)).toBe("+30 s")
     expect(stepLabel(-1, 10)).toBe("−10 s")
     expect(REW_FF_S).toBe(60)
+  })
+
+  test("a few separate presses stay 10 s jumps", () => {
+    let ramp: SeekRamp | null = null
+    const steps: number[] = []
+    for (let i = 0, t = 0; i < 4; i++, t += 700) {
+      const x = nextSeekStep(ramp, 1, t)
+      steps.push(x.step)
+      ramp = x.ramp
+    }
+    expect(steps).toEqual([10, 10, 10, 10])
+  })
+
+  // A held arrow: one press, then the remote's auto-repeat (500 ms delay, then every 50 ms) for `ms`; the total moved.
+  const hold = (ms: number, start: SeekRamp | null = null) => {
+    const first = nextSeekStep(start, 1, 0)
+    let ramp = first.ramp
+    let moved = first.step
+    const steps = new Set<number>([first.step])
+    for (let t = 500; t <= ms; t += 50) {
+      const x = heldSeekStep(ramp, 1, t)
+      if (!x) continue
+      ramp = x.ramp
+      moved += x.step
+      steps.add(x.step)
+    }
+    return { moved, steps: [...steps], ramp }
+  }
+
+  test("holding an arrow never climbs the ramp and moves at a bounded pace (audit TV-3)", () => {
+    const a = hold(1500)
+    expect(a.steps).toEqual([10])
+    expect(a.moved).toBe(10 + 5 * 10) // 500, 750, 1000, 1250, 1500 ms
+    const b = hold(10_000)
+    expect(b.steps).toEqual([10])
+    expect(b.moved).toBeLessThanOrEqual(10 + (10_000 / HOLD_REPEAT_MS) * 10) // 40 s per second of holding, at most
+    expect(b.ramp.count).toBe(1) // the repeats were not counted as presses
+  })
+
+  test("a hold keeps the rung the presses before it reached", () => {
+    let ramp: SeekRamp | null = null
+    for (let i = 0; i < 5; i++) ramp = nextSeekStep(ramp, 1, -5000 + i * 300).ramp // 10, 10, 10, 10, 30
+    expect(RAMP_S[ramp!.level]).toBe(30)
+    const x = heldSeekStep({ ...ramp!, at: 0 }, 1, HOLD_REPEAT_MS)
+    expect(x!.step).toBe(30)
+    expect(x!.ramp.level).toBe(ramp!.level)
+  })
+
+  test("repeats in between the hold pace are dropped; a repeat with nothing before it is a press", () => {
+    const p = nextSeekStep(null, 1, 0)
+    expect(heldSeekStep(p.ramp, 1, HOLD_REPEAT_MS - 1)).toBeNull()
+    expect(heldSeekStep(p.ramp, 1, HOLD_REPEAT_MS)!.step).toBe(10)
+    expect(heldSeekStep(null, -1, 100)!.step).toBe(10)
+    expect(heldSeekStep(p.ramp, -1, 100)!.ramp.dir).toBe(-1) // the other direction: a fresh press
+    expect(repeatDue(null, 5)).toBe(true)
+    expect(repeatDue(0, HOLD_REPEAT_MS - 1)).toBe(false)
+  })
+
+  test("held keys: e.repeat, or a keydown before the key's keyup", () => {
+    const h = new HeldKeys()
+    expect(h.keydown(39, 0, false)).toBe(false) // a press
+    expect(h.keydown(39, 500, false)).toBe(true) // still down: an auto-repeat the engine did not mark
+    h.keyup(39)
+    expect(h.keydown(39, 600, false)).toBe(false) // let go and pressed again
+    expect(h.keydown(39, 600 + HELD_GAP_MS, false)).toBe(false) // no keyup seen for long: treated as a new press
+    expect(h.keydown(37, 0, true)).toBe(true)
+    h.clear()
+    expect(h.keydown(39, 700, false)).toBe(false)
   })
 
   test("a plain arrow lands 0.15 s past the nearest keyframe; without an index the exact target", () => {

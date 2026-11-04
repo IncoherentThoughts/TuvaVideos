@@ -1,6 +1,7 @@
 import { createHandler, type Services } from "./api";
 import { TvServer } from "./tv";
 import { judgeStaleCopies } from "./tvJudge";
+import { judgeBrowserCopies } from "./browserJudge";
 import type { Config } from "./config";
 import { checkpoint, openDb } from "./db";
 import { FallbackQueue } from "./fallback";
@@ -33,6 +34,9 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   const roots = new Roots(db, cfg);
   roots.seed();
   const fallback = new FallbackQueue(db, cfg, (id) => roots.isAvailable(id));
+  // the browser profile's verdicts first (audit PLAY-8): a Fallback made under an older rule is then swept
+  const browser = judgeBrowserCopies(db);
+  if (browser.changed) log(`browser profile: ${browser.changed} of ${browser.judged} Copies judged differently`);
   await fallback.verifyFiles();
   const thumbs = new Thumbnails(db, cfg, roots, () => fallback.playJobRunning());
   const scanner = new Scanner(db, cfg, roots, () => {

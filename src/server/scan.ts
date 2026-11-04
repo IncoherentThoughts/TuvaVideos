@@ -16,6 +16,7 @@ import { isIoError, sleep } from "./proc";
 import type { RootRow, Roots } from "./roots";
 import { rebuildSearchIndex } from "./search";
 import { judgeStaleCopies } from "./tvJudge";
+import { judgeBrowserCopies } from "./browserJudge";
 import { newUuid } from "./localCopy/ids";
 import { machineMode, readSessionRecord } from "./localCopy/meta";
 
@@ -293,6 +294,7 @@ export class Scanner {
 
     this.prog.phase = "finishing";
     judgeStaleCopies(this.db); // new and changed Copies, and any judged under an older TV profile version (tv-spec 3.1)
+    judgeBrowserCopies(this.db); // stamps the browser profile version on new and changed Copies (audit PLAY-8)
     await this.markMissing(root, existing, matched, seenKeys, failedDirs, summary);
     await this.matchNewVideos(newVideos);
     rebuildSearchIndex(this.db);

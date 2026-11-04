@@ -1,5 +1,7 @@
 // The TV Server (docs/tv-spec.md 2, 3.1-3.3): the TV Playback profile's decision, scan-time judging and staleness,
 // the second listener, the route list and the Approved TV allowlist.
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

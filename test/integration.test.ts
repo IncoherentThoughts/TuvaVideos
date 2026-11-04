@@ -1,3 +1,5 @@
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

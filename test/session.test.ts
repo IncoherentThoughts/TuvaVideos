@@ -1,6 +1,8 @@
 // Sign-in core (sharing-spec §5.2–§5.4, §4.9; ticket #130): the archive client's pure parts, the Origin/Host checks of
 // the session routes, the Session record's lifecycle through /api/sync and /api/session against a mocked PostgREST,
 // one Sync at a time, the edit-control enablement rule, and the multi-tab reducer.
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

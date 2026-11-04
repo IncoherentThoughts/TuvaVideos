@@ -10,6 +10,7 @@ import { clearSessionRecord, getMeta, readSessionRecord, setMeta, writeSessionRe
 import { createReconcile, reconcileBatch, planFor } from "../src/server/reconcile";
 import { createSync, wipeShared } from "../src/server/sync";
 import type { SharedChanges, SharedChapterRow, SharedVideoRow } from "../src/shared/sharedRows";
+import { editAccess, schemaMismatchOf } from "../src/shared/session";
 import { C, insertChapter, insertCopy, insertVideo, V } from "./helpers/seed";
 
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
@@ -348,6 +349,27 @@ describe("SYNC-7: a Sign out during a Sync (or a reconciliation) is not undone",
     expect(c.ok).toBe(false);
     expect(readSessionRecord(db)).toBeNull();
     expect(db.query("SELECT id FROM videos").all()).toEqual([{ id: L }]);
+  });
+});
+
+describe("SYNC-8: the schema gate stops writes as it stops Sync", () => {
+  const editorState = {
+    record: { userId: USER, grantLevel: "editor" } as never, authSettled: true, browser: { userId: USER, expiresAt: null }, reachable: true,
+  };
+  test("edit controls are disabled while the schemas disagree", () => {
+    expect(editAccess(editorState, Date.now()).enabled).toBe(true);
+    expect(editAccess({ ...editorState, schemaMismatch: schemaMismatchOf(1, 2) }, Date.now())).toEqual({ shown: true, enabled: false });
+  });
+  test("a cache apply without shared_schema is refused once whoami reported another schema", async () => {
+    const db = fresh();
+    writeSessionRecord(db, { userId: USER, grantLevel: "editor" });
+    const a = fakeArchive({ whoami: () => whoamiOf({ shared_schema: 2 }) });
+    const r = await createSync(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {} }).request({ accessToken: TOKEN });
+    expect(r.ok).toBe(false);
+    expect(() => applyShared(db, { tables: { videos: [sv(S1)] } })).toThrow(/Shared schema 2/);
+    expect(db.query("SELECT COUNT(*) AS n FROM videos").get()).toEqual({ n: 0 });
+    setMeta(db, "archive_shared_schema", "1");
+    expect(() => applyShared(db, { tables: { videos: [sv(S1)] } })).not.toThrow();
   });
 });
 

@@ -9,6 +9,9 @@ import type { Db } from "../db";
  */
 export const SHARED_SCHEMA = 1;
 
+/** `meta` key: the archive's `shared_schema` as the last `video_whoami()` said it (SYNC-8: the cache apply checks it). */
+export const ARCHIVE_SCHEMA_KEY = "archive_shared_schema";
+
 /** The `shared_schema` the Local copy's migrations recorded. */
 export function localSharedSchema(db: Db): number {
   const r = db.query("SELECT value FROM meta WHERE key = 'shared_schema'").get() as { value: string } | null;

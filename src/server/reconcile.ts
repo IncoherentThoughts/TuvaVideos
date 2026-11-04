@@ -31,7 +31,7 @@ import { applyShared } from "./localCopy/apply";
 import { freeCollidingIds, RECONCILED_HASH_PREFIX, sameIdentity, videoRefs } from "./localCopy/rekey";
 import { runArchiveFollowUps } from "./localCopy/followUps";
 import {
-  getMeta, loseEditorGrant, RECONCILE_PENDING_KEY, readSessionRecord, sessionEpoch, setMeta, SHARED_SCHEMA, setPendingShare, shelve, updateSessionRecord, writeSessionRecord,
+  ARCHIVE_SCHEMA_KEY, getMeta, loseEditorGrant, RECONCILE_PENDING_KEY, readSessionRecord, sessionEpoch, setMeta, SHARED_SCHEMA, setPendingShare, shelve, updateSessionRecord, writeSessionRecord,
   type ShelvedPayload,
 } from "./localCopy/meta";
 
@@ -446,6 +446,7 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
     // SYNC-7: cancelled (the record cleared) while whoami was on the wire: bring no record back.
     if (sessionEpoch(db) !== epoch) return { done: fail(SIGNED_OUT_MEANWHILE) };
     const w = r.value;
+    setMeta(db, ARCHIVE_SCHEMA_KEY, String(w.shared_schema)); // SYNC-8
     const record: SessionRecord = writeSessionRecord(db, {
       userId: w.user_id, email: w.email ?? null, displayName: w.display_name ?? null, avatarUrl: w.avatar_url ?? null,
       grantLevel: w.grant_level === "editor" || w.grant_level === "member" ? w.grant_level : null,

@@ -17,7 +17,7 @@ import type { Db } from "../db";
 import { fillArtistLatin } from "../latin";
 import { indexArtist, indexSong, indexVersion, rebuildSearchIndex, reindexChapter, reindexVideo } from "../search";
 import type { ApplySharedResult, ArchiveIds, ReplaceWholeTable, SharedChanges, SharedTombstoneRow } from "../../shared/sharedRows";
-import { SHARED_SCHEMA } from "./meta";
+import { ARCHIVE_SCHEMA_KEY, getMeta, SHARED_SCHEMA } from "./meta";
 import { freeCollidingIds, mergeStaleVideoInto } from "./rekey";
 import { log } from "../log";
 import {
@@ -174,6 +174,12 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   const t0 = performance.now();
   if (batch.shared_schema != null && batch.shared_schema !== SHARED_SCHEMA) {
     throw new Error(`the batch is Shared schema ${batch.shared_schema}, this checkout speaks ${SHARED_SCHEMA}`);
+  }
+  // A write function's bundle carries no `shared_schema` (SYNC-8): when the last whoami said the archive speaks
+  // another schema, its rows are of a shape this checkout does not know (unknown columns would be dropped silently).
+  const archiveSchema = getMeta(db, ARCHIVE_SCHEMA_KEY);
+  if (batch.shared_schema == null && archiveSchema != null && Number(archiveSchema) !== SHARED_SCHEMA) {
+    throw new Error(`the archive is on Shared schema ${archiveSchema}, this checkout speaks ${SHARED_SCHEMA}: update first`);
   }
   const changes = batch.tables ?? {};
   const whole = new Set<ReplaceWholeTable>();

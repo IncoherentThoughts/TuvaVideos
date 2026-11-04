@@ -17,7 +17,7 @@ import type { Db } from "./db";
 import { applyShared, tsMicros } from "./localCopy/apply";
 import { runArchiveFollowUps } from "./localCopy/followUps";
 import {
-  getMeta, RECONCILE_PENDING_KEY, RECONCILE_PENDING_LINE, readSessionRecord, sessionEpoch, SHARED_SCHEMA, setMeta, updateSessionRecord, writeSessionRecord,
+  ARCHIVE_SCHEMA_KEY, getMeta, RECONCILE_PENDING_KEY, RECONCILE_PENDING_LINE, readSessionRecord, sessionEpoch, SHARED_SCHEMA, setMeta, updateSessionRecord, writeSessionRecord,
 } from "./localCopy/meta";
 import { log } from "./log";
 import { downloadPosters, type PosterDownloadResult } from "./posters";
@@ -203,6 +203,7 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
     const w = r.value;
     const stop = interrupted();
     if (stop) return fail(db, { reachable: true, error: stop, full });
+    setMeta(db, ARCHIVE_SCHEMA_KEY, String(w.shared_schema)); // SYNC-8: the cache apply refuses while they differ
     let record = recordFromWhoami(db, w, now());
     const schema = { client: SHARED_SCHEMA, archive: w.shared_schema };
     const mustChangePassword = w.must_change_password === true;

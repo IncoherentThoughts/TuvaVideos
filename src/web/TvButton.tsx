@@ -12,6 +12,12 @@ export function tvLabel(s: TvStateDto): string {
   return `TV on · ${addr ?? "no network"}${addr ? `:${s.port}` : ""}`;
 }
 
+/** `192.168.4.83` -> { head: "192.168.4.", last: "83" }: the last number is what the TV's number pad needs (its field is pre-filled with the TV's subnet). */
+export function splitAddress(a: string): { head: string; last: string } {
+  const i = a.lastIndexOf(".");
+  return i < 0 ? { head: "", last: a } : { head: a.slice(0, i + 1), last: a.slice(i + 1) };
+}
+
 export function TvButton() {
   const [tv, setTv] = useState<TvStateDto | null>(null);
   const [menu, setMenu] = useState(false);
@@ -53,7 +59,7 @@ export function TvButton() {
 
   if (!tv) return null;
 
-  const act = async (fn: () => Promise<TvStateDto>) => {
+  const act = async (fn: () => Promise<TvStateDto>): Promise<void> => {
     setBusy(true);
     try {
       setTv(await fn());
@@ -91,7 +97,7 @@ export function TvButton() {
           title={on ? "TV Server: menu" : "Turn the TV Server on (the TV app reaches this Mac over the home network)"}
           aria-haspopup={on ? "menu" : undefined}
           aria-expanded={on ? menu : undefined}
-          onClick={() => (on ? setMenu(!menu) : act(api.tvOn))}
+          onClick={() => (on ? setMenu(!menu) : act(api.tvOn).then(() => setMenu(true)))}
         >
           {tvLabel(tv)}
         </button>
@@ -106,12 +112,46 @@ export function TvButton() {
           <button role="menuitem" disabled={busy} onClick={() => { setMenu(false); void act(api.tvOff); }}>
             Turn off
           </button>
+          <div class="tvhd">This Mac, for the TV</div>
+          {tv.addresses.length === 0 && <div class="tvnone">no network address</div>}
+          {tv.addresses.map((a) => {
+            const { head, last } = splitAddress(a);
+            return (
+              <div class="tvaddr" key={a}>
+                {head}
+                <b>{last}</b>
+                <span class="dim">:{tv.port}</span>
+              </div>
+            );
+          })}
+          {tv.addresses[0] && (
+            <div class="tvtip">
+              The TV app finds this Mac by itself. If it asks for the address, press <b>{splitAddress(tv.addresses[0]).last}</b> on its number pad and Connect (the whole
+              address if the TV is on another network), then Allow it here.
+            </div>
+          )}
+          {tv.pending.length > 0 && <div class="tvhd">Waiting for approval</div>}
+          {tv.pending.map((t) => (
+            <div class="tvrow" key={`p-${t.ip}`}>
+              <span class="tvname" title={t.model ?? undefined}>
+                {t.model ? t.model.slice(0, 32) : "TV"} <span class="dim">{t.ip}</span>
+              </span>
+              <span>
+                <button class="btn small primary" disabled={busy} onClick={() => act(() => api.tvApprove(t.ip))}>
+                  Allow
+                </button>{" "}
+                <button class="btn small" disabled={busy} onClick={() => act(() => api.tvDeny(t.ip))}>
+                  Deny
+                </button>
+              </span>
+            </div>
+          ))}
           <div class="tvhd">Approved TVs</div>
           {tv.approved.length === 0 && <div class="tvnone">none yet</div>}
           {tv.approved.map((t) => (
             <div class="tvrow" key={t.ip}>
               <span class="tvname" title={t.lastSeenAt ? `last seen ${t.lastSeenAt}` : "not seen yet"}>
-                {t.model ?? "TV"} <span class="dim">{t.ip}</span>
+                {t.model ? t.model.slice(0, 32) : "TV"} <span class="dim">{t.ip}</span>
               </span>
               <button class="linkbtn" disabled={busy} onClick={() => act(() => api.tvRemove(t.ip))} title="Remove: its next request asks again">
                 Remove

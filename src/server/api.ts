@@ -35,7 +35,7 @@ import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "../shared/types";
 import type { SharedChanges } from "../shared/sharedRows";
 import { applyShared } from "./localCopy/apply";
-import { hostError, localRequestError } from "./localOnly";
+import { hostError, localGuard, localRequestError, withFrameHeaders } from "./localOnly";
 import { createReconcile } from "./reconcile";
 import { createSync } from "./sync";
 import { pendingShareBatch, pendingShareSummary, setShareAuto } from "./share";
@@ -426,7 +426,15 @@ export function createHandler(s: Services) {
     return null;
   }
 
-  return async (req: Request): Promise<Response> => {
+  // The guard runs first, for every request (localOnly.ts): a loopback Host, and this companion's Origin on writes.
+  // `server` is the Bun listener (absent when the TV Server passes a request in, which `localGuard` lets through).
+  return async (req: Request, server?: { port?: number }): Promise<Response> => {
+    const refused = localGuard(req, server?.port ?? (s.cfg.port || null));
+    if (refused) return json({ error: refused.error }, refused.status);
+    return withFrameHeaders(await route(req));
+  };
+
+  async function route(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname;
     let m: RegExpMatchArray | null;
@@ -552,8 +560,9 @@ export function createHandler(s: Services) {
         if (p === "/api/tv/approve" || p === "/api/tv/deny") {
           const b = await readJson(req);
           if (!b || typeof b.ip !== "string" || !b.ip.trim()) return json({ error: "ip is required" }, 400);
-          if (p === "/api/tv/approve") s.tv.approve(b.ip);
-          else s.tv.deny(b.ip);
+          if (p === "/api/tv/approve") {
+            if (!s.tv.approve(b.ip)) return json({ error: "this machine's own address is never a TV" }, 422);
+          } else s.tv.deny(b.ip);
           return json(s.tv.state());
         }
         if ((m = p.match(/^\/api\/(videos|chapters)\/([0-9a-fA-F-]{36})\/favorite$/))) {
@@ -925,6 +934,6 @@ export function createHandler(s: Services) {
     } catch (e) {
       return json({ error: String((e as Error).message ?? e) }, 500);
     }
-  };
+  }
 }
 

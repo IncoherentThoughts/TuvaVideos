@@ -354,7 +354,7 @@ describe("Chapter endpoints", () => {
   let app: App;
   let url: string;
   const call = async (method: string, path: string, body?: unknown) => {
-    const r = await fetch(url + path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+    const r = await fetch(url + path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: r.status, body: (await r.json()) as any };
   };
   const list = async (v = V(1)) => (await call("GET", `/api/videos/${v}/chapters`)).body as any[];

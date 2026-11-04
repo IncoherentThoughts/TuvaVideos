@@ -18,6 +18,11 @@ export interface Config {
   /** The TV Server port (tv-spec 2.1); `TUVA_TV_PORT` overrides it, for tests only. */
   tvPort: number;
   /**
+   * The TV Server may approve this machine's own addresses (127.0.0.1, its LAN IPs), so the TV UI can be tried in a
+   * desktop browser here (`TUVA_TV_LOOPBACK=1`, tests and development only). Off: a page on this machine is never a TV.
+   */
+  tvLoopback?: boolean;
+  /**
    * A second server on the real library (another port, default data dir), e.g. a test preview: it scans only on an
    * explicit Rescan, never at startup or remount, so starting it does not re-scan and re-thumbnail the library.
    */
@@ -81,6 +86,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     studioDumpPath: join(dataDir, "studio-dump.json"),
     port,
     tvPort: Number(env.TUVA_TV_PORT ?? DEFAULT_TV_PORT),
+    tvLoopback: env.TUVA_TV_LOOPBACK === "1",
     passive: port !== DEFAULT_PORT && env.TUVA_DATA_DIR === undefined,
     localRoot: env.TUVA_LOCAL_ROOT,
     externalRoot: env.TUVA_EXTERNAL_ROOT,

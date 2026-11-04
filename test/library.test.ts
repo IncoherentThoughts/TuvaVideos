@@ -22,8 +22,10 @@ mkdirSync(extDir, { recursive: true });
 
 let app: App;
 let url: string;
+import { jsonInit } from "./helpers/http";
+
 const api = async (path: string, init?: RequestInit) => {
-  const r = await fetch(url + path, init);
+  const r = await fetch(url + path, jsonInit(init));
   return { status: r.status, body: (await r.json()) as any };
 };
 const post = (path: string, body?: unknown) => api(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });

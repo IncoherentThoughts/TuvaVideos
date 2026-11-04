@@ -383,6 +383,35 @@ describe("SYNC-5: a drained insert is applied even when this machine's clock is 
   });
 });
 
+describe("DOC-2: the scan's default Type `song` is not a person's edit", () => {
+  const sharedConcert = () => batch([sv(S1, { youtube_id: "YT1", content_hash: null, title: "T", type: "concert" })]);
+  const shelvedKinds = (db: Db) => (db.query("SELECT kind FROM shelved_edit ORDER BY id").all() as { kind: string }[]).map((r) => r.kind);
+  const run = (db: Db) => db.transaction(() => {
+    reconcileBatch(db, sharedConcert());
+    applyShared(db, sharedConcert());
+  })();
+  test("an untouched scanned Video (Type song) shelves no Type", () => {
+    const db = fresh();
+    insertVideo(db, { title: "T", youtube_id: "YT1", type: "song" });
+    expect(planFor(db, sharedConcert()).shelve).toEqual([]);
+    run(db);
+    expect(shelvedKinds(db)).toEqual([]);
+  });
+  test("a matcher's Suggested Type shelves nothing either", () => {
+    const db = fresh();
+    insertVideo(db, { title: "T", youtube_id: "YT1", type: "interview", type_suggested: 1, suggestion_source: "performance" });
+    run(db);
+    expect(shelvedKinds(db)).toEqual([]);
+  });
+  test("a Type the person set (even `song`) is shelved", () => {
+    const db = fresh();
+    const L = insertVideo(db, { title: "T", youtube_id: "YT1", type: "other" });
+    expect(patchVideo(db, L, { type: "song" })).toEqual({ ok: true });
+    run(db);
+    expect(shelvedKinds(db)).toEqual(["type"]);
+  });
+});
+
 describe("SYNC-6: the companion's local edit routes refuse a Shared Video", () => {
   test("Video header, Artists and Chapter routes answer 409; the Shared row is untouched", () => {
     const db = fresh();

@@ -67,6 +67,11 @@ export interface ReconcileVideo {
   title: string;
   titleLatin: string | null;
   type: string | null;
+  /**
+   * How the local Type came (local Videos only): `suggested` by a matcher, set `manual`ly (Type edits stamp
+   * `suggestion_source = 'manual'`), or left as the scan's default. Absent: treated as set by hand unless it is a default.
+   */
+  typeOrigin?: "suggested" | "manual" | "default";
   songId: string | null;
   versionId: string | null;
   /** Effective Artist ids in position order. */
@@ -124,15 +129,25 @@ export interface ShelveResult {
   favoritesShelved: number;
 }
 
+/** The scan's default Type: `song` since 2026-10-12, `other` before (spec §2.3); neither is a person's edit. */
+export const DEFAULT_TYPES: readonly string[] = ["song", "other"];
+
+/** Whether a local Type is the person's own (DOC-2): not a matcher's suggestion, and not an untouched default. */
+export function typeIsOwn(v: Pick<ReconcileVideo, "type" | "typeOrigin">): boolean {
+  if (!v.type || v.typeOrigin === "suggested") return false;
+  if (v.typeOrigin === "manual") return true;
+  return !DEFAULT_TYPES.includes(v.type);
+}
+
 /**
  * What a matched local Video loses to its Shared Video. Only link data that the Shared row does not already say is
- * shelved: an equal title, an empty or default (`other`) Type, no Song, Artists all among the Shared ones, and
- * Chapters the Shared Video has too lose nothing.
+ * shelved: an equal title, an empty, suggested or untouched default (`song`, or `other` before 2026-10-12) Type, no
+ * Song, Artists all among the Shared ones, and Chapters the Shared Video has too lose nothing.
  */
 export function shelvedFor(local: ReconcileVideo, shared: ReconcileVideo): ShelveResult {
   const out: ShelveResult = { shelved: [], stars: [], favoritesShelved: 0 };
   if (local.title.trim() !== shared.title.trim()) out.shelved.push({ kind: "title", title: local.title, titleLatin: local.titleLatin });
-  if (local.type && local.type !== "other" && local.type !== shared.type) out.shelved.push({ kind: "type", type: local.type });
+  if (typeIsOwn(local) && local.type !== shared.type) out.shelved.push({ kind: "type", type: local.type! });
   if ((local.songId != null || local.versionId != null) && (local.songId !== shared.songId || local.versionId !== shared.versionId)) {
     out.shelved.push({ kind: "song", songId: local.songId, versionId: local.versionId });
   }
@@ -247,7 +262,9 @@ export function localVideos(db: Db, withChildren?: Set<string>): ReconcileVideo[
   }
   return rows.map((v) => ({
     id: v.id, youtubeId: v.youtube_id, contentHash: v.content_hash, instagramId: v.instagram_id, rutubeId: v.rutube_id,
-    title: v.title, titleLatin: v.title_latin, type: v.type, songId: v.song_id ?? v.proposed_song_id, versionId: v.version_id ?? v.proposed_version_id,
+    title: v.title, titleLatin: v.title_latin, type: v.type,
+    typeOrigin: v.type_suggested ? "suggested" : v.suggestion_source === "manual" ? "manual" : "default",
+    songId: v.song_id ?? v.proposed_song_id, versionId: v.version_id ?? v.proposed_version_id,
     artistIds: artists.get(v.id) ?? [], chapters: chapters.get(v.id) ?? [],
   }));
 }

@@ -24,6 +24,8 @@ import {
 
 /** Above this many changed rows the search index is rebuilt once instead of row by row (§6.2). */
 export const REBUILD_THRESHOLD = 200;
+/** `meta` key held while an apply runs: the touch triggers skip their stamp (migration 0020). */
+export const APPLYING_KEY = "applying_shared";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Timestamps
@@ -197,6 +199,18 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   };
 
   db.transaction(() => {
+    // The touch triggers stay quiet while this row is held (migration 0020): every stamp the apply writes is the
+    // archive's, including the unchanged stamp of a re-applied child (SYNC-2). Written and removed inside this
+    // transaction, so a failure rolls it back with everything else.
+    db.query("INSERT INTO meta (key, value) VALUES (?, '1') ON CONFLICT(key) DO NOTHING").run(APPLYING_KEY);
+    try {
+      applyRows();
+    } finally {
+      db.query("DELETE FROM meta WHERE key = ?").run(APPLYING_KEY);
+    }
+  })();
+
+  function applyRows() {
     // ---- the archive's rows (no children rule: credits are replaced per Album / Track)
     for (const a of changes.artists ?? []) if (put("archive_artist", mapArtist(a))) changed.artists.add(String(a.id));
     const testSongs = new Set<string>();
@@ -348,7 +362,7 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     }
 
     reindex(db, changed);
-  })();
+  }
 
   const total = changed.videos.size + changed.chapters.size + changed.artists.size + changed.songs.size + changed.versions.size;
   return {

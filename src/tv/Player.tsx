@@ -22,6 +22,7 @@ import { api, url, writes } from "./data"
 import { useKeyHandler } from "./input"
 import { lyricsView, nextScript, noLyricsReason, songTarget } from "./lyrics"
 import { openTag } from "./open"
+import { onPlayError } from "./playRetry"
 import { OSD_FADE_MS, chapterLine, nextUp, osdVisible, pct } from "./osd"
 import { LyricsColumn, PlList, type ListRow, type LyricsCtl } from "./PlayerParts"
 import { activePlaylist, buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen, setActivePlaylist } from "./playlistOps"
@@ -95,6 +96,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const [song, setSong] = useState<SongDto | null | undefined>(undefined)
   const [audioMode, setAudioMode] = useState<AudioMode>("none")
   const [resumeMark, setResumeMark] = useState<number | null>(null)
+  const [reconnecting, setReconnecting] = useState(false) // a network retry is under way (TV-2)
 
   // ---- mutable state that handlers read ----
   const R = useRef({
@@ -107,7 +109,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     flatAt: null as number | null, // the last MediaRewind/FastForward step: a held one steps at the hold pace
     entryDone: false, // the Playlist Entry's end was handled once; cleared when the playhead is back inside it
     failed: new Set<number>(),
-    retried: new Set<number>(),
+    retried: new Set<number>(), // the Copies whose one decode retry is spent
+    netTries: 0, // network retries in a row (playRetry.ts); a load that reaches its metadata resets it
     lastPos: 0,
     known: null as number | null, // the Resume position as this Player last read or wrote it
     wroteAt: 0,
@@ -482,6 +485,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     const { at, play, announce } = r.pending
     if (muted()) v.muted = true
     if (at > 0) v.currentTime = clampTime(at, v.duration)
+    r.netTries = 0
+    setReconnecting(false)
     r.started = true
     r.lastPos = at
     setT(at)
@@ -564,6 +569,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     const v = vid.current
     const id = r.copyId
     if (id == null || !v || !v.getAttribute("src")) return
+    const code = v.error?.code ?? null
     const pos = r.started ? v.currentTime : r.pending.at
     const play = r.started ? !v.paused : r.pending.play
     const fresh = await api.video(videoId).catch(() => null)
@@ -575,13 +581,20 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     }
     const cur = (fresh ?? S.current.video)?.copies.find((c) => c.id === id)
     const intact = !!cur && cur.available && !cur.missing
-    if (intact && !r.retried.has(id)) {
-      r.retried.add(id) // the drive hiccuped: one more try of the same Copy before giving up on it
-      await sleep(1500)
-      if (r.alive && r.copyId === id && cur) attach(cur, pos, play)
-      return
+    // a lost server or stream retries with backoff and plays on; only a Copy that keeps failing while the server
+    // answers is marked failed with the codecs message (playRetry.ts, audit TV-2)
+    const act = onPlayError({ serverAnswered: !!fresh, code, intact, decodeRetried: r.retried.has(id), netTries: r.netTries })
+    if (act.t === "lose") {
+      setReconnecting(false)
+      return lose(id, act.failed, pos, play)
     }
-    lose(id, intact, pos, play)
+    if (act.net) {
+      r.netTries++
+      setReconnecting(true)
+    } else r.retried.add(id)
+    r.pending = { at: pos, play, announce: false }
+    await sleep(act.ms)
+    if (r.alive && r.copyId === id && cur) attach(cur, pos, play)
   }
   E.current.writeResume = writeResume
   E.current.seekTo = (to: number) => seekTo(to, "exact", undefined, false, true)
@@ -760,6 +773,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         {phase !== "ready" && phase !== "loading" && (
           <div class="plmsg">{!video ? "This Video is not in the library." : phase === "remux" ? REMUX_MESSAGE : phase === "failed" && failedCopy ? failedMessage(failedCopy) : "Copy unavailable"}</div>
         )}
+        {reconnecting && phase === "loading" && <div class="plmsg">Lost the TV Server · retrying…</div>}
         {needsEnter && <div class="plmsg over">Press Enter to play</div>}
         {badge && <div class="pl-badge">{badge}</div>}
         {flash && (

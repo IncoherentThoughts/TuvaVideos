@@ -18,6 +18,7 @@ import { chapterLine, listOffset, nextUp, osdVisible, pct } from "../src/tv/osd"
 import { buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen } from "../src/tv/playlistOps"
 import { HOLD_REPEAT_MS, RAMP_S, REW_FF_S, heldSeekStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "../src/tv/seekStep"
 import { HELD_GAP_MS, HeldKeys } from "../src/tv/input"
+import { DECODE_RETRY_MS, MEDIA_ERR_NETWORK, NET_TRIES_WITH_SERVER, onPlayError, retryDelayMs, type PlayErrorFacts } from "../src/tv/playRetry"
 import { focusableTags, infoTexts, playingFromText, tagGrid } from "../src/tv/tags"
 import { BUTTONS, initialZone, reduceZone, type ZoneCtx, type ZoneState } from "../src/tv/zones"
 
@@ -131,6 +132,38 @@ describe("seek acceleration (spec 6.3)", () => {
     const kf = [0, 4, 8, 12]
     expect(keyframeSeekTarget(7.5, kf, 3)).toBeCloseTo(8.15, 5)
     expect(keyframeSeekTarget(7.5, [], 3)).toBe(7.5)
+  })
+})
+
+// ---- media errors (audit TV-2) ----
+
+describe("a media error: retry the network, fail only a real decode error", () => {
+  const f = (o: Partial<PlayErrorFacts> = {}): PlayErrorFacts => ({ serverAnswered: true, code: 3, intact: true, decodeRetried: false, netTries: 0, ...o })
+  const DECODE = 3
+  const SRC = 4
+
+  test("the TV Server not answering retries with backoff for as long as it takes, whatever the element says", () => {
+    for (const code of [SRC, MEDIA_ERR_NETWORK, DECODE, null]) {
+      expect(onPlayError(f({ serverAnswered: false, code }))).toEqual({ t: "retry", ms: 1500, net: true })
+    }
+    expect(onPlayError(f({ serverAnswered: false, netTries: 50, decodeRetried: true, intact: false }))).toEqual({ t: "retry", ms: 15000, net: true })
+    expect([1, 2, 3, 4, 5, 6, 9].map(retryDelayMs)).toEqual([1500, 3000, 5000, 8000, 12000, 15000, 15000])
+  })
+
+  test("a network error with the server answering retries a few times, then is Copy unavailable, never the codecs message", () => {
+    for (let n = 0; n < NET_TRIES_WITH_SERVER; n++) expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, netTries: n }))).toMatchObject({ t: "retry", net: true })
+    expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, netTries: NET_TRIES_WITH_SERVER }))).toEqual({ t: "lose", failed: false })
+  })
+
+  test("a decode error with the server answering: one retry, then failed", () => {
+    expect(onPlayError(f({ code: DECODE }))).toEqual({ t: "retry", ms: DECODE_RETRY_MS, net: false })
+    expect(onPlayError(f({ code: DECODE, decodeRetried: true }))).toEqual({ t: "lose", failed: true })
+    expect(onPlayError(f({ code: SRC, decodeRetried: true }))).toEqual({ t: "lose", failed: true })
+  })
+
+  test("a Copy no longer Available is lost (fail over), not failed", () => {
+    expect(onPlayError(f({ intact: false }))).toEqual({ t: "lose", failed: false })
+    expect(onPlayError(f({ intact: false, code: MEDIA_ERR_NETWORK }))).toEqual({ t: "lose", failed: false })
   })
 })
 

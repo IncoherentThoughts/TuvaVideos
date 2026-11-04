@@ -84,6 +84,23 @@ export function abLoopTarget(ab: AbLoop, t: number, ended = false): number | nul
   return ended ? ab.a : null;
 }
 
+// ---- Chapter steps (`@`/PgDn next, `!`/PgUp previous) ----
+
+/**
+ * Which Chapter a Chapter step goes to: the index into `starts` (sorted), or -1 for the start of the Video. Back more
+ * than 2 s into a Chapter restarts it first. Before the first Chapter, back goes to the start of the Video, never
+ * forward to the first Chapter (WEB-9); next from the last Chapter restarts it, as before.
+ */
+export function chapterStepTarget(starts: readonly number[], t: number, dir: 1 | -1): number {
+  let i = -1;
+  starts.forEach((s, k) => {
+    if (t >= s - 0.001) i = k;
+  });
+  if (dir < 0 && i < 0) return -1;
+  if (dir < 0 && t - starts[i]! >= 2) i += 1; // restart the current one first
+  return Math.min(starts.length - 1, Math.max(0, i + dir));
+}
+
 // ---- formats ----
 
 export function fmtClock(s: number | null | undefined): string {

@@ -393,7 +393,7 @@ All in scope, macOS tested. README: "Developed and tested on macOS. Linux and Wi
 
 ### 8.3 Install
 
-Bun is the one manual install (per-platform lines for Bun, ffmpeg and webp in the README). Then `bun install`, `bun run setup`, `bun run start`. **`bun run setup`** (TypeScript, run by Bun) checks Bun ≥ 1.4 (pinned in package.json `engines`), ffmpeg, ffprobe, cwebp and the platform's trash command, creates the data dir, prints one line per check with the install command for anything missing, exits non-zero while something required is missing, reports yt-dlp, ImageMagick and a trash command as optional, and does not start the app. The trash check is optional (deleting falls back to entry-only, above), not required. *#124:* install commands are Homebrew on macOS, apt on Linux, Scoop on Windows.
+Bun is the one manual install (per-platform lines for Bun, ffmpeg and webp in the README). Then `bun install`, `bun run setup`, `bun run start`. **`bun run setup`** (TypeScript, run by Bun) checks Bun ≥ 1.4 (pinned in package.json `engines`), ffmpeg, ffprobe, cwebp and the platform's trash command, creates the data dir, prints one line per check with the install command for anything missing, exits non-zero while something required is missing, reports yt-dlp, ImageMagick and a trash command as optional, and does not start the app. The trash check is optional (deleting falls back to entry-only, above), not required. *#124:* install commands are Homebrew on macOS, apt on Linux, Scoop on Windows. *(Amended 2026-11-04, audit DOC-13: Windows uses **winget**, which ships with Windows, in both the README and `bun run setup`: `winget install Gyan.FFmpeg`, `winget install Google.Libwebp`.)*
 
 ### 8.4 First launch
 

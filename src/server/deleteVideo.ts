@@ -89,8 +89,8 @@ async function trashFiles(roots: Roots, copies: CopyRow[], trash: TrashCommand |
     else if (!root || !roots.isAvailable(c.root_id)) kept.push({ path, reason: "drive not mounted" });
     else if (!trash) kept.push({ path, reason: "no trash command" });
     else {
-      const { cmd, args } = trash.argv(path);
-      const r = await run(cmd, args, { timeout: 30_000 });
+      const { cmd, args, env } = trash.argv(path);
+      const r = await run(cmd, args, { timeout: 30_000, env });
       if (r.code === 0) (trashed.push(path), trashedIds.push(c.id));
       else kept.push({ path, reason: r.err.trim() || `trash exited ${r.code}` });
     }

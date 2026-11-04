@@ -10,6 +10,8 @@ export type Which = (name: string) => string | null;
 export interface Command {
   cmd: string;
   args: string[];
+  /** Extra environment for the child: how a path reaches a PowerShell script without being parsed as code. */
+  env?: Record<string, string>;
 }
 
 /** How to trash one file, and what to call it in messages. */
@@ -27,10 +29,23 @@ export const NO_TRASH_NOTICE =
   "No trash command was found on this machine, so deleting removes the library entry only and the files stay on disk. " +
   "Run `bun run setup` to see how to install one.";
 
-/** PowerShell: send one file to the Recycle Bin through Microsoft.VisualBasic (no extra install). The path is argv, not code. */
-const PS_RECYCLE =
-  "Add-Type -AssemblyName Microsoft.VisualBasic; " +
-  "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($args[0], 'OnlyErrorDialogs', 'SendToRecycleBin')";
+/** The environment variable that carries the path to PS_RECYCLE. */
+export const PS_PATH_ENV = "TUVA_TRASH_PATH";
+
+/**
+ * PowerShell: send one file to the Recycle Bin through Microsoft.VisualBasic (no extra install). Everything after
+ * `-Command` is script text, not `$args` (audit DB-5), so the path comes through the environment and is never parsed.
+ * A drive that is not a fixed disk (a network share, a USB stick) has no Recycle Bin, and `SendToRecycleBin` would
+ * delete outright there: refused, so the file is kept.
+ */
+export const PS_RECYCLE =
+  "$ErrorActionPreference = 'Stop'; " +
+  `$p = $env:${PS_PATH_ENV}; ` +
+  "if (-not $p) { [Console]::Error.WriteLine('no path given'); exit 2 }; " +
+  "if ($p.StartsWith('\\\\') -or ([System.IO.DriveInfo]::new([System.IO.Path]::GetPathRoot($p))).DriveType -ne 'Fixed') { [Console]::Error.WriteLine('this drive has no Recycle Bin'); exit 3 }; " +
+  "try { Add-Type -AssemblyName Microsoft.VisualBasic; " +
+  "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') } " +
+  "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }";
 
 export const defaultWhich: Which = (name) => (name.startsWith("/") ? (existsSync(name) ? name : null) : Bun.which(name));
 
@@ -48,7 +63,7 @@ export function trashCommandFor(platform: NodeJS.Platform, which: Which, overrid
   if (platform === "win32") {
     const ps = which("powershell") ?? which("pwsh");
     return ps
-      ? { label: "PowerShell Recycle Bin", argv: (p) => ({ cmd: ps, args: ["-NoProfile", "-NonInteractive", "-Command", PS_RECYCLE, p] }) }
+      ? { label: "PowerShell Recycle Bin", argv: (p) => ({ cmd: ps, args: ["-NoProfile", "-NonInteractive", "-Command", PS_RECYCLE], env: { [PS_PATH_ENV]: p } }) }
       : null;
   }
   const gio = which("gio");

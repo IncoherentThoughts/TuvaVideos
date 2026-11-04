@@ -1,6 +1,7 @@
 // Onboarding from source (sharing-spec §8.1–§8.3): platform shims, `bun run setup`'s checks, the grant script.
 import { describe, expect, test } from "bun:test";
-import { MAC_TRASH, NO_TRASH_NOTICE, openCommandFor, resolveTrash, trashCommandFor, type Which } from "../src/server/platform";
+import { MAC_TRASH, NO_TRASH_NOTICE, openCommandFor, PS_PATH_ENV, PS_RECYCLE, resolveTrash, trashCommandFor, type Which } from "../src/server/platform";
+import { run } from "../src/server/proc";
 import { exitCodeFor, formatLine, planSetup, versionAtLeast } from "../scripts/setup";
 import { grant, nextStep, parseGrantArgs, type ArchiveDeps } from "../scripts/grant-video-access";
 
@@ -17,13 +18,25 @@ describe("trash shim", () => {
     expect(trashCommandFor("freebsd", whichOf(["trash-put"]))!.label).toBe("trash-put");
     expect(trashCommandFor("linux", whichOf([]))).toBeNull();
   });
-  test("Windows calls PowerShell with the path as an argument, not inside the script", () => {
-    const c = trashCommandFor("win32", whichOf(["powershell"]))!.argv("C:\\v\\a'b.mp4");
+  test("Windows passes the path to PowerShell through the environment, never in the -Command text (audit DB-5)", () => {
+    const path = "C:\\v\\a'b $(x) `y; z.mp4";
+    const c = trashCommandFor("win32", whichOf(["powershell"]))!.argv(path);
     expect(c.cmd).toBe("/bin/powershell");
-    expect(c.args.at(-1)).toBe("C:\\v\\a'b.mp4");
-    expect(c.args.join(" ")).toContain("SendToRecycleBin");
+    // -Command must be last: everything after it would be script text, not $args
+    expect(c.args.at(-2)).toBe("-Command");
+    expect(c.args.at(-1)).toBe(PS_RECYCLE);
+    expect(c.args.join(" ")).not.toContain(path);
+    expect(c.env).toEqual({ [PS_PATH_ENV]: path });
+    expect(PS_RECYCLE).toContain(`$env:${PS_PATH_ENV}`);
+    expect(PS_RECYCLE).not.toContain("$args");
+    expect(PS_RECYCLE).toContain("SendToRecycleBin");
+    expect(PS_RECYCLE).toContain("DriveType -ne 'Fixed'"); // no Recycle Bin there: refused, not deleted outright
     expect(trashCommandFor("win32", whichOf(["pwsh"]))!.argv("x").cmd).toBe("/bin/pwsh");
     expect(trashCommandFor("win32", whichOf([]))).toBeNull();
+  });
+  test("a trash command's environment reaches the child (the Windows path's channel)", async () => {
+    const r = await run("/bin/sh", ["-c", `printf %s "$${PS_PATH_ENV}"`], { env: { [PS_PATH_ENV]: "C:\\a b'c.mp4" } });
+    expect(r.out).toBe("C:\\a b'c.mp4");
   });
   test("the TUVA_TRASH override wins on every platform; the macOS default means resolve per platform", () => {
     for (const p of ["darwin", "linux", "win32"] as const) expect(trashCommandFor(p, whichOf([]), "/t/fake")!.argv("f")).toEqual({ cmd: "/t/fake", args: ["f"] });

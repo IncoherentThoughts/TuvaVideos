@@ -11,6 +11,9 @@ import { createReconcile, reconcileBatch, planFor } from "../src/server/reconcil
 import { createSync, wipeShared } from "../src/server/sync";
 import type { SharedChanges, SharedChapterRow, SharedVideoRow } from "../src/shared/sharedRows";
 import { editAccess, schemaMismatchOf } from "../src/shared/session";
+import { SHARED_VIDEO_LOCAL_EDIT } from "../src/shared/share";
+import { confirmVideoArtists, patchVideo, setVideoArtists } from "../src/server/edit";
+import { addChapter, confirmAll, deleteChapter, patchChapter } from "../src/server/chapters/store";
 import { C, insertChapter, insertCopy, insertVideo, V } from "./helpers/seed";
 
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
@@ -349,6 +352,29 @@ describe("SYNC-7: a Sign out during a Sync (or a reconciliation) is not undone",
     expect(c.ok).toBe(false);
     expect(readSessionRecord(db)).toBeNull();
     expect(db.query("SELECT id FROM videos").all()).toEqual([{ id: L }]);
+  });
+});
+
+describe("SYNC-6: the companion's local edit routes refuse a Shared Video", () => {
+  test("Video header, Artists and Chapter routes answer 409; the Shared row is untouched", () => {
+    const db = fresh();
+    applyShared(db, batch([sv(S1, { title: "Server title" })], [sc(CH1, S1, 0, "A")]));
+    const refused = { ok: false as const, status: 409, error: SHARED_VIDEO_LOCAL_EDIT };
+    expect(patchVideo(db, S1, { title: "Local fork" })).toEqual(refused);
+    expect(setVideoArtists(db, S1, [])).toEqual(refused);
+    expect(confirmVideoArtists(db, S1)).toEqual(refused);
+    expect(addChapter(db, S1, { startS: 10, title: "x" })).toEqual(refused);
+    expect(patchChapter(db, CH1, { title: "x" })).toEqual(refused);
+    expect(deleteChapter(db, CH1)).toEqual(refused);
+    expect(confirmAll(db, S1)).toEqual(refused);
+    expect(db.query("SELECT title, updated_at FROM videos WHERE id = ?").get(S1)).toEqual({ title: "Server title", updated_at: T(10) });
+    expect(db.query("SELECT title FROM video_chapters WHERE id = ?").get(CH1)).toEqual({ title: "A" });
+  });
+  test("an Unshared Video is still edited locally", () => {
+    const db = fresh();
+    const L = insertVideo(db, { title: "Mine", content_hash: "m" });
+    expect(patchVideo(db, L, { title: "Mine 2" })).toEqual({ ok: true });
+    expect(addChapter(db, L, { startS: 10, title: "x" }).ok).toBe(true);
   });
 });
 

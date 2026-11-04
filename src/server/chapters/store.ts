@@ -13,6 +13,7 @@ import { reindexChapter } from "../search";
 import { songRef } from "../songs";
 import { newUuid } from "../localCopy/ids";
 import { nowIso, setChapterFavorite, songPointers } from "../localCopy/rows";
+import { SHARED_VIDEO_LOCAL_EDIT } from "../../shared/share";
 import { clampStart, formatStart } from "../../shared/timestamps";
 import type { ChapterCreate, ChapterDto, ChapterPatch } from "../../shared/types";
 
@@ -44,6 +45,9 @@ export function chapterDto(db: Db, c: ChapterRow): ChapterDto {
 
 const getRow = (db: Db, id: string) => db.query("SELECT * FROM chapter_full WHERE id = ?").get(id) as ChapterRow | null;
 const videoExists = (db: Db, id: string) => !!db.query("SELECT 1 FROM video_full WHERE id = ?").get(id);
+/** SYNC-6: a Shared Video's Chapters are written through the archive, never by these routes. */
+const shared = (db: Db, videoId: string) => !!db.query("SELECT 1 FROM video_local WHERE video_id = ? AND shared = 1").get(videoId);
+const sharedRefusal = () => bad(SHARED_VIDEO_LOCAL_EDIT, 409);
 
 export function listChapters(db: Db, videoId: string): ChapterDto[] | null {
   if (!videoExists(db, videoId)) return null;
@@ -89,6 +93,7 @@ function checkSong(db: Db, songId: unknown, versionId: unknown, current: { song_
 
 export function addChapter(db: Db, videoId: string, body: Partial<ChapterCreate> & Record<string, unknown>): Result<ChapterDto> {
   if (!videoExists(db, videoId)) return bad("no such video", 404);
+  if (shared(db, videoId)) return sharedRefusal();
   const start = checkStart(db, videoId, body.startS);
   if (!start.ok) return start;
   if (body.title !== undefined && typeof body.title !== "string") return bad("title must be a string");
@@ -121,6 +126,7 @@ export function rejectChapterAt(db: Db, videoId: string, source: string, startS:
 export function patchChapter(db: Db, id: string, body: ChapterPatch & Record<string, unknown>): Result<ChapterDto> {
   const cur = getRow(db, id);
   if (!cur) return bad("no such chapter", 404);
+  if (shared(db, cur.video_id)) return sharedRefusal();
   const cols = new Map<string, string | number | null>();
   let confirms = false;
   let moved: number | null = null;
@@ -164,6 +170,7 @@ export function patchChapter(db: Db, id: string, body: ChapterPatch & Record<str
 export function deleteChapter(db: Db, id: string): Result<{ deleted: true; tombstoned: boolean; videoId: string }> {
   const cur = getRow(db, id);
   if (!cur) return bad("no such chapter", 404);
+  if (shared(db, cur.video_id)) return sharedRefusal();
   db.transaction(() => {
     if (cur.suggested) rejectChapterAt(db, cur.video_id, cur.source, cur.start_s);
     db.prepare("DELETE FROM video_chapters WHERE id = ?").run(id);
@@ -184,12 +191,14 @@ export function rejectChapter(db: Db, id: string): Result<{ rejected: true; vide
 export function confirmChapter(db: Db, id: string): Result<ChapterDto> {
   const cur = getRow(db, id);
   if (!cur) return bad("no such chapter", 404);
+  if (shared(db, cur.video_id)) return sharedRefusal();
   if (cur.suggested) db.prepare("UPDATE video_chapters SET suggested = 0 WHERE id = ?").run(id);
   return ok(getChapter(db, id)!);
 }
 
 export function confirmAll(db: Db, videoId: string): Result<{ confirmed: number; chapters: ChapterDto[] }> {
   if (!videoExists(db, videoId)) return bad("no such video", 404);
+  if (shared(db, videoId)) return sharedRefusal();
   // counted first: `.changes` would also count the rows the updated_at trigger touches
   const n = (db.query("SELECT COUNT(*) n FROM video_chapters WHERE video_id = ? AND suggested = 1").get(videoId) as { n: number }).n;
   db.prepare("UPDATE video_chapters SET suggested = 0 WHERE video_id = ? AND suggested = 1").run(videoId);

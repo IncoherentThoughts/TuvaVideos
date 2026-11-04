@@ -7,6 +7,7 @@ import { useEffect, useState } from "preact/hooks";
 import { callWrite } from "../shared/archive";
 import type { ArchiveError, WireWord } from "../shared/archiveWire";
 import type { SessionResponse } from "../shared/session";
+import { SHARED_VIDEO_LOCAL_EDIT } from "../shared/share";
 import type { ChapterDto, VideoDto } from "../shared/types";
 import { afterWrite, archiveRpc, requestSync } from "./session";
 import type { RowInfo } from "../server/sharedWrites";
@@ -50,6 +51,8 @@ export interface WriteLinkOptions {
   reverses?: { id: string; fieldName: string | null }[];
   /** No "Saved · Undo" toast (matcher writes, copy back of many). */
   quiet?: boolean;
+  /** Internal: this is the retry after the companion said the Video is Shared now (SYNC-6). */
+  reread?: boolean;
 }
 
 async function sessionRecord(): Promise<SessionResponse["record"] | null> {
@@ -123,7 +126,18 @@ export async function writeLink<O extends LinkOp>(video: LinkVideo, op: O, opts:
   if (route.to === "refused") throw new WriteLinkError(route.line, "refused");
   if (route.to === "local") {
     const req = localRequest(video, op)!;
-    const res = await sendLocal<unknown>(req);
+    let res: unknown;
+    try {
+      res = await sendLocal<unknown>(req);
+    } catch (e) {
+      // SYNC-6: the Video became Shared since this page read it (a drain shared it): re-read it and write it the
+      // archive's way. Once only: a fresh read that still says Unshared is a real refusal.
+      if (!(e instanceof WriteLinkError) || e.message !== SHARED_VIDEO_LOCAL_EDIT || opts.reread) throw e;
+      const fresh = await api.video(video.id);
+      replaceVideo(fresh);
+      if (!fresh.shared) throw e;
+      return writeLink({ ...video, shared: true, updatedAt: fresh.updatedAt }, op, { ...opts, reread: true });
+    }
     if (op.kind === "chapter.add" || op.kind === "chapter.update" || op.kind === "chapter.confirm") return res as LinkResult<O>;
     if (op.kind.startsWith("chapter")) return null as LinkResult<O>;
     replaceVideo(res as VideoDto);
@@ -142,6 +156,8 @@ export async function writeLink<O extends LinkOp>(video: LinkVideo, op: O, opts:
   if (!out.ok) {
     const line = writeErrorLine(out.error, out);
     if (out.error.word === "conflict" && !opts.quietConflict) void raiseConflict({ video, op, detail: out.error.detail });
+    // §2.5 (SYNC-12): a permission error re-reads the grant at once; the Sync's whoami rewrites the record.
+    if (out.error.word === "forbidden") void requestSync().catch(() => null);
     throw new WriteLinkError(line, out.error.word, out.error);
   }
   const applied = await fetch("/api/cache/apply", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(out.value) });
@@ -371,7 +387,10 @@ export async function writeRow(op: RowOp, opts: { stamp?: string | null } = {}):
     throw new WriteLinkError(spec.refused, "refused");
   }
   const out = await callWrite(rpc, spec.fn, spec.args as never);
-  if (!out.ok) throw new WriteLinkError(writeErrorLine(out.error, out), out.error.word, out.error);
+  if (!out.ok) {
+    if (out.error.word === "forbidden") void requestSync().catch(() => null); // §2.5 (SYNC-12)
+    throw new WriteLinkError(writeErrorLine(out.error, out), out.error.word, out.error);
+  }
   const applied = await fetch("/api/cache/apply", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(out.value) });
   if (!applied.ok) throw new WriteLinkError(`saved to the archive, but this machine could not take the rows (${applied.status}); Sync to see it`, "unknown");
   void afterWrite();

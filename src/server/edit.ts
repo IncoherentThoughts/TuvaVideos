@@ -6,6 +6,7 @@ import type { Db } from "./db";
 import { fillLatinTitles, latinFor } from "./latin";
 import { reindexVideo } from "./search";
 import { TYPES } from "../shared/filters";
+import { SHARED_VIDEO_LOCAL_EDIT } from "../shared/share";
 import type { VideoPatch } from "../shared/types";
 import { newUuid } from "./localCopy/ids";
 import { artistPointer, nowIso, songPointers } from "./localCopy/rows";
@@ -15,7 +16,15 @@ const bad = (error: string, status = 400): { ok: false; status: number; error: s
 
 const videoExists = (db: Db, id: string) => !!db.query("SELECT 1 FROM video_full WHERE id = ?").get(id);
 
+/**
+ * SYNC-6: these routes are for Unshared and Standalone Videos only. A Shared Video's link data is the archive's; a
+ * local edit would fork it silently and stamp it ahead of the server (a tab holding a stale `shared: false`).
+ */
+export const isSharedVideo = (db: Db, id: string) => !!db.query("SELECT 1 FROM video_local WHERE video_id = ? AND shared = 1").get(id);
+export const sharedRefusal = () => bad(SHARED_VIDEO_LOCAL_EDIT, 409);
+
 export function patchVideo(db: Db, id: string, body: VideoPatch & Record<string, unknown>): EditResult {
+  if (isSharedVideo(db, id)) return sharedRefusal();
   const cur = db.query("SELECT id, title, type, song_id, version_id FROM video_full WHERE id = ?").get(id) as
     | { id: string; title: string; type: string; song_id: string | null; version_id: string | null }
     | null;
@@ -105,6 +114,7 @@ export function writeArtistLinks(db: Db, videoId: string, ids: string[], suggest
  */
 export function setVideoArtists(db: Db, videoId: string, ids: unknown): EditResult {
   if (!videoExists(db, videoId)) return bad("no such video", 404);
+  if (isSharedVideo(db, videoId)) return sharedRefusal();
   if (!Array.isArray(ids) || !ids.every((x) => typeof x === "string" && x)) return bad("artistIds must be an array of artist ids");
   const order = [...new Set(ids as string[])];
   for (const a of order) if (!db.query("SELECT 1 FROM artist_all WHERE id = ?").get(a)) return bad(`no such artist: ${a}`, 404);
@@ -122,12 +132,14 @@ export function setVideoArtists(db: Db, videoId: string, ids: unknown): EditResu
 /** Confirms every Suggested Artist of a Video (they keep their order after the confirmed ones). */
 export function confirmVideoArtists(db: Db, videoId: string): EditResult {
   if (!videoExists(db, videoId)) return bad("no such video", 404);
+  if (isSharedVideo(db, videoId)) return sharedRefusal();
   db.prepare("UPDATE video_artists SET suggested = 0 WHERE video_id = ? AND suggested = 1").run(videoId);
   return { ok: true };
 }
 
 /** Removes one Artist from a Video; a Suggested one is tombstoned so the matcher does not offer it again. */
 export function rejectVideoArtist(db: Db, videoId: string, artistId: string): EditResult {
+  if (isSharedVideo(db, videoId)) return sharedRefusal();
   const row = db.query("SELECT link_id, suggested FROM video_artist_full WHERE video_id = ? AND artist_id = ?").get(videoId, artistId) as { link_id: string; suggested: number } | null;
   if (!row) return bad("that Artist is not on this Video", 404);
   db.transaction(() => {

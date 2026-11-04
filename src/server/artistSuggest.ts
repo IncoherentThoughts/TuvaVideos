@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Db } from "./db";
+import { videoFilter, type VideoScope } from "./videoFilter";
 import { writeArtistLinks } from "./edit";
 import { matchArtists, type ArtistCandidate } from "../shared/artistMatch";
 
@@ -28,7 +29,7 @@ function uploaderOf(cacheDir: string | undefined, youtubeId: string | null): str
   }
 }
 
-export function suggestArtists(db: Db, opts: { videoId?: string; cacheDir?: string; dryRun?: boolean } = {}): ArtistSuggestStats {
+export function suggestArtists(db: Db, opts: VideoScope & { cacheDir?: string; dryRun?: boolean } = {}): ArtistSuggestStats {
   const stats: ArtistSuggestStats = { videos: 0, suggested: 0, cleared: 0, skippedCurated: 0 };
   const candidates: ArtistCandidate<string>[] = (db.query("SELECT id, name, name_latin FROM artist_all").all() as { id: string; name: string; name_latin: string | null }[]).map((a) => ({
     id: a.id,
@@ -36,8 +37,8 @@ export function suggestArtists(db: Db, opts: { videoId?: string; cacheDir?: stri
   }));
   if (!candidates.length) return stats;
   const videos = db
-    .query(`SELECT id, youtube_id, title FROM video_full WHERE shared = 0 ${opts.videoId != null ? "AND id = ?" : ""} ORDER BY created_at, id`)
-    .all(...(opts.videoId != null ? [opts.videoId] : [])) as { id: string; youtube_id: string | null; title: string }[];
+    .query(`SELECT id, youtube_id, title FROM video_full WHERE shared = 0 ${videoFilter("id", opts).sql} ORDER BY created_at, id`)
+    .all(...videoFilter("id", opts).params) as { id: string; youtube_id: string | null; title: string }[];
   const curated = new Set((db.query("SELECT DISTINCT video_id FROM video_artists WHERE suggested = 0").all() as { video_id: string }[]).map((r) => r.video_id));
   const rejected = new Map<string, Set<string>>();
   for (const r of db.query("SELECT video_id, COALESCE(artist_id, proposed_artist_id) AS artist_id FROM video_artist_rejections").all() as { video_id: string; artist_id: string }[])

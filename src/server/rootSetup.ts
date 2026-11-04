@@ -1,12 +1,12 @@
 // The Root field of first launch (docs/sharing-spec.md §8.4): an absolute path typed by hand (`~` expanded), checked
 // here before the `root` row is inserted, and which onboarding surface the grid shows. The decisions are pure; the
 // filesystem check takes its reads as an argument so tests can drive every error.
-import { opendir, stat } from "node:fs/promises";
+import { opendir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 import type { MachineMode } from "./localCopy/meta";
 
 /** The inline errors of §8.4, plus one for a path that is not absolute. */
-export type RootPathError = "Not found" | "Not a folder" | "Can't read it" | "Enter the folder's full path";
+export type RootPathError = "Not found" | "Not a folder" | "Can't read it" | "Enter the folder's full path" | "Choose a folder, not the whole disk";
 
 export type RootPathResult = { ok: true; path: string } | { ok: false; error: RootPathError };
 
@@ -38,6 +38,8 @@ export interface RootFs {
   isDirectory(path: string): Promise<boolean>;
   /** Opens the directory for listing; throws with the fs `code` when it cannot. */
   canList(path: string): Promise<void>;
+  /** The canonical spelling (symlinks resolved, the case as on disk); absent in tests that fake the reads. */
+  realpath?(path: string): Promise<string>;
 }
 
 const realFs: RootFs = {
@@ -51,19 +53,27 @@ const realFs: RootFs = {
       await d.close().catch(() => {});
     }
   },
+  realpath: (p) => realpath(p),
 };
 
-/** Exists, is a directory, readable: the companion's check before the `root` row is inserted. */
+/**
+ * Exists, is a directory, readable: the companion's check before the `root` row is inserted. The path stored is the
+ * canonical one (audit DB-13): a Root typed through a symlink or in the wrong case would otherwise reject the paths a
+ * file picker hands back (relocate compares paths). The filesystem root is refused.
+ */
 export async function checkRootPath(input: string, home: string, fs: RootFs = realFs): Promise<RootPathResult> {
   const parsed = parseRootInput(input, home);
   if (!parsed.ok) return parsed;
+  let path = parsed.path;
   try {
-    if (!(await fs.isDirectory(parsed.path))) return { ok: false, error: "Not a folder" };
-    await fs.canList(parsed.path);
+    if (!(await fs.isDirectory(path))) return { ok: false, error: "Not a folder" };
+    await fs.canList(path);
+    if (fs.realpath) path = await fs.realpath(path);
   } catch (e) {
     return { ok: false, error: rootErrorFor((e as { code?: string }).code) };
   }
-  return parsed;
+  if (path === "/" || /^[\\/]+$/.test(path)) return { ok: false, error: "Choose a folder, not the whole disk" };
+  return { ok: true, path };
 }
 
 /**

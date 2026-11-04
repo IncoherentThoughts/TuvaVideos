@@ -3,6 +3,7 @@
 // Latin name field (never `english_name`, which is a translation). Otherwise `table`. A title with no Cyrillic stays
 // NULL. `manual` is never touched.
 import type { Db } from "./db";
+import { scoped, videoFilter, type VideoScope } from "./videoFilter";
 import { allSongNames, latinSpelling, type SongNameSource } from "../shared/songNames";
 import { foldText } from "../shared/fold";
 import { hasCyrillic, transliterate } from "../shared/translit";
@@ -58,7 +59,7 @@ type Cur = { id: string; text: string; latin: string | null; source: string | nu
  * one Video (after its title was edited), `chapterId` to one Chapter; Chapters and Artists are skipped then.
  * Shared Videos and Chapters are left alone: their Latin titles are Shared (§4.3), computed by whoever wrote them.
  */
-export function fillLatinTitles(db: Db, opts: { videoId?: string; chapterId?: string } = {}): LatinFillStats {
+export function fillLatinTitles(db: Db, opts: VideoScope & { chapterId?: string } = {}): LatinFillStats {
   const stats: LatinFillStats = { videos: 0, chapters: 0, artists: 0, archive: 0, table: 0, cleared: 0 };
   const songs = loadSongs(db);
   const apply = (table: "videos" | "video_chapters" | "artist", cur: Cur) => {
@@ -82,10 +83,10 @@ export function fillLatinTitles(db: Db, opts: { videoId?: string; chapterId?: st
         apply("video_chapters", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
       return;
     }
-    const vq = opts.videoId != null ? `${VQ} AND id = ?` : VQ;
-    for (const r of db.query(vq).all(...(opts.videoId != null ? [opts.videoId] : [])) as any[])
+    const vq = `${VQ} ${videoFilter("id", opts).sql}`;
+    for (const r of db.query(vq).all(...videoFilter("id", opts).params) as any[])
       apply("videos", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
-    if (opts.videoId != null) return;
+    if (scoped(opts)) return;
     for (const r of db.query(CH).all() as any[])
       apply("video_chapters", { id: r.id, text: r.title, latin: r.title_latin, source: r.title_latin_source, song: r.song_id });
     stats.artists += fillArtistLatin(db, undefined, stats);

@@ -18,6 +18,13 @@ export interface ParsedName {
 }
 
 const YT_RE = /\[([A-Za-z0-9_-]{11})\]$/;
+/**
+ * 11-character bracket tags that are not YouTube ids (audit DB-9): a resolution (`[1080p60_HDR]`), a trailing year
+ * (`[Khoomei2019]`), or two or more words joined by `-`/`_` (`[Ustuu-Huree]`). A real id is random base64, so it looks
+ * like none of these except by rare chance; such a file is identified by its bytes instead.
+ */
+const NOT_YT = [/^\d{3,4}[pi]/i, /(?:19|20)\d\d$/, /^(?:[A-Z]?[a-z]{2,}|[A-Z]{3,})(?:[-_](?:[A-Z]?[a-z]{2,}|[A-Z]{3,}))+$/];
+export const looksLikeYoutubeId = (token: string) => !NOT_YT.some((re) => re.test(token));
 // yt-dlp's Instagram downloads end `[instagram-<shortcode>]`; untitled posts are named `Instagram video #<shortcode>`.
 // Not an identity (those Videos are known by content hash), but recorded as provenance and used to match a re-download (ADR 0005).
 const IG_RE = /\s*\[instagram-([A-Za-z0-9_-]+)\]$/;
@@ -49,7 +56,7 @@ export function parseFilename(name: string): ParsedName {
   const rt = stem.match(RT_RE);
   if (rt) return { ...base, skip: null, rutubeId: rt[1]!.toLowerCase(), title: stem.slice(0, rt.index).trim() || stem };
   const m = stem.match(YT_RE);
-  if (!m) return { ...base, skip: null };
+  if (!m || !looksLikeYoutubeId(m[1]!)) return { ...base, skip: null };
   return { ...base, skip: null, youtubeId: m[1]!, title: stem.slice(0, m.index).trim() || stem };
 }
 

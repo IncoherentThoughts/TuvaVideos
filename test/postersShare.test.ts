@@ -379,7 +379,8 @@ describe("the pending_share queue and its drain (§6.6, §4.3)", () => {
       },
       async insertVideo(id, p) {
         calls.push(`insert ${id} song=${p.proposed_song_id} version=${p.proposed_version_id} artists=${JSON.stringify(p.artists)} ch=${p.chapters?.[0]?.proposed_song_id ?? "-"}`);
-        return ok({ videos: [video(id, { title: p.title, proposed_song_id: p.proposed_song_id ?? null, proposed_version_id: p.proposed_version_id ?? null, updated_at: T(1) })] });
+        // The archive's row carries the insert's identity keys (it is the same Video under the same id).
+        return ok({ videos: [video(id, { title: p.title, youtube_id: p.youtube_id ?? null, content_hash: p.content_hash ?? null, proposed_song_id: p.proposed_song_id ?? null, proposed_version_id: p.proposed_version_id ?? null, updated_at: T(1) })] });
       },
       apply: async (r) => {
         applyShared(db, r as SharedChanges);

@@ -72,3 +72,98 @@ describe("SYNC-2: an apply never restamps a row with this machine's clock", () =
     expect(db.query("SELECT COUNT(*) AS n FROM meta WHERE key = 'applying_shared'").get()).toEqual({ n: 0 });
   });
 });
+
+describe("SYNC-1: legacy uuids are not identity across machines", () => {
+  const OTHER = "aaaaaaaa-0000-4000-8000-000000000099";
+
+  test("another machine's Video #1 joins its real Shared Video, not the owner's Video #1", () => {
+    const db = fresh();
+    const L = insertVideo(db, { id: 1, title: "Collaborator clip", youtube_id: "COLLAB_YT" });
+    insertCopy(db, { video_id: L, root_id: 1, rel_path: "collab [COLLAB_YT].mp4" });
+    const b = batch([sv(V(1), { youtube_id: "OWNER_YT", content_hash: null, title: "Owner clip" }), sv(OTHER, { youtube_id: "COLLAB_YT", content_hash: null, title: "Collaborator clip (shared)" })]);
+    expect(planFor(db, b).matches).toEqual([{ localId: V(1), sharedId: OTHER, by: "youtube_id" }]);
+    db.transaction(() => {
+      reconcileBatch(db, b);
+      applyShared(db, b);
+    })();
+    const copy = db.query("SELECT c.rel_path, v.id, v.youtube_id FROM copy c JOIN videos v ON v.id = c.video_id").get();
+    expect(copy).toEqual({ rel_path: "collab [COLLAB_YT].mp4", id: OTHER, youtube_id: "COLLAB_YT" });
+    expect(db.query("SELECT youtube_id, title FROM videos WHERE id = ?").get(V(1))).toEqual({ youtube_id: "OWNER_YT", title: "Owner clip" });
+  });
+
+  test("an unknown local Video under a Shared id moves to a fresh id instead of being overwritten", () => {
+    const db = fresh();
+    const L = insertVideo(db, { id: 1, title: "Mine only", content_hash: "mine" });
+    insertCopy(db, { video_id: L, root_id: 1, rel_path: "mine.mp4" });
+    db.query("UPDATE video_local SET favorited_at = '2026-09-01T00:00:00Z' WHERE video_id = ?").run(L);
+    const b = batch([sv(V(1), { content_hash: "owner", title: "Owner clip" })]);
+    db.transaction(() => {
+      reconcileBatch(db, b);
+      applyShared(db, b);
+    })();
+    const mine = db.query("SELECT v.id, v.title, v.content_hash, l.favorited_at, l.shared FROM copy c JOIN videos v ON v.id = c.video_id JOIN video_local l ON l.video_id = v.id").get() as any;
+    expect(mine.id).not.toBe(V(1));
+    expect(mine).toMatchObject({ title: "Mine only", content_hash: "mine", favorited_at: "2026-09-01T00:00:00Z", shared: 0 });
+    expect(db.query("SELECT title, content_hash FROM videos WHERE id = ?").get(V(1))).toEqual({ title: "Owner clip", content_hash: "owner" });
+  });
+
+  test("the same applies to a cache apply, without a reconcile step", () => {
+    const db = fresh();
+    insertVideo(db, { id: 1, title: "Mine only", content_hash: "mine", updated_at: "2020-01-01T00:00:00.000Z" });
+    applyShared(db, batch([sv(V(1), { content_hash: "owner", title: "Owner clip" })]));
+    expect(db.query("SELECT title FROM videos WHERE id = ?").get(V(1))).toEqual({ title: "Owner clip" });
+    expect(db.query("SELECT COUNT(*) AS n FROM videos WHERE title = 'Mine only' AND content_hash = 'mine'").get()).toEqual({ n: 1 });
+  });
+
+  test("a Shared Chapter whose id an Unshared Video's Chapter holds no longer steals it", () => {
+    const db = fresh();
+    const L = insertVideo(db, { title: "Unknown to the Shared set", content_hash: "local-only" });
+    insertChapter(db, { id: 5, video_id: L, start_s: 12, title: "My local chapter", favorited_at: "2026-09-01T00:00:00Z" });
+    const b = batch([sv(S1, { content_hash: "owner-hash" })], [sc(C(5), S1, 99, "Owner chapter")]);
+    db.transaction(() => {
+      reconcileBatch(db, b);
+      applyShared(db, b);
+    })();
+    expect(db.query("SELECT video_id, title FROM video_chapters WHERE id = ?").get(C(5))).toEqual({ video_id: S1, title: "Owner chapter" });
+    const mine = db.query("SELECT c.id, c.title, cl.favorited_at FROM video_chapters c LEFT JOIN chapter_local cl ON cl.chapter_id = c.id WHERE c.video_id = ?").all(L) as any[];
+    expect(mine.length).toBe(1);
+    expect(mine[0].id).not.toBe(C(5));
+    expect(mine[0]).toMatchObject({ title: "My local chapter", favorited_at: "2026-09-01T00:00:00Z" });
+  });
+
+  test("the owner's machine (same id, same identity) still matches by id and keeps its id", () => {
+    const db = fresh();
+    const L = insertVideo(db, { id: 1, title: "Owner clip", youtube_id: "OWNER_YT" });
+    insertChapter(db, { id: 5, video_id: L, start_s: 12, title: "Intro", favorited_at: "2026-09-01T00:00:00Z" });
+    const b = batch([sv(V(1), { youtube_id: "OWNER_YT", content_hash: null, title: "Owner clip" })], [sc(C(5), V(1), 12, "Intro")]);
+    expect(planFor(db, b).matches).toEqual([{ localId: V(1), sharedId: V(1), by: "id" }]);
+    db.transaction(() => {
+      reconcileBatch(db, b);
+      applyShared(db, b);
+    })();
+    expect(db.query("SELECT id FROM videos").all()).toEqual([{ id: V(1) }]);
+    expect(db.query("SELECT chapter_id, favorited_at FROM chapter_local").all()).toEqual([{ chapter_id: C(5), favorited_at: "2026-09-01T00:00:00Z" }]);
+  });
+
+  test("a drained insert coming back under its own id stays the same row", () => {
+    const db = fresh();
+    const id = insertVideo(db, { title: "Scanned", youtube_id: "YT9", pending_share: 1 });
+    const ch = insertChapter(db, { video_id: id, start_s: 3, title: "One" });
+    db.query("UPDATE videos SET updated_at = '2026-10-01T00:00:00.000Z' WHERE id = ?").run(id);
+    applyShared(db, batch([sv(id, { youtube_id: "YT9", content_hash: null, title: "Scanned" })], [sc(ch, id, 3, "One")]));
+    expect(db.query("SELECT id FROM videos").all()).toEqual([{ id }]);
+    expect(db.query("SELECT id FROM video_chapters").all()).toEqual([{ id: ch }]);
+  });
+
+  test("a Local Artist whose legacy id a differently named Proposed Artist brings moves away, with its links", () => {
+    const db = fresh();
+    const LA1 = "61727400-0000-8000-8000-000000000003";
+    db.query("INSERT INTO local_artist (id, name, created_at) VALUES (?, 'Collab artist', '2026-01-01')").run(LA1);
+    const L = insertVideo(db, { title: "Mine", content_hash: "mine" });
+    db.query("INSERT INTO video_artists (id, video_id, artist_id, position, suggested, updated_at) VALUES ('va-1', ?, ?, 0, 0, '2026-01-01')").run(L, LA1);
+    applyShared(db, { tables: { video_proposed_artists: [{ id: LA1, name: "Owner artist", created_at: T(1), updated_at: T(10) } as never] } });
+    expect(db.query("SELECT kind, name FROM artist_all WHERE id = ?").all(LA1)).toEqual([{ kind: "proposed", name: "Owner artist" }]);
+    const link = db.query("SELECT a.name, a.kind FROM video_artists va JOIN artist_all a ON a.id = va.artist_id WHERE va.video_id = ?").get(L);
+    expect(link).toEqual({ name: "Collab artist", kind: "local" });
+  });
+});

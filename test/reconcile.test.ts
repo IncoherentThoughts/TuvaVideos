@@ -39,7 +39,9 @@ describe("the matcher (pure)", () => {
     expect(matchVideo(vid("L", { contentHash: "h2", instagramId: "nope" }), idx)).toMatchObject({ shared: { id: "S2" }, by: "content_hash" });
     expect(matchVideo(vid("L", { contentHash: "other", instagramId: "ig2" }), idx)).toMatchObject({ shared: { id: "S2" }, by: "instagram_id" });
     expect(matchVideo(vid("L", { contentHash: "other", rutubeId: "rt3" }), idx)).toMatchObject({ shared: { id: "S3" }, by: "rutube_id" });
-    expect(matchVideo(vid("S4", { contentHash: "other" }), idx)).toMatchObject({ shared: { id: "S4" }, by: "id" });
+    expect(matchVideo(vid("S4", { contentHash: "h4" }), idx)).toMatchObject({ shared: { id: "S4" }, by: "id" });
+    // SYNC-1: the same uuid alone is not identity (legacy ids repeat across machines)
+    expect(matchVideo(vid("S4", { contentHash: "other" }), idx)).toBeNull();
     expect(matchVideo(vid("L", { contentHash: "unknown" }), idx)).toBeNull();
   });
 });

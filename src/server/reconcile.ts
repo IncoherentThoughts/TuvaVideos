@@ -28,6 +28,7 @@ import { schemaGateLine, type SessionRecord } from "../shared/session";
 import type { SharedChanges } from "../shared/sharedRows";
 import type { Db } from "./db";
 import { applyShared } from "./localCopy/apply";
+import { freeCollidingIds, RECONCILED_HASH_PREFIX, sameIdentity, videoRefs } from "./localCopy/rekey";
 import { runArchiveFollowUps } from "./localCopy/followUps";
 import { getMeta, loseEditorGrant, readSessionRecord, setMeta, SHARED_SCHEMA, setPendingShare, shelve, writeSessionRecord, type ShelvedPayload } from "./localCopy/meta";
 import { SYNCED_SCHEMA_KEY, wipeShared } from "./sync";
@@ -86,13 +87,19 @@ export function sharedIndex(shared: ReconcileVideo[]): Map<MatchKey, Map<string,
   return idx;
 }
 
-/** The Shared Video a local Video reconciles to, and by which key; null for an unknown Video. */
+/**
+ * The Shared Video a local Video reconciles to, and by which key; null for an unknown Video. The same uuid counts only
+ * when the identity keys agree too (SYNC-1): migration 0015's legacy uuids are the same on every machine, so another
+ * machine's Video 1 is not the owner's Video 1 unless its YouTube id or content hash says so.
+ */
 export function matchVideo(local: ReconcileVideo, idx: Map<MatchKey, Map<string, ReconcileVideo>>): { shared: ReconcileVideo; by: MatchKey } | null {
   for (const k of MATCH_ORDER) {
     const v = keyOf(local, k);
     if (v == null || v === "") continue;
     const s = idx.get(k)!.get(v);
-    if (s) return { shared: s, by: k };
+    if (!s) continue;
+    if (k === "id" && !sameIdentity({ youtube_id: local.youtubeId, content_hash: local.contentHash }, { youtube_id: s.youtubeId, content_hash: s.contentHash })) continue;
+    return { shared: s, by: k };
   }
   return null;
 }
@@ -296,19 +303,6 @@ const EPOCH = "1970-01-01T00:00:00.000Z";
 /** Link data replaced wholesale by the Shared Video's (shelved first). */
 const LINK_CHILDREN = ["video_chapters", "video_artists", "video_chapter_rejections", "video_artist_rejections"];
 
-/** Every (table, column) that points at `videos(id)`, the link children excepted. */
-function videoRefs(db: Db): { table: string; column: string }[] {
-  const tables = (db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((r) => r.name);
-  const out: { table: string; column: string }[] = [];
-  for (const t of tables) {
-    if (LINK_CHILDREN.includes(t)) continue;
-    for (const fk of db.query(`SELECT "table" AS parent, "from" AS col FROM pragma_foreign_key_list(?)`).all(t) as { parent: string; col: string }[]) {
-      if (fk.parent === "videos") out.push({ table: t, column: fk.col });
-    }
-  }
-  return out;
-}
-
 export interface ApplyPlanOptions {
   /** Queue unknown Videos to be shared (a Video Editor at sign-in). */
   queueUnknown?: boolean;
@@ -338,11 +332,11 @@ export function applyPlan(db: Db, plan: ReconcilePlan, opts: ApplyPlanOptions = 
   }
   db.exec("PRAGMA defer_foreign_keys = ON");
   const at = opts.at ?? new Date().toISOString();
-  const refs = videoRefs(db);
+  const refs = videoRefs(db, LINK_CHILDREN);
   const goneChapters: string[] = [];
   // Free the unique keys first: two local Videos may hold the keys of one Shared Video between them.
-  const free = db.prepare("UPDATE videos SET youtube_id = NULL, content_hash = 'reconcile:' || id WHERE id = ?");
-  for (const m of plan.matches) free.run(m.localId);
+  const free = db.prepare("UPDATE videos SET youtube_id = NULL, content_hash = ? || id WHERE id = ?");
+  for (const m of plan.matches) free.run(RECONCILED_HASH_PREFIX, m.localId);
   const groups = new Map<string, string[]>();
   for (const m of plan.matches) (groups.get(m.sharedId) ?? groups.set(m.sharedId, []).get(m.sharedId)!).push(m.localId);
   const exists = db.prepare("SELECT 1 FROM videos WHERE id = ?");
@@ -391,6 +385,7 @@ export function applyPlan(db: Db, plan: ReconcilePlan, opts: ApplyPlanOptions = 
  * Sync's transaction and before its `applyShared`. Nothing is queued; nothing happens when nothing matches.
  */
 export function reconcileBatch(db: Db, batch: SharedChanges): ReconcileCounts {
+  freeCollidingIds(db, batch); // SYNC-1: a row holding a Shared id it is not moves out of the way first
   const plan = planFor(db, batch);
   if (!plan.matches.length) return planCounts({ ...plan, unknown: [] }, false);
   return applyPlan(db, { ...plan, unknown: [] }).counts;
@@ -492,6 +487,7 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
         done = db.transaction(() => {
           // A Member's unknown Videos stay Unshared, queued ones from an earlier editor session included (§2.5).
           if (!editor) loseEditorGrant(db);
+          freeCollidingIds(db, p.batch); // SYNC-1, as at every Sync
           const plan = planFor(db, p.batch);
           // Read before the apply: the local values and the local_* names they point at are still where they were.
           diffs = planDiffs(db, plan, p.batch);

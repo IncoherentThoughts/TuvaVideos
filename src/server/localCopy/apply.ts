@@ -18,13 +18,14 @@ import { fillArtistLatin } from "../latin";
 import { indexArtist, indexSong, indexVersion, rebuildSearchIndex, reindexChapter, reindexVideo } from "../search";
 import type { ApplySharedResult, ArchiveIds, ReplaceWholeTable, SharedChanges, SharedTombstoneRow } from "../../shared/sharedRows";
 import { SHARED_SCHEMA } from "./meta";
+import { freeCollidingIds } from "./rekey";
 import {
   mapAlbum, mapAlbumCredits, mapArtist, mapPerformance, mapSong, mapTrack, mapTrackArtists, mapVersion, isArchiveTestSong, type Row,
 } from "./archiveRows";
 
 /** Above this many changed rows the search index is rebuilt once instead of row by row (§6.2). */
 export const REBUILD_THRESHOLD = 200;
-/** `meta` key held while an apply runs: the touch triggers skip their stamp (migration 0020). */
+/** `meta` key held while an apply runs: the touch triggers skip their stamp (migration 0019). */
 export const APPLYING_KEY = "applying_shared";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -199,7 +200,7 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   };
 
   db.transaction(() => {
-    // The touch triggers stay quiet while this row is held (migration 0020): every stamp the apply writes is the
+    // The touch triggers stay quiet while this row is held (migration 0019): every stamp the apply writes is the
     // archive's, including the unchanged stamp of a re-applied child (SYNC-2). Written and removed inside this
     // transaction, so a failure rolls it back with everything else.
     db.query("INSERT INTO meta (key, value) VALUES (?, '1') ON CONFLICT(key) DO NOTHING").run(APPLYING_KEY);
@@ -211,6 +212,9 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   })();
 
   function applyRows() {
+    // ---- this machine's rows that hold an incoming Shared id but are another Video, Chapter or Artist (SYNC-1)
+    freeCollidingIds(db, batch);
+
     // ---- the archive's rows (no children rule: credits are replaced per Album / Track)
     for (const a of changes.artists ?? []) if (put("archive_artist", mapArtist(a))) changed.artists.add(String(a.id));
     const testSongs = new Set<string>();

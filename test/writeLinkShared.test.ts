@@ -29,6 +29,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   if (method === "PATCH" && url === `/api/videos/${VID}`) return json({ error: SHARED_VIDEO_LOCAL_EDIT }, 409);
   if (url === `/api/videos/${VID}`) return json(video(sharedNow));
   if (url === "/api/cache/apply") return json({});
+  if (method === "POST" && url === `/api/videos/${VID}/chapters`) return json({ id: "ch-new", videoId: VID, startS: 12, title: "Kept", favoritedAt: null }, 201);
+  if (method === "POST" && url === "/api/chapters/ch-new/favorite") return json({ id: "ch-new", favorite: true, favoritedAt: "2026-11-04T00:00:00.000Z" });
   return json({ error: "unexpected" }, 404);
 }) as typeof fetch;
 afterAll(() => {
@@ -36,6 +38,7 @@ afterAll(() => {
 });
 
 const { writeLink } = await import("../src/web/writeLink");
+const { copyBackOp } = await import("../src/web/writeOps");
 
 beforeEach(() => {
   calls.rpc = [];
@@ -56,6 +59,22 @@ describe("SYNC-6: a page holding a stale `shared: false` Video", () => {
     sharedNow = false;
     await expect(writeLink(video(false) as never, { kind: "video.update", patch: { title: "New" } }, { quiet: true })).rejects.toThrow(SHARED_VIDEO_LOCAL_EDIT);
     expect(calls.rpc).toEqual([]);
+  });
+});
+
+describe("SYNC-11: copying back a starred Shelved Chapter re-stars it", () => {
+  test("copyBackOp carries the star and writeLink puts it on the new Chapter", async () => {
+    const op = copyBackOp({ kind: "chapter", payload: { startS: 12, title: "Kept", songId: null, versionId: null, favoritedAt: "2026-09-01T00:00:00Z" } });
+    expect(op).toMatchObject({ kind: "chapter.add", favoritedAt: "2026-09-01T00:00:00Z" });
+    const c = await writeLink(video(false) as never, op!, { quiet: true });
+    expect(calls.fetch).toContain("POST /api/chapters/ch-new/favorite");
+    expect((c as { favoritedAt: string | null }).favoritedAt).not.toBeNull();
+  });
+  test("an unstarred Shelved Chapter is not starred", async () => {
+    const op = copyBackOp({ kind: "chapter", payload: { startS: 12, title: "Kept", favoritedAt: null } });
+    expect(op && "favoritedAt" in op).toBe(false);
+    await writeLink(video(false) as never, op!, { quiet: true });
+    expect(calls.fetch.some((f) => f.includes("/favorite"))).toBe(false);
   });
 });
 

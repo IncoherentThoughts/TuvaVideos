@@ -122,6 +122,18 @@ async function readBack(video: LinkVideo, op: LinkOp, minted?: string): Promise<
 
 /** The one write of link data (§4.9). Throws `WriteLinkError` with the human line. */
 export async function writeLink<O extends LinkOp>(video: LinkVideo, op: O, opts: WriteLinkOptions = {}): Promise<LinkResult<O>> {
+  const result = await writeLinkOnce(video, op, opts);
+  // SYNC-11: a copied-back Shelved Chapter is starred again (its star is this machine's, `chapter_local`).
+  if (op.kind === "chapter.add" && op.favoritedAt && result && typeof (result as ChapterDto).id === "string") {
+    const id = (result as ChapterDto).id;
+    const r = await fetch(`/api/chapters/${id}/favorite`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ favorite: true }) });
+    if (!r.ok) throw new WriteLinkError("The Chapter was copied back, but its star could not be put back; star it again", "local");
+    return { ...(result as ChapterDto), favoritedAt: ((await r.json()) as { favoritedAt?: string | null }).favoritedAt ?? op.favoritedAt } as LinkResult<O>;
+  }
+  return result;
+}
+
+async function writeLinkOnce<O extends LinkOp>(video: LinkVideo, op: O, opts: WriteLinkOptions = {}): Promise<LinkResult<O>> {
   const route = routeFor(video, op, await machineMode());
   if (route.to === "refused") throw new WriteLinkError(route.line, "refused");
   if (route.to === "local") {
@@ -136,7 +148,7 @@ export async function writeLink<O extends LinkOp>(video: LinkVideo, op: O, opts:
       const fresh = await api.video(video.id);
       replaceVideo(fresh);
       if (!fresh.shared) throw e;
-      return writeLink({ ...video, shared: true, updatedAt: fresh.updatedAt }, op, { ...opts, reread: true });
+      return writeLinkOnce({ ...video, shared: true, updatedAt: fresh.updatedAt }, op, { ...opts, reread: true });
     }
     if (op.kind === "chapter.add" || op.kind === "chapter.update" || op.kind === "chapter.confirm") return res as LinkResult<O>;
     if (op.kind.startsWith("chapter")) return null as LinkResult<O>;

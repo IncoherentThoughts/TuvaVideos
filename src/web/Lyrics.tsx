@@ -312,10 +312,10 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
           />
         )}
         {!editing && song === undefined && <p class="empty">Loading…</p>}
-        {!editing && song === null && <p class="empty">This Song is not in the Mirror (unknown song).</p>}
+        {!editing && song === null && <p class="empty">This Song is not in the archive (unknown song).</p>}
         {!editing && song && !version && (
           <p class="empty">
-            {song.local ? "This local Song has no lyrics yet." : "This Song has no Version in the Mirror: no lyrics."}{" "}
+            {song.local ? "This local Song has no lyrics yet." : "This Song has no Version in the archive: no lyrics."}{" "}
             <button class="linkbtn" onClick={() => setEditing({ versionId: null })}>+ add local lyrics</button>
           </p>
         )}
@@ -333,7 +333,7 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
                 <span>Member readable, not on the lyrics website.</span>
               </>
             ) : (
-              <span class="dim">From the archive Mirror.</span>
+              <span class="dim">From the archive.</span>
             )}
           </div>
         )}

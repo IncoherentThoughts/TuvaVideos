@@ -24,7 +24,7 @@ export function LyricsPage({ songId }: { songId: string }) {
     <div class="page lyrics-page">
       <p class="muted">
         {song?.local ? "A local Song: created in this library, not in the archive. " : ""}
-        {song && song.videos.length === 0 ? "No Video in your library performs this Song." : song?.local ? "" : "Lyrics from the archive Mirror."}
+        {song && song.videos.length === 0 ? "No Video in your library performs this Song." : song?.local ? "" : "Lyrics from the archive."}
         {song?.local && song.videos.length === 0 && !confirm && (
           <>
             {" "}

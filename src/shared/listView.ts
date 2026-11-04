@@ -10,7 +10,9 @@ export type Dir = "asc" | "desc";
 
 export const ARTIST_SORTS = ["name", "videos", "added"] as const;
 export type ArtistSort = (typeof ARTIST_SORTS)[number];
-export const ARTIST_KINDS = ["all", "mirror", "local"] as const;
+export const ARTIST_KINDS = ["all", "archive", "local"] as const;
+/** Old `kind` values still read from bookmarked URLs: `mirror` was the retired name of `archive`. */
+const ARTIST_KIND_ALIASES: Record<string, ArtistKind> = { mirror: "archive" };
 export type ArtistKind = (typeof ARTIST_KINDS)[number];
 export interface ArtistsState { q: string; kind: ArtistKind; sort: ArtistSort; dir: Dir }
 
@@ -52,7 +54,8 @@ export const defaultArtistsState = (): ArtistsState => ({ q: "", kind: "all", so
 
 export function parseArtistsSearch(search: string): ArtistsState {
   const p = new URLSearchParams(search);
-  return { ...readCommon(p, ARTIST_SORTS, "name"), kind: pick(p.get("kind"), ARTIST_KINDS, "all") };
+  const k = p.get("kind");
+  return { ...readCommon(p, ARTIST_SORTS, "name"), kind: pick(k && (ARTIST_KIND_ALIASES[k] ?? k), ARTIST_KINDS, "all") };
 }
 
 export function artistsQuery(st: ArtistsState): string {

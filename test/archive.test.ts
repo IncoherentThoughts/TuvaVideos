@@ -15,7 +15,8 @@ import { runArchiveFollowUps } from "../src/server/localCopy/followUps";
 import { applyFlat, archiveChanges, FIXTURE, loadArchiveFixture } from "./helpers/archive";
 import { insertChapter, insertLocalArtist, insertVideo, V } from "./helpers/seed";
 
-const REAL = "/Users/evanwilliams/Desktop/Lyrics Website/Backups/supabase_backup_20261007_162813_no_media";
+// The private 2026-10-07 archive backup (supabase_backup_20261007_162813_no_media): set TUVA_REAL_BACKUP to its folder to run that test.
+const REAL = process.env.TUVA_REAL_BACKUP ?? "";
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
 const S = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const n = (db: any, sql: string, ...p: any[]) => (db.query(sql).get(...p) as { n: number }).n;
@@ -247,7 +248,7 @@ describe("Latin titles (spec 2.5)", () => {
 });
 
 describe("real 2026-10-07 backup", () => {
-  test.skipIf(!existsSync(REAL))("applies with the counts the research found", () => {
+  test.skipIf(!REAL || !existsSync(REAL))("applies with the counts the research found", () => {
     const { dir, db } = freshDb();
     const r = applyFlat(db, archiveChanges(REAL));
     expect(r.applied.archive_song).toBe(145); // 146 minus the zz_ test song

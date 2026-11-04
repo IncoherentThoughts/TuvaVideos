@@ -41,7 +41,7 @@ async function main() {
   writeFileSync(join(SHELL_DIR, "keys.js"), renderKeysJs())
   const out = mkdtempSync(join(tmpdir(), "tuva-ipk-"))
   try {
-    const exclude = ["README.md", "tv.json", "config.xml", "icon.png", "*.wgt", "*.ipk", ".buildResult", ".gitignore"]
+    const exclude = ["README.md", "tv.json", "tv.example.json", "config.xml", "icon.png", "*.wgt", "*.ipk", ".buildResult", ".gitignore"]
     await run([pkg, "--no-minify", ...exclude.flatMap((x) => ["-e", x]), "-o", out, "."])
     const ipk = readdirSync(out).find((f) => f.endsWith(".ipk"))
     if (!ipk) throw new Error("ares-package made no .ipk")

@@ -65,3 +65,23 @@ export function adoptResume(o: { stored: number | null; known: number | null; pa
   if (o.known != null && Math.abs(o.stored - o.known) <= 1) return null;
   return o.stored;
 }
+
+/**
+ * Whether the position on screen is this player's own (audit TV-8). After adopting another player's Resume position,
+ * writing it back (the seek's write, a leave) would only echo it, and could overwrite a newer position that player
+ * wrote meanwhile; so writes wait until this player plays or is seeked by its user again.
+ */
+export class ResumeOwner {
+  private own = true;
+  /** This player played, or its user seeked: what it shows is its own position again. */
+  produced() {
+    this.own = true;
+  }
+  /** The position was taken from another player. */
+  adopted() {
+    this.own = false;
+  }
+  get mayWrite(): boolean {
+    return this.own;
+  }
+}

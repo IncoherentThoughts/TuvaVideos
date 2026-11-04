@@ -5,7 +5,7 @@ import { positionIn, resolvePlayingFrom, stepFrom, uniqueIds, type PlayingFrom }
 import {
   AB_OFF, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, parseFrameRate, speedBy, storedLoop, volumeBy,
 } from "../src/shared/playerMath";
-import { FINISHED_WITHIN_S, RESUME_INTERVAL_MS, ResumeClock, isFinished, startPosition, storedResume, adoptResume, ADOPT_QUIET_MS } from "../src/shared/resume";
+import { FINISHED_WITHIN_S, RESUME_INTERVAL_MS, ResumeClock, isFinished, startPosition, storedResume, adoptResume, ADOPT_QUIET_MS, ResumeOwner } from "../src/shared/resume";
 import { SeekThrottle } from "../src/shared/seekThrottle";
 import { fmtSeconds, isPng, sanitizeTitle, screenshotName } from "../src/server/screenshot";
 
@@ -397,5 +397,12 @@ describe("a Resume position written by the other player (TV and browser)", () =>
     expect(adoptResume({ ...base, stored: 120.5 })).toBeNull();
     expect(adoptResume({ ...base, wroteAt: base.now - ADOPT_QUIET_MS + 1 })).toBeNull();
     expect(adoptResume({ ...base, stored: null })).toBeNull();
+  });  test("an adopted position is not echoed back until this player plays or is seeked again (audit TV-8)", () => {
+    const o = new ResumeOwner();
+    expect(o.mayWrite).toBe(true); // a fresh open writes as before
+    o.adopted();
+    expect(o.mayWrite).toBe(false); // the adoption seek's write and a leave are skipped
+    o.produced();
+    expect(o.mayWrite).toBe(true);
   });
 });

@@ -10,7 +10,7 @@ import { clampTime, fmtClock, keyframeSeekTarget } from "../shared/playerMath"
 import { stepFrom, type PlayingFrom } from "../shared/playingFrom"
 import { current, widenToVideo, type Playlist } from "../shared/playlist"
 import { ENDED_LABEL, entryRange, nextEntry, nextLabel, openAt, prevEntry, prevLabel, reachedEnd, resumeAllowed, seekWidens } from "../shared/playlistPlayer"
-import { ResumeClock, RESUME_INTERVAL_MS, adoptResume, storedResume } from "../shared/resume"
+import { ResumeClock, ResumeOwner, RESUME_INTERVAL_MS, adoptResume, storedResume } from "../shared/resume"
 import { SeekThrottle } from "../shared/seekThrottle"
 import type { ChapterDto, CopyDto, SongDto, VideoDto } from "../shared/types"
 import { AudioEngine } from "../web/audioEngine"
@@ -128,6 +128,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     alive: true,
   })
   const clock = useRef(new ResumeClock(RESUME_INTERVAL_MS))
+  const owner = useRef(new ResumeOwner()) // an adopted position is not written back (TV-8)
   const throttle = useRef(
     new SeekThrottle((to) => {
       const v = vid.current
@@ -213,7 +214,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   // ---- Resume (spec 2.5) ----
   const writeResume = () => {
     const r = R.current
-    if (!r.started || !resumeAllowed(!!PL.current) || !S.current.video) return
+    if (!r.started || !resumeAllowed(!!PL.current) || !S.current.video || !owner.current.mayWrite) return
     const v = vid.current
     const pos = v && v.readyState > 0 ? v.currentTime : r.lastPos
     clock.current.wrote(Date.now())
@@ -303,6 +304,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     let c = clampTime(to, dur)
     const rg = S.current.range
     if (!internal && PL.current && rg && seekWidens(rg, c)) commitPl(widenToVideo(PL.current)) // past the Chapter Entry's end: a Video Entry now
+    if (!internal) owner.current.produced() // the user's seek: written
     if (mode === "keyframe" && R.current.keyframes) c = clampTime(keyframeSeekTarget(c, R.current.keyframes, from), dur)
     R.current.seekTarget = c
     throttle.current.request(c, throttled)
@@ -497,6 +499,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   E.current.onPlay = () => {
     const v = vid.current!
     const r = R.current
+    owner.current.produced()
     setPaused(false)
     setNeedsEnter(false)
     if (!r.audioStarted && !r.audioOff) {
@@ -597,7 +600,11 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     if (r.alive && r.copyId === id && cur) attach(cur, pos, play)
   }
   E.current.writeResume = writeResume
-  E.current.seekTo = (to: number) => seekTo(to, "exact", undefined, false, true)
+  /** Follow another player's Resume position: seek there without writing it back (TV-8). */
+  E.current.adoptTo = (to: number) => {
+    seekTo(to, "exact", undefined, false, true)
+    owner.current.adopted()
+  }
   E.current.say = say
 
   // ---- mount: media listeners ----
@@ -674,7 +681,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
           const to = r.started && el && resumeAllowed(!!PL.current) ? adoptResume({ stored: v.resumeS, known: r.known, paused: el.paused, now: Date.now(), wroteAt: r.wroteAt }) : null
           if (to != null) {
             r.known = to
-            E.current.seekTo!(to)
+            E.current.adoptTo!(to)
             E.current.say!(`Resume moved to ${fmtClock(to)} by another player`, 2600)
           }
         })

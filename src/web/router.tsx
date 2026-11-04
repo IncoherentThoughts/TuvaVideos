@@ -1,8 +1,11 @@
-// Hand-rolled history routing (spec 9): `/`, `/play/:videoId[?t=]`, `/favorites`, `/artists`, `/songs`, `/search?q=`. Filters and sort live in
-// the query string. No router library.
+// Hand-rolled history routing (spec 9): `/`, `/play/:videoId[?t=]`, `/favorites`, `/artists`, `/songs`, `/edits`, `/search?q=`,
+// `/lyrics/:songId`. Filters and sort live in the query string. No router library. The paths live in shared/routes.ts,
+// which the server's shell list reads too.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { UUID_PATTERN } from "../shared/ids";
+import { LYRICS_PATH, normalPath, PAGE_PATHS, PLAY_PATH } from "../shared/routes";
+
+export { PLAY_PATH };
 
 export interface Loc {
   path: string;
@@ -34,9 +37,6 @@ export function useLocation(): Loc {
   return loc;
 }
 
-/** A Now playing path: `/play/<uuid>` (the Video id). */
-export const PLAY_PATH = new RegExp(`^\\/play\\/(${UUID_PATTERN})$`);
-
 export type Route =
   | { name: "library" }
   | { name: "play"; videoId: string; t: number | null; lyrics: string | null; lyricsVersion: string | null }
@@ -49,13 +49,13 @@ export type Route =
   | { name: "notfound" };
 
 export function matchRoute(loc: Loc): Route {
-  const p = loc.path.replace(/\/+$/, "") || "/";
-  if (p === "/") return { name: "library" };
-  if (p === "/favorites") return { name: "favorites" };
-  if (p === "/artists") return { name: "artists" };
-  if (p === "/songs") return { name: "songs" };
-  if (p === "/edits") return { name: "edits" };
-  if (p === "/search") {
+  const p = normalPath(loc.path);
+  if (p === PAGE_PATHS.library) return { name: "library" };
+  if (p === PAGE_PATHS.favorites) return { name: "favorites" };
+  if (p === PAGE_PATHS.artists) return { name: "artists" };
+  if (p === PAGE_PATHS.songs) return { name: "songs" };
+  if (p === PAGE_PATHS.edits) return { name: "edits" };
+  if (p === PAGE_PATHS.search) {
     const sp = new URLSearchParams(loc.search);
     return { name: "search", q: sp.get("q") ?? "", sort: sp.get("sort") === "views" ? "views" : "rank" };
   }
@@ -66,7 +66,7 @@ export function matchRoute(loc: Loc): Route {
     const n = t == null ? NaN : Number(t);
     return { name: "play", videoId: m[1]!, t: Number.isFinite(n) && n >= 0 ? n : null, lyrics: q.get("lyrics") || null, lyricsVersion: q.get("lv") || null };
   }
-  const l = p.match(/^\/lyrics\/([0-9a-fA-F-]+)$/);
+  const l = p.match(LYRICS_PATH);
   if (l) return { name: "lyrics", songId: l[1]! };
   return { name: "notfound" };
 }

@@ -396,7 +396,7 @@ describe("the pending_share queue and its drain (§6.6, §4.3)", () => {
       `insert ${VA} song=${U(601)} version=${U(602)} artists=${JSON.stringify([{ artist_id: U(700), suggested: true, proposed_artist_id: null }])} ch=${U(601)}`,
       `insert ${VB} song=null version=null artists=[] ch=-`,
     ]);
-    // The stamps came back older than the scan's local ones (the guard skipped the rows): still Shared, still dequeued.
+    // The stamps came back older than the scan's local ones; an Unshared held row takes the Shared one anyway (SYNC-5).
     expect(pendingShareIds(db)).toEqual([]);
     expect(db.query("SELECT shared, pending_share FROM video_local WHERE video_id = ?").get(VA)).toEqual({ shared: 1, pending_share: 0 });
     expect(db.query("SELECT COUNT(*) n FROM video_proposed_songs").get()).toEqual({ n: 1 });

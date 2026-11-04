@@ -355,6 +355,34 @@ describe("SYNC-7: a Sign out during a Sync (or a reconciliation) is not undone",
   });
 });
 
+describe("SYNC-5: a drained insert is applied even when this machine's clock is ahead", () => {
+  test("the queued Video takes the Proposed Song and the archive's stamp and link ids", () => {
+    const db = fresh();
+    db.exec(`INSERT INTO local_song (id, name, created_at) VALUES ('ls-1', 'Local song', '2026-10-01')`);
+    const id = insertVideo(db, { title: "Scanned", youtube_id: "YT9", song_id: "ls-1", type: "song", pending_share: 1 });
+    db.query("INSERT INTO video_artists (id, video_id, artist_id, position, suggested, updated_at) VALUES ('local-link', ?, 'x', 0, 0, '2026-10-10T00:00:05.000Z')").run(id);
+    db.query("UPDATE videos SET updated_at = ? WHERE id = ?").run("2026-10-10T00:00:05.000Z", id); // machine clock 5 s ahead
+    const P = "bbbbbbbb-0000-4000-8000-000000000001";
+    const stamp = "2026-10-10T00:00:02.000000+00:00";
+    const r = applyShared(db, {
+      tables: {
+        video_proposed_songs: [{ id: P, name: "Local song", english_name: null, alternate_titles: null, notes: null, created_by: null, created_at: T(10), updated_at: T(10) } as never],
+        videos: [sv(id, { youtube_id: "YT9", content_hash: null, title: "Scanned", proposed_song_id: P, updated_at: stamp })],
+        video_artists: [{ id: "server-link", video_id: id, artist_id: "x", proposed_artist_id: null, position: 0, suggested: false, created_at: stamp, updated_at: stamp } as never],
+      },
+    });
+    expect(r.skipped.videos ?? 0).toBe(0);
+    expect(db.query("SELECT song_id, proposed_song_id, updated_at FROM videos WHERE id = ?").get(id)).toEqual({ song_id: null, proposed_song_id: P, updated_at: stamp });
+    expect(db.query("SELECT id FROM video_artists WHERE video_id = ?").all(id)).toEqual([{ id: "server-link" }]);
+    expect(db.query("SELECT shared, pending_share FROM video_local WHERE video_id = ?").get(id)).toEqual({ shared: 1, pending_share: 0 });
+  });
+  test("a Shared row is still guarded (an older pull does not overwrite a newer cache apply)", () => {
+    const db = fresh();
+    applyShared(db, batch([sv(S1, { title: "newer", updated_at: T(11) })]));
+    expect(applyShared(db, batch([sv(S1, { title: "older", updated_at: T(10) })])).skipped.videos).toBe(1);
+  });
+});
+
 describe("SYNC-6: the companion's local edit routes refuse a Shared Video", () => {
   test("Video header, Artists and Chapter routes answer 409; the Shared row is untouched", () => {
     const db = fresh();

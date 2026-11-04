@@ -302,13 +302,15 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     const skippedVideos = new Set<string>();
     // A Video the archive holds is Shared: it leaves the `pending_share` queue (§6.6, the drain's insert comes back here).
     const markShared = db.prepare("INSERT INTO video_local (video_id, shared, pending_share) VALUES (?, 1, 0) ON CONFLICT(video_id) DO UPDATE SET shared = 1, pending_share = 0");
+    // SYNC-5: a held row that is not Shared yet (a drained insert coming back, its stamp from this machine's clock,
+    // not the archive's) always takes the Shared row: the guard compares archive stamps with archive stamps only.
+    const heldUnshared = db.prepare("SELECT 1 FROM videos v LEFT JOIN video_local l ON l.video_id = v.id WHERE v.id = ? AND COALESCE(l.shared, 0) = 0");
     for (const v of changes.videos ?? []) {
-      if (put("videos", v as Row)) {
+      if (put("videos", v as Row, heldUnshared.get(v.id) ? { guard: false } : undefined)) {
         appliedVideos.add(v.id);
         changed.videos.add(v.id);
       } else skippedVideos.add(v.id);
-      // Shared either way: a row the guard skipped (a drained insert whose server stamp is not newer than the scan's
-      // local one) still names a Video the archive holds.
+      // Shared either way: a row the guard skipped still names a Video the archive holds.
       markShared.run(v.id);
     }
     for (const table of CHILDREN) {

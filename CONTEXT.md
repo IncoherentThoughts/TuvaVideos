@@ -166,7 +166,7 @@ _Avoid_: paired device, trusted client, whitelisted IP
 
 ### Sharing
 
-Terms settled while charting the sharing map (2026-10-16), in force since the cutover (#121). They replace the retired Mirror, Local Song, Local Version and Local Artist (ADR-0009).
+Terms settled while charting the sharing map (2026-10-16), in force since the cutover (#121). They replace the retired Mirror (ADR-0009). Local Song, Local Version and Local Artist survive with a narrower meaning, defined below.
 
 **Shared (data)**:
 The link data every Member sees and Video Editors maintain in the archive's database: a Video's identity, title, Type, Song and Version pointers, Artists and Chapters, plus the Proposed Songs, Versions and Artists added from here. Never the files, Copies, Roots, Thumbnails, Audio settings, Resume positions, Favorites or Studio tracks, which stay on each machine.
@@ -191,6 +191,10 @@ _Avoid_: private, local video, pending, draft
 **Proposed (a Song, Version or Artist)**:
 A Song, Version or Artist a Video Editor added to the Shared data that the archive does not yet hold. Marked as Proposed wherever its name appears in the app, pointable by Videos and Chapters like any archive row, editable by every Video Editor, and never visible on the lyrics website. Becomes an archive row only when someone who is both an archive moderator and a Video Editor elevates it.
 _Avoid_: unverified (the retired name), local, draft, pending, staged
+
+**Local (a Song, Version or Artist)**:
+A Song, Version or Artist created on this machine (from a "local" create row, the Songs tab or the Lyrics drawer) that is neither an archive row nor Proposed. Never Shared and never sent: only Unshared Videos and their Chapters may point at it, and it stays editable by whoever uses the machine. Marked "local" wherever its name appears. When a Video Editor shares a Video pointing at it, it becomes a Proposed row (or the matching archive or Proposed row, when one already exists) in the same step; a Shared Video is never pointed at it, and such a write is refused.
+_Avoid_: private, custom, unverified, mirror
 
 **Elevate (a Proposed row)**:
 Move a Proposed Song, Version or Artist into the archive's own tables, keeping its id and repointing every Video and Chapter in the same step. Done by an archive moderator who is also a Video Editor; the new archive row starts hidden and Exposed.

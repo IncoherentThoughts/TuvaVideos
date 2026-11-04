@@ -19,7 +19,7 @@ export interface TrashCommand {
   argv(path: string): Command;
 }
 
-/** The macOS trash command (macOS 14+ ships it). Also the default `Config.trash`. */
+/** The macOS trash command (macOS 15+ ships it). Also the default `Config.trash`. */
 export const MAC_TRASH = "/usr/bin/trash";
 
 /** What deleting says when this machine has no trash command: only the entry-only delete is offered. */

@@ -28,27 +28,27 @@ export interface SetupProbe {
   which: Which;
 }
 
-type Pm = "brew" | "apt" | "scoop";
-const pmFor = (platform: NodeJS.Platform): Pm => (platform === "darwin" ? "brew" : platform === "win32" ? "scoop" : "apt");
+type Pm = "brew" | "apt" | "winget";
+const pmFor = (platform: NodeJS.Platform): Pm => (platform === "darwin" ? "brew" : platform === "win32" ? "winget" : "apt");
 
-/** The install command per tool and package manager (Homebrew on macOS, apt on Linux, Scoop on Windows). */
+/** The install command per tool and package manager (Homebrew on macOS, apt on Linux, winget on Windows, as the README lists). */
 const PACKAGES: Record<string, Record<Pm, string>> = {
-  ffmpeg: { brew: "brew install ffmpeg", apt: "sudo apt install ffmpeg", scoop: "scoop install ffmpeg" },
-  ffprobe: { brew: "brew install ffmpeg", apt: "sudo apt install ffmpeg", scoop: "scoop install ffmpeg" },
-  cwebp: { brew: "brew install webp", apt: "sudo apt install webp", scoop: "scoop install libwebp" },
-  "yt-dlp": { brew: "brew install yt-dlp", apt: "pipx install yt-dlp", scoop: "scoop install yt-dlp" },
-  magick: { brew: "brew install imagemagick", apt: "sudo apt install imagemagick", scoop: "scoop install imagemagick" },
+  ffmpeg: { brew: "brew install ffmpeg", apt: "sudo apt install ffmpeg", winget: "winget install Gyan.FFmpeg" },
+  ffprobe: { brew: "brew install ffmpeg", apt: "sudo apt install ffmpeg", winget: "winget install Gyan.FFmpeg" },
+  cwebp: { brew: "brew install webp", apt: "sudo apt install webp", winget: "winget install Google.Libwebp" },
+  "yt-dlp": { brew: "brew install yt-dlp", apt: "pipx install yt-dlp", winget: "winget install yt-dlp.yt-dlp" },
+  magick: { brew: "brew install imagemagick", apt: "sudo apt install imagemagick", winget: "winget install ImageMagick.ImageMagick" },
   trash: {
-    brew: "update to macOS 14 or later (it ships /usr/bin/trash)",
+    brew: "update to macOS 15 or later (it ships /usr/bin/trash)",
     apt: "sudo apt install trash-cli (or gio from libglib2.0-bin)",
-    scoop: "PowerShell comes with Windows; check that powershell.exe is on PATH",
+    winget: "PowerShell comes with Windows; check that powershell.exe is on PATH",
   },
 };
 
 const BUN_INSTALL: Record<Pm, string> = {
   brew: "curl -fsSL https://bun.sh/install | bash (or bun upgrade)",
   apt: "curl -fsSL https://bun.sh/install | bash (or bun upgrade)",
-  scoop: 'powershell -c "irm bun.sh/install.ps1 | iex" (or bun upgrade)',
+  winget: 'powershell -c "irm bun.sh/install.ps1 | iex" (or bun upgrade)',
 };
 
 /** Semver-ish compare of "x.y.z" prefixes; a pre-release suffix is ignored. */

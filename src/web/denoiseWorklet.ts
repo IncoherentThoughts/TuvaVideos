@@ -37,11 +37,12 @@ class Denoise extends AudioWorkletProcessor {
   constructor() {
     super();
     this.ch = [new Channel(), new Channel()];
-    this.mode = "auto"; this.learnLeft = 0;
+    this.mode = "auto"; this.learnLeft = 0; this.stopped = false;
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.type === "learn") { this.learnLeft = m.frames; for (const c of this.ch) { c.acc.fill(0); c.accN = 0; } this.mode = "learning"; }
       if (m.type === "auto") { this.mode = "auto"; for (const c of this.ch) c.noise.fill(-1); }
+      if (m.type === "stop") { this.stopped = true; this.port.onmessage = null; }
     };
   }
   frame(c, amount) {
@@ -69,6 +70,7 @@ class Denoise extends AudioWorkletProcessor {
   }
   process(inputs, outputs, params) {
     const inp = inputs[0], out = outputs[0];
+    if (this.stopped) return false; // its Player left (CleanupEngine.dispose): let the node be collected
     if (!inp || !inp.length) return true;
     const amount = params.amount[0];
     const nch = Math.min(2, inp.length, out.length);

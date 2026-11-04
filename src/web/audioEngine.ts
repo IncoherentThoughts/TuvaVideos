@@ -151,6 +151,7 @@ export class AudioEngine {
     this.video.removeEventListener("play", this.onPlay);
     this.src.disconnect();
     this.out.disconnect();
+    this.cleanup.dispose(); // its denoise worklet would otherwise run on the shared context for good
     delete (this.video as HTMLMediaElement & { __tuvaAudio?: AudioEngine }).__tuvaAudio;
   }
 

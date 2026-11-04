@@ -8,7 +8,7 @@ Sources folded in: [#47](https://github.com/IncoherentThoughts/TuvaVideos/issues
 
 ## 1. Product, constraints and TV facts
 
-A sideloaded app on the living-room TV that browses and plays the library with the remote, fed by a **TV Server** the user switches on in the browser app. The TV is read-only: it writes Resume positions and view counts and nothing else.
+A sideloaded app on the living-room TV (the Samsung set below; the same shell also installs on LG webOS, §4.5) that browses and plays the library with the remote, fed by a **TV Server** the user switches on in the browser app. The TV is read-only: it writes Resume positions and view counts and nothing else.
 
 ### Standing constraints
 
@@ -174,6 +174,15 @@ The first health answer naming "TuvaVideos TV Server" wins and is stored. The sh
 - `bun run tv-install` (`scripts/tv-install.ts`): `sdb connect ‹tv›` → `tizen build-web` → `tizen package -t wgt -s TuvaVideos` → `tizen install -n TuvaTV.wgt -t ‹target›` → `tizen run`. `tizen install-permit` runs once per certificate. Installing a newer version uninstalls the previous one. TV and target names come from `tv/shell/tv.json` (ip, target, duid), not from the code.
 - **UI changes need no reinstall**: the shell loads the UI from the TV Server at every launch. Only changes under `tv/shell/` do.
 - **Certificate renewal is a yearly chore, not automated** (it needs a Samsung account sign-in in Certificate Manager): the shell's README carries the checklist (quit Certificate Manager before `sdb connect`, Developer Mode on with the Mac's IP, Apps › App Settings › 12345, re-create the distributor certificate with the DUID, `install-permit`, reinstall). The expiry date **2027-10-14** is recorded there. A major Tizen upgrade may wipe sideloaded apps: reinstall after one. No in-app warning.
+
+### 4.5 LG webOS (added after the build, 2026-10-22)
+
+The spec above targets the Samsung R85H. The same shell also runs on an **LG webOS** TV in Developer Mode; the UI, the routes, the approval and the playback rules are the same. The TV Playback profile (§3.1) was confirmed on the Samsung set only; an LG set's codec support is untested against it.
+
+- **Package**: `tv/shell/appinfo.json` (app id `local.tuvavideos.tuvatv`, `icon-80.png` / `icon-130.png`, `disableBackHistoryAPI` so Back arrives as key 461) beside the Tizen `config.xml`; one shell folder serves both.
+- **Install**: `bun run lg-install [device]` (`scripts/lg-install.ts`, default device `lgtv`) runs `ares-package` → `ares-install` → `ares-launch` with the webOS CLI (`@webos-tools/cli`, installed with npm under `~/.webos-cli`). The one-time Developer Mode and `ares-setup-device` steps are in `tv/shell/README.md` ("Install on an LG TV"). LG's Developer Mode lasts 50 hours and is extended from its app on the TV.
+- **Differences in the shell**: no key registration (LG sends the keys unregistered; where a code differs, such as Back 461, it is the `alt` code in `src/tv/keys.ts`); the TV's own address for the /24 sweep (§4.2) comes from `luna://com.palm.connectionmanager/getStatus` instead of `webapis.network` (`tv/shell/shell.js`).
+- **CORS**: the webOS app runs from `file://` and sends `X-Tuva-TV`, so its requests are preflighted; the TV Server answers CORS on every TV route (`src/server/tv.ts`). Access is still decided by the TV's IP and the allowlist (§2.2).
 
 ---
 

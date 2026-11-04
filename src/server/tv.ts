@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import { log } from "./log";
+import { markTvRequest } from "./tvRequest";
 import { excludeNotHere, matchTvRoute, notHereVideoIds, tvListOf } from "./tvRoutes";
 import type { TvBundle } from "./web";
 import type { ApprovedTvDto, TvStateDto } from "../shared/types";
@@ -229,6 +230,7 @@ export class TvServer {
     if (route.kind === "ui") return this.ui(path);
     if (route.kind === "live") return json({ error: "the Live remux is not built yet" }, 404);
     if (!this.handler) return json({ error: "not ready" }, 503);
+    markTvRequest(req); // `/copy/:id` serves by the TV Playback profile (spec 3.2)
     const res = await this.handler(req);
     // §7.6: the video lists leave out Not on this machine Videos (Unmounted ones stay).
     const list = tvListOf(req.method, path);

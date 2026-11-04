@@ -2,3 +2,9 @@ node_modules/
 *.log
 .DS_Store
 docs/prototypes/*PROTOTYPE-WIPE-ME*/
+__pycache__/
+coverage/
+*.bak
+.env*
+# per machine: the TV that tv-install targets (template: tv/shell/tv.example.json)
+tv/shell/tv.json

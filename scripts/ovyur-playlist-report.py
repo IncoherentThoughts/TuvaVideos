@@ -1,10 +1,14 @@
+# One-off research report (2026-10-11): compares the Ovyur playlist's video descriptions with the archive Songs.
+# Usage: python3 scripts/ovyur-playlist-report.py <scratch dir with pl/flat.json, pl/info/, archive_*.json> <report.md>
 import json, os, re, sys, html, unicodedata
 from difflib import SequenceMatcher
 
+if len(sys.argv) != 3:
+    sys.exit('usage: ovyur-playlist-report.py <scratch dir> <report path>')
 SC = sys.argv[1]            # scratchpad dir
 OUT = sys.argv[2]           # report path
 INFO = os.path.join(SC, 'pl', 'info')
-flat = json.load(open(os.path.join(SC, 'pl', 'flat.json')))
+flat = json.load(open(os.path.join(SC, 'pl', 'flat.json'), encoding='utf-8'))
 order = [e['id'] for e in flat['entries']]
 flat_titles = {e['id']: e.get('title') for e in flat['entries']}
 
@@ -32,7 +36,7 @@ def strip_html(h):
 
 songs = []   # (display name, [names...], set(folded lines))
 for fn, local in (('archive_mirror.json', False), ('archive_local.json', True)):
-    for s in json.load(open(os.path.join(SC, fn))):
+    for s in json.load(open(os.path.join(SC, fn), encoding='utf-8')):
         names = [s['name']]
         for k in ('english_name', 'alternate_titles', 'alternate_spellings'):
             if s.get(k): names += [x.strip() for x in s[k].split(',') if x.strip()]
@@ -162,10 +166,10 @@ for pos, vid in enumerate(order, 1):
     p = os.path.join(INFO, vid + '.info.json')
     if not os.path.exists(p):
         recs.append({'id': vid, 'title': flat_titles.get(vid), 'missing': True, 'pos': pos}); continue
-    d = json.load(open(p))
+    d = json.load(open(p, encoding='utf-8'))
     r = parse(d); r['pos'] = pos; r['matches'] = match(r); recs.append(r)
 
-json.dump(recs, open(os.path.join(SC, 'parsed.json'), 'w'), ensure_ascii=False, indent=1)
+json.dump(recs, open(os.path.join(SC, 'parsed.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 # ---------- report ----------
 fetched = [r for r in recs if not r.get('missing')]
@@ -185,7 +189,7 @@ L = []
 w = L.append
 w('# Lyrics in the Institute of Philology (SB RAS) Ovyur playlist that the archive does not have\n')
 w('Source: YouTube playlist [Народные песни тувинцев Овюрского района Тувы](https://www.youtube.com/playlist?list=PLudNgvipb2tmvRC5a97eiDZUopd8RWc5v), channel «Институт филологии СО РАН», project «Песенная традиция овюрских тувинцев XXI в. в условиях сельско-городской миграции» (RSF grant 22-28-01475, 2022–2023, led by E. L. Tiron). Only video descriptions were read; no videos were downloaded.\n')
-w('Compared against the Mirror (%d Songs, every Version\'s Cyrillic lyrics) and the Local Songs (%d) in library.db on 2026-10-11. A video counts as **already in the archive** when its Tuvan title is close (Jaro-style ratio ≥ 0.85 after folding) to an archive Song name or alternate spelling, or when at least two of its Tuvan lines, and at least half of them, equal lines of an archive Version. A video sharing two or more lines but less than half is a **variant** and its full text is kept below. A single shared line (kozhamyk reuse stock lines) is only noted. Everything else is **new**. Matching is mechanical; the Tuvan transcriptions use ӊ for ң and sometimes ϴ for Ө, both folded before comparing.\n' % (len(json.load(open(os.path.join(SC,'archive_mirror.json')))), len(json.load(open(os.path.join(SC,'archive_local.json'))))))
+w('Compared against the Mirror (%d Songs, every Version\'s Cyrillic lyrics) and the Local Songs (%d) in library.db on 2026-10-11. A video counts as **already in the archive** when its Tuvan title is close (Jaro-style ratio ≥ 0.85 after folding) to an archive Song name or alternate spelling, or when at least two of its Tuvan lines, and at least half of them, equal lines of an archive Version. A video sharing two or more lines but less than half is a **variant** and its full text is kept below. A single shared line (kozhamyk reuse stock lines) is only noted. Everything else is **new**. Matching is mechanical; the Tuvan transcriptions use ӊ for ң and sometimes ϴ for Ө, both folded before comparing.\n' % (len(json.load(open(os.path.join(SC,'archive_mirror.json'), encoding='utf-8'))), len(json.load(open(os.path.join(SC,'archive_local.json'), encoding='utf-8')))))
 w('## Summary\n')
 w('| | Count |\n|---|---|')
 w('| Videos in playlist | %d |' % len(order))
@@ -249,5 +253,5 @@ if partial:
     w('## Variants of archive songs (%d)\n' % len(partial))
     w('These share some lines with an archive Version but most of the text is different, so the full text is kept.\n')
     for r in partial: entry(r)
-open(OUT, 'w').write('\n'.join(L))
+open(OUT, 'w', encoding='utf-8').write('\n'.join(L))
 print('fetched', len(fetched), 'lyrics', len(with_lyrics), 'strong', len(strong), 'partial', len(partial), 'new', len(new), 'nolyrics', len(no_lyrics), 'unfetched', len(unfetched))

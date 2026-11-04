@@ -16,7 +16,9 @@ import type { ApplySharedResult, Iso, SharedChanges } from "../shared/sharedRows
 import type { Db } from "./db";
 import { applyShared, tsMicros } from "./localCopy/apply";
 import { runArchiveFollowUps } from "./localCopy/followUps";
-import { getMeta, readSessionRecord, SHARED_SCHEMA, setMeta, writeSessionRecord } from "./localCopy/meta";
+import {
+  getMeta, RECONCILE_PENDING_KEY, RECONCILE_PENDING_LINE, readSessionRecord, sessionEpoch, SHARED_SCHEMA, setMeta, updateSessionRecord, writeSessionRecord,
+} from "./localCopy/meta";
 import { log } from "./log";
 import { downloadPosters, type PosterDownloadResult } from "./posters";
 import { reconcileBatch, renameThumbnails } from "./reconcile";
@@ -158,6 +160,10 @@ export interface SyncOptions {
 
 const refusal = (r: Extract<ArchiveCall<unknown>, { ok: false }>, what: string) => `The archive refused ${what} (${r.error.code ?? r.error.word})`;
 
+/** SYNC-7: the Sync's line when the record was cleared (or replaced) while it ran. */
+export const SIGNED_OUT_DURING_SYNC = "Signed out during the Sync; nothing was applied";
+class Interrupted extends Error {}
+
 function recordFromWhoami(db: Db, w: VideoWhoami, nowMs: number): SessionRecord {
   return writeSessionRecord(db, {
     userId: w.user_id,
@@ -182,6 +188,11 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
   const once = async ({ accessToken, full = false }: SyncArgs): Promise<SyncResponse> => {
     const exp = tokenExp(accessToken);
     if (exp != null && exp * 1000 <= now()) return fail(db, { error: "The session's access token has expired", unauthorized: true, full });
+    // SYNC-3: the sign-in confirmation is open; a Sync now would reconcile before Continue.
+    if (getMeta(db, RECONCILE_PENDING_KEY)) return fail(db, { reachable: true, error: RECONCILE_PENDING_LINE, full });
+    // SYNC-7: a Sign out while this job awaits the archive bumps the epoch; the job then writes nothing.
+    const epoch = sessionEpoch(db);
+    const interrupted = () => (sessionEpoch(db) !== epoch ? SIGNED_OUT_DURING_SYNC : getMeta(db, RECONCILE_PENDING_KEY) ? RECONCILE_PENDING_LINE : null);
     const c: RpcClient = postgrestClient(endpoint, accessToken, opts.fetchImpl);
     const r = await whoami(c);
     if (!r.ok) {
@@ -190,6 +201,8 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
     }
     if (!isWhoami(r.value)) return fail(db, { reachable: true, error: "The archive's video_whoami() answered in an unknown shape", full });
     const w = r.value;
+    const stop = interrupted();
+    if (stop) return fail(db, { reachable: true, error: stop, full });
     let record = recordFromWhoami(db, w, now());
     const schema = { client: SHARED_SCHEMA, archive: w.shared_schema };
     const mustChangePassword = w.must_change_password === true;
@@ -215,7 +228,7 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
       if (pull.error.word === "forbidden") {
         // §6.2: a permission error re-reads the grant and updates the Session record.
         const again = await whoami(c);
-        if (again.ok && isWhoami(again.value)) record = recordFromWhoami(db, again.value, now());
+        if (again.ok && isWhoami(again.value) && !interrupted()) record = recordFromWhoami(db, again.value, now());
         return { ...out, record, error: record.grantLevel ? refusal(pull, "the pull") : "This account no longer has access to the shared library" };
       }
       return { ...out, error: refusal(pull, "the pull") };
@@ -226,30 +239,37 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
       return { ...base, record, schema: { client: SHARED_SCHEMA, archive: batch.shared_schema }, ok: false, pulled: false, full: reason != null, error: schemaGateError(SHARED_SCHEMA, batch.shared_schema) };
     }
 
-    // One transaction: the wipe (repair cases) and the apply stand or fall together; a failure leaves the watermark.
+    // One transaction: the wipe (repair cases), the apply and the record's new watermark stand or fall together; a
+    // failure leaves the watermark.
     let applied: ApplySharedResult;
     let freed: FreedIds | null = null;
+    const userId = record.userId;
+    const heldWatermark = record.watermark;
     try {
       applied = db.transaction(() => {
+        // SYNC-7: signed out (or another sign-in started) while the pull was on the wire: apply nothing.
+        const stop = interrupted() ?? (readSessionRecord(db)?.userId !== userId ? SIGNED_OUT_DURING_SYNC : null);
+        if (stop) throw new Interrupted(stop);
         if (reason) wipeShared(db);
         // SYNC-1: this machine's rows holding a Shared id they are not move away first (thumbnail files renamed below)
         freed = freeCollidingIds(db, batch, { keepThumbnails: !!opts.thumbsDir });
         reconcileBatch(db, batch); // §2.3: an Unshared Video this batch's Shared Videos match takes the Shared row first (#149)
-        return applyShared(db, batch);
+        const a = applyShared(db, batch);
+        record = updateSessionRecord(db, userId, {
+          // The server's watermark, never moved back: an empty pull answers `p_since` (watermark − 5 min), and keeping
+          // that would walk the window back 5 minutes per Sync (a full refetch starts over from the server's).
+          watermark: reason ? (a.watermark ?? null) : laterOf(heldWatermark, a.watermark),
+          // This machine's clock, not the archive's: the focus trigger compares it with the browser's clock (§6.4).
+          lastSyncAt: new Date(now()).toISOString(),
+        })!;
+        setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
+        return a;
       })();
     } catch (e) {
+      if (e instanceof Interrupted) return { ...base, record: readSessionRecord(db), ok: false, pulled: false, full: reason != null, error: e.message };
       return { ...base, record, ok: false, pulled: false, full: reason != null, error: `Sync failed, nothing was applied: ${(e as Error)?.message ?? e}` };
     }
     if (opts.thumbsDir && freed) renameThumbnails(opts.thumbsDir, (freed as FreedIds).videos);
-    record = writeSessionRecord(db, {
-      userId: record.userId,
-      // The server's watermark, never moved back: an empty pull answers `p_since` (watermark − 5 min), and keeping
-      // that would walk the window back 5 minutes per Sync (a full refetch starts over from the server's).
-      watermark: reason ? (applied.watermark ?? null) : laterOf(record.watermark, applied.watermark),
-      // This machine's clock, not the archive's: the focus trigger compares it with the browser's clock (§6.4).
-      lastSyncAt: new Date(now()).toISOString(),
-    });
-    setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
     // The retired import's follow-ups (Unshared Videos only) when archive rows changed; a full refetch always runs
     // them, as its wipe left the search index behind. They never fail the Sync: its rows are already in.
     if (reason || touchedArchive(applied)) {

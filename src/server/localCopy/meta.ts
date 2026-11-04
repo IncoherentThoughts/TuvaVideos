@@ -65,6 +65,17 @@ export function writeSessionRecord(db: Db, rec: Partial<SessionRecord> & { userI
 }
 
 /**
+ * Writes fields of the current record only when it is still `userId`'s (SYNC-7): a job that finishes after a Sign
+ * out, or after another account signed in, must not bring a record back. Returns the record, or null when nothing
+ * was written.
+ */
+export function updateSessionRecord(db: Db, userId: string, rec: Partial<Omit<SessionRecord, "userId">>): SessionRecord | null {
+  const cur = readSessionRecord(db);
+  if (!cur || cur.userId !== userId) return null;
+  return writeSessionRecord(db, { ...rec, userId });
+}
+
+/**
  * Losing the grant (§2.5): a Video Editor whose re-read grant (sign-in, every Sync, a write's permission error) is no
  * longer `editor` is a Member. The Videos queued to be shared stay Unshared, taggable locally; there are no local
  * forks of Shared Videos to undo (a Member never edits them). Returns how many left the queue.
@@ -73,9 +84,26 @@ export function loseEditorGrant(db: Db): number {
   return db.query("UPDATE video_local SET pending_share = 0 WHERE pending_share = 1").run().changes;
 }
 
+/**
+ * `meta` key: a sign-in's reconciliation preview is waiting for Continue (§2.3; SYNC-3). Holds the user id. While it
+ * is set no Sync runs: a Sync would reconcile (shelve, re-key) before the person answered. Continue clears it; Cancel
+ * and Sign out clear it with the record.
+ */
+export const RECONCILE_PENDING_KEY = "reconcile_pending";
+/** The Sync's line while the confirmation waits. */
+export const RECONCILE_PENDING_LINE = "Sign-in is waiting for the reconciliation confirmation (Continue or Cancel); sign in again if it was closed";
+
 /** Sign out, a SIGNED_OUT event or a cancelled reconciliation (§2.4, §5.4). The Local copy stays, read-only. */
 export function clearSessionRecord(db: Db) {
   db.query("DELETE FROM session_record").run();
+  db.query("DELETE FROM meta WHERE key = ?").run(RECONCILE_PENDING_KEY);
+  // SYNC-7: a Sync or a reconciliation in flight sees the record was cleared under it and writes nothing.
+  db.query("INSERT INTO meta (key, value) VALUES ('session_epoch', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1").run();
+}
+
+/** Bumped by every `clearSessionRecord` (SYNC-7): a job that read it before an await compares it after. */
+export function sessionEpoch(db: Db): number {
+  return Number(getMeta(db, "session_epoch") ?? 0);
 }
 
 export function machineMode(rec: SessionRecord | null): MachineMode {

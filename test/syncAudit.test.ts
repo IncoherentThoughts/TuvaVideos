@@ -254,6 +254,106 @@ describe("SYNC-4: a Shared Video the archive no longer returns no longer wedges 
     expect(db.query("SELECT id FROM videos").all()).toEqual([{ id: NEW }]);
   });
 
+  test("(an Unshared Video holding the key: see below)", () => {});
+});
+
+describe("SYNC-3: no Sync runs while the sign-in confirmation waits for Continue", () => {
+  const shared = () => batch([sv(S1, { youtube_id: "YT1", content_hash: null, title: "Shared title", type: "concert" })]);
+  const machine = () => {
+    const db = fresh();
+    const L = insertVideo(db, { title: "My own title", youtube_id: "YT1", type: "song", type_suggested: 0, suggestion_source: "manual" });
+    const a = fakeArchive({ pull: shared });
+    return {
+      db, L, a,
+      reconcile: createReconcile(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {} }),
+      sync: createSync(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {} }),
+    };
+  };
+
+  test("a focus Sync after the preview is refused and reconciles nothing; Continue then runs it", async () => {
+    const m = machine();
+    const p = await m.reconcile.preview(TOKEN);
+    expect(p.ok).toBe(true);
+    expect(p.counts.shelved).toBeGreaterThan(0);
+    const r = await m.sync.request({ accessToken: TOKEN });
+    expect(r.ok).toBe(false);
+    expect(r.pulled).toBe(false);
+    expect(m.db.query("SELECT COUNT(*) AS n FROM shelved_edit").get()).toEqual({ n: 0 });
+    expect(m.db.query("SELECT id FROM videos").all()).toEqual([{ id: m.L }]);
+    expect((await m.reconcile.confirm(TOKEN)).ok).toBe(true);
+    expect((await m.sync.request({ accessToken: TOKEN })).ok).toBe(true);
+  });
+
+  test("Cancel (the record cleared) leaves the library as it was, and Syncs are no longer blocked", async () => {
+    const m = machine();
+    await m.reconcile.preview(TOKEN);
+    clearSessionRecord(m.db);
+    expect(m.db.query("SELECT id FROM videos").all()).toEqual([{ id: m.L }]);
+    expect(getMeta(m.db, "reconcile_pending")).toBeNull();
+  });
+
+  test("a no-grant preview leaves nothing pending", async () => {
+    const db = fresh();
+    const a = fakeArchive({ whoami: () => whoamiOf({ grant_level: null }) });
+    await createReconcile(db, ENDPOINT, { fetchImpl: a.fetchImpl }).preview(TOKEN);
+    expect(getMeta(db, "reconcile_pending")).toBeNull();
+  });
+});
+
+describe("SYNC-7: a Sign out during a Sync (or a reconciliation) is not undone", () => {
+  test("the record cleared while the pull is on the wire: nothing applied, no record written", async () => {
+    const db = fresh();
+    writeSessionRecord(db, { userId: USER, grantLevel: "member" });
+    const a = fakeArchive({
+      whoami: () => whoamiOf({ grant_level: "member" }),
+      pull: () => {
+        clearSessionRecord(db);
+        return batch([sv(S1)]);
+      },
+    });
+    const r = await createSync(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {} }).request({ accessToken: TOKEN });
+    expect(r.ok).toBe(false);
+    expect(readSessionRecord(db)).toBeNull();
+    expect(db.query("SELECT COUNT(*) AS n FROM videos").get()).toEqual({ n: 0 });
+  });
+
+  test("the record cleared while whoami is on the wire: no record comes back", async () => {
+    const db = fresh();
+    writeSessionRecord(db, { userId: USER, grantLevel: "member" });
+    const a = fakeArchive({
+      whoami: () => {
+        clearSessionRecord(db);
+        return whoamiOf({ grant_level: "member" });
+      },
+    });
+    await createSync(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {} }).request({ accessToken: TOKEN });
+    expect(readSessionRecord(db)).toBeNull();
+  });
+
+  test("Cancel while Continue's pull is on the wire: nothing reconciled, no record", async () => {
+    const db = fresh();
+    const L = insertVideo(db, { title: "Mine", youtube_id: "YT1" });
+    let pulls = 0;
+    const a = fakeArchive({
+      pull: () => {
+        if (++pulls === 2) clearSessionRecord(db);
+        return batch([sv(S1, { youtube_id: "YT1", content_hash: null })]);
+      },
+    });
+    let clock = Date.now();
+    const rc = createReconcile(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {}, now: () => clock });
+    await rc.preview(TOKEN);
+    clock += 11 * 60_000; // past the preview's reuse window: Continue pulls again
+    const c = await rc.confirm(TOKEN);
+    expect(c.ok).toBe(false);
+    expect(readSessionRecord(db)).toBeNull();
+    expect(db.query("SELECT id FROM videos").all()).toEqual([{ id: L }]);
+  });
+});
+
+describe("SYNC-4 (cont.)", () => {
+  const NEW = "aaaaaaaa-0000-4000-8000-0000000000a2";
+  const b = batch([sv(NEW, { youtube_id: "YT", content_hash: null, title: "Shared again", updated_at: T(11) })]);
   test("an Unshared Video holding the key is still refused by the apply alone (reconcile handles it)", () => {
     const db = fresh();
     insertVideo(db, { title: "Mine", youtube_id: "YT" });

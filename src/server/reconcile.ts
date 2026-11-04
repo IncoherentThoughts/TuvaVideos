@@ -30,7 +30,13 @@ import type { Db } from "./db";
 import { applyShared } from "./localCopy/apply";
 import { freeCollidingIds, RECONCILED_HASH_PREFIX, sameIdentity, videoRefs } from "./localCopy/rekey";
 import { runArchiveFollowUps } from "./localCopy/followUps";
-import { getMeta, loseEditorGrant, readSessionRecord, setMeta, SHARED_SCHEMA, setPendingShare, shelve, writeSessionRecord, type ShelvedPayload } from "./localCopy/meta";
+import {
+  getMeta, loseEditorGrant, RECONCILE_PENDING_KEY, readSessionRecord, sessionEpoch, setMeta, SHARED_SCHEMA, setPendingShare, shelve, updateSessionRecord, writeSessionRecord,
+  type ShelvedPayload,
+} from "./localCopy/meta";
+
+/** SYNC-7: the reconciliation's line when the sign-in was cancelled (or signed out) while it ran. */
+export const SIGNED_OUT_MEANWHILE = "The sign-in was cancelled or signed out meanwhile; nothing was changed";
 import { SYNCED_SCHEMA_KEY, wipeShared } from "./sync";
 import { log } from "./log";
 import { reindexChapter, reindexVideo } from "./search";
@@ -430,13 +436,15 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
   const fail = (error: string, o: Partial<ReconcileResponse> = {}): ReconcileResponse => ({ ok: false, error, record: readSessionRecord(db), mustChangePassword: false, counts: NO_RECONCILE, diffs: [], ...o });
 
   /** whoami (the record), the schema gate, the grant; then the Shared set, pulled whole or reused. */
-  async function prepare(token: string, reuse: boolean) {
+  async function prepare(token: string, reuse: boolean, epoch: number) {
     const exp = tokenExp(token);
     if (exp != null && exp * 1000 <= now()) return { done: fail("The session's access token has expired") };
     const c: RpcClient = postgrestClient(endpoint, token, opts.fetchImpl);
     const r = await whoami(c);
     if (!r.ok) return { done: fail(r.unreachable ? "The archive can't be reached" : refusal(r, "the sign-in")) };
     if (!isWhoami(r.value)) return { done: fail("The archive's video_whoami() answered in an unknown shape") };
+    // SYNC-7: cancelled (the record cleared) while whoami was on the wire: bring no record back.
+    if (sessionEpoch(db) !== epoch) return { done: fail(SIGNED_OUT_MEANWHILE) };
     const w = r.value;
     const record: SessionRecord = writeSessionRecord(db, {
       userId: w.user_id, email: w.email ?? null, displayName: w.display_name ?? null, avatarUrl: w.avatar_url ?? null,
@@ -463,8 +471,15 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
   return {
     /** `GET /api/reconcile/preview`: what Continue would do. Writes the record; changes nothing else. */
     async preview(token: string): Promise<ReconcileResponse> {
-      const p = await prepare(token, false);
-      if ("done" in p) return p.done!;
+      // SYNC-3: from here until Continue (or Cancel / Sign out) no Sync runs: it would reconcile without the answer.
+      const epoch = sessionEpoch(db);
+      setMeta(db, RECONCILE_PENDING_KEY, "1");
+      const p = await prepare(token, false, epoch);
+      if ("done" in p) {
+        // No grant: nothing to confirm (and no Sync for this account anyway). A refusal: the dialog signs out.
+        if (p.done!.ok && sessionEpoch(db) === epoch) setMeta(db, RECONCILE_PENDING_KEY, null);
+        return p.done!;
+      }
       const editor = p.record.grantLevel === "editor";
       const plan = planFor(db, p.batch);
       const counts = planCounts(plan, editor);
@@ -478,14 +493,20 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
      */
     async confirm(token: string): Promise<ReconcileResponse> {
       const t0 = performance.now();
-      const p = await prepare(token, true);
-      if ("done" in p) return p.done!;
+      const epoch = sessionEpoch(db);
+      const p = await prepare(token, true, epoch);
+      if ("done" in p) {
+        if (p.done!.ok && sessionEpoch(db) === epoch) setMeta(db, RECONCILE_PENDING_KEY, null);
+        return p.done!;
+      }
       const editor = p.record.grantLevel === "editor";
       let done: AppliedPlan;
       let diffs: VideoDiff[] = [];
       let freed: { from: string; to: string }[] = [];
       try {
         done = db.transaction(() => {
+          // SYNC-7: Cancel or Sign out while the pull was on the wire: change nothing.
+          if (sessionEpoch(db) !== epoch || readSessionRecord(db)?.userId !== p.record.userId) throw new Error(SIGNED_OUT_MEANWHILE);
           // A Member's unknown Videos stay Unshared, queued ones from an earlier editor session included (§2.5).
           if (!editor) loseEditorGrant(db);
           // SYNC-1, as at every Sync: rows holding a Shared id they are not move away (their files are renamed below)
@@ -496,8 +517,9 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
           const r = applyPlan(db, plan, { queueUnknown: editor, keepThumbnails: !!opts.thumbsDir });
           wipeShared(db);
           const applied = applyShared(db, p.batch);
-          writeSessionRecord(db, { userId: p.record.userId, watermark: applied.watermark ?? null });
+          updateSessionRecord(db, p.record.userId, { watermark: applied.watermark ?? null });
           setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
+          setMeta(db, RECONCILE_PENDING_KEY, null); // SYNC-3: answered; Syncs run again
           return r;
         })();
       } catch (e) {

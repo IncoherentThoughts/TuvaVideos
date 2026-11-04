@@ -1,7 +1,7 @@
 // The one-time migration (docs/sharing-spec.md §9.2, ticket #113): the preflight and the plan on a fixture
 // library.db built through every migration, and the pure helpers.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb, type Db } from "../src/server/db";
@@ -198,11 +198,15 @@ describe("buildPlan", () => {
 
   test("findPoster reads the uuid name or an older identity name", () => {
     const dir = mkdtempSync(join(tmpdir(), "tuva-poster-"));
-    writeFileSync(join(dir, "aaaaaaaaaaa.poster.webp"), "RIFF");
-    const p = findPoster(dir, { id: V1, youtube_id: "aaaaaaaaaaa", content_hash: null });
-    expect(p).toMatchObject({ bytes: 4, file: join(dir, "aaaaaaaaaaa.poster.webp") });
-    expect(p!.sha256).toHaveLength(64);
-    expect(findPoster(dir, { id: V2, youtube_id: null, content_hash: "hash2" })).toBeNull();
+    try {
+      writeFileSync(join(dir, "aaaaaaaaaaa.poster.webp"), "RIFF");
+      const p = findPoster(dir, { id: V1, youtube_id: "aaaaaaaaaaa", content_hash: null });
+      expect(p).toMatchObject({ bytes: 4, file: join(dir, "aaaaaaaaaaa.poster.webp") });
+      expect(p!.sha256).toHaveLength(64);
+      expect(findPoster(dir, { id: V2, youtube_id: null, content_hash: "hash2" })).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

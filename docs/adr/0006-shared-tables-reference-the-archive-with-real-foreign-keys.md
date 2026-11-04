@@ -1,3 +1,12 @@
+---
+status: accepted
+date: 2026-10-17
+amended by: 0007 (Proposed rows add a second, video-side foreign key target)
+closed by: 0009 (the final "ADR-0001 stays for the Mirror" clause; the Mirror retired at the cutover, #121)
+---
+
 # Shared tables reference the archive with real foreign keys; ADR-0001 stays for the Mirror until it retires
 
 The Shared tables (`videos`, `video_chapters`, `video_artists` and their tombstones, planned by map #82) live inside the Tuvan Lyrics Archive's own Postgres, next to `songs`, `song_lyrics` and `artists`. There nothing is ever wiped and re-imported, so the reason ADR-0001 chose plain uuid TEXT columns with no foreign keys does not hold. Shared rows point at the archive with real foreign keys: `song_id → songs(id) ON DELETE SET NULL`, the composite `(song_id, version_id) → song_lyrics(song_id, id) ON DELETE SET NULL (version_id)` (the column-list form, so deleting a Version does not also unlink the Song), and `video_artists.artist_id → artists(id) ON DELETE CASCADE`, each with an index on the referencing column. This buys no dangling pointers and PostgREST embeds, and costs a fixed write order (a promoted Song, Version or Artist must exist before the row that points at it, so promotion and the one-time migration insert Songs, then Versions, then Artists, then Videos) and the fact that an archive admin's rare Song or Artist delete now nulls or cascades Video rows with no edit-history row, which is accepted rather than blocked with RESTRICT, because archive ADR-0005 already forbids automatic Song deletes and the Video degrades to "unknown song" exactly as it does today. ADR-0001 remains in force for the Standalone app's Mirror tables until the sharing map retires them. Decided in [issue #89](https://github.com/IncoherentThoughts/TuvaVideos/issues/89), 2026-10-17.
+
+**Amended by [ADR 0007](0007-video-library-access-is-a-grant-apart-from-the-archive-role.md):** a new Song, Version or Artist is a Proposed row in a video-side table, pointed at through a second nullable foreign key beside the archive one, and is elevated rather than "promoted" (`docs/sharing-spec.md` §3.3, §3.4). **Closed by [ADR 0009](0009-the-mirror-retires-archive-rows-arrive-by-sync.md):** the last sentence above no longer applies; the Mirror retired at the cutover (#121, 2026-11-02), and ADR-0001 is superseded.

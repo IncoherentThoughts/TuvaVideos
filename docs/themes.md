@@ -56,7 +56,7 @@ girl, and their per-picture colours, stay in the fork), and the fork's Hyprland 
    script in `index.html` reading `localStorage tuva.theme`, and swapped at runtime by `src/web/theme.ts`
    (`?theme=<id>` in the URL also picks one, for trying a theme from a link). Added. The TV app has its own styles and
    is out of scope.
-5. **Choosing.** A Theme select in the top bar (prototype) → later a Settings surface, if one appears, and the `tuva:`
+5. **Choosing.** A Theme select in the account chip's menu (`src/web/Account.tsx`; it started in the top bar as a prototype). Added. Later a Settings surface, if one appears, and the `tuva:`
    command-style prompt parked in design-direction.md would be the natural home for `:theme lawson-night`.
 6. **The look for every screen.** Lawson Night's prototype covers the shell (top bar, search dropdown, menus, toasts,
    buttons, chips, fields) and every `.page` screen (Library, Favorites, Artists, Songs, search results) as one glass

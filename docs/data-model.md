@@ -1,5 +1,7 @@
 # Data model and SQLite schema
 
+> **Status: v1 history, partly superseded.** The schema below is the v1 design (integer ids, `video` / `chapter` / `artist`, the Mirror and its import). Migration `0015_local_copy.sql` rebuilt the companion on uuid keys (`videos`, `video_chapters`, `video_artists`, `video_local`, `archive_*` in place of `mirror_*`, `local_*`, `proposed_*` and the `*_all` views), and 0016–0018 extend it; the Mirror and `bun run import` are gone ([ADR 0009](adr/0009-the-mirror-retires-archive-rows-arrive-by-sync.md)). For the current tables read [sharing-spec.md](sharing-spec.md) §6.1 and the migrations, which win over this file. Still current here: the transliteration table under [Latin titles](#latin-titles) and the shape of the FTS5 `search` table. The DDL, the Mirror tables, the re-import and the `mirror_id` Artist rule are kept as history.
+
 Decided in [issue #13](https://github.com/IncoherentThoughts/TuvaVideos/issues/13). Vocabulary is `CONTEXT.md`; the Mirror DDL builds on `docs/research/mirror-import-mapping.md` (branch `research/mirror-import`). See ADR-0001 for why local tables hold Mirror uuids without foreign keys.
 
 ## Storage
@@ -115,6 +117,8 @@ Rules:
 
 ## Mirror tables
 
+*Superseded by ADR 0009 and sharing-spec §6.1: the Mirror is now the `archive_*` tables of the Local copy, filled by Sync. History only.*
+
 Imported from a post-migration-129 backup only (the 2026-10-07 one or newer); the band mapping of older backups is not supported. Tables: `mirror_song`, `mirror_version`, `mirror_artist`, `mirror_album`, `mirror_album_credit`, `mirror_track`, `mirror_track_artist`, `mirror_performance`, with the DDL in the research doc; `mirror_song.is_hidden` added by migration 0005 (hidden Songs are imported; the flag is kept but not shown).
 
 Dropped from the import: the archive's `zz_` test song and every row that belongs to it, composers, bands, tags, history, profiles and every staff or personal table, plus the columns the research doc lists (`editors_notes`, timestamps, `lastfm_id`, `label`, `source`, `sources`, `transcription_note`, `song_type`).
@@ -122,6 +126,8 @@ Dropped from the import: the archive's `zz_` test song and every row that belong
 **Re-import** is one transaction: delete every `mirror_*` row, insert the new set, upsert `artist` rows by `mirror_id`, write a `mirror_import` row. Local tables are untouched; a dangling uuid stays and renders as "unknown song/artist" (ADR-0001).
 
 ## Local Songs and Local Versions
+
+*Partly superseded by migration 0015 and sharing-spec §6.1: `local_song`, `local_version` and `local_artist` remain this machine's own rows, pointed at by Unshared Videos only; `song_all` / `version_all` / `artist_all` now union archive, proposed and local rows with a `kind` column, and there is no import.*
 
 Migration 0008. `local_song (id uuid, name, english_name, alternate_titles, alternate_spellings, created_at)` and `local_version (id uuid, song_id, label, display_order, the three Script HTML columns, the three Footnote JSON columns, created_at, updated_at, UNIQUE (song_id, label))` hold the Songs and lyrics Versions written here. `local_version.song_id` is a Mirror Song or a Local Song uuid, plain TEXT with no foreign key, as everywhere else (ADR-0001). Two views join each pair for readers: `song_all` (`mirror_song` ∪ `local_song`, with `local` 0/1 and `is_hidden` 0 for local rows) and `version_all` (`mirror_version` ∪ `local_version`, with `local`). Every reader of Songs or Versions (`songs.ts`, the search index, Latin titles, the Song matcher, the Song/Version checks on `PATCH /api/videos/:id` and the Chapter endpoints, the dangling-ref count) queries the views; the import still writes and wipes only `mirror_*`, so local rows survive it. Versions are ordered `local, display_order, label`: the archive's first, then the local ones. Deleting a Local Version NULLs the `version_id` of Videos and Chapters pointing at it; deleting a Local Song is refused while a Video, Chapter or Studio track points at it. Local lyric HTML is the archive's shape (`<p>` per line, `<p class="ln-blank"><br></p>` for a stanza break, `<sup data-fn="n">` for a Marker), produced from plain text by `shared/lyrics/plain.ts` and sanitized with the LINE / FOOTNOTE profiles on write.
 

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 
+process.env.TUVA_TV_LOOPBACK = "1"; // the test TV is 127.0.0.1, which a loopback-refusing TV Server would not approve
 const base = mkdtempSync(join(tmpdir(), "tuva-tvcopy-"));
 const localDir = join(base, "local");
 mkdirSync(localDir, { recursive: true });
@@ -31,7 +32,7 @@ const fbState = (id: number) => app.fallback.status(id).state;
 const bytesOf = async (res: Response) => new Uint8Array(await res.arrayBuffer());
 
 beforeAll(async () => {
-  const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_TV_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir });
+  const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_TV_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir, TUVA_TV_LOOPBACK: "1" });
   ffmpeg = cfg.ffmpeg;
   await ff(...lav, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "ac3", join(localDir, files.ac3)); // browser: transcode; TV: as-is
   await ff(...lav, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", join(localDir, files.pcm)); // neither plays the audio
@@ -45,7 +46,9 @@ beforeAll(async () => {
   }
   // the scan-time Fallbacks (ac3, pcm) finish before the tests look at them
   for (let i = 0; i < 300 && (fbState(ids.ac3) !== "ready" || fbState(ids.pcm) !== "ready"); i++) await sleep(100);
-  await fetch(`${local}/api/tv/approve`, { method: "POST", body: JSON.stringify({ ip: TV_IP }) });
+  await fetch(`${local}/api/tv/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ip: TV_IP }) });
+  const approved = (await (await fetch(`${local}/api/tv`)).json()) as { approved: { ip: string }[] };
+  if (!approved.approved.some((a) => a.ip === TV_IP)) throw new Error("the test TV (127.0.0.1) was not approved");
 }, 60_000);
 
 afterAll(async () => {

@@ -1,11 +1,14 @@
 // Regression tests for the sync and shared-data audit (docs/audit/02-sync-shared-data.md, SYNC-1 to SYNC-16, and
 // DOC-2 of 08-spec-drift.md). Each one failed on the audited commit (2f7b8bf) and passes with its fix.
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb, type Db } from "../src/server/db";
 import { applyShared } from "../src/server/localCopy/apply";
-import { reconcileBatch, planFor } from "../src/server/reconcile";
-import { wipeShared } from "../src/server/sync";
+import { clearSessionRecord, getMeta, readSessionRecord, setMeta, writeSessionRecord } from "../src/server/localCopy/meta";
+import { createReconcile, reconcileBatch, planFor } from "../src/server/reconcile";
+import { createSync, wipeShared } from "../src/server/sync";
 import type { SharedChanges, SharedChapterRow, SharedVideoRow } from "../src/shared/sharedRows";
 import { C, insertChapter, insertCopy, insertVideo, V } from "./helpers/seed";
 
@@ -29,6 +32,28 @@ const fresh = (): Db => {
   return db;
 };
 const stampOf = (db: Db, table: string, id: string) => (db.query(`SELECT updated_at FROM ${table} WHERE id = ?`).get(id) as { updated_at: string } | null)?.updated_at;
+
+const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+const TOKEN = `${b64({ alg: "HS256" })}.${b64({ exp: Math.floor(Date.now() / 1000) + 3600, sub: "u" })}.c2ln`;
+const USER = "11111111-1111-4111-8111-111111111111";
+const whoamiOf = (o: Record<string, unknown> = {}) => ({
+  user_id: USER, email: "ed@example.org", display_name: "Ed", avatar_url: null, must_change_password: false, archive_role: "user",
+  grant_level: "editor", granted_at: null, shared_schema: 1, server_time: T(12), ...o,
+});
+type Handler = (args: Record<string, unknown>) => unknown | Promise<unknown>;
+/** A mocked PostgREST: one handler per function (a thrown error is an unreachable archive). */
+function fakeArchive(h: { whoami?: Handler; pull?: Handler }) {
+  const calls: string[] = [];
+  const fetchImpl = (async (url: string, init: RequestInit) => {
+    const fn = new URL(url).pathname.split("/").pop()!;
+    calls.push(fn);
+    const args = JSON.parse(String(init.body ?? "{}"));
+    const body = fn === "video_whoami" ? await (h.whoami ?? (() => whoamiOf()))(args) : fn === "shared_changes_since" ? await (h.pull ?? (() => batch([])))(args) : null;
+    return new Response(JSON.stringify(body), { status: body == null ? 404 : 200 });
+  }) as unknown as typeof fetch;
+  return { fetchImpl, calls };
+}
+const ENDPOINT = { url: "http://archive.test", key: "k" };
 
 const S1 = "aaaaaaaa-0000-4000-8000-000000000001";
 const CH1 = "cccccccc-0000-4000-8000-000000000001";
@@ -165,5 +190,32 @@ describe("SYNC-1: legacy uuids are not identity across machines", () => {
     expect(db.query("SELECT kind, name FROM artist_all WHERE id = ?").all(LA1)).toEqual([{ kind: "proposed", name: "Owner artist" }]);
     const link = db.query("SELECT a.name, a.kind FROM video_artists va JOIN artist_all a ON a.id = va.artist_id WHERE va.video_id = ?").get(L);
     expect(link).toEqual({ name: "Collab artist", kind: "local" });
+  });
+
+  test("a Sync renames the moved Video's thumbnail files, so the Shared Video does not show them", async () => {
+    const db = fresh();
+    const dir = mkdtempSync(join(tmpdir(), "tuva-sync1-"));
+    try {
+      insertVideo(db, { id: 1, title: "Mine only", content_hash: "mine", thumbnail_generated_at: "2026-09-01T00:00:00Z" });
+      writeFileSync(join(dir, `${V(1)}.poster.webp`), "mine");
+      writeSessionRecord(db, { userId: USER, grantLevel: "editor" });
+      const a = fakeArchive({ pull: () => batch([sv(V(1), { content_hash: "owner", title: "Owner clip" })]) });
+      const r = await createSync(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {}, thumbsDir: dir }).request({ accessToken: TOKEN });
+      expect(r.error).toBeNull();
+      const mine = db.query("SELECT v.id, l.thumbnail_generated_at FROM videos v JOIN video_local l ON l.video_id = v.id WHERE v.title = 'Mine only'").get() as any;
+      expect(mine.id).not.toBe(V(1));
+      expect(mine.thumbnail_generated_at).toBe("2026-09-01T00:00:00Z");
+      expect(readdirSync(dir).filter((f) => f.endsWith(".webp"))).toEqual([`${mine.id}.poster.webp`]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the owner's own Local Artist that became the Proposed Artist of its id (same name) stays where it is", () => {
+    const db = fresh();
+    const LA1 = "61727400-0000-8000-8000-000000000003";
+    db.query("INSERT INTO local_artist (id, name, created_at) VALUES (?, 'Collab artist', '2026-01-01')").run(LA1);
+    applyShared(db, { tables: { video_proposed_artists: [{ id: LA1, name: "collab ARTIST", created_at: T(1), updated_at: T(10) } as never] } });
+    expect(db.query("SELECT id FROM local_artist").all()).toEqual([{ id: LA1 }]);
   });
 });

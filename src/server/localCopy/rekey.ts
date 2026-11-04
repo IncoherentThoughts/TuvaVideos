@@ -37,16 +37,23 @@ export function sameIdentity(a: { youtube_id: string | null; content_hash: strin
 /** Marks a Video `applyPlan` re-keyed into a Shared id (its keys are freed for the apply): never moved away again. */
 export const RECONCILED_HASH_PREFIX = "reconcile:";
 
-/**
- * Moves a Video to a new id (that no row holds): the row, every row pointing at it, its search entry. The thumbnail
- * files are named by the old id, so the thumbnail facts are cleared and the Thumbnailer makes them again.
- */
-export function moveVideo(db: Db, from: string, to: string = newUuid()): string {
+export interface MoveOptions {
+  /**
+   * The caller renames the thumbnail files (`<id>.poster.webp`, `<id>.strip.webp`) after its commit
+   * (`renameThumbnails`); else the thumbnail facts are cleared and the Thumbnailer makes them again.
+   */
+  keepThumbnails?: boolean;
+}
+
+/** Moves a Video to a new id (that no row holds): the row, every row pointing at it, its search entry. */
+export function moveVideo(db: Db, from: string, to: string = newUuid(), opts: MoveOptions = {}): string {
   db.exec("PRAGMA defer_foreign_keys = ON");
   db.query("UPDATE videos SET id = ? WHERE id = ?").run(to, from);
   for (const r of videoRefs(db)) db.query(`UPDATE ${r.table} SET ${r.column} = ? WHERE ${r.column} = ?`).run(to, from);
-  db.query(`UPDATE video_local SET thumbnail_generated_at = NULL, strip_frames = NULL, strip_columns = NULL, strip_rows = NULL,
-    strip_frame_w = NULL, strip_frame_h = NULL, poster_hash = NULL WHERE video_id = ?`).run(to);
+  if (!opts.keepThumbnails) {
+    db.query(`UPDATE video_local SET thumbnail_generated_at = NULL, strip_frames = NULL, strip_columns = NULL, strip_rows = NULL,
+      strip_frame_w = NULL, strip_frame_h = NULL, poster_hash = NULL WHERE video_id = ?`).run(to);
+  }
   reindexVideo(db, from);
   reindexVideo(db, to);
   return to;
@@ -90,7 +97,7 @@ const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().t
  *   - a Local Artist whose id a Proposed Artist of another name brings.
  * Runs before matching (`reconcileBatch`) and before every apply; does nothing when nothing collides.
  */
-export function freeCollidingIds(db: Db, batch: SharedChanges): FreedIds {
+export function freeCollidingIds(db: Db, batch: SharedChanges, opts: MoveOptions = {}): FreedIds {
   const out: FreedIds = { videos: [], chapters: [], artists: [] };
   const t = batch.tables ?? {};
   const heldVideo = db.prepare(`SELECT v.id, v.youtube_id, v.content_hash, COALESCE(l.shared, 0) AS shared
@@ -100,7 +107,7 @@ export function freeCollidingIds(db: Db, batch: SharedChanges): FreedIds {
     if (!h || h.shared) continue;
     if (h.content_hash?.startsWith(RECONCILED_HASH_PREFIX)) continue;
     if (sameIdentity(h, v)) continue;
-    out.videos.push({ from: h.id, to: moveVideo(db, h.id) });
+    out.videos.push({ from: h.id, to: moveVideo(db, h.id, newUuid(), opts) });
   }
   const heldChapter = db.prepare(`SELECT c.id, c.video_id, COALESCE(l.shared, 0) AS shared
     FROM video_chapters c LEFT JOIN video_local l ON l.video_id = c.video_id WHERE c.id = ?`);

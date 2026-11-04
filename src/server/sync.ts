@@ -19,7 +19,8 @@ import { runArchiveFollowUps } from "./localCopy/followUps";
 import { getMeta, readSessionRecord, SHARED_SCHEMA, setMeta, writeSessionRecord } from "./localCopy/meta";
 import { log } from "./log";
 import { downloadPosters, type PosterDownloadResult } from "./posters";
-import { reconcileBatch } from "./reconcile";
+import { reconcileBatch, renameThumbnails } from "./reconcile";
+import { freeCollidingIds, type FreedIds } from "./localCopy/rekey";
 
 /**
  * One run at a time; calls arriving during a run share one follow-up run, made with the newest argument (the newest
@@ -227,15 +228,19 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
 
     // One transaction: the wipe (repair cases) and the apply stand or fall together; a failure leaves the watermark.
     let applied: ApplySharedResult;
+    let freed: FreedIds | null = null;
     try {
       applied = db.transaction(() => {
         if (reason) wipeShared(db);
+        // SYNC-1: this machine's rows holding a Shared id they are not move away first (thumbnail files renamed below)
+        freed = freeCollidingIds(db, batch, { keepThumbnails: !!opts.thumbsDir });
         reconcileBatch(db, batch); // §2.3: an Unshared Video this batch's Shared Videos match takes the Shared row first (#149)
         return applyShared(db, batch);
       })();
     } catch (e) {
       return { ...base, record, ok: false, pulled: false, full: reason != null, error: `Sync failed, nothing was applied: ${(e as Error)?.message ?? e}` };
     }
+    if (opts.thumbsDir && freed) renameThumbnails(opts.thumbsDir, (freed as FreedIds).videos);
     record = writeSessionRecord(db, {
       userId: record.userId,
       // The server's watermark, never moved back: an empty pull answers `p_since` (watermark − 5 min), and keeping

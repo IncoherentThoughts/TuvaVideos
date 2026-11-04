@@ -483,11 +483,13 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
       const editor = p.record.grantLevel === "editor";
       let done: AppliedPlan;
       let diffs: VideoDiff[] = [];
+      let freed: { from: string; to: string }[] = [];
       try {
         done = db.transaction(() => {
           // A Member's unknown Videos stay Unshared, queued ones from an earlier editor session included (§2.5).
           if (!editor) loseEditorGrant(db);
-          freeCollidingIds(db, p.batch); // SYNC-1, as at every Sync
+          // SYNC-1, as at every Sync: rows holding a Shared id they are not move away (their files are renamed below)
+          freed = freeCollidingIds(db, p.batch, { keepThumbnails: !!opts.thumbsDir }).videos;
           const plan = planFor(db, p.batch);
           // Read before the apply: the local values and the local_* names they point at are still where they were.
           diffs = planDiffs(db, plan, p.batch);
@@ -502,7 +504,8 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
         return fail(`Reconciliation failed, nothing was changed: ${(e as Error)?.message ?? e}`, { record: p.record, mustChangePassword: p.mustChangePassword });
       }
       held = null;
-      if (opts.thumbsDir) renameThumbnails(opts.thumbsDir, done.rekeyed);
+      // The freed rows first: a matched Video may be re-keyed into the id a freed one left.
+      if (opts.thumbsDir) renameThumbnails(opts.thumbsDir, [...freed, ...done.rekeyed]);
       // The wipe left the search index and the matchers behind, as after a full refetch. They never fail the sign-in.
       try {
         await runArchiveFollowUps(db, { cacheDir: opts.cacheDir });

@@ -29,7 +29,7 @@ html[data-theme="lawson-night"] {
   --line: color-mix(in srgb, var(--role-text) 12%, var(--role-bg));
   --fg: var(--role-text);
   --fg2: var(--role-muted);
-  --fg3: color-mix(in srgb, var(--role-muted) 70%, var(--role-bg));
+  --fg3: color-mix(in srgb, var(--role-muted) 88%, var(--role-bg)); /* ≥ 4.5:1 on --bg and --bg2 */
   --accent: var(--role-brand);
   --accent-fg: #11111b;
   --ok: var(--role-success);

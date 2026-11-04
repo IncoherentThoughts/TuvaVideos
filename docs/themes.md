@@ -43,7 +43,7 @@ girl, and their per-picture colours, stay in the fork), and the fork's Hyprland 
 ## What has to be added
 
 1. **The role → token mapping.** TuvaVideos' emitter: the ten roles become the 19 tokens as formulas
-   (`--bg2 = mix(bg 55%, surface)`, `--line = mix(text 12%, bg)`, `--fg3 = mix(muted 70%, bg)`, `--accent = brand`,
+   (`--bg2 = mix(bg 55%, surface)`, `--line = mix(text 12%, bg)`, `--fg3 = mix(muted 88%, bg)` (at least 4.5:1 on `--bg` and `--bg2`), `--accent = brand`,
    `--ok = success`, `--no = negative`). The roles do not cover the **eight tag slots**: a theme adds a `tags` array of
    eight hues (the way the fork's palettes carry optional gender colours). Lawson Night's are catppuccin's red, peach,
    yellow, green, teal, blue, mauve, lavender in the gruvbox slots' order, so song/concert/interview/other keep their

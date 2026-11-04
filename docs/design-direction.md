@@ -24,7 +24,7 @@ Dark, high-contrast, hard-edged. Deliberately unlike the Tuvan Lyrics Archive's 
 --line: #3d3c3a;
 --fg: #d9d8d5;
 --fg2: #93918c;
---fg3: #75726c;
+--fg3: #908d87;
 --accent: #d97757;  /* Claude terracotta: current line, progress, focus */
 /* tag palette: gruvbox. Type uses a fixed slot; Artists hash to a slot. */
 --t1: #fb4934; --t2: #fe8019; --t3: #fabd2f; --t4: #b8bb26;

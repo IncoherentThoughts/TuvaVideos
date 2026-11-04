@@ -2,7 +2,7 @@
 // behind, a plain `label` function is passed in). A Marker is `<sup data-fn="N" class="footnote-ref">N</sup>`;
 // one with no Footnote entry is orphaned.
 import { stripHtml } from "./normalize";
-import { sanitizeLine } from "./sanitize";
+import { escAttr, sanitizeLine } from "./sanitize";
 import type { FootnoteEntry, LyricLine } from "./types";
 
 export type MarkerCase = "orphan" | "no-text" | "with-text";
@@ -47,15 +47,19 @@ export const defaultMarkerLabel = ({ id, case: kase, text }: MarkerContext) =>
 
 /**
  * Gives every Marker a unique DOM id and the a11y attributes, marks truly adjacent Markers (`data-adjacent`, so CSS
- * can draw the comma between them), then sanitizes with the LINE profile. Sanitizing happens last on purpose: the
- * profile keeps the attributes this pass adds and drops any payload stored in the lyric HTML.
+ * can draw the comma between them). The line is sanitized with the LINE profile first, which drops any payload stored
+ * in the lyric HTML, ids and app classes included (WEB-14); the attributes this pass adds come after, from escaped
+ * values, and a Marker keeps none of its stored attributes but its class.
  */
 export function augmentMarkers(lines: readonly LyricLine[], footnotes: readonly FootnoteEntry[], { kind, idPrefix, label }: AugmentMarkersOptions): LyricLine[] {
   const byId = entriesById(footnotes);
   const occ = new Map<number, number>();
   return lines.map((line) => {
     if (line.isBlank) return { ...line };
-    const inner = line.innerHTML.replace(/<sup\b([^>]*)\bdata-fn="(\d+)"([^>]*)>([^<]*)<\/sup>/gi, (_full, pre: string, num: string, post: string, body: string) => {
+    // sanitized first, so the stored HTML can carry no id and no app class (WEB-14), and the regex below sees the
+    // sanitizer's regular `name="value"` attributes; what this pass adds is built from escaped values
+    const clean = sanitizeLine(line.innerHTML);
+    const inner = clean.replace(/<sup\b([^>]*)\bdata-fn="(\d+)"([^>]*)>([^<]*)<\/sup>/gi, (_full, pre: string, num: string, post: string, body: string) => {
       const id = parseInt(num, 10);
       const count = (occ.get(id) ?? 0) + 1;
       occ.set(id, count);
@@ -64,12 +68,14 @@ export function augmentMarkers(lines: readonly LyricLine[], footnotes: readonly 
       const text = kase === "with-text" ? stripHtml(entry!.text).slice(0, 60) : "";
       const name = label({ id, case: kase, text });
       const orphanAttr = kase === "orphan" ? ' data-orphan="true"' : "";
-      const describedBy = kase === "orphan" ? "" : ` aria-describedby="${footnoteDefDomId(kind, idPrefix, id)}"`;
-      return `<sup${pre}data-fn="${id}"${post} id="${markerDomId(kind, idPrefix, id, count)}" role="doc-noteref" tabindex="0"${describedBy} aria-label="${name.replace(/"/g, "&quot;")}"${orphanAttr}>${body}</sup>`;
+      const describedBy = kase !== "orphan";
+      // the stored attributes are dropped but its class: role, tabindex and the aria ones are this pass's to set
+      const cls = /\bclass="([^"]*)"/.exec(pre + post);
+      return `<sup${cls ? ` class="${cls[1]}"` : ""} data-fn="${id}" id="${escAttr(markerDomId(kind, idPrefix, id, count))}" role="doc-noteref" tabindex="0"${describedBy ? ` aria-describedby="${escAttr(footnoteDefDomId(kind, idPrefix, id))}"` : ""} aria-label="${escAttr(name)}"${orphanAttr}>${body}</sup>`;
     });
     const withAdjacency = inner.replace(/(<\/sup>)(<sup\b)([^>]*)(>)/gi, (full, close: string, supOpen: string, attrs: string, gt: string) =>
       /\bdata-fn=/.test(attrs) ? `${close}${supOpen}${attrs} data-adjacent="true"${gt}` : full,
     );
-    return { ...line, innerHTML: sanitizeLine(withAdjacency) };
+    return { ...line, innerHTML: withAdjacency };
   });
 }

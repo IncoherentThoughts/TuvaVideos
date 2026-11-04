@@ -4,18 +4,25 @@
 // script, style and friends, whose content goes too. Comments and doctypes are dropped. Allowed tags are re-balanced.
 // DOMPurify also lets `data-*` and `aria-*` attributes through by default; LINE keeps that, FOOTNOTE allows none.
 
+//
+// One deliberate difference from the archive (WEB-14): LINE drops `id`, and keeps only the classes the archive's own
+// lyric HTML uses (`footnote-ref` on a Marker, `ln-blank` on a stanza break). Lyrics written by any Video Editor could
+// otherwise clobber the page's ids (`lyrbody`, the `fn-def-*` Footnote targets) or dress text as app UI with its
+// classes. The ids the Reader needs are added after sanitizing, by augmentMarkers.
+
 export type Profile = "LINE" | "FOOTNOTE";
 
-export const PROFILE_CONFIG: Readonly<Record<Profile, { ALLOWED_TAGS: readonly string[]; ALLOWED_ATTR: readonly string[]; DATA_ARIA: boolean }>> = {
-  LINE: { ALLOWED_TAGS: ["p", "br", "b", "strong", "i", "em", "u", "s", "sub", "sup", "span"], ALLOWED_ATTR: ["class", "id", "role", "tabindex"], DATA_ARIA: true },
-  FOOTNOTE: { ALLOWED_TAGS: ["b", "strong", "i", "em", "u", "br", "sub", "sup"], ALLOWED_ATTR: [], DATA_ARIA: false },
+export const PROFILE_CONFIG: Readonly<Record<Profile, { ALLOWED_TAGS: readonly string[]; ALLOWED_ATTR: readonly string[]; DATA_ARIA: boolean; ALLOWED_CLASSES: readonly string[] }>> = {
+  LINE: { ALLOWED_TAGS: ["p", "br", "b", "strong", "i", "em", "u", "s", "sub", "sup", "span"], ALLOWED_ATTR: ["class", "role", "tabindex"], DATA_ARIA: true, ALLOWED_CLASSES: ["footnote-ref", "ln-blank"] },
+  FOOTNOTE: { ALLOWED_TAGS: ["b", "strong", "i", "em", "u", "br", "sub", "sup"], ALLOWED_ATTR: [], DATA_ARIA: false, ALLOWED_CLASSES: [] },
 };
 
 const VOID = new Set(["br"]);
 const DROP_CONTENT = new Set(["script", "style", "iframe", "object", "embed", "noscript", "template", "textarea", "title", "svg", "math"]);
 const DATA_ARIA_NAME = /^(?:data|aria)-[\w.:-]+$/i;
 
-const escAttr = (v: string) => v.replace(/&(?!(?:#\d+|#x[\da-f]+|\w+);)/gi, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** An attribute value made safe inside double quotes (an entity already written is kept). */
+export const escAttr = (v: string) => v.replace(/&(?!(?:#\d+|#x[\da-f]+|\w+);)/gi, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 interface Tag {
   name: string;
@@ -111,10 +118,12 @@ export function sanitize(html: string, profile: Profile): string {
     }
     let attrs = "";
     const seen = new Set<string>();
-    for (const [name, val] of tag.attrs) {
+    for (const [name, raw] of tag.attrs) {
       if (seen.has(name)) continue;
       if (!(allowedAttr.has(name) || (cfg.DATA_ARIA && DATA_ARIA_NAME.test(name)))) continue;
       seen.add(name);
+      const val = name === "class" ? raw.split(/\s+/).filter((c) => cfg.ALLOWED_CLASSES.includes(c)).join(" ") : raw;
+      if (name === "class" && !val) continue;
       attrs += ` ${name}="${escAttr(val)}"`;
     }
     out += `<${tag.name}${attrs}>`;

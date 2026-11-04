@@ -128,7 +128,19 @@ describe("lyrics helpers (ported from the archive)", () => {
 describe("sanitizer profiles", () => {
   test("LINE keeps text formatting, markers and data/aria attributes; drops scripts, handlers, images, links", () => {
     const dirty = '<p class="x" onclick="evil()"><b>b</b><img src=x onerror=y><a href="javascript:z">link</a><script>alert(1)</script><sup data-fn="1" aria-label="n" style="color:red">1</sup></p>';
-    expect(sanitize(dirty, "LINE")).toBe('<p class="x"><b>b</b>link<sup data-fn="1" aria-label="n">1</sup></p>');
+    expect(sanitize(dirty, "LINE")).toBe('<p><b>b</b>link<sup data-fn="1" aria-label="n">1</sup></p>');
+  });
+  test("LINE drops ids and every class but the archive's own (WEB-14)", () => {
+    expect(sanitize('<p><span id="lyrbody">clobber</span><span class="overlay menu">ui</span></p>', "LINE")).toBe("<p><span>clobber</span><span>ui</span></p>");
+    expect(sanitize('<p class="ln-blank x"><br></p><p>a<sup data-fn="1" class="footnote-ref card">1</sup></p>', "LINE")).toBe('<p class="ln-blank"><br></p><p>a<sup data-fn="1" class="footnote-ref">1</sup></p>');
+  });
+  test("augmentMarkers: a stored id or a11y attribute on a Marker is replaced by the Reader's own", () => {
+    const planted = '<p>x<sup id="fn-def-v-cyr-1" data-fn="1" class="footnote-ref" role="button" aria-describedby="lyrbody" data-orphan="true">1</sup><span id="lyrbody">y</span></p>';
+    const [line] = augmentMarkers(parseHtmlToLines(planted), [{ id: 1, text: "a" }], { kind: "fn", idPrefix: "v-cyr", label: defaultMarkerLabel });
+    const html = line!.innerHTML;
+    expect(html).toBe('x<sup class="footnote-ref" data-fn="1" id="fn-marker-v-cyr-1-1" role="doc-noteref" tabindex="0" aria-describedby="fn-def-v-cyr-1" aria-label="Footnote 1: a">1</sup><span>y</span>');
+    expect(html).not.toContain("lyrbody");
+    expect(html.match(/\bid="/g)?.length).toBe(1);
   });
   test("FOOTNOTE allows inline formatting only and no attributes", () => {
     expect(sanitize('Alt: <b class="k">x</b> <span>y</span><p>z</p><br/>', "FOOTNOTE")).toBe("Alt: <b>x</b> yz<br>");

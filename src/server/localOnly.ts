@@ -1,3 +1,4 @@
+import { isTvRequest } from "./tvRequest";
 // The localhost app's request guard (docs/audit/01-security.md SEC-1..SEC-3, SEC-5) and the stricter Origin and Host
 // checks of docs/sharing-spec.md §5.2 for the routes that write the Local copy from the browser (`POST
 // /api/cache/apply`) or take an access token (`/api/sync`). The companion listens on 127.0.0.1 only; these checks stop
@@ -16,12 +17,9 @@ const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  */
 const BODY_TYPES = new Set(["application/json", "image/png"]);
 
-const viaTv = new WeakSet<Request>();
-
-/** The TV Server hands this request to the localhost handler: its Host is the Mac's LAN address, its IP was checked. */
-export function markTvRequest(req: Request): void {
-  viaTv.add(req);
-}
+// The TV Server marks each request it hands to the localhost handler (src/server/tvRequest.ts): its Host is the Mac's
+// LAN address and its IP was checked by that listener.
+export { markTvRequest } from "./tvRequest";
 
 function parseHost(host: string): { hostname: string; port: string } | null {
   try {
@@ -82,7 +80,7 @@ export interface Refusal {
  * `BODY_TYPES`. The TV Server's requests pass: it checks them itself (source IP, route list, tv.ts).
  */
 export function localGuard(req: Request, port: number | null): Refusal | null {
-  if (viaTv.has(req)) return null;
+  if (isTvRequest(req)) return null;
   const host = hostError(req, port);
   if (host) return { status: 403, error: host };
   if (!WRITES.has(req.method)) return null;

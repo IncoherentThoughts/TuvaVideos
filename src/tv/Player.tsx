@@ -10,7 +10,7 @@ import { clampTime, fmtClock, keyframeSeekTarget } from "../shared/playerMath"
 import { stepFrom, type PlayingFrom } from "../shared/playingFrom"
 import { current, widenToVideo, type Playlist } from "../shared/playlist"
 import { ENDED_LABEL, entryRange, nextEntry, nextLabel, openAt, prevEntry, prevLabel, reachedEnd, resumeAllowed, seekWidens } from "../shared/playlistPlayer"
-import { ResumeClock, RESUME_INTERVAL_MS, adoptResume, storedResume } from "../shared/resume"
+import { ResumeClock, ResumeOwner, RESUME_INTERVAL_MS, adoptResume, storedResume } from "../shared/resume"
 import { SeekThrottle } from "../shared/seekThrottle"
 import type { ChapterDto, CopyDto, SongDto, VideoDto } from "../shared/types"
 import { AudioEngine } from "../web/audioEngine"
@@ -22,12 +22,13 @@ import { api, url, writes } from "./data"
 import { useKeyHandler } from "./input"
 import { lyricsView, nextScript, noLyricsReason, songTarget } from "./lyrics"
 import { openTag } from "./open"
+import { onPlayError } from "./playRetry"
 import { OSD_FADE_MS, chapterLine, nextUp, osdVisible, pct } from "./osd"
 import { LyricsColumn, PlList, type ListRow, type LyricsCtl } from "./PlayerParts"
 import { activePlaylist, buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen, setActivePlaylist } from "./playlistOps"
 import { libraryOrder } from "./rails"
 import type { Nav } from "./screen"
-import { REW_FF_S, nextSeekStep, stepLabel, type SeekRamp } from "./seekStep"
+import { REW_FF_S, heldSeekStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "./seekStep"
 import { focusableTags, infoTexts, playingFromText } from "./tags"
 import { BUTTONS, initialZone, reduceZone, type Fx, type ZoneCtx, type ZoneState } from "./zones"
 
@@ -95,6 +96,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const [song, setSong] = useState<SongDto | null | undefined>(undefined)
   const [audioMode, setAudioMode] = useState<AudioMode>("none")
   const [resumeMark, setResumeMark] = useState<number | null>(null)
+  const [reconnecting, setReconnecting] = useState(false) // a network retry is under way (TV-2)
 
   // ---- mutable state that handlers read ----
   const R = useRef({
@@ -104,9 +106,11 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     keyframes: null as number[] | null, // the playing Copy's keyframe index, once fetched
     seekTarget: null as number | null, // the last requested seek while in flight or queued: held keys step from it
     ramp: null as SeekRamp | null,
+    flatAt: null as number | null, // the last MediaRewind/FastForward step: a held one steps at the hold pace
     entryDone: false, // the Playlist Entry's end was handled once; cleared when the playhead is back inside it
     failed: new Set<number>(),
-    retried: new Set<number>(),
+    retried: new Set<number>(), // the Copies whose one decode retry is spent
+    netTries: 0, // network retries in a row (playRetry.ts); a load that reaches its metadata resets it
     lastPos: 0,
     known: null as number | null, // the Resume position as this Player last read or wrote it
     wroteAt: 0,
@@ -124,6 +128,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     alive: true,
   })
   const clock = useRef(new ResumeClock(RESUME_INTERVAL_MS))
+  const owner = useRef(new ResumeOwner()) // an adopted position is not written back (TV-8)
   const throttle = useRef(
     new SeekThrottle((to) => {
       const v = vid.current
@@ -209,7 +214,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   // ---- Resume (spec 2.5) ----
   const writeResume = () => {
     const r = R.current
-    if (!r.started || !resumeAllowed(!!PL.current) || !S.current.video) return
+    if (!r.started || !resumeAllowed(!!PL.current) || !S.current.video || !owner.current.mayWrite) return
     const v = vid.current
     const pos = v && v.readyState > 0 ? v.currentTime : r.lastPos
     clock.current.wrote(Date.now())
@@ -299,19 +304,26 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     let c = clampTime(to, dur)
     const rg = S.current.range
     if (!internal && PL.current && rg && seekWidens(rg, c)) commitPl(widenToVideo(PL.current)) // past the Chapter Entry's end: a Video Entry now
+    if (!internal) owner.current.produced() // the user's seek: written
     if (mode === "keyframe" && R.current.keyframes) c = clampTime(keyframeSeekTarget(c, R.current.keyframes, from), dur)
     R.current.seekTarget = c
     throttle.current.request(c, throttled)
     setT(c)
   }
-  const seekBy = (dir: 1 | -1, kind: "ramp" | "flat") => {
+  /** `held`: an auto-repeat of the key (input.ts), which keeps the rung and the hold pace instead of climbing (spec 6.3). */
+  const seekBy = (dir: 1 | -1, kind: "ramp" | "flat", held = false) => {
     const v = vid.current
     if (!v || !R.current.started) return
+    const now = performance.now()
     let stepS = REW_FF_S
     if (kind === "ramp") {
-      const x = nextSeekStep(R.current.ramp, dir, performance.now())
+      const x = held ? heldSeekStep(R.current.ramp, dir, now) : nextSeekStep(R.current.ramp, dir, now)
+      if (!x) return
       R.current.ramp = x.ramp
       stepS = x.step
+    } else {
+      if (held && !repeatDue(R.current.flatAt, now)) return
+      R.current.flatAt = now
     }
     const base = R.current.seekTarget ?? v.currentTime // a held key steps from the seek already requested
     seekTo(base + dir * stepS, "keyframe", base, true)
@@ -393,12 +405,12 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   }
 
   // ---- the effects of a key (zones.ts decides, this does) ----
-  const runFx = (fx: Fx) => {
+  const runFx = (fx: Fx, held = false) => {
     switch (fx.t) {
       case "toggle": return toggle()
       case "play": return void vid.current?.play().catch(() => setNeedsEnter(true))
       case "pause": return vid.current?.pause()
-      case "seek": return seekBy(fx.dir, fx.kind)
+      case "seek": return seekBy(fx.dir, fx.kind, held)
       case "page": return lyricsCtl.current?.page(fx.dir)
       case "lyrics": {
         if (!hasLyrics) return say(reason ?? "No lyrics")
@@ -451,7 +463,9 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         return say(row?.viaRemux ? REMUX_MESSAGE : "Copy unavailable", 3000)
       }
       case "say": return say(fx.text, 1800)
-      case "leave": return nav.back()
+      case "leave":
+        writeResume() // before the library is re-read (TV-6); the unmount's write comes only after paint in Preact 11
+        return nav.back()
     }
   }
 
@@ -464,7 +478,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     }
     const res = reduceZone(ZS.current, k.action, S.current.zctx)
     if (res.state !== ZS.current) setZone(res.state)
-    for (const fx of res.fx) runFx(fx)
+    for (const fx of res.fx) runFx(fx, k.repeat === true)
     return res.handled
   })
 
@@ -475,6 +489,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     const { at, play, announce } = r.pending
     if (muted()) v.muted = true
     if (at > 0) v.currentTime = clampTime(at, v.duration)
+    r.netTries = 0
+    setReconnecting(false)
     r.started = true
     r.lastPos = at
     setT(at)
@@ -485,6 +501,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   E.current.onPlay = () => {
     const v = vid.current!
     const r = R.current
+    owner.current.produced()
     setPaused(false)
     setNeedsEnter(false)
     if (!r.audioStarted && !r.audioOff) {
@@ -557,6 +574,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     const v = vid.current
     const id = r.copyId
     if (id == null || !v || !v.getAttribute("src")) return
+    const code = v.error?.code ?? null
     const pos = r.started ? v.currentTime : r.pending.at
     const play = r.started ? !v.paused : r.pending.play
     const fresh = await api.video(videoId).catch(() => null)
@@ -568,16 +586,27 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     }
     const cur = (fresh ?? S.current.video)?.copies.find((c) => c.id === id)
     const intact = !!cur && cur.available && !cur.missing
-    if (intact && !r.retried.has(id)) {
-      r.retried.add(id) // the drive hiccuped: one more try of the same Copy before giving up on it
-      await sleep(1500)
-      if (r.alive && r.copyId === id && cur) attach(cur, pos, play)
-      return
+    // a lost server or stream retries with backoff and plays on; only a Copy that keeps failing while the server
+    // answers is marked failed with the codecs message (playRetry.ts, audit TV-2)
+    const act = onPlayError({ serverAnswered: !!fresh, code, intact, decodeRetried: r.retried.has(id), netTries: r.netTries })
+    if (act.t === "lose") {
+      setReconnecting(false)
+      return lose(id, act.failed, pos, play)
     }
-    lose(id, intact, pos, play)
+    if (act.net) {
+      r.netTries++
+      setReconnecting(true)
+    } else r.retried.add(id)
+    r.pending = { at: pos, play, announce: false }
+    await sleep(act.ms)
+    if (r.alive && r.copyId === id && cur) attach(cur, pos, play)
   }
   E.current.writeResume = writeResume
-  E.current.seekTo = (to: number) => seekTo(to, "exact", undefined, false, true)
+  /** Follow another player's Resume position: seek there without writing it back (TV-8). */
+  E.current.adoptTo = (to: number) => {
+    seekTo(to, "exact", undefined, false, true)
+    owner.current.adopted()
+  }
   E.current.say = say
 
   // ---- mount: media listeners ----
@@ -654,7 +683,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
           const to = r.started && el && resumeAllowed(!!PL.current) ? adoptResume({ stored: v.resumeS, known: r.known, paused: el.paused, now: Date.now(), wroteAt: r.wroteAt }) : null
           if (to != null) {
             r.known = to
-            E.current.seekTo!(to)
+            E.current.adoptTo!(to)
             E.current.say!(`Resume moved to ${fmtClock(to)} by another player`, 2600)
           }
         })
@@ -753,6 +782,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         {phase !== "ready" && phase !== "loading" && (
           <div class="plmsg">{!video ? "This Video is not in the library." : phase === "remux" ? REMUX_MESSAGE : phase === "failed" && failedCopy ? failedMessage(failedCopy) : "Copy unavailable"}</div>
         )}
+        {reconnecting && phase === "loading" && <div class="plmsg">Lost the TV Server · retrying…</div>}
         {needsEnter && <div class="plmsg over">Press Enter to play</div>}
         {badge && <div class="pl-badge">{badge}</div>}
         {flash && (

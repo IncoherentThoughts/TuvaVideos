@@ -12,7 +12,7 @@ import { Pane } from "./Pane"
 import { Player } from "./Player"
 import { setActivePlaylist } from "./playlistOps"
 import { Search } from "./Search"
-import { api, exitApp } from "./data"
+import { api, exitApp, writes } from "./data"
 import { focusEl, keyOf } from "./focus"
 import { installKeys } from "./input"
 import { makeEntry, pop, push, replaceTop, top, type Entry, type Route } from "./nav"
@@ -91,7 +91,7 @@ function App() {
         openSearch: () => openRoute({ kind: "search" }),
         swapToGrid: (grid) => {
           setStack((s) => replaceTop(s, makeEntry({ kind: "grid", grid })))
-          void reload() // the Player wrote Resume on the way out
+          void writes.settled().then(reload) // the Player wrote Resume on the way out: re-read once it is answered
         },
         play: (videoId, o) => openRoute({ kind: "player", videoId, startS: o.startS ?? null, playingFrom: o.playingFrom, playlist: o.playlist ?? null }),
         random: () => {
@@ -113,7 +113,8 @@ function App() {
           const { stack: next, popped } = pop(live.current.stack)
           if (!popped) return
           setStack(next)
-          if (popped.route.kind === "player") void reload() // Resume and last-played may have moved
+          // Resume and last-played may have moved: re-read once the Player's last write (sent before it calls back) is answered (TV-6)
+          if (popped.route.kind === "player") void writes.settled().then(reload)
           if (popped.fromPane) setPane({ open: true, focusKey: popped.fromPane })
         },
         toast: say,

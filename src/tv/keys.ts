@@ -77,6 +77,8 @@ export interface TvKeyEvent {
   action: TvAction
   /** For `char`: the character typed. */
   char?: string
+  /** An auto-repeat of a held key (input.ts), not a fresh press: the Player's seek ramp does not climb on these. */
+  repeat?: boolean
 }
 
 /** The Action for a keydown: the remote's codes first, then the desktop stand-ins, then a typed character. */

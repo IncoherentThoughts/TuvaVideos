@@ -1,7 +1,7 @@
 // Search (docs/tv-spec.md 7): the D-pad keyboard on the left, results on the right from /api/search grouped
 // Songs / Videos / Artists. A physical keyboard types too. Right at the keyboard's edge reaches the results; Back
 // from the results returns to the keyboard, Back again leaves Search.
-import { useEffect, useMemo, useRef, useState } from "preact/hooks"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks"
 import { highlightHtml } from "../shared/fold"
 import type { SearchResponse, SearchRow } from "../shared/types"
 import { fmtDuration } from "../web/ui"
@@ -71,7 +71,20 @@ export function Search({ nav, active, mem }: { nav: Nav; active: boolean; mem: R
   const keys = layerKeys(kb.layer)
   const needle = res?.needle ?? ""
 
-  const press = (key: KbKey) => setKb((s) => pressKey(s, key))
+  // A layer switch replaces the character keys; the pressed key keeps focus (TV-7). The operation keys have ids that
+  // do not depend on the layer, so the same key is found again after the switch even if its element was replaced.
+  const refocus = useRef<string | null>(null)
+  const press = (key: KbKey) => {
+    if (key.kind === "layer") refocus.current = kbKeyId(key, 0)
+    setKb((s) => pressKey(s, key))
+  }
+  useLayoutEffect(() => {
+    const k = refocus.current
+    refocus.current = null
+    const r = root.current
+    if (!k || !r || keyOf(document.activeElement) === k) return
+    focusEl(findByKey(r, k), 40)
+  }, [kb.layer])
 
   const openRow = (row: ResultRow) => {
     switch (row.kind) {
@@ -157,11 +170,11 @@ export function Search({ nav, active, mem }: { nav: Nav; active: boolean; mem: R
         <div class="kb">
           {keys.map((key, i) => (
             <div
-              key={`${kb.layer}${i}`}
+              key={kbKeyId(key, i)}
               class={`kbk${key.kind === "char" ? "" : " op"}${key.kind === "layer" && key.layer === kb.layer ? " on" : ""}${key.kind === "space" ? " wide" : ""}`}
               tabIndex={-1}
               data-item=""
-              data-key={`kb-${i}`}
+              data-key={kbKeyId(key, i)}
               data-zone="kb"
               onClick={() => press(key)}
             >
@@ -192,6 +205,15 @@ export function Search({ nav, active, mem }: { nav: Nav; active: boolean; mem: R
       </div>
     </div>
   )
+}
+
+/** A keyboard key's `data-key`: `kb-<index>` for a character (the layer's own), a fixed id for space, backspace, clear and the layer switches. */
+function kbKeyId(key: KbKey, i: number): string {
+  switch (key.kind) {
+    case "char": return `kb-${i}`
+    case "layer": return `kb-layer-${key.layer}`
+    default: return `kb-${key.kind}`
+  }
 }
 
 function groupRows(rows: ResultRow[]) {

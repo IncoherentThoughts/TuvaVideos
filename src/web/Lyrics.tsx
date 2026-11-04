@@ -12,7 +12,7 @@ import type { ScriptKey } from "../shared/lyrics/types";
 import type { SongDto } from "../shared/types";
 import { api, apiError } from "./data";
 import { SongPicker } from "./HeaderEdit";
-import { LyricsEditor } from "./LyricsEditor";
+import { draftStash, LyricsEditor } from "./LyricsEditor";
 import { AddProposedVersion, RowActions, useRowRoles } from "./ProposedRows";
 import { ProposedMark } from "./ui";
 
@@ -49,9 +49,12 @@ export interface LyricsReaderProps {
   onFocused?: () => void;
   /** The Video is Shared: the relink picker makes a Proposed Song, not a Local one (sharing-spec §3.4). */
   shared?: boolean;
+  /** The editor opened or closed (also called with false when the drawer goes away): Now playing holds the drawer on
+   *  this Song meanwhile instead of following the playhead into the next Chapter. */
+  onEditingChange?: (editing: boolean) => void;
 }
 
-export function LyricsReader({ songId, versionId, fromChapter = false, onClose, onPickVersion, onChangeSong, autoFocus = false, onFocused, shared = false }: LyricsReaderProps) {
+export function LyricsReader({ songId, versionId, fromChapter = false, onClose, onPickVersion, onChangeSong, autoFocus = false, onFocused, shared = false, onEditingChange }: LyricsReaderProps) {
   const [song, setSong] = useState<SongDto | null | undefined>(undefined);
   const [pick, setPick] = useState<string | null>(null);
   const [script, setScript] = useState<ScriptKey>(scriptPref);
@@ -76,6 +79,13 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
     };
   }, [songId, reload]);
   useEffect(() => (setEditing(null), setRenaming(false), setRelinking(false)), [songId]);
+  const isEditing = !!editing;
+  useEffect(() => {
+    if (!isEditing) return;
+    onEditingChange?.(true);
+    return () => onEditingChange?.(false);
+  }, [isEditing]);
+  const [, bumpStash] = useState(0);
   useEffect(() => setPick(null), [versionId]);
   useEffect(() => {
     if (autoFocus && song) {
@@ -311,6 +321,19 @@ export function LyricsReader({ songId, versionId, fromChapter = false, onClose, 
             onCancel={() => (setEditing(null), root.current?.focus({ preventScroll: true }))}
           />
         )}
+        {!editing &&
+          song &&
+          draftStash
+            .forSong(song.id)
+            .filter((d) => d.versionId === null || versions.some((x) => x.id === d.versionId && x.local))
+            .map((d) => (
+              <p class="draft-note" role="note" key={d.versionId ?? "new"}>
+                Unsaved local lyrics{d.label.trim() ? ` “${d.label.trim()}”` : ""}.{" "}
+                <button class="linkbtn" onClick={() => setEditing({ versionId: d.versionId })}>continue editing</button>
+                {" · "}
+                <button class="linkbtn" onClick={() => (draftStash.drop(d.songId, d.versionId), bumpStash((n) => n + 1))}>discard</button>
+              </p>
+            ))}
         {!editing && song === undefined && <p class="empty">Loading…</p>}
         {!editing && song === null && <p class="empty">This Song is not in the archive (unknown song).</p>}
         {!editing && song && !version && (

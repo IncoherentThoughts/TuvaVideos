@@ -33,8 +33,8 @@ export function apiError(e: unknown): string {
   return m;
 }
 
-async function send<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", url: string, body?: unknown): Promise<T> {
-  const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+async function send<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", url: string, body?: unknown, opts: { keepalive?: boolean } = {}): Promise<T> {
+  const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), keepalive: opts.keepalive });
   if (!r.ok) throw new Error(`${url}: ${r.status} ${await r.text().catch(() => "")}`);
   return (await r.json()) as T;
 }
@@ -94,7 +94,8 @@ export const api = {
   chapters: (videoId: string) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),
   // Audio settings (spec 4.7): per Video; `state: null` clears them. Presets: built-in and custom EQ curves.
   audio: (videoId: string) => get<{ state: AudioState | null }>(`/api/videos/${videoId}/audio`),
-  setAudio: (videoId: string, state: AudioState | null) => send<{ state: AudioState | null }>("PUT", `/api/videos/${videoId}/audio`, { state }),
+  /** `keepalive`: the request outlives the page (a write flushed as the Video or the tab goes away). */
+  setAudio: (videoId: string, state: AudioState | null, opts: { keepalive?: boolean } = {}) => send<{ state: AudioState | null }>("PUT", `/api/videos/${videoId}/audio`, { state }, opts),
   audioPresets: () => get<AudioPreset[]>("/api/audio-presets"),
   savePreset: (name: string, eq: number[]) => send<AudioPreset>("PUT", `/api/audio-presets/${encodeURIComponent(name)}`, { eq }),
   deletePreset: (name: string) => send<{ deleted: true }>("DELETE", `/api/audio-presets/${encodeURIComponent(name)}`),

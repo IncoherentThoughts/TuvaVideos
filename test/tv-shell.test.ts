@@ -138,26 +138,28 @@ describe("discovery order", () => {
     const t = setup((addr, p) => (addr === MAC && p === "/api/health" ? resp(200, "<html>router admin</html>") : "refuse"), { last: MAC })
     t.disc.start()
     await t.clock.advance(100)
-    expect(t.states.at(-1)).toEqual({ kind: "looking", step: "typed", detail: "" })
+    expect(t.states.at(-1)).toEqual({ kind: "typing", prefix: "192.168.4." })
   })
 
-  test("nothing answers: last, sweep, then the typed step; the whole sequence retries every 5 s", async () => {
+  test("nothing answers: last, sweep, then the typed field opens by itself; the sequence keeps retrying behind it", async () => {
     const t = setup(() => "hang", { last: "192.168.4.99" })
     t.disc.start()
     await t.clock.advance(2000)
     await t.clock.advance(20000) // 253 hosts / 32 in flight x 2 s
-    expect(t.kinds()).toEqual(["looking:last", "looking:sweep", "looking:typed"])
+    expect(t.kinds()).toEqual(["looking:last", "looking:sweep", "typing"])
+    expect(t.states.at(-1)).toEqual({ kind: "typing", prefix: "192.168.4." })
     const before = t.calls.length
     await t.clock.advance(5001)
-    expect(t.kinds().slice(3, 5)).toEqual(["looking:last", "looking:sweep"])
-    expect(t.calls.length).toBeGreaterThan(before)
+    expect(t.calls.length).toBeGreaterThan(before) // retried
+    expect(t.kinds()).toEqual(["looking:last", "looking:sweep", "typing"]) // without taking the field away
   })
 
-  test("with no address at all there is nothing to sweep: straight to the typed step", async () => {
+  test("with no address at all there is nothing to sweep: straight to the typed field, empty", async () => {
     const t = setup(() => "refuse", { ip: null })
     t.disc.start()
     await t.clock.advance(10)
-    expect(t.kinds()).toEqual(["looking:typed"])
+    expect(t.kinds()).toEqual(["typing"])
+    expect(t.states.at(-1)).toEqual({ kind: "typing", prefix: "" })
   })
 })
 
@@ -170,13 +172,11 @@ describe("typed address", () => {
     expect(D().normalizeTyped("1.2.3.256", "")).toBeNull()
   })
 
-  test("Enter opens the field (retries pause), a wrong address says so, the right one connects", async () => {
+  test("the field opens by itself, a wrong address says so, the right one connects", async () => {
     let up = false
     const t = setup((addr, p) => (up ? macServer()(addr, p) : "refuse"), { ip: "192.168.4.56" })
     t.disc.start()
     await t.clock.advance(10)
-    expect(t.states.at(-1).step).toBe("typed")
-    t.disc.openTyped()
     expect(t.states.at(-1)).toEqual({ kind: "typing", prefix: "192.168.4." })
     await t.clock.advance(30000)
     expect(t.states.at(-1).kind).toBe("typing") // no retry noise while typing
@@ -189,13 +189,51 @@ describe("typed address", () => {
     expect(t.store.get("tuva.tv.last")).toBe(MAC)
   })
 
-  test("Back on an empty field returns to the looking screen", async () => {
+  test("a server switched on while the field is open is found by the retries and takes the screen", async () => {
+    let up = false
+    const t = setup((addr, p) => (up ? macServer()(addr, p) : "refuse"), { ip: "192.168.4.56" })
+    t.disc.start()
+    await t.clock.advance(10)
+    expect(t.states.at(-1).kind).toBe("typing")
+    up = true
+    await t.clock.advance(5100)
+    expect(t.states.at(-1)).toEqual({ kind: "ready", base: BASE })
+  })
+
+  test("Back on an empty field returns to the looking screen, and the retries do not reopen it", async () => {
     const t = setup(() => "refuse", { ip: null })
     t.disc.start()
     await t.clock.advance(10)
-    t.disc.openTyped()
     t.disc.closeTyped()
-    expect(t.kinds()).toEqual(["looking:typed", "typing", "looking:typed"])
+    expect(t.kinds()).toEqual(["typing", "looking:typed"])
+    await t.clock.advance(15100)
+    expect(t.kinds().filter((k) => k === "typing").length).toBe(1)
+    expect(t.states.at(-1)).toEqual({ kind: "looking", step: "typed", detail: "" })
+    t.disc.openTyped() // Enter opens it again
+    expect(t.states.at(-1).kind).toBe("typing")
+  })
+
+  test("TV-9: Enter during the access step: the approve screen still takes over and the retries never stop", async () => {
+    let videos: () => Resp | "hang" = () => "hang"
+    let healthUp = true
+    const t = setup((addr, p) => (addr !== MAC ? "refuse" : p === "/api/health" ? (healthUp ? resp(200, HEALTH) : "refuse") : videos()), { last: MAC })
+    t.disc.start()
+    await t.clock.advance(10)
+    expect(t.states.at(-1)).toEqual({ kind: "looking", step: "access", detail: MAC })
+    videos = () => resp(403)
+    t.disc.openTyped() // Enter while asking for the library
+    expect(t.states.at(-1).kind).toBe("typing")
+    await t.clock.advance(10_001) // the hanging /api/videos times out ("down"): the search goes round again
+    await t.clock.advance(5_100)
+    expect(t.states.at(-1)).toEqual({ kind: "denied", base: BASE }) // not stuck on the field
+    // the server then stops answering: the approve loop gives up and the search keeps going
+    healthUp = false
+    videos = () => "refuse" as any
+    await t.clock.advance(3_100)
+    const n = t.calls.length
+    await t.clock.advance(30_000)
+    expect(t.calls.length).toBeGreaterThan(n + 3) // still retrying
+    expect(t.states.at(-1)).toEqual({ kind: "typing", prefix: "192.168.4." }) // nothing answers now: the field, as at launch
   })
 })
 

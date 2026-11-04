@@ -17,6 +17,7 @@ import { deleteVideo, removeCopies } from "./deleteVideo";
 import { deletedMatches, kindsOf, rowInfo, sharedSuggestions } from "./sharedWrites";
 import { clearShelved, dropShelved, listEdits, markShelvedSeen, shelvedItems, unseenShelvedVideos, videoHistory } from "./editHistory";
 import { serveFile } from "./stream";
+import { servesShell } from "../shared/routes";
 import type { KeyframeIndex } from "./keyframes";
 import { NO_TRASH_NOTICE, resolveTrash } from "./platform";
 import { run } from "./proc";
@@ -553,8 +554,8 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/scan") return json(s.scanner.progress());
         if (p === "/api/onboarding") return json(onboardingState());
-        // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
-        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/search" || p === "/artists" || p === "/songs" || /^\/play\/[0-9a-fA-F-]{36}$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
+        // Client routes (hand-rolled history routing, spec 9): every one serves the shell (the list is the router's, shared/routes.ts).
+        if (servesShell(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {

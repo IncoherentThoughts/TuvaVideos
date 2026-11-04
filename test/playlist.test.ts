@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
-  advance, current, cycleRepeat, isPlaylist, jumpTo, jumpToVideo, played, position, setShuffled, shuffle, startPlaylist, stepBack, upcoming,
+  advance, current, cycleRepeat, isPlaylist, jumpTo, jumpToVideo, played, position, reshuffleAfter, setShuffled, shuffle, startPlaylist, stepBack, upcoming,
   widenToVideo, type Entry, type Playlist,
 } from "../src/shared/playlist";
 
@@ -131,6 +131,23 @@ describe("advance and stepBack", () => {
     expect(seqOf(r.pl)).toEqual([11, 12, 13, 10]);
     expect(r.pl.cursor).toBe(0);
     expect(played(r.pl)).toEqual([]);
+  });
+
+  test("Repeat list, shuffled: the wrap never opens with the Entry that just ended (WEB-12)", () => {
+    let pl = startPlaylist(videos(10, 11, 12, 13), { source: "library", startAt: 0, rng: one });
+    pl = cycleRepeat(pl);
+    pl = jumpTo(pl, 3); // 13 is playing, last in the order
+    // rng just under 1 leaves Fisher–Yates with the identity: an order opening with the last Entry gets it swapped away
+    expect(reshuffleAfter([3, 0, 1, 2], 3, one)).toEqual([2, 0, 1, 3]);
+    expect(reshuffleAfter([0, 1, 2, 3], 3, one)).toEqual([0, 1, 2, 3]);
+    for (let k = 0; k < 200; k++) {
+      const w = advance(pl, () => true, Math.random);
+      expect(current(w.pl)?.videoId).not.toBe("13");
+      expect([...w.pl.order].sort()).toEqual([0, 1, 2, 3]);
+    }
+    // a one-Entry list still plays its only Entry again
+    const solo = cycleRepeat(startPlaylist(videos(10), { source: "library", startAt: 0 }));
+    expect(current(advance(solo).pl)?.videoId).toBe("10");
   });
 
   test("Repeat list with nothing playable at all: ended, unchanged", () => {

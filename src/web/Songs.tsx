@@ -1,4 +1,4 @@
-// /songs: every Mirror Song some Video or Chapter points at, and every Local Song, with counts; filter by name, lyrics,
+// /songs: every archive Song some Video or Chapter points at, and every Local Song, with counts; filter by name, lyrics,
 // sort; "New local Song…" makes a Local Song and opens its lyrics page so lyrics can be written.
 // Opening a Song follows the search dropdown's rule (lyricsNav.ts): the first Video performing it with the drawer
 // open, else the lyrics page on its own.
@@ -103,7 +103,7 @@ export function Songs({ search }: { search: string }) {
       <div class="controls" role="toolbar" aria-label="Song filters">
         <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name…" label="Filter Songs by name" />
         <span class="sep" />
-        <button class={`chip${st.lyricsOnly ? " on" : ""}`} aria-pressed={st.lyricsOnly} onClick={() => go({ lyricsOnly: !st.lyricsOnly })} title="Only Songs with lyrics in the archive Mirror">
+        <button class={`chip${st.lyricsOnly ? " on" : ""}`} aria-pressed={st.lyricsOnly} onClick={() => go({ lyricsOnly: !st.lyricsOnly })} title="Only Songs with lyrics in the archive">
           With lyrics
         </button>
         <span class="sep" />

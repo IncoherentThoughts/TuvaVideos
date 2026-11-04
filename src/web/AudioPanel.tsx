@@ -111,34 +111,58 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
     else void runAuto(c ? "full" : "sampled");
   };
   const cancelAuto = () => { abort.current?.abort(); setAuto({ phase: "idle" }); };
+  // the settings as they are now, for putting the chain back after a sampled measurement
+  const latest = useRef(s);
+  latest.current = s;
+  // a measurement still winding down after Cancel: the next Auto waits for it, so two never run at once
+  const running = useRef<Promise<void> | null>(null);
+  useEffect(() => () => abort.current?.abort(), []); // closing the panel stops a measurement
   const runAuto = async (how: "full" | "sampled") => {
     const v = vid.current;
     if (!v) return;
-    const eng = AudioEngine.for(v);
-    setAutoReport(null);
+    abort.current?.abort();
     const ac = new AbortController();
     abort.current = ac;
+    const before = running.current;
+    let release!: () => void;
+    running.current = new Promise<void>((r) => (release = r));
+    const eng = AudioEngine.for(v);
+    setAutoReport(null);
+    // progress from a cancelled run must not bring the "busy" wand back
+    const progress = (label: string) => !ac.signal.aborted && setAuto({ phase: "busy", label });
+    let measuring = false;
     try {
+      if (before) {
+        progress("…");
+        await before;
+      }
+      if (ac.signal.aborted) return;
       let m: Measure;
       if (how === "full") {
         const c = playingCopy();
         if (!c) throw new Error("no Copy");
-        setAuto({ phase: "busy", label: "decoding…" });
-        m = await analyzeFull(c.id, (f) => setAuto({ phase: "busy", label: `decoding ${Math.round(f * 100)} %` }), c.durationS, ac.signal);
+        progress("decoding…");
+        m = await analyzeFull(c.id, (f) => progress(`decoding ${Math.round(f * 100)} %`), c.durationS, ac.signal);
       } else {
-        // measure through the live chain with the chain at its defaults
-        onChange(DEFAULT_AUDIO);
-        setAuto({ phase: "busy", label: "listening…" });
+        // measure through the live chain with the chain at its defaults: set on the engine only, never saved, and put
+        // back to the Video's settings whatever happens (WEB-2: a Cancel used to save the defaults over them)
+        measuring = true;
+        eng.set(DEFAULT_AUDIO);
+        progress("listening…");
         await new Promise((r) => setTimeout(r, 300));
-        m = await analyzeSampled(v, eng, (f) => setAuto({ phase: "busy", label: `listening ${Math.round(f * 100)} %` }));
+        if (ac.signal.aborted) return;
+        m = await analyzeSampled(v, eng, (f) => progress(`listening ${Math.round(f * 100)} %`), { signal: ac.signal });
       }
       if (ac.signal.aborted) return;
       const out = autoSettings(m);
+      measuring = false;
       onChange(out.audio);
       setAutoReport(out.report);
     } catch (e) {
       if (!ac.signal.aborted) setAutoReport([{ k: "error", heard: String((e as Error).message ?? e), did: "" }]);
     } finally {
+      if (measuring) eng.set(latest.current);
+      release();
       if (abort.current === ac) { abort.current = null; setAuto({ phase: "idle" }); }
     }
   };

@@ -8,7 +8,7 @@ import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies"
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
-  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
+  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
 } from "../shared/playerMath";
 import { RESUME_INTERVAL_MS, ResumeClock, ResumeOwner, adoptResume, startPosition, storedResume } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
@@ -783,14 +783,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       case "chapter": {
         if (!chapters.length) return say("no chapters");
         const sorted = [...chapters].sort((x, y) => x.startS - y.startS);
-        let i = -1;
-        sorted.forEach((c, k) => {
-          if (v.currentTime >= c.startS - 0.001) i = k;
-        });
-        if (a.dir < 0 && i >= 0 && v.currentTime - sorted[i]!.startS >= 2) i += 1; // restart the current one first
-        const to = sorted[Math.min(sorted.length - 1, Math.max(0, i + a.dir))]!;
-        seekTo(to.startS);
-        say(`Chapter: ${to.title}`);
+        const i = chapterStepTarget(sorted.map((c) => c.startS), v.currentTime, a.dir);
+        const to = i >= 0 ? sorted[i]! : null;
+        seekTo(to ? to.startS : 0);
+        say(to ? `Chapter: ${to.title}` : "Start of the Video");
         flash();
         break;
       }

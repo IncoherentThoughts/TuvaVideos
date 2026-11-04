@@ -35,7 +35,76 @@ const POLL_MS = 3000;
 let panelWanted = false;
 let panelSeenStart = 0;
 
-export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t: number | null; lyrics: string | null; lyricsVersion: string | null }) {
+interface PlayProps {
+  videoId: string;
+  t: number | null;
+  lyrics: string | null;
+  lyricsVersion: string | null;
+}
+
+/** The screen's choices that follow the user from Video to Video: which drawer is open, the Playlist panel. */
+interface Screen {
+  drawer: boolean;
+  setDrawer(on: boolean): void;
+  focusDrawer: boolean;
+  setFocusDrawer(on: boolean): void;
+  audioOpen: boolean;
+  setAudioOpen(on: boolean | ((on: boolean) => boolean)): void;
+  stateOpen: boolean;
+  setStateOpen(on: boolean | ((on: boolean) => boolean)): void;
+  plOpen: boolean;
+  setPlOpen(on: boolean): void;
+  ended: EndedMark | null;
+  setEnded(m: EndedMark | null): void;
+  shownPlayed: ShowPlayed;
+  setShownPlayed(f: (s: ShowPlayed) => ShowPlayed): void;
+}
+
+/**
+ * Now playing. Everything that belongs to one Video (the Video itself, its Chapters, Audio settings, an open Delete
+ * dialog, a lyrics draft, requests in flight) lives in `NowPlaying`, keyed on the Video id: moving to another Video
+ * (`<` `>`, `r`, a Playlist Entry ending) starts it afresh, and a late answer for the previous Video lands on an
+ * unmounted component instead of the new one (WEB-1, WEB-3, WEB-4, WEB-5). Only the screen-level choices stay here.
+ */
+export function Play(props: PlayProps) {
+  const { lyrics, lyricsVersion } = props;
+  // The drawer: closed by default; opened by its button or by choosing a Song in the search box (`?lyrics=<song>`).
+  const [drawer, setDrawer] = useState(!!lyrics);
+  const [focusDrawer, setFocusDrawer] = useState(!!lyrics);
+  const seenParam = useRef(lyrics);
+  useEffect(() => {
+    if (lyrics && (lyrics !== seenParam.current || !drawer)) (setDrawer(true), setFocusDrawer(true));
+    seenParam.current = lyrics;
+  }, [lyrics, lyricsVersion]);
+  // The Audio panel (`a`, spec 4.7) and the State panel (`i`) share the drawer slot with the lyrics.
+  const [audioOpen, setAudioOpen] = useState(false);
+  const [stateOpen, setStateOpen] = useState(false);
+  useEffect(() => { if (drawer) setAudioOpen(false); }, [drawer]);
+
+  // ---- the Playlist panel (spec 4.8) ----
+  const [plOpen, setPlOpenState] = useState(() => {
+    // mounting after a list page's shuffle started a Playlist: the panel opens
+    if (playlistStarts() !== panelSeenStart) (panelSeenStart = playlistStarts(), (panelWanted = true));
+    return panelWanted && !!loadPlaylist();
+  });
+  const setPlOpen = (on: boolean) => (panelWanted = on, setPlOpenState(on));
+  useEffect(
+    () =>
+      onPlaylistChange(() => {
+        if (!loadPlaylist()) setPlOpen(false); // the Playlist ended
+        else if (playlistStarts() !== panelSeenStart) (panelSeenStart = playlistStarts(), setPlOpen(true)); // a new one started
+      }),
+    [],
+  );
+  const [ended, setEnded] = useState<EndedMark | null>(null); // the Player reached the end with Repeat off
+  const [shownPlayed, setShownPlayed] = useState<ShowPlayed>({ gen: 0, on: false });
+
+  const screen: Screen = { drawer, setDrawer, focusDrawer, setFocusDrawer, audioOpen, setAudioOpen, stateOpen, setStateOpen, plOpen, setPlOpen, ended, setEnded, shownPlayed, setShownPlayed };
+  return <NowPlaying key={props.videoId} {...props} screen={screen} />;
+}
+
+function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & { screen: Screen }) {
+  const { drawer, setDrawer, focusDrawer, setFocusDrawer, audioOpen, setAudioOpen, stateOpen, setStateOpen, plOpen, setPlOpen, ended, setEnded, shownPlayed, setShownPlayed } = screen;
   const { videos } = useStore();
   const [v, setV] = useState<VideoDto | null | undefined>(undefined);
   const session = useSession();
@@ -89,23 +158,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
   // Opening a Video by any route (r, URL, grid, search, `<` `>`): in the Playlist it moves the cursor there, outside it the
   // Playlist ends and the Player is back to plain Playing from.
   const [, setPlTick] = useState(0);
-  const [plOpen, setPlOpenState] = useState(() => {
-    // mounting after a list page's shuffle started a Playlist: the panel opens
-    if (playlistStarts() !== panelSeenStart) (panelSeenStart = playlistStarts(), (panelWanted = true));
-    return panelWanted && !!loadPlaylist();
-  });
-  const setPlOpen = (on: boolean) => (panelWanted = on, setPlOpenState(on));
-  useEffect(
-    () =>
-      onPlaylistChange(() => {
-        setPlTick((n) => n + 1);
-        if (!loadPlaylist()) setPlOpen(false); // the Playlist ended
-        else if (playlistStarts() !== panelSeenStart) (panelSeenStart = playlistStarts(), setPlOpen(true)); // a new one started
-      }),
-    [],
-  );
-  const [ended, setEnded] = useState<EndedMark | null>(null); // the Player reached the end with Repeat off
-  const [shownPlayed, setShownPlayed] = useState<ShowPlayed>({ gen: 0, on: false });
+  useEffect(() => onPlaylistChange(() => setPlTick((n) => n + 1)), []);
   useEffect(() => {
     const pl = loadPlaylist();
     if (!pl || current(pl)?.videoId === videoId) return;
@@ -229,14 +282,12 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
   const curChapter = chapters.find((c) => c.id === curId) ?? null;
 
   // The State panel (`i`): in the drawer slot while no lyrics are shown, under the Player otherwise.
-  const [stateOpen, setStateOpen] = useState(false);
   const stateHost = useRef<HTMLDivElement>(null);
   const [, bump] = useState(0);
   useEffect(() => bump((n) => n + 1), [stateOpen]); // the host div mounts in this render; the Player portals into it on the next
 
   // The Audio panel (`a`, spec 4.7) takes the drawer slot; opening it closes State and Lyrics, and vice versa.
   // The Video's settings load with it and every change is written back (debounced); the defaults clear the row.
-  const [audioOpen, setAudioOpen] = useState(false);
   const toggleAudio = () => {
     setAudioOpen((on) => {
       if (!on) (setStateOpen(false), setDrawer(false));
@@ -244,22 +295,34 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
     });
   };
   const [audio, setAudio] = useState<AudioState | undefined>(undefined);
-  const audioWrite = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // the debounced write: the state waiting to go out, and its timer
+  const audioWrite = useRef<{ timer: ReturnType<typeof setTimeout>; state: AudioState } | null>(null);
+  /** Sends the waiting write now. On leave (another Video, another page, the tab closing) it goes out with
+   *  `keepalive`, so a change made in the last 400 ms is saved too (WEB-3). */
+  const flushAudio = (leaving: boolean) => {
+    const w = audioWrite.current;
+    if (!w) return;
+    clearTimeout(w.timer);
+    audioWrite.current = null;
+    void api.setAudio(videoId, isDefaultAudio(w.state) ? null : w.state, { keepalive: leaving }).catch((e) => !leaving && ctl.current?.say(apiError(e)));
+  };
   useEffect(() => {
-    setAudio(undefined);
     let alive = true;
     api.audio(videoId).then((r) => alive && setAudio(r.state ?? DEFAULT_AUDIO)).catch(() => alive && setAudio(DEFAULT_AUDIO));
+    const onHide = () => flushAudio(true);
+    window.addEventListener("pagehide", onHide);
     return () => {
       alive = false;
-      clearTimeout(audioWrite.current);
+      window.removeEventListener("pagehide", onHide);
+      flushAudio(true);
     };
   }, [videoId]);
   const changeAudio = (patch: Partial<AudioState>) =>
     setAudio((prev) => {
       // functional: two changes in one tick (a click and a slider, say) must both land
       const next = { ...(prev ?? DEFAULT_AUDIO), ...patch };
-      clearTimeout(audioWrite.current);
-      audioWrite.current = setTimeout(() => void api.setAudio(videoId, isDefaultAudio(next) ? null : next).catch((e) => ctl.current?.say(apiError(e))), 400);
+      if (audioWrite.current) clearTimeout(audioWrite.current.timer);
+      audioWrite.current = { state: next, timer: setTimeout(() => flushAudio(false), 400) };
       return next;
     });
   const [presets, setPresets] = useState<AudioPreset[]>([]);
@@ -275,17 +338,8 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
     setPresets(await api.audioPresets());
   };
 
-  // The drawer: closed by default; opened by its button or by choosing a Song in the search box (`?lyrics=<song>`).
   const [deleting, setDeleting] = useState(false);
   const deleted = useRef(false);
-  const [drawer, setDrawer] = useState(!!lyrics);
-  const [focusDrawer, setFocusDrawer] = useState(!!lyrics);
-  const seenParam = useRef(lyrics);
-  useEffect(() => {
-    if (lyrics && (lyrics !== seenParam.current || !drawer)) (setDrawer(true), setFocusDrawer(true));
-    seenParam.current = lyrics;
-  }, [lyrics, lyricsVersion]);
-  useEffect(() => { if (drawer) setAudioOpen(false); }, [drawer]);
   const closeDrawer = () => {
     setDrawer(false);
     setFocusDrawer(false);
@@ -300,10 +354,15 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
     setFocusDrawer(true);
     return null;
   };
-  // The Chapter the playhead is in, if it has a Song; else the Video's own Song (spec 5.4).
+  // The Chapter the playhead is in, if it has a Song; else the Video's own Song (spec 5.4). While the lyrics editor is
+  // open the drawer stays on the Song it was opened for, so a Chapter change under the playhead does not throw the
+  // draft away (WEB-4). A Song chosen in the search box (`?lyrics=`) is the user's own move and wins; the draft is kept
+  // in the editor's stash and offered back either way.
+  const [pinned, setPinned] = useState<{ songId: string; versionId: string | null; fromChapter: boolean } | null>(null);
   const target = lyrics
     ? { songId: lyrics, versionId: lyricsVersion, fromChapter: false }
-    : v ? lyricsTarget(curChapter, v) : null;
+    : (pinned ?? (v ? lyricsTarget(curChapter, v) : null));
+  const onEditing = (on: boolean) => setPinned(on && !lyrics ? target : null);
 
   // `t` (spec 7.4): the Chapter the playhead is in, then the Video's own Song
   const studioSongs = useRef<string[]>([]);
@@ -428,7 +487,7 @@ export function Play({ videoId, t, lyrics, lyricsVersion }: { videoId: string; t
           {!drawer && stateOpen && <div class="drawer statehost" ref={stateHost} />}
           {drawer &&
             (target ? (
-              <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void writeLink(v, { kind: "video.update", patch: { versionId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void writeLink(v, { kind: "video.update", patch: { songId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} shared={v.shared} />
+              <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void writeLink(v, { kind: "video.update", patch: { versionId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void writeLink(v, { kind: "video.update", patch: { songId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} shared={v.shared} onEditingChange={onEditing} />
             ) : (
               <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
                 <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>

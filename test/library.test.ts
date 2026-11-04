@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 import { rebuildSearchIndex } from "../src/server/search";
+import { matchRoute, type Route } from "../src/web/router";
 import { C, insertArchiveArtist, insertChapter, insertCopy, insertLocalArtist, insertVideo, LA, linkArtist, U, updateVideo, V } from "./helpers/seed";
 
 const ALASH = U(1);
@@ -291,12 +292,28 @@ describe("Artists", () => {
 
 describe("client shell", () => {
   test("client routes serve the shell; the bundle and stylesheet are served", async () => {
-    for (const p of ["/", "/favorites", "/artists", "/songs", "/search", `/play/${V(12)}`]) {
-      const r = await fetch(url + p);
-      expect(r.status).toBe(200);
-      expect(await r.text()).toContain('<script type="module" src="/app.js">');
+    // one sample path per router route (the Record makes a new route name a type error here until it has one)
+    const samples: Record<Exclude<Route["name"], "notfound">, string> = {
+      library: "/",
+      favorites: "/favorites",
+      artists: "/artists?kind=archive",
+      songs: "/songs",
+      edits: "/edits?editor=x",
+      search: "/search?q=alash",
+      play: `/play/${V(12)}?t=5`,
+      lyrics: `/lyrics/${V(3)}`,
+    };
+    for (const [name, p] of Object.entries(samples)) {
+      const [path, search = ""] = p.split("?");
+      expect(matchRoute({ path: path!, search: search ? `?${search}` : "" }).name).toBe(name as Route["name"]);
+      for (const q of [p, `${path}/`]) {
+        const r = await fetch(url + q);
+        expect(r.status).toBe(200);
+        expect(await r.text()).toContain('<script type="module" src="/app.js">');
+      }
     }
     expect((await fetch(url + "/nope")).status).toBe(404);
+    expect((await fetch(url + "/play/not-a-uuid")).status).toBe(404);
     const js = await fetch(url + "/app.js");
     expect(js.headers.get("content-type")).toContain("javascript");
     const code = await js.text();

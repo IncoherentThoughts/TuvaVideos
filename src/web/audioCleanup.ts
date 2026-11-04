@@ -57,13 +57,33 @@ export class CleanupEngine {
 
   /** The worklet, made the first time the denoise is switched on (it costs an FFT per block while it exists). */
   private dnLoading: Promise<void> | null = null;
+  private disposed = false;
   private ensureDenoise() {
+    if (this.disposed) return;
     this.dnLoading ??= loadWorklet(this.ctx).then(() => {
+      if (this.disposed) return; // the Player left while the module loaded
       this.dn = new AudioWorkletNode(this.ctx, "tuva-denoise", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       this.dn.port.onmessage = (e) => { if (e.data?.type === "learned") { this.denoiseMode = "learned"; this.onDenoiseMode?.("learned"); } };
       this.tail.connect(this.dn); this.dn.connect(this.dnWet);
       this.set(this.state);
     }).catch((e) => console.warn("denoise worklet failed", e));
+  }
+
+  /**
+   * Take the chain apart when its Player leaves. The AudioContext is shared and never closed, and a worklet whose
+   * process() keeps returning true stays alive and scheduled on it (WEB-10): disconnect every node, drop the port's
+   * handler and tell the processor to stop, so it returns false and can be collected.
+   */
+  dispose() {
+    this.disposed = true;
+    for (const n of [this.inNode, this.ana, ...this.hp, ...this.lp, ...this.notch, this.tail, this.dnDry, this.dnWet, this.outNode]) n.disconnect();
+    if (this.dn) {
+      this.dn.port.onmessage = null;
+      this.dn.port.postMessage({ type: "stop" });
+      this.dn.disconnect();
+      this.dn = null;
+    }
+    this.onDenoiseMode = null;
   }
 
   /** Learn the noise profile from the next ~second of sound (play a gap or a pause). */
@@ -107,6 +127,7 @@ export class CleanupEngine {
 
   /** Apply the Clean up fields of the settings; the graph is rebuilt only when a filter joins or leaves. */
   set(c: AudioState) {
+    if (this.disposed) return;
     const prev = this.state;
     const structural = c.notches.length !== prev.notches.length
       || c.notches.some((n, i) => n.harmonics !== prev.notches[i]!.harmonics)

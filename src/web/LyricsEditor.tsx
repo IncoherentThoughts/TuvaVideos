@@ -7,6 +7,7 @@ import { SCRIPTS } from "../shared/lyrics/scripts";
 import { DEFAULT_VERSION_LABEL } from "../shared/lyrics/trackVersion";
 import type { ScriptDto, ScriptKey, VersionDto, VersionInput } from "../shared/lyrics/types";
 import { api, apiError } from "./data";
+import { createDraftStash } from "../shared/lyrics/draftStash";
 
 interface Draft { lines: string; footnotes: string }
 type Drafts = Record<ScriptKey, Draft>;
@@ -41,9 +42,29 @@ export interface LyricsEditorProps {
   onCancel: () => void;
 }
 
+/** Drafts the editor was closed on without Save or Cancel (WEB-4); the Reader offers them back. */
+export const draftStash = createDraftStash<Drafts>();
+
 export function LyricsEditor({ songId, version, takenLabels, script: initial, onSaved, onDeleted, onCancel }: LyricsEditorProps) {
-  const [label, setLabel] = useState(version?.label ?? (takenLabels.length ? "" : DEFAULT_VERSION_LABEL));
-  const [drafts, setDrafts] = useState<Drafts>(() => (version ? draftsOf(version) : emptyDrafts()));
+  const versionId = version?.id ?? null;
+  const [base] = useState(() => ({ label: version?.label ?? (takenLabels.length ? "" : DEFAULT_VERSION_LABEL), drafts: version ? draftsOf(version) : emptyDrafts() }));
+  const [stashed] = useState(() => draftStash.get(songId, versionId));
+  const [label, setLabel] = useState(stashed?.label ?? base.label);
+  const [drafts, setDrafts] = useState<Drafts>(() => stashed?.drafts ?? base.drafts);
+  const dirty = label !== base.label || JSON.stringify(drafts) !== JSON.stringify(base.drafts);
+  // Kept as it is typed: whatever makes the editor go away (a Chapter change, the next Video, the drawer closing),
+  // the draft is offered back; a tab close asks first.
+  useEffect(() => {
+    if (dirty) draftStash.put({ songId, versionId, label, drafts });
+    else draftStash.drop(songId, versionId);
+  }, [label, drafts]);
+  useEffect(() => {
+    if (!dirty) return;
+    const ask = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [dirty]);
+  const discard = () => draftStash.drop(songId, versionId);
   const [script, setScript] = useState<ScriptKey>(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -64,6 +85,7 @@ export function LyricsEditor({ songId, version, takenLabels, script: initial, on
     try {
       const body = versionInputOf(label, drafts);
       const r = version ? await api.patchVersion(songId, version.id, body) : await api.addVersion(songId, body);
+      discard();
       onSaved(r.id);
     } catch (e) {
       setErr(apiError(e));
@@ -75,6 +97,7 @@ export function LyricsEditor({ songId, version, takenLabels, script: initial, on
     setBusy(true);
     try {
       await api.deleteVersion(songId, version.id);
+      discard();
       onDeleted?.();
     } catch (e) {
       setErr(apiError(e));
@@ -91,7 +114,7 @@ export function LyricsEditor({ songId, version, takenLabels, script: initial, on
         if (e.key === "Escape") {
           e.preventDefault();
           e.stopPropagation();
-          onCancel();
+          onCancel(); // Esc closes but keeps a typed draft (the Reader offers it back); the Cancel button discards it
         } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
           void save();
@@ -101,6 +124,7 @@ export function LyricsEditor({ songId, version, takenLabels, script: initial, on
       <div class="lyr-edit-head">
         <span class="localmark" title="Stored in this library, not in the archive">local</span>
         <span class="muted">{version ? "Editing a local Version" : "New local Version"}</span>
+        {stashed && <span class="muted"> · unsaved draft restored</span>}
       </div>
       <label class="lyr-edit-row">
         <span class="lbl">Label</span>
@@ -140,7 +164,7 @@ export function LyricsEditor({ songId, version, takenLabels, script: initial, on
         <button type="submit" class="btn small" disabled={!canSave} title={filled.length ? "Save (⌘/Ctrl+Enter)" : "Type at least one Script first"}>
           {version ? "Save" : "Add Version"}
         </button>
-        <button type="button" class="btn small" disabled={busy} onClick={onCancel}>
+        <button type="button" class="btn small" disabled={busy} onClick={() => (discard(), onCancel())}>
           Cancel
         </button>
         {version && !confirmDelete && (

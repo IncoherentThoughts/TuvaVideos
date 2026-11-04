@@ -8,6 +8,12 @@ import type { ArchiveError, EditInput, WriteResult, WriteVideosPayloads } from "
 // What the companion reports (GET /api/share, GET /api/share/pending)
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * The companion's refusal (409) of a local link-data edit of a Shared Video (SYNC-6): those go through the archive.
+ * `writeLink` reads it, re-reads the Video and sends the write the archive's way.
+ */
+export const SHARED_VIDEO_LOCAL_EDIT = "This is a Shared Video: its edits go through the archive";
+
 /** The queue at a glance, for the question and the chip row. */
 export interface PendingShareSummary {
   /** Videos in the queue. */

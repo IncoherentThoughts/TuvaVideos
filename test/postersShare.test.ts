@@ -379,7 +379,8 @@ describe("the pending_share queue and its drain (§6.6, §4.3)", () => {
       },
       async insertVideo(id, p) {
         calls.push(`insert ${id} song=${p.proposed_song_id} version=${p.proposed_version_id} artists=${JSON.stringify(p.artists)} ch=${p.chapters?.[0]?.proposed_song_id ?? "-"}`);
-        return ok({ videos: [video(id, { title: p.title, proposed_song_id: p.proposed_song_id ?? null, proposed_version_id: p.proposed_version_id ?? null, updated_at: T(1) })] });
+        // The archive's row carries the insert's identity keys (it is the same Video under the same id).
+        return ok({ videos: [video(id, { title: p.title, youtube_id: p.youtube_id ?? null, content_hash: p.content_hash ?? null, proposed_song_id: p.proposed_song_id ?? null, proposed_version_id: p.proposed_version_id ?? null, updated_at: T(1) })] });
       },
       apply: async (r) => {
         applyShared(db, r as SharedChanges);
@@ -395,7 +396,7 @@ describe("the pending_share queue and its drain (§6.6, §4.3)", () => {
       `insert ${VA} song=${U(601)} version=${U(602)} artists=${JSON.stringify([{ artist_id: U(700), suggested: true, proposed_artist_id: null }])} ch=${U(601)}`,
       `insert ${VB} song=null version=null artists=[] ch=-`,
     ]);
-    // The stamps came back older than the scan's local ones (the guard skipped the rows): still Shared, still dequeued.
+    // The stamps came back older than the scan's local ones; an Unshared held row takes the Shared one anyway (SYNC-5).
     expect(pendingShareIds(db)).toEqual([]);
     expect(db.query("SELECT shared, pending_share FROM video_local WHERE video_id = ?").get(VA)).toEqual({ shared: 1, pending_share: 0 });
     expect(db.query("SELECT COUNT(*) n FROM video_proposed_songs").get()).toEqual({ n: 1 });

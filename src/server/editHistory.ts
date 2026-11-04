@@ -84,7 +84,11 @@ export function listEdits(db: Db, q: EditsQuery = {}): EditsPage {
     // never split one write across pages: the page ends before the write the cut fell in
     const cut = page[page.length - 1]!.created_at;
     const whole = page.filter((r) => r.created_at !== cut);
-    page = whole.length ? whole : page;
+    // One write larger than a page (a Repoint over hundreds of Videos shares one created_at, SYNC-9): the page is that
+    // whole write, past the limit, since the next page's `created_at < cut` would never list the rest of it.
+    page = whole.length
+      ? whole
+      : (db.query(`${SELECT} WHERE ${[...where, "h.created_at = ?"].join(" AND ")} ${ORDER}`).all(...args, cut) as HistoryDbRow[]);
     next = page[page.length - 1]!.created_at;
   }
   const editors = (db.query("SELECT DISTINCT editor_id FROM video_edit_history WHERE editor_id IS NOT NULL ORDER BY editor_id").all() as { editor_id: string }[]).map((r) => r.editor_id);

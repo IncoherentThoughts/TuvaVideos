@@ -39,7 +39,8 @@ export type LinkOp =
   | { kind: "artists.remove"; artistId: string }
   | { kind: "artists.confirm" }
   // `suggested` / `source` only when an undo adds back a deleted Chapter
-  | { kind: "chapter.add"; chapter: ChapterCreate & { suggested?: boolean; source?: ChapterDto["source"] } }
+  // `favoritedAt`: a copied-back Shelved Chapter's star (§2.3, SYNC-11), put back on the new Chapter after the write
+  | { kind: "chapter.add"; chapter: ChapterCreate & { suggested?: boolean; source?: ChapterDto["source"] }; favoritedAt?: string }
   | { kind: "chapter.update"; chapter: LinkChapter; patch: ChapterPatch }
   | { kind: "chapter.delete"; chapter: LinkChapter }
   | { kind: "chapter.confirm"; chapter: LinkChapter }
@@ -511,7 +512,13 @@ export function copyBackOp(item: { kind: string; payload: Record<string, unknown
     case "artists":
       return Array.isArray(p.artistIds) ? { kind: "artists.set", artistIds: p.artistIds.map(String) } : null;
     case "chapter":
-      return typeof p.startS === "number" ? { kind: "chapter.add", chapter: { startS: p.startS, title: typeof p.title === "string" ? p.title : "", songId: str(p.songId), versionId: str(p.versionId) } } : null;
+      if (typeof p.startS !== "number") return null;
+      return {
+        kind: "chapter.add",
+        chapter: { startS: p.startS, title: typeof p.title === "string" ? p.title : "", songId: str(p.songId), versionId: str(p.versionId) },
+        // "The Shelved Chapter remembers the star and copying it back re-stars it" (§2.3)
+        ...(typeof p.favoritedAt === "string" && p.favoritedAt ? { favoritedAt: p.favoritedAt } : {}),
+      };
     default:
       return null;
   }

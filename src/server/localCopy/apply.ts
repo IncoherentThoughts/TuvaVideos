@@ -17,13 +17,17 @@ import type { Db } from "../db";
 import { fillArtistLatin } from "../latin";
 import { indexArtist, indexSong, indexVersion, rebuildSearchIndex, reindexChapter, reindexVideo } from "../search";
 import type { ApplySharedResult, ArchiveIds, ReplaceWholeTable, SharedChanges, SharedTombstoneRow } from "../../shared/sharedRows";
-import { SHARED_SCHEMA } from "./meta";
+import { ARCHIVE_SCHEMA_KEY, getMeta, SHARED_SCHEMA } from "./meta";
+import { freeCollidingIds, mergeStaleVideoInto } from "./rekey";
+import { log } from "../log";
 import {
   mapAlbum, mapAlbumCredits, mapArtist, mapPerformance, mapSong, mapTrack, mapTrackArtists, mapVersion, isArchiveTestSong, type Row,
 } from "./archiveRows";
 
 /** Above this many changed rows the search index is rebuilt once instead of row by row (§6.2). */
 export const REBUILD_THRESHOLD = 200;
+/** `meta` key held while an apply runs: the touch triggers skip their stamp (migration 0019). */
+export const APPLYING_KEY = "applying_shared";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Timestamps
@@ -171,11 +175,18 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   if (batch.shared_schema != null && batch.shared_schema !== SHARED_SCHEMA) {
     throw new Error(`the batch is Shared schema ${batch.shared_schema}, this checkout speaks ${SHARED_SCHEMA}`);
   }
+  // A write function's bundle carries no `shared_schema` (SYNC-8): when the last whoami said the archive speaks
+  // another schema, its rows are of a shape this checkout does not know (unknown columns would be dropped silently).
+  const archiveSchema = getMeta(db, ARCHIVE_SCHEMA_KEY);
+  if (batch.shared_schema == null && archiveSchema != null && Number(archiveSchema) !== SHARED_SCHEMA) {
+    throw new Error(`the archive is on Shared schema ${archiveSchema}, this checkout speaks ${SHARED_SCHEMA}: update first`);
+  }
   const changes = batch.tables ?? {};
   const whole = new Set<ReplaceWholeTable>();
   for (const t of batch.replace_whole ?? []) {
     if (!Object.hasOwn(WHOLE_TABLE, t)) throw new Error(`replace_whole names an unknown table: ${t}`);
-    if (changes[t]) whole.add(t); // a whole table that did not come is not emptied
+    // A whole table that did not come is not emptied; one that came as JSON `null` (`jsonb_agg` of no rows, SYNC-15) is empty.
+    if (Object.hasOwn(changes, t)) whole.add(t);
   }
   const applied: Record<string, number> = {};
   const skipped: Record<string, number> = {};
@@ -197,6 +208,34 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   };
 
   db.transaction(() => {
+    // The touch triggers stay quiet while this row is held (migration 0019): every stamp the apply writes is the
+    // archive's, including the unchanged stamp of a re-applied child (SYNC-2). Written and removed inside this
+    // transaction, so a failure rolls it back with everything else.
+    db.query("INSERT INTO meta (key, value) VALUES (?, '1') ON CONFLICT(key) DO NOTHING").run(APPLYING_KEY);
+    try {
+      applyRows();
+    } finally {
+      db.query("DELETE FROM meta WHERE key = ?").run(APPLYING_KEY);
+    }
+  })();
+
+  function applyRows() {
+    // ---- this machine's rows that hold an incoming Shared id but are another Video, Chapter or Artist (SYNC-1)
+    freeCollidingIds(db, batch);
+    // ---- a held Shared Video the archive no longer returns, whose key a new Shared Video holds (SYNC-4): it joins
+    // the new row instead of wedging every Sync with "is held by". Two Shared rows cannot hold one key upstream, so a
+    // clash with a Shared row that is not in this batch is a purged row. Unshared clashes still refuse (reconcile first).
+    const batchVideos = new Set((changes.videos ?? []).map((v) => v.id));
+    const staleShared = db.prepare(`SELECT v.id FROM videos v JOIN video_local l ON l.video_id = v.id AND l.shared = 1
+      WHERE v.id <> ? AND ((? IS NOT NULL AND v.youtube_id = ?) OR (? IS NOT NULL AND v.content_hash = ?))`);
+    for (const v of changes.videos ?? []) {
+      for (const h of staleShared.all(v.id, v.youtube_id, v.youtube_id, v.content_hash, v.content_hash) as { id: string }[]) {
+        if (batchVideos.has(h.id)) continue;
+        log(`apply: Shared Video ${h.id} is no longer in the archive; its key now belongs to ${v.id}, which takes this machine's rows`);
+        mergeStaleVideoInto(db, h.id, v.id);
+      }
+    }
+
     // ---- the archive's rows (no children rule: credits are replaced per Album / Track)
     for (const a of changes.artists ?? []) if (put("archive_artist", mapArtist(a))) changed.artists.add(String(a.id));
     const testSongs = new Set<string>();
@@ -215,7 +254,7 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     for (const a of changes.albums ?? []) if (put("archive_album", mapAlbum(a))) changed.tracks = true;
     // Tracks and credits have no updated_at and arrive whole at every pull: rebuild the index only if they differ.
     const trackTables = ["archive_album_credit", "archive_track", "archive_track_artist"];
-    const trackRowsCame = !!(changes.album_artists || changes.album_tracks || changes.album_track_artists);
+    const trackRowsCame = ["album_artists", "album_tracks", "album_track_artists"].some((t) => Object.hasOwn(changes, t));
     const before = trackRowsCame ? trackTables.map((t) => fingerprint(db, t)).join("\n") : "";
     const credits = mapAlbumCredits(changes.album_artists ?? []);
     if (whole.has("album_artists")) removed += dropMissing(db, "archive_album_credit", "album_id", new Set(credits.keys()));
@@ -264,13 +303,15 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     const skippedVideos = new Set<string>();
     // A Video the archive holds is Shared: it leaves the `pending_share` queue (§6.6, the drain's insert comes back here).
     const markShared = db.prepare("INSERT INTO video_local (video_id, shared, pending_share) VALUES (?, 1, 0) ON CONFLICT(video_id) DO UPDATE SET shared = 1, pending_share = 0");
+    // SYNC-5: a held row that is not Shared yet (a drained insert coming back, its stamp from this machine's clock,
+    // not the archive's) always takes the Shared row: the guard compares archive stamps with archive stamps only.
+    const heldUnshared = db.prepare("SELECT 1 FROM videos v LEFT JOIN video_local l ON l.video_id = v.id WHERE v.id = ? AND COALESCE(l.shared, 0) = 0");
     for (const v of changes.videos ?? []) {
-      if (put("videos", v as Row)) {
+      if (put("videos", v as Row, heldUnshared.get(v.id) ? { guard: false } : undefined)) {
         appliedVideos.add(v.id);
         changed.videos.add(v.id);
       } else skippedVideos.add(v.id);
-      // Shared either way: a row the guard skipped (a drained insert whose server stamp is not newer than the scan's
-      // local one) still names a Video the archive holds.
+      // Shared either way: a row the guard skipped still names a Video the archive holds.
       markShared.run(v.id);
     }
     for (const table of CHILDREN) {
@@ -331,9 +372,11 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     }
 
     // ---- the ids-only reconcile (§6.3): archive rows no longer readable, or hard-deleted, go
-    for (const [key, ids] of Object.entries(batch.archive_ids ?? {}) as [keyof ArchiveIds, string[] | undefined][]) {
+    for (const [key, sent] of Object.entries(batch.archive_ids ?? {}) as [keyof ArchiveIds, string[] | null | undefined][]) {
       const table = IDS_TABLE[key];
       if (!table) throw new Error(`archive_ids names an unknown table: ${key}`);
+      // A list sent as JSON `null` (`jsonb_agg` over no rows, SYNC-15) is empty: nothing of that kind is readable.
+      const ids = sent === null ? [] : sent;
       if (!Array.isArray(ids)) continue;
       const keep = new Set(ids.map(String));
       for (const { id } of db.query(`SELECT id FROM ${table}`).all() as { id: string }[]) {
@@ -348,7 +391,7 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     }
 
     reindex(db, changed);
-  })();
+  }
 
   const total = changed.videos.size + changed.chapters.size + changed.artists.size + changed.songs.size + changed.versions.size;
   return {

@@ -49,10 +49,30 @@ function dropVideo(db: Db, id: string) {
   db.query("DELETE FROM videos WHERE id = ?").run(id);
 }
 
-/** Delete a superseded Copy row of `videoId`, handing its thumbnail pointer to the Copy that replaces it. */
-function dropCopy(db: Db, videoId: string, oldId: number, newId: number) {
+/**
+ * Delete a superseded Copy row of `videoId`, handing its thumbnail pointer to the Copy that replaces it. Its Fallback's
+ * name goes to `orphans`, for the caller to unlink once the transaction is done (audit PLAY-9).
+ */
+function dropCopy(db: Db, videoId: string, oldId: number, newId: number, orphans: string[]) {
+  const fb = (db.query("SELECT fallback_file FROM copy WHERE id = ?").get(oldId) as { fallback_file: string | null } | null)?.fallback_file;
+  if (fb) orphans.push(fb);
   db.query("UPDATE video_local SET thumbnail_copy_id = ? WHERE video_id = ? AND thumbnail_copy_id = ?").run(newId, videoId, oldId);
   db.query("DELETE FROM copy WHERE id = ?").run(oldId);
+}
+
+const unlinkFallbacks = (cfg: Pick<Config, "remuxDir">, names: string[]) => Promise.all(names.map((n) => unlink(resolve(cfg.remuxDir, n)).catch(() => {})));
+
+/**
+ * The Copy row at `rel` in a Root: the exact spelling first, else one recorded under another Unicode normalization of
+ * it (a file picker and a directory listing may disagree; audit DB-2).
+ */
+function copyAt(db: Db, rootId: number, rel: string) {
+  const sql = "SELECT c.id, c.video_id, v.title, c.rel_path FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.root_id = ?";
+  type Row = { id: number; video_id: string; title: string; rel_path: string };
+  const exact = db.query(`${sql} AND c.rel_path = ?`).get(rootId, rel) as Row | null;
+  if (exact) return exact;
+  const key = rel.normalize("NFC");
+  return (db.query(sql).all(rootId) as Row[]).find((r) => r.rel_path.normalize("NFC") === key) ?? null;
 }
 
 export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxDir">, roots: RootRow[], videoId: string, body: RelocateBody): Promise<RelocateResult> {
@@ -74,24 +94,26 @@ export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxD
   if (parseFilename(basename(abs)).skip) return bad("that is not a video file (mp4, mkv, webm, mov or m4v)");
   const root = rootFor(roots, abs);
   if (!root) return bad(`that file is outside the library folders (${roots.map((r) => r.path).join(", ")}); move it into one of them first`);
-  const rel = relative(resolve(root.path), abs).normalize("NFC");
+  // The spelling as given, which is what opens the file on a byte-comparing filesystem (audit DB-2).
+  const rel = relative(resolve(root.path), abs);
+  const orphans: string[] = [];
 
-  const dest = db.query("SELECT c.id, c.video_id, v.title FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.root_id = ? AND c.rel_path = ?").get(root.id, rel) as
-    | { id: number; video_id: string; title: string }
-    | null;
+  const dest = copyAt(db, root.id, rel);
   if (dest && dest.video_id === videoId) {
     // A scan already found the moved file for this Video: the stale row just goes.
-    if (target && target.id !== dest.id) db.transaction(() => dropCopy(db, videoId, target.id, dest.id))();
-    db.query("UPDATE copy SET missing_since = NULL WHERE id = ?").run(dest.id);
+    if (target && target.id !== dest.id) db.transaction(() => dropCopy(db, videoId, target.id, dest.id, orphans))();
+    db.query("UPDATE copy SET missing_since = NULL, rel_path = ? WHERE id = ?").run(rel, dest.id);
+    await unlinkFallbacks(cfg, orphans);
     return { ok: true, value: { copyId: dest.id, rootId: root.id } };
   }
   if (dest) {
     if (!body.merge) return { ok: false, status: 409, error: `that file is already the separate Video “${dest.title}”`, conflict: { videoId: dest.video_id, title: dest.title } };
     db.transaction(() => {
       db.query("UPDATE copy SET video_id = ?, missing_since = NULL WHERE id = ?").run(videoId, dest.id);
-      if (target) dropCopy(db, videoId, target.id, dest.id);
+      if (target) dropCopy(db, videoId, target.id, dest.id, orphans);
       if (!db.query("SELECT 1 FROM copy WHERE video_id = ?").get(dest.video_id)) dropVideo(db, dest.video_id);
     })();
+    await unlinkFallbacks(cfg, orphans);
     return { ok: true, value: { copyId: dest.id, rootId: root.id } };
   }
 
@@ -104,7 +126,7 @@ export async function relocateCopy(db: Db, cfg: Pick<Config, "ffprobe" | "remuxD
     if (target.fallback_file) await unlink(resolve(cfg.remuxDir, target.fallback_file)).catch(() => {});
     db.query(
       `UPDATE copy SET root_id = ?, rel_path = ?, size = ?, mtime = ?, duration_s = ?, container = ?, video_codec = ?, audio_codec = ?, width = ?, height = ?,
-         r_frame_rate = ?, playback = ?, tv_playback = NULL, tv_profile_version = NULL, fallback_file = NULL, content_hash = NULL, missing_since = NULL WHERE id = ?`,
+         r_frame_rate = ?, playback = ?, tv_playback = NULL, tv_profile_version = NULL, fallback_file = NULL, keyframes = NULL, content_hash = NULL, missing_since = NULL WHERE id = ?`,
     ).run(root.id, rel, ...facts, target.id);
     judgeStaleCopies(db);
     return { ok: true, value: { copyId: target.id, rootId: root.id } };

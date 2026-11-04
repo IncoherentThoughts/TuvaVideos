@@ -185,7 +185,8 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   const whole = new Set<ReplaceWholeTable>();
   for (const t of batch.replace_whole ?? []) {
     if (!Object.hasOwn(WHOLE_TABLE, t)) throw new Error(`replace_whole names an unknown table: ${t}`);
-    if (changes[t]) whole.add(t); // a whole table that did not come is not emptied
+    // A whole table that did not come is not emptied; one that came as JSON `null` (`jsonb_agg` of no rows, SYNC-15) is empty.
+    if (Object.hasOwn(changes, t)) whole.add(t);
   }
   const applied: Record<string, number> = {};
   const skipped: Record<string, number> = {};
@@ -253,7 +254,7 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     for (const a of changes.albums ?? []) if (put("archive_album", mapAlbum(a))) changed.tracks = true;
     // Tracks and credits have no updated_at and arrive whole at every pull: rebuild the index only if they differ.
     const trackTables = ["archive_album_credit", "archive_track", "archive_track_artist"];
-    const trackRowsCame = !!(changes.album_artists || changes.album_tracks || changes.album_track_artists);
+    const trackRowsCame = ["album_artists", "album_tracks", "album_track_artists"].some((t) => Object.hasOwn(changes, t));
     const before = trackRowsCame ? trackTables.map((t) => fingerprint(db, t)).join("\n") : "";
     const credits = mapAlbumCredits(changes.album_artists ?? []);
     if (whole.has("album_artists")) removed += dropMissing(db, "archive_album_credit", "album_id", new Set(credits.keys()));
@@ -371,9 +372,11 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
     }
 
     // ---- the ids-only reconcile (§6.3): archive rows no longer readable, or hard-deleted, go
-    for (const [key, ids] of Object.entries(batch.archive_ids ?? {}) as [keyof ArchiveIds, string[] | undefined][]) {
+    for (const [key, sent] of Object.entries(batch.archive_ids ?? {}) as [keyof ArchiveIds, string[] | null | undefined][]) {
       const table = IDS_TABLE[key];
       if (!table) throw new Error(`archive_ids names an unknown table: ${key}`);
+      // A list sent as JSON `null` (`jsonb_agg` over no rows, SYNC-15) is empty: nothing of that kind is readable.
+      const ids = sent === null ? [] : sent;
       if (!Array.isArray(ids)) continue;
       const keep = new Set(ids.map(String));
       for (const { id } of db.query(`SELECT id FROM ${table}`).all() as { id: string }[]) {

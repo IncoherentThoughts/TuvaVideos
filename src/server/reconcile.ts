@@ -20,7 +20,7 @@
 // record; the token is used for those calls only, never stored or logged.
 import { renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { changesSince, postgrestClient, tokenExp, whoami, type ArchiveCall, type ArchiveEndpoint, type RpcClient } from "../shared/archive";
+import { changesSince, postgrestClient, TIMEOUT_CODE, TIMEOUT_LINE, tokenExp, whoami, type ArchiveCall, type ArchiveEndpoint, type RpcClient } from "../shared/archive";
 import type { VideoWhoami } from "../shared/archiveWire";
 import { NO_RECONCILE, type ReconcileCounts, type ReconcileResponse } from "../shared/reconcile";
 import { mapNames, videoDiffs, type DiffNames, type DiffNow, type VideoDiff } from "../shared/shelvedDiff";
@@ -37,7 +37,7 @@ import {
 
 /** SYNC-7: the reconciliation's line when the sign-in was cancelled (or signed out) while it ran. */
 export const SIGNED_OUT_MEANWHILE = "The sign-in was cancelled or signed out meanwhile; nothing was changed";
-import { SYNCED_SCHEMA_KEY, wipeShared } from "./sync";
+import { clampWatermark, LAST_PULL_KEY, SYNCED_SCHEMA_KEY, wipeShared } from "./sync";
 import { log } from "./log";
 import { reindexChapter, reindexVideo } from "./search";
 
@@ -478,7 +478,7 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
     const t0 = performance.now();
     const pull = await changesSince(c, null);
     log(`reconcile: whole Shared set pulled in ${Math.round(performance.now() - t0)} ms`);
-    if (!pull.ok) return { done: fail(pull.unreachable ? "The archive can't be reached" : refusal(pull, "the pull"), { record, mustChangePassword }) };
+    if (!pull.ok) return { done: fail(pull.unreachable ? (pull.error.code === TIMEOUT_CODE ? TIMEOUT_LINE : "The archive can't be reached") : refusal(pull, "the pull"), { record, mustChangePassword }) };
     const batch = pull.value as SharedChanges | null;
     if (!batch || typeof batch !== "object") return { done: fail("The archive's shared_changes_since() answered in an unknown shape", { record, mustChangePassword }) };
     if (batch.shared_schema != null && batch.shared_schema !== SHARED_SCHEMA) return { done: fail(schemaGateLine(SHARED_SCHEMA, batch.shared_schema) ?? "Shared schema mismatch", { record, mustChangePassword }) };
@@ -535,8 +535,9 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
           const r = applyPlan(db, plan, { queueUnknown: editor, keepThumbnails: !!opts.thumbsDir });
           wipeShared(db);
           const applied = applyShared(db, p.batch);
-          updateSessionRecord(db, p.record.userId, { watermark: applied.watermark ?? null });
+          updateSessionRecord(db, p.record.userId, { watermark: clampWatermark(applied.watermark ?? null, p.batch.server_time) });
           setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
+          if (p.batch.server_time) setMeta(db, LAST_PULL_KEY, p.batch.server_time); // SYNC-10
           setMeta(db, RECONCILE_PENDING_KEY, null); // SYNC-3: answered; Syncs run again
           return r;
         })();

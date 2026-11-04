@@ -8,7 +8,9 @@ import { openDb, type Db } from "../src/server/db";
 import { applyShared } from "../src/server/localCopy/apply";
 import { clearSessionRecord, getMeta, readSessionRecord, setMeta, writeSessionRecord } from "../src/server/localCopy/meta";
 import { createReconcile, reconcileBatch, planFor } from "../src/server/reconcile";
-import { createSync, wipeShared } from "../src/server/sync";
+import { clampWatermark, createSync, fullRefetchReason, TOMBSTONE_RETENTION_MS, wipeShared } from "../src/server/sync";
+import { listEdits } from "../src/server/editHistory";
+import { FULL_PULL_TIMEOUT_MS, postgrestClient, TIMEOUT_CODE, TIMEOUT_LINE } from "../src/shared/archive";
 import type { SharedChanges, SharedChapterRow, SharedVideoRow } from "../src/shared/sharedRows";
 import { editAccess, schemaMismatchOf } from "../src/shared/session";
 import { SHARED_VIDEO_LOCAL_EDIT } from "../src/shared/share";
@@ -258,7 +260,6 @@ describe("SYNC-4: a Shared Video the archive no longer returns no longer wedges 
     expect(db.query("SELECT id FROM videos").all()).toEqual([{ id: NEW }]);
   });
 
-  test("(an Unshared Video holding the key: see below)", () => {});
 });
 
 describe("SYNC-3: no Sync runs while the sign-in confirmation waits for Continue", () => {
@@ -463,5 +464,117 @@ describe("SYNC-4 (cont.)", () => {
     const db = fresh();
     insertVideo(db, { title: "Mine", youtube_id: "YT" });
     expect(() => applyShared(db, b)).toThrow(/held by/);
+  });
+});
+
+describe("SYNC-9: the Edits view never drops the tail of a write larger than a page", () => {
+  test("one Repoint over 250 Videos (one created_at): page 1 is the whole write, page 2 goes on from the next one", () => {
+    const db = fresh();
+    const at = "2026-10-20T10:00:00.123456+00:00";
+    const older = "2026-10-19T10:00:00.000000+00:00";
+    const ins = db.prepare("INSERT INTO video_edit_history (id, video_id, target_type, target_id, editor_id, event_type, description, created_at, updated_at) VALUES (?, ?, 'artist_link', NULL, 'ed-1', 'artist_link.repointed', 'Repointed', ?, ?)");
+    for (let i = 0; i < 250; i++) ins.run(`h-${String(i).padStart(4, "0")}`, `v-${String(i).padStart(4, "0")}`, at, at);
+    ins.run("h-old", "v-old", older, older);
+    const p1 = listEdits(db, { limit: 200 });
+    expect(p1.entries.length).toBe(250);
+    expect(p1.next).toBe(at);
+    const p2 = listEdits(db, { limit: 200, before: p1.next });
+    expect(p2.entries.map((e) => e.id)).toEqual(["h-old"]);
+  });
+});
+
+describe("SYNC-10: tombstone retention is measured from the last pull", () => {
+  const now = Date.parse("2027-02-01T00:00:00Z");
+  const o = { requested: false, watermark: "2026-10-20T00:00:00Z", syncedSchema: 1, client: 1, serverNowMs: now };
+  test("a quiet archive (old watermark) pulled minutes ago is not a full refetch", () => {
+    expect(fullRefetchReason({ ...o, lastPullMs: now - 5 * 60_000 })).toBeNull();
+  });
+  test("a last pull older than retention still is; an unknown last pull falls back to the watermark", () => {
+    expect(fullRefetchReason({ ...o, lastPullMs: now - TOMBSTONE_RETENTION_MS - 1 })).toBe("retention");
+    expect(fullRefetchReason(o)).toBe("retention");
+  });
+  test("a Sync records the archive's clock of its pull, and the next Sync of a quiet archive stays incremental", async () => {
+    const db = fresh();
+    writeSessionRecord(db, { userId: USER, grantLevel: "member" });
+    const sinces: unknown[] = [];
+    let serverTime = "2027-01-01T00:00:00.000000+00:00";
+    const old = "2026-09-01T00:00:00.000000+00:00";
+    const a = fakeArchive({
+      whoami: () => whoamiOf({ grant_level: "member", server_time: serverTime }),
+      pull: (args) => (sinces.push(args.p_since), batch([sv(S1, { updated_at: old })], [], { watermark: old, server_time: serverTime })),
+    });
+    const sync = createSync(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {} });
+    await sync.request({ accessToken: TOKEN }); // first: full
+    serverTime = "2027-01-01T00:10:00.000000+00:00";
+    await sync.request({ accessToken: TOKEN });
+    expect(sinces[0]).toBeNull();
+    expect(sinces[1]).not.toBeNull();
+    expect(getMeta(db, "last_pull_server_time")).toBe(serverTime);
+  });
+});
+
+describe("SYNC-13: the watermark is never later than the archive's clock", () => {
+  test("clampWatermark keeps the earlier of the two", () => {
+    expect(clampWatermark("2030-01-01T00:00:00Z", "2026-10-12T00:00:00Z")).toBe("2026-10-12T00:00:00Z");
+    expect(clampWatermark(T(10), T(12))).toBe(T(10));
+    expect(clampWatermark(T(10), null)).toBe(T(10));
+  });
+  test("one future-dated row does not push the stored watermark past server_time", async () => {
+    const db = fresh();
+    writeSessionRecord(db, { userId: USER, grantLevel: "member" });
+    const future = "2030-01-01T00:00:00.000000+00:00";
+    const a = fakeArchive({ pull: () => batch([sv(S1, { updated_at: future })], [], { watermark: future, server_time: T(12) }) });
+    await createSync(db, ENDPOINT, { fetchImpl: a.fetchImpl, warn: () => {} }).request({ accessToken: TOKEN });
+    expect(readSessionRecord(db)!.watermark).toBe(T(12));
+  });
+});
+
+describe("SYNC-15: a whole table or an ids list arriving as JSON null is empty, not absent", () => {
+  test("the last exposure and every Album id gone", () => {
+    const db = fresh();
+    applyShared(db, { tables: { video_exposed_songs: [{ id: "ex-1", song_id: "s-1", artist_id: null, exposed_by: null, exposed_at: T(1), updated_at: T(1) } as never] }, replace_whole: ["video_exposed_songs"] });
+    db.exec("INSERT INTO archive_album (id, name, artist_id) VALUES ('al-1', 'Album', 'a-1')");
+    expect(db.query("SELECT COUNT(*) AS n FROM video_exposed_songs").get()).toEqual({ n: 1 });
+    applyShared(db, { tables: { video_exposed_songs: null as never }, replace_whole: ["video_exposed_songs"], archive_ids: { albums: null as never } });
+    expect(db.query("SELECT COUNT(*) AS n FROM video_exposed_songs").get()).toEqual({ n: 0 });
+    expect(db.query("SELECT COUNT(*) AS n FROM archive_album").get()).toEqual({ n: 0 });
+  });
+  test("a table or list left out is still left alone", () => {
+    const db = fresh();
+    applyShared(db, { tables: { video_exposed_songs: [{ id: "ex-1", song_id: "s-1", artist_id: null, exposed_by: null, exposed_at: T(1), updated_at: T(1) } as never] } });
+    applyShared(db, { tables: {}, replace_whole: ["video_exposed_songs"], archive_ids: {} });
+    expect(db.query("SELECT COUNT(*) AS n FROM video_exposed_songs").get()).toEqual({ n: 1 });
+  });
+});
+
+describe("SYNC-16: the full pull has minutes, and a timeout says so", () => {
+  const slow = (ms: number) => (async (_url: string, init: RequestInit) => {
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(resolve, ms);
+      init.signal?.addEventListener("abort", () => (clearTimeout(t), reject(init.signal!.reason)));
+    });
+    return new Response("null", { status: 200 });
+  }) as unknown as typeof fetch;
+  test("the whole-archive pull gets the long timeout, other calls the short one", async () => {
+    const c = postgrestClient(ENDPOINT, TOKEN, slow(80), { callMs: 20, fullPullMs: 500 });
+    expect((await c.rpc("shared_changes_since", { p_since: null })).error).toBeNull();
+    const r = await c.rpc("shared_changes_since", { p_since: T(10) });
+    expect(r.error?.code).toBe(TIMEOUT_CODE);
+    expect(FULL_PULL_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
+  });
+  test("the Sync reports a timeout distinctly from an unreachable archive", async () => {
+    const db = fresh();
+    writeSessionRecord(db, { userId: USER, grantLevel: "member", watermark: T(10) });
+    setMeta(db, "synced_shared_schema", "1");
+    const late = (async () => {
+      const e = new Error("timed out");
+      e.name = "TimeoutError";
+      throw e;
+    }) as unknown as typeof fetch;
+    const who = fakeArchive({});
+    const fetchImpl = (async (url: string, init: RequestInit) => (String(url).endsWith("/video_whoami") ? who.fetchImpl(url as never, init) : late(url as never, init))) as unknown as typeof fetch;
+    const r = await createSync(db, ENDPOINT, { fetchImpl, warn: () => {} }).request({ accessToken: TOKEN });
+    expect(r.error).toBe(TIMEOUT_LINE);
+    expect(r.reachable).toBe(true);
   });
 });

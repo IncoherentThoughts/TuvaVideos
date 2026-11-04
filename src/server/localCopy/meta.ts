@@ -99,7 +99,7 @@ export const RECONCILE_PENDING_LINE = "Sign-in is waiting for the reconciliation
 /** Sign out, a SIGNED_OUT event or a cancelled reconciliation (§2.4, §5.4). The Local copy stays, read-only. */
 export function clearSessionRecord(db: Db) {
   db.query("DELETE FROM session_record").run();
-  db.query("DELETE FROM meta WHERE key = ?").run(RECONCILE_PENDING_KEY);
+  db.query("DELETE FROM meta WHERE key IN (?, 'last_pull_server_time')").run(RECONCILE_PENDING_KEY);
   // SYNC-7: a Sync or a reconciliation in flight sees the record was cleared under it and writes nothing.
   db.query("INSERT INTO meta (key, value) VALUES ('session_epoch', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1").run();
 }

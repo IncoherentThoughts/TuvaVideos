@@ -8,6 +8,8 @@ export interface TuvaTvShell {
   keys?: unknown
   exit: () => void
   restart: () => void
+  /** The UI has drawn its first screen: the shell takes its "Starting…" screen down (older shells lack it). */
+  ready?: () => void
 }
 
 declare global {

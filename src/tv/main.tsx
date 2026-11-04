@@ -230,3 +230,4 @@ const mount = document.getElementById("tv") ?? (() => {
 })()
 document.getElementById("boot")?.remove()
 render(<App />, mount)
+window.tuvaTv?.ready?.() // drawn: the shell's "Starting…" screen comes down (it also watches #tv for older UIs)

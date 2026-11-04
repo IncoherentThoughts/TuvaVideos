@@ -487,6 +487,24 @@ describe("screenshot endpoint", () => {
   });
 });
 
+describe("relocate endpoint (HTTP glue)", () => {
+  const relocate = (id: string, body: string) =>
+    fetch(`${base_url}/api/videos/${id}/relocate`, { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body });
+  const songId = () => (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
+
+  test("a non-object body is a 400; a copyId that is not this Video's (a string included) is a 404; the Copy is untouched", async () => {
+    const id = songId();
+    const before = app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE video_id = ?").all(id);
+    for (const bad of ["null", "[]", "3", "not json"]) expect((await relocate(id, bad)).status).toBe(400);
+    const path = join(localDir, "Song One [aaaaaaaaaaa].mp4");
+    const r = await relocate(id, JSON.stringify({ path, copyId: "5" }));
+    expect(r.status).toBe(404);
+    expect((await r.json()).error).toContain("not this Video's");
+    expect((await relocate(V(999999), JSON.stringify({ path }))).status).toBe(404);
+    expect(app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE video_id = ?").all(id)).toEqual(before);
+  });
+});
+
 describe("deleting a Video", () => {
   const del = (id: string, media: boolean) => fetch(`${base_url}/api/videos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ media }) });
   const rescan = async () => {

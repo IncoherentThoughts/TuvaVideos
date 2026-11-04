@@ -53,7 +53,7 @@ if (replies) {
   const f = join(cache, "no-block-ids.txt");
   const want = existsSync(f) ? readFileSync(f, "utf8").split("\n").map((s) => s.trim()).filter(Boolean) : [];
   const byId = new Map(rows.map((r) => [r.youtubeId, r]));
-  targets = want.filter((id) => !existsSync(join(cache, `${id}.replies`)) || force).map((id) => byId.get(id) ?? { id: -1, youtubeId: id, type: "other", durationS: null });
+  targets = want.filter((id) => !existsSync(join(cache, `${id}.replies`)) || force).map((id) => byId.get(id) ?? { id: "", youtubeId: id, type: "other", durationS: null });
   say(`replies pass: ${want.length} ids marked "no block", ${targets.length} still to fetch`);
 } else {
   targets = eligibleForFetch(rows, ids);

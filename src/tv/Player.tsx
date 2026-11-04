@@ -463,7 +463,9 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         return say(row?.viaRemux ? REMUX_MESSAGE : "Copy unavailable", 3000)
       }
       case "say": return say(fx.text, 1800)
-      case "leave": return nav.back()
+      case "leave":
+        writeResume() // before the library is re-read (TV-6); the unmount's write comes only after paint in Preact 11
+        return nav.back()
     }
   }
 

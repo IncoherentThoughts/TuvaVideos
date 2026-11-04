@@ -1,10 +1,13 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # Downloads the YouTube performances listed in doc-missing-youtube-ids.txt (reference doc videos not yet in the library) into Batch 8.
 # Re-runnable: finished ids are recorded in the archive file and skipped; failures are logged and the run continues.
+# Usage: download-missing-youtube.sh [dest dir]  (or TUVA_DOWNLOAD_DEST); exits non-zero when yt-dlp is missing or reports a failure.
 # Download rule (spec 2): at most 1080p, VP9 or H.264 over AV1 (an M1 decodes AV1 in software; VP9 and H.264 in hardware).
-DEST="/Users/evanwilliams/Desktop/Batch 8"
-HERE="${0:A:h}"
-mkdir -p "$DEST"
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DEST="${1:-${TUVA_DOWNLOAD_DEST:-$HOME/Desktop/Batch 8}}"
+command -v yt-dlp >/dev/null || { echo "yt-dlp is not on PATH" >&2; exit 127; }
+mkdir -p "$DEST" || exit 1
 
 yt-dlp \
   --batch-file "$HERE/doc-missing-youtube-ids.txt" \
@@ -23,4 +26,10 @@ yt-dlp \
   --write-info-json \
   2>&1 | tee -a "$DEST/download.log"
 
-echo "Done. Failures (if any): grep -i 'error' \"$DEST/download.log\""
+status=$?
+if [ "$status" -eq 0 ]; then
+  echo "Done."
+else
+  echo "yt-dlp exited $status. Failures: grep -i 'error' \"$DEST/download.log\"" >&2
+fi
+exit "$status"

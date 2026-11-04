@@ -41,11 +41,20 @@ export function migrate(db: Db, dir: string): number {
     // foreign_keys can only change outside a transaction; the rebuild is checked before COMMIT instead
     const fkOff = FK_OFF.test(sql);
     if (fkOff) db.exec("PRAGMA foreign_keys = OFF");
-    db.exec("BEGIN");
+    // The write lock first, then a second look (audit DB-7): another process opening the same library.db right after an
+    // upgrade (a CLI, a passive server) may have applied this file meanwhile.
+    db.exec("BEGIN IMMEDIATE");
+    if (db.query("SELECT 1 FROM migration WHERE name = ?").get(m.name)) {
+      db.exec("COMMIT");
+      if (fkOff) db.exec("PRAGMA foreign_keys = ON");
+      applied = Math.max(applied, m.version);
+      continue;
+    }
     try {
       db.exec(sql);
       if (fkOff && db.query("PRAGMA foreign_key_check").all().length) throw new Error("foreign key check failed after the rebuild");
-      if (m.version > applied) db.exec(`PRAGMA user_version = ${m.version}`);
+      const uv = (db.query("PRAGMA user_version").get() as { user_version: number }).user_version; // never lowered by a slower process
+      if (m.version > uv) db.exec(`PRAGMA user_version = ${m.version}`);
       record.run(m.name, new Date().toISOString());
       db.exec("COMMIT");
     } catch (e) {
@@ -68,9 +77,19 @@ export function migrate(db: Db, dir: string): number {
 export function openDb(path: string, migrationsDir: string): Db {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec("PRAGMA busy_timeout = 5000");
+  db.exec("PRAGMA busy_timeout = 5000"); // first: switching to WAL waits for a second process opening the file too
+  // Two processes switching a fresh file to WAL at once can get SQLITE_BUSY without the busy handler being asked
+  // (audit DB-7): retry briefly.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      db.exec("PRAGMA journal_mode = WAL");
+      db.exec("PRAGMA foreign_keys = ON");
+      break;
+    } catch (e) {
+      if (attempt >= 50 || !/locked|busy/i.test(String(e))) throw e;
+      Bun.sleepSync(20 * Math.min(attempt, 10));
+    }
+  }
   migrate(db, migrationsDir);
   return db;
 }

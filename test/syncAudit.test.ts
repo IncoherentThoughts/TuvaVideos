@@ -219,3 +219,44 @@ describe("SYNC-1: legacy uuids are not identity across machines", () => {
     expect(db.query("SELECT id FROM local_artist").all()).toEqual([{ id: LA1 }]);
   });
 });
+
+describe("SYNC-4: a Shared Video the archive no longer returns no longer wedges Sync", () => {
+  const OLD = "aaaaaaaa-0000-4000-8000-0000000000a1";
+  const NEW = "aaaaaaaa-0000-4000-8000-0000000000a2";
+  const seed = (db: Db) => {
+    applyShared(db, batch([sv(OLD, { youtube_id: "YT", content_hash: null })], [sc(CH1, OLD, 0, "stale")]));
+    insertCopy(db, { video_id: OLD, root_id: 1, rel_path: "clip [YT].mp4" });
+    db.query("UPDATE video_local SET favorited_at = '2026-09-09T00:00:00Z' WHERE video_id = ?").run(OLD);
+  };
+  const b = batch([sv(NEW, { youtube_id: "YT", content_hash: null, title: "Shared again", updated_at: T(11) })]);
+
+  test("an incremental pull: the new row takes the key, the Copy and the Favorite", () => {
+    const db = fresh();
+    seed(db);
+    db.transaction(() => {
+      reconcileBatch(db, b);
+      applyShared(db, b);
+    })();
+    expect(db.query("SELECT id, title FROM videos").all()).toEqual([{ id: NEW, title: "Shared again" }]);
+    expect(db.query("SELECT video_id FROM copy").all()).toEqual([{ video_id: NEW }]);
+    expect(db.query("SELECT favorited_at, shared FROM video_local WHERE video_id = ?").get(NEW)).toEqual({ favorited_at: "2026-09-09T00:00:00Z", shared: 1 });
+    expect(db.query("SELECT COUNT(*) AS n FROM video_chapters").get()).toEqual({ n: 0 });
+  });
+
+  test("a full refetch (wipe + apply) too", () => {
+    const db = fresh();
+    seed(db);
+    db.transaction(() => {
+      wipeShared(db);
+      reconcileBatch(db, b);
+      applyShared(db, b);
+    })();
+    expect(db.query("SELECT id FROM videos").all()).toEqual([{ id: NEW }]);
+  });
+
+  test("an Unshared Video holding the key is still refused by the apply alone (reconcile handles it)", () => {
+    const db = fresh();
+    insertVideo(db, { title: "Mine", youtube_id: "YT" });
+    expect(() => applyShared(db, b)).toThrow(/held by/);
+  });
+});

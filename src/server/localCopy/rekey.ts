@@ -59,6 +59,34 @@ export function moveVideo(db: Db, from: string, to: string = newUuid(), opts: Mo
   return to;
 }
 
+/** The guard's floor: a row stamped with it loses to any incoming row. */
+const EPOCH = "1970-01-01T00:00:00.000Z";
+const LINK_CHILDREN = ["video_chapters", "video_artists", "video_chapter_rejections", "video_artist_rejections"];
+
+/**
+ * A held Shared Video the archive no longer has (SYNC-4: purged in the console) whose YouTube id or content hash an
+ * incoming Shared Video now holds: this machine's rows (Copies, Favorite, resume point, …) join the incoming id, its
+ * stale link data goes (the incoming row brings its own), and it is stamped with the epoch so the apply overwrites it.
+ */
+export function mergeStaleVideoInto(db: Db, from: string, to: string) {
+  db.exec("PRAGMA defer_foreign_keys = ON");
+  for (const t of LINK_CHILDREN) db.query(`DELETE FROM ${t} WHERE video_id = ?`).run(from);
+  db.query("DELETE FROM shelved_edit WHERE video_id = ?").run(from);
+  if (!db.query("SELECT 1 FROM videos WHERE id = ?").get(to)) {
+    moveVideo(db, from, to);
+  } else {
+    db.query(`UPDATE video_local SET favorited_at = COALESCE(favorited_at, (SELECT favorited_at FROM video_local WHERE video_id = ?)),
+        view_count = view_count + COALESCE((SELECT view_count FROM video_local WHERE video_id = ?), 0) WHERE video_id = ?`).run(from, from, to);
+    for (const r of videoRefs(db, LINK_CHILDREN)) {
+      db.query(`UPDATE OR IGNORE ${r.table} SET ${r.column} = ? WHERE ${r.column} = ?`).run(to, from);
+      db.query(`DELETE FROM ${r.table} WHERE ${r.column} = ?`).run(from);
+    }
+    db.query("DELETE FROM videos WHERE id = ?").run(from);
+    reindexVideo(db, from);
+  }
+  db.query("UPDATE videos SET updated_at = ? WHERE id = ?").run(EPOCH, to);
+}
+
 /** Moves a Chapter to a new id: the row, its star, its search entry. */
 export function moveChapter(db: Db, from: string, to: string = newUuid()): string {
   db.exec("PRAGMA defer_foreign_keys = ON");

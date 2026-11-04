@@ -18,7 +18,8 @@ import { fillArtistLatin } from "../latin";
 import { indexArtist, indexSong, indexVersion, rebuildSearchIndex, reindexChapter, reindexVideo } from "../search";
 import type { ApplySharedResult, ArchiveIds, ReplaceWholeTable, SharedChanges, SharedTombstoneRow } from "../../shared/sharedRows";
 import { SHARED_SCHEMA } from "./meta";
-import { freeCollidingIds } from "./rekey";
+import { freeCollidingIds, mergeStaleVideoInto } from "./rekey";
+import { log } from "../log";
 import {
   mapAlbum, mapAlbumCredits, mapArtist, mapPerformance, mapSong, mapTrack, mapTrackArtists, mapVersion, isArchiveTestSong, type Row,
 } from "./archiveRows";
@@ -214,6 +215,19 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   function applyRows() {
     // ---- this machine's rows that hold an incoming Shared id but are another Video, Chapter or Artist (SYNC-1)
     freeCollidingIds(db, batch);
+    // ---- a held Shared Video the archive no longer returns, whose key a new Shared Video holds (SYNC-4): it joins
+    // the new row instead of wedging every Sync with "is held by". Two Shared rows cannot hold one key upstream, so a
+    // clash with a Shared row that is not in this batch is a purged row. Unshared clashes still refuse (reconcile first).
+    const batchVideos = new Set((changes.videos ?? []).map((v) => v.id));
+    const staleShared = db.prepare(`SELECT v.id FROM videos v JOIN video_local l ON l.video_id = v.id AND l.shared = 1
+      WHERE v.id <> ? AND ((? IS NOT NULL AND v.youtube_id = ?) OR (? IS NOT NULL AND v.content_hash = ?))`);
+    for (const v of changes.videos ?? []) {
+      for (const h of staleShared.all(v.id, v.youtube_id, v.youtube_id, v.content_hash, v.content_hash) as { id: string }[]) {
+        if (batchVideos.has(h.id)) continue;
+        log(`apply: Shared Video ${h.id} is no longer in the archive; its key now belongs to ${v.id}, which takes this machine's rows`);
+        mergeStaleVideoInto(db, h.id, v.id);
+      }
+    }
 
     // ---- the archive's rows (no children rule: credits are replaced per Album / Track)
     for (const a of changes.artists ?? []) if (put("archive_artist", mapArtist(a))) changed.artists.add(String(a.id));

@@ -5,6 +5,7 @@
 // time, after every scan, after archive rows change, when a Local Song is added or renamed, and from `bun run suggest-songs`.
 // Unshared Videos only (sharing-spec §4.3): a Shared Video's suggestions are the Shared data's.
 import type { Db } from "./db";
+import { videoFilter, type VideoScope } from "./videoFilter";
 import { foldForMatch, prepareSongs } from "../shared/songMatch";
 import { matchSongInTitle, prepareArtistNames, type TitleSong } from "../shared/titleSongMatch";
 import { songPointers } from "./localCopy/rows";
@@ -29,7 +30,7 @@ export interface SongSuggestRow {
  * `scope: "shared"` (a Video Editor's machine, §4.3) reads the Shared Videos that never had a Song or a manual value
  * and writes nothing (implies `dryRun`): the matches go to `report` for the browser to write through `write_videos`.
  */
-export function suggestSongsFromTitles(db: Db, opts: { videoId?: string; dryRun?: boolean; report?: SongSuggestRow[]; touched?: string[]; scope?: "unshared" | "shared" } = {}): SongSuggestStats {
+export function suggestSongsFromTitles(db: Db, opts: VideoScope & { dryRun?: boolean; report?: SongSuggestRow[]; touched?: string[]; scope?: "unshared" | "shared" } = {}): SongSuggestStats {
   const shared = opts.scope === "shared";
   if (shared) opts = { ...opts, dryRun: true };
   const stats: SongSuggestStats = { videos: 0, suggested: 0, changed: 0, cleared: 0 };
@@ -48,10 +49,10 @@ export function suggestSongsFromTitles(db: Db, opts: { videoId?: string; dryRun?
   const videos = db
     .query(
       `SELECT id, title, song_id, suggestion_source FROM video_full
-        WHERE ${shared ? "shared = 1 AND song_id IS NULL AND suggestion_source IS NULL" : "shared = 0 AND ((song_id IS NULL AND suggestion_source IS NULL) OR suggestion_source = 'title')"} ${opts.videoId != null ? "AND id = ?" : ""}
+        WHERE ${shared ? "shared = 1 AND song_id IS NULL AND suggestion_source IS NULL" : "shared = 0 AND ((song_id IS NULL AND suggestion_source IS NULL) OR suggestion_source = 'title')"} ${videoFilter("id", opts).sql}
         ORDER BY created_at, id`,
     )
-    .all(...(opts.videoId != null ? [opts.videoId] : [])) as { id: string; title: string; song_id: string | null; suggestion_source: string | null }[];
+    .all(...videoFilter("id", opts).params) as { id: string; title: string; song_id: string | null; suggestion_source: string | null }[];
 
   // Every SET expression reads the row as it was, so the Type test sees the old Type.
   const set = db.prepare(

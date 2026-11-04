@@ -18,14 +18,16 @@ The thin, signed Tizen app (`TuvaVideos.TuvaTV`), also packaged for LG webOS (`l
 No Tizen needed: the shell guards every `tizen`/`webapis` call.
 
 ```bash
-bun run start                    # the app; switch the TV button on (TV Server on :4401)
+TUVA_TV_LOOPBACK=1 bun run start # the app; switch the TV button on (TV Server on :4401)
 cd tv/shell && python3 -m http.server 8081
 # open http://127.0.0.1:8081/?addr=127.0.0.1
 ```
 
 `?addr=` stands in for the address the TV would have stored. Use `127.0.0.1` (not `localhost`) as the page's own host.
 Keys: Enter, digits, the arrows (walk the on-screen number pad of the typing screen), Backspace (stands in for Back). The server must answer CORS for
-`X-Tuva-TV` from a page on another port; the packaged app on the TV has the same constraint.
+`X-Tuva-TV` from a page on another port; the packaged app on the TV has the same constraint. Without `TUVA_TV_LOOPBACK=1`
+the TV Server never approves this machine's own addresses (127.0.0.1, the Mac's LAN IPs) and answers CORS only for the
+packaged shell's `file://` origin (`null`) or no Origin, so a page on `http://127.0.0.1:8081` is refused.
 
 ## Install on the TV
 
@@ -46,7 +48,7 @@ up: updates must be signed with the same author certificate.
 
 The same shell, packaged as an `.ipk` instead of a `.wgt`. On LG no key needs registering (Back is 461, in `alt` in
 `src/tv/keys.ts`), the TV's own address comes from `luna://com.palm.connectionmanager/getStatus`, and the app runs
-from `file://`, so the TV Server answers CORS on every TV route.
+from `file://` (Origin `null`), so the TV Server answers CORS for that origin on every TV route.
 
 Once:
 

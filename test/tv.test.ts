@@ -128,7 +128,7 @@ async function ff(...args: string[]) {
 const lav = (size: string, secs = 2) => ["-f", "lavfi", "-i", `testsrc=size=${size}:rate=25:duration=${secs}`, "-f", "lavfi", "-i", `sine=duration=${secs}`];
 
 beforeAll(async () => {
-  const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_TV_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir });
+  const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_TV_PORT: "0", TUVA_TV_LOOPBACK: "1", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir }); // the TV requests come from 127.0.0.1
   ffmpeg = cfg.ffmpeg;
   await ff(...lav("320x240", 70), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", join(localDir, "Plain [aaaaaaaaaaa].mp4"));
   await ff(...lav("1080x1920"), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", join(localDir, "Portrait [bbbbbbbbbbb].mp4"));
@@ -342,8 +342,8 @@ describe("TV Server listener", () => {
   });
 
   test("approve and deny need an ip", async () => {
-    expect((await fetch(`${local}/api/tv/approve`, { method: "POST", body: "{}" })).status).toBe(400);
-    expect((await fetch(`${local}/api/tv/deny`, { method: "POST", body: "nope" })).status).toBe(400);
+    expect((await fetch(`${local}/api/tv/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(400);
+    expect((await fetch(`${local}/api/tv/deny`, { method: "POST", headers: { "content-type": "application/json" }, body: "nope" })).status).toBe(400);
   });
 
   test("off is a hard stop: the listener is gone, the hooks ran, the pending prompt is cleared", async () => {

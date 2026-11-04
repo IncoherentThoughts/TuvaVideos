@@ -113,7 +113,7 @@ describe("first-launch routes", () => {
     await app.scanner.whenIdle();
     expect(app.scanner.progress().last.map((s: { rootId: number }) => s.rootId)).toEqual([body.root.id]);
     expect((await post("/api/roots", { path: folder })).status).toBe(409);
-    expect((await fetch(`http://localhost:${app.server.port}/api/roots`, { method: "POST", body: JSON.stringify({ path: folder }) })).status).toBe(403);
+    expect((await fetch(`http://localhost:${app.server.port}/api/roots`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: folder }) })).status).toBe(403);
   });
 
   test("a Member with no Root gets the bar; dismissing it is remembered", async () => {

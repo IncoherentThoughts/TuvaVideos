@@ -6,7 +6,8 @@ import { join } from "node:path";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import { log } from "./log";
-import { excludeNotHere, matchTvRoute, notHereVideoIds, tvListOf } from "./tvRoutes";
+import { FRAME_HEADERS, markTvRequest } from "./localOnly";
+import { excludeNotHere, matchTvRoute, notHereVideoIds, stripPaths, tvListOf } from "./tvRoutes";
 import type { TvBundle } from "./web";
 import type { ApprovedTvDto, TvStateDto } from "../shared/types";
 
@@ -33,6 +34,54 @@ export function lanAddresses(): string[] {
   return out;
 }
 
+/**
+ * This machine's own addresses: loopback and its LAN IPs. A request from one is a page in a browser on this Mac, never
+ * a TV, so it is never approved (docs/audit/01-security.md SEC-1) unless `TUVA_TV_LOOPBACK=1` (Config.tvLoopback).
+ */
+export function isOwnAddress(ip: string, lan: readonly string[] = lanAddresses()): boolean {
+  ip = normalizeIp(ip.trim()).toLowerCase();
+  return /^127\./.test(ip) || ip === "::1" || ip === "0.0.0.0" || ip === "::" || ip === "localhost" || lan.includes(ip);
+}
+
+/**
+ * The Origins the TV app sends: none (Tizen, whose `<access origin="*">` skips CORS) or the LG shell's `file://`
+ * page, which browsers send as `null`. Only these get CORS headers (SEC-4); an http(s) Origin is never reflected.
+ * `devLoopback` (`TUVA_TV_LOOPBACK=1`) adds a page on this machine's loopback, the shell served for desktop testing
+ * (tv/shell/README.md).
+ */
+export const tvCorsOrigin = (origin: string | null, devLoopback = false): boolean =>
+  origin == null || origin === "null" || origin.startsWith("file://") || (devLoopback && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin));
+
+/**
+ * Why the TV listener refuses a request before its IP is checked, or null. A Host that is a name rather than an
+ * address is a DNS-rebinding page (the TV and its shell use the Mac's IP); an http(s) Origin other than the listener's
+ * own (the desktop page at `/`) is another site's page in a browser at an Approved IP.
+ */
+export function tvRequestError(req: Request, devLoopback = false): string | null {
+  const host = req.headers.get("host");
+  let own: string | null = null;
+  if (host != null) {
+    let hostname: string;
+    try {
+      const u = new URL(`http://${host}`);
+      hostname = u.hostname;
+      own = u.origin;
+    } catch {
+      return "bad Host header";
+    }
+    if (hostname !== "localhost" && !/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && !/^\[[0-9a-f:.]+\]$/i.test(hostname)) return "Host is not an address of this machine";
+  }
+  const origin = req.headers.get("origin");
+  if (tvCorsOrigin(origin, devLoopback)) return null;
+  let o: string | null = null;
+  try {
+    o = new URL(origin!).origin;
+  } catch {
+    // not a URL
+  }
+  return o != null && o === own ? null : "Origin is not the TV app";
+}
+
 interface Activity {
   ip: string;
   model: string | null;
@@ -50,7 +99,12 @@ export class TvServer {
   private activity: Activity | null = null;
   private stopHooks: (() => void)[] = [];
 
-  constructor(private deps: { cfg: Pick<Config, "tvPort" | "passive" | "webDir">; db: Db }) {}
+  constructor(private deps: { cfg: Pick<Config, "tvPort" | "passive" | "webDir" | "tvLoopback">; db: Db }) {}
+
+  /** An address that may be approved and served: not this machine's own (unless `tvLoopback`). */
+  private mayBeTv(ip: string): boolean {
+    return ip !== "" && (!!this.deps.cfg.tvLoopback || !isOwnAddress(ip));
+  }
 
   setHandler(h: Handler) {
     this.handler = h;
@@ -124,12 +178,14 @@ export class TvServer {
   }
 
   private isApproved(ip: string): boolean {
-    return ip !== "" && this.deps.db.query("SELECT 1 FROM approved_tv WHERE ip = ?").get(ip) != null;
+    // a row for this machine's own address (stored before SEC-1, or under TUVA_TV_LOOPBACK) is listed, not served
+    return this.mayBeTv(ip) && this.deps.db.query("SELECT 1 FROM approved_tv WHERE ip = ?").get(ip) != null;
   }
 
+  /** False, and nothing stored, for an empty address or this machine's own (`isOwnAddress`). */
   approve(ip: string): boolean {
     ip = normalizeIp(ip.trim());
-    if (!ip) return false;
+    if (!this.mayBeTv(ip)) return false;
     const model = this.pending.get(ip) ?? null;
     const now = new Date().toISOString();
     this.deps.db
@@ -186,28 +242,43 @@ export class TvServer {
     this.activity = { ip, model: model ?? (db.query("SELECT model FROM approved_tv WHERE ip = ?").get(ip) as { model: string | null } | null)?.model ?? null, at: now, title };
   }
 
-  // CORS for every TV route: the LG (webOS) shell runs from file:// and sends X-Tuva-TV, so its requests are
-  // preflighted; Tizen skips CORS through <access origin="*">. Access is still decided by the TV's IP.
+  // CORS for the TV app only (tvCorsOrigin): the LG (webOS) shell runs from file:// (Origin `null`) and sends
+  // X-Tuva-TV, so its requests are preflighted; Tizen skips CORS through <access origin="*">. Another site's page gets
+  // no CORS headers and a 403 (tvRequestError). Access is still decided by the TV's IP.
   async fetch(req: Request, ip: string): Promise<Response> {
+    const dev = !!this.deps.cfg.tvLoopback;
+    const refused = tvRequestError(req, dev);
+    if (refused) return new Response(JSON.stringify({ error: refused }), { status: 403, headers: { "content-type": "application/json", "cache-control": "no-store", vary: "origin" } });
+    const cors = tvCorsOrigin(req.headers.get("origin"), dev);
     if (req.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
-          "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, HEAD, POST, PUT, PATCH, DELETE",
-          "access-control-allow-headers": req.headers.get("access-control-request-headers") || "x-tuva-tv, content-type, range",
-          "access-control-max-age": "600",
+          vary: "origin",
+          ...(cors
+            ? {
+                "access-control-allow-origin": "*",
+                "access-control-allow-methods": "GET, HEAD, POST",
+                "access-control-allow-headers": "x-tuva-tv, content-type, range",
+                "access-control-max-age": "600",
+              }
+            : {}),
         },
       });
     }
     const res = await this.respond(req, ip);
+    const set = (h: Headers) => {
+      h.append("vary", "origin");
+      if (!cors) return;
+      h.set("access-control-allow-origin", "*");
+      h.set("access-control-expose-headers", "content-length, content-range, accept-ranges");
+    };
     try {
-      res.headers.set("access-control-allow-origin", "*");
-      res.headers.set("access-control-expose-headers", "content-length, content-range, accept-ranges");
+      set(res.headers);
     } catch {
       // immutable headers (a passed-through fetch Response): copy it
       const copy = new Response(res.body, res);
-      copy.headers.set("access-control-allow-origin", "*");
+      set(copy.headers);
       return copy;
     }
     return res;
@@ -221,7 +292,8 @@ export class TvServer {
 
     const model = req.headers.get("x-tuva-tv")?.trim().slice(0, 120) || null;
     if (!this.isApproved(ip)) {
-      if (ip && !this.denied.has(ip)) this.pending.set(ip, model ?? this.pending.get(ip) ?? null);
+      // no prompt for this machine's own address: it could never be approved
+      if (this.mayBeTv(ip) && !this.denied.has(ip)) this.pending.set(ip, model ?? this.pending.get(ip) ?? null);
       return json({ error: "approve" }, 403);
     }
     this.touch(ip, model, path);
@@ -229,11 +301,14 @@ export class TvServer {
     if (route.kind === "ui") return this.ui(path);
     if (route.kind === "live") return json({ error: "the Live remux is not built yet" }, 404);
     if (!this.handler) return json({ error: "not ready" }, 503);
+    markTvRequest(req); // the localhost guard (localOnly.ts) leaves it to this listener's own checks
     const res = await this.handler(req);
-    // §7.6: the video lists leave out Not on this machine Videos (Unmounted ones stay).
+    // §7.6: the video lists leave out Not on this machine Videos (Unmounted ones stay); no answer carries a Copy's
+    // absolute file path (SEC-6).
     const list = tvListOf(req.method, path);
-    if (list && res.ok && res.headers.get("content-type")?.includes("application/json")) {
-      const body = excludeNotHere(list, await res.json(), notHereVideoIds(this.deps.db));
+    if (res.ok && res.headers.get("content-type")?.includes("application/json")) {
+      const raw = stripPaths(await res.json());
+      const body = list ? excludeNotHere(list, raw, notHereVideoIds(this.deps.db)) : raw;
       const headers = new Headers(res.headers);
       headers.delete("content-length");
       return new Response(req.method === "HEAD" ? null : JSON.stringify(body), { status: res.status, headers });
@@ -253,6 +328,6 @@ export class TvServer {
     const addrs = lanAddresses().map((a) => `${a}:${this.port}`);
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${TV_APP_NAME}</title><meta name="viewport" content="width=1920"><link rel="icon" href="/olchey.svg"><link rel="stylesheet" href="/tv.css"></head>
 <body><div id="tv"></div><div id="boot" style="position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:#1f1e1d;color:#d9d8d5;font:28px system-ui"><div><img src="/olchey.svg" width="96" height="96" alt=""><h1>${TV_APP_NAME}</h1><p>${addrs.length ? addrs.join(" · ") : "no network address"}</p></div></div><script src="/tv.js"></script></body></html>`;
-    return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...noStore } });
+    return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...noStore, ...FRAME_HEADERS } });
   }
 }

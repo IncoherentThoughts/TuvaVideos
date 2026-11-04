@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 import { sleep } from "../src/server/proc";
+import { jsonInit } from "./helpers/http";
 import { insertChapter, V } from "./helpers/seed";
 
 const base = mkdtempSync(join(tmpdir(), "tuva-it-"));
@@ -58,7 +59,7 @@ afterAll(async () => {
   rmSync(base, { recursive: true, force: true });
 });
 
-const api = async (path: string, init?: RequestInit) => (await fetch(base_url + path, init)).json() as Promise<any>;
+const api = async (path: string, init?: RequestInit) => (await fetch(base_url + path, jsonInit(init))).json() as Promise<any>;
 
 async function waitFor(cond: () => boolean | Promise<boolean>, ms = 30_000) {
   const t0 = Date.now();
@@ -397,15 +398,16 @@ describe("resume endpoint", () => {
     }
   });
 
-  test("a sendBeacon style body (any content type) works; bad input and unknown Videos are refused", async () => {
+  test("a text/plain body is refused on localhost (a cross-site simple request; the TV's go through the TV listener); bad input and unknown Videos are refused", async () => {
     const id = songId();
     app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = '${id}'`);
-    expect((await post(id, { resumeS: 33 }, true)).status).toBe(200);
+    expect((await post(id, { resumeS: 33 })).status).toBe(200);
+    expect((await post(id, { resumeS: 34 }, true)).status).toBe(415);
     expect(row(id).resume_s).toBe(33);
     expect((await post(id, { resumeS: -1 })).status).toBe(400);
     expect((await post(id, { resumeS: "12" })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
-    expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", body: "not json" })).status).toBe(400);
+    expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { resumeS: 1 })).status).toBe(404);
     expect(row(id).resume_s).toBe(33);
     app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = '${id}'`);
@@ -439,7 +441,7 @@ describe("loop endpoint", () => {
     expect((await post(id, { loop: { a: 2, b: 2.01 } })).status).toBe(400);
     expect((await post(id, { loop: { a: "1", b: 2 } })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
-    expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", body: "not json" })).status).toBe(400);
+    expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { loop: null })).status).toBe(404);
     expect(row(id)).toEqual({ loop_a_s: null, loop_b_s: null });
   });
@@ -566,7 +568,7 @@ describe("Rutube id (ADR 0008)", () => {
 describe("POST /api/cache/apply (sharing-spec §4.9, §6.2)", () => {
   const SV = "33333333-3333-4333-8333-333333333333";
   const row = { id: SV, content_hash: "cache-apply-hash", title: "From the archive", type: "song", created_at: "2026-10-17T00:00:00Z", updated_at: "2026-10-17T00:00:00Z" };
-  const post = (headers: Record<string, string>) => fetch(base_url + "/api/cache/apply", { method: "POST", headers, body: JSON.stringify({ tables: { videos: [row] } }) });
+  const post = (headers: Record<string, string>) => fetch(base_url + "/api/cache/apply", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ tables: { videos: [row] } }) });
   test("refused without this companion's Origin; applied with it, and the Video is Shared", async () => {
     expect((await post({})).status).toBe(403);
     expect((await post({ origin: "https://evil.example" })).status).toBe(403);
@@ -574,10 +576,10 @@ describe("POST /api/cache/apply (sharing-spec §4.9, §6.2)", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ applied: { videos: 1 }, reindex: "rows" });
     expect(await api(`/api/videos/${SV}`)).toMatchObject({ id: SV, title: "From the archive", shared: true });
-    const bad = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ tables: { videos: [{ id: V(999998) }] } }) });
+    const bad = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body: JSON.stringify({ tables: { videos: [{ id: V(999998) }] } }) });
     expect(bad.status).toBe(422);
     // the pre-130 flat body (rows by table at the top) is refused, not silently ignored
-    const flat = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ videos: [row] }) });
+    const flat = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body: JSON.stringify({ videos: [row] }) });
     expect(flat.status).toBe(400);
   });
 });

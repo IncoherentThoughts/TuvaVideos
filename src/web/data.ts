@@ -7,6 +7,9 @@ import type { VersionInput } from "../shared/lyrics/types";
 import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { isUuid } from "../shared/ids";
 import { navigate, PLAY_PATH, playHref } from "./router";
+import { syncLanded, withFavorite, type SyncSeen } from "../shared/clientCache";
+import { useSession } from "./session";
+import { RELOADED_EVENT } from "./writeLink";
 
 async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { signal });
@@ -40,6 +43,8 @@ const songCache = new Map<string, Promise<SongDto>>();
 
 /** Forgets a cached Song (a Local Version was written, or a Local Song renamed) so the next read is fresh. */
 export const forgetSong = (id: string) => void songCache.delete(id);
+/** Forgets every cached Song (a Sync changed the Local copy). */
+export const forgetAllSongs = () => songCache.clear();
 
 export const api = {
   /** The TV Server (docs/tv-spec.md 2): state, turn on/off, and the Approved TVs prompt. */
@@ -49,9 +54,11 @@ export const api = {
   tvApprove: (ip: string) => post<TvStateDto>("/api/tv/approve", { ip }),
   tvDeny: (ip: string) => post<TvStateDto>("/api/tv/deny", { ip }),
   tvRemove: (ip: string) => send<TvStateDto>("DELETE", `/api/tv/approved/${encodeURIComponent(ip)}`),
-  /** A Song with its Versions. Cached for the page's life: the Mirror only changes through the CLI import, and the
-   *  local edits call forgetSong. */
-  song: (id: string): Promise<SongDto> => {
+  /** A Song with its Versions and the Videos performing it. Cached: local edits call forgetSong, a Sync clears the
+   *  cache (useReloadAfterSync), and so does a Video's Song pointer changing (replaceVideo). Readers of `videos` (who
+   *  performs it), which a Chapter's Song link also changes, pass `fresh` to read it again. */
+  song: (id: string, opts: { fresh?: boolean } = {}): Promise<SongDto> => {
+    if (opts.fresh) forgetSong(id);
     let p = songCache.get(id);
     if (!p) {
       p = get<SongDto>(`/api/songs/${encodeURIComponent(id)}`);
@@ -77,7 +84,7 @@ export const api = {
   setLoop: (id: string, loop: { a: number; b: number } | null) => post<{ id: string; loop: { a: number; b: number } | null }>(`/api/videos/${id}/loop`, { loop }),
   setVideoArtists: (id: string, artistIds: string[]) => send<VideoDto>("PUT", `/api/videos/${id}/artists`, { artistIds }),
   createArtist: (name: string) => post<{ id: string; name: string; local: boolean; created: boolean }>("/api/artists", { name }),
-  // Local Songs and Local Versions (lyrics written here, outside the Mirror).
+  // Local Songs and Local Versions (lyrics written here, outside the archive).
   createSong: (body: LocalSongCreate) => post<{ id: string; name: string; englishName: string | null; local: boolean; created: boolean }>("/api/songs", body),
   patchSong: (id: string, body: Partial<LocalSongCreate>) => send<{ id: string; name: string; englishName: string | null }>("PATCH", `/api/songs/${encodeURIComponent(id)}`, body).finally(() => forgetSong(id)),
   deleteSong: (id: string) => send<{ deleted: true }>("DELETE", `/api/songs/${encodeURIComponent(id)}`).finally(() => forgetSong(id)),
@@ -174,6 +181,9 @@ export async function loadVideos() {
 
 /** Puts an edited Video (the server's answer) into the in-memory library so grids and tags agree. */
 export function replaceVideo(v: VideoDto) {
+  const old = state.videos?.find((x) => x.id === v.id);
+  // the Song's cached record lists the Videos performing it: a changed Song pointer changes two of those lists
+  if (old && old.songId !== v.songId) for (const id of [old.songId, v.songId]) if (id) forgetSong(id);
   if (state.videos) set({ videos: state.videos.map((x) => (x.id === v.id ? v : x)) });
 }
 
@@ -200,17 +210,39 @@ export const reloadAll = () => Promise.all([loadVideos(), loadArtists()]);
 
 /** Toggles a Favorite everywhere: optimistic in the in-memory library, then the server's answer. */
 export async function toggleFavorite(kind: "video" | "chapter", id: string) {
-  const before = state.videos;
-  if (kind === "video" && state.videos) {
-    set({ videos: state.videos.map((v) => (v.id === id ? { ...v, favoritedAt: v.favoritedAt ? null : new Date().toISOString() } : v)) });
-  }
+  const setFav = (favoritedAt: string | null) => {
+    if (kind === "video" && state.videos) set({ videos: withFavorite(state.videos, id, favoritedAt) });
+  };
+  const before = kind === "video" ? (state.videos?.find((v) => v.id === id)?.favoritedAt ?? null) : null;
+  setFav(before ? null : new Date().toISOString());
   try {
     const r = await api.setFavorite(kind, id);
-    if (kind === "video" && state.videos) set({ videos: state.videos.map((v) => (v.id === id ? { ...v, favoritedAt: r.favoritedAt } : v)) });
+    setFav(r.favoritedAt);
     set({ favVersion: state.favVersion + 1 });
   } catch (e) {
-    set({ videos: before, error: String((e as Error).message ?? e) });
+    // only this Video's Favorite goes back, against the library as it is now (a poll or a reload may have landed)
+    setFav(before);
+    set({ error: String((e as Error).message ?? e) });
   }
+}
+
+
+/**
+ * After a Sync the Local copy holds other Members' Videos, titles, Artists and Chapters: reload the in-memory library
+ * and the Artists, forget the cached Songs, and tell an open Now playing page to re-read its Video. Used once, by App.
+ */
+export function useReloadAfterSync() {
+  const session = useSession();
+  const seen = useRef<SyncSeen | null>(null);
+  useEffect(() => {
+    const step = syncLanded(seen.current, session.recordLoaded, session.lastSyncAt);
+    seen.current = step.seen;
+    if (!step.reload) return;
+    forgetAllSongs();
+    void reloadAll();
+    const cur = location.pathname.match(PLAY_PATH);
+    if (cur) window.dispatchEvent(new CustomEvent(RELOADED_EVENT, { detail: { videoId: cur[1]! } }));
+  }, [session.recordLoaded, session.lastSyncAt]);
 }
 
 /** Last Video opened in the player, for the "Now playing" tab. */

@@ -16,6 +16,8 @@ import { TvBundle, WebBundle } from "./web";
 export interface App extends Services {
   server: ReturnType<typeof Bun.serve>;
   stop(): Promise<void>;
+  /** The second Ctrl-C: kill every ffmpeg/ffprobe child at once, without waiting (audit PLAY-6). */
+  kill(): void;
 }
 
 /**
@@ -77,16 +79,24 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   return Object.assign(services, {
     server,
     async stop() {
-      log("shutting down: letting the in-flight ffmpeg job finish");
+      // The jobs in flight are killed, not waited for: a Fallback, a keyframe index and a Thumbnail are all rebuilt
+      // later. The port stays bound until they have stopped (audit PLAY-2).
+      log("shutting down: stopping the ffmpeg jobs in flight");
       roots.stop();
       tv.stop();
       studio.shutdown(); // kills the osascript child
-      void server.stop();
       keyframes.shutdown();
-      await Promise.all([fallback.shutdown(), thumbs.shutdown()]);
+      await Promise.race([Promise.all([fallback.shutdown(), thumbs.shutdown()]), new Promise((r) => setTimeout(r, 10_000))]);
+      void server.stop();
       checkpoint(db);
       db.close();
       log("bye");
+    },
+    kill() {
+      fallback.kill();
+      keyframes.shutdown();
+      void thumbs.shutdown(); // kills its children synchronously
+      studio.shutdown();
     },
   });
 }

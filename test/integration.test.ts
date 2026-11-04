@@ -1,3 +1,5 @@
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -407,6 +409,7 @@ describe("resume endpoint", () => {
     expect((await post(id, { resumeS: -1 })).status).toBe(400);
     expect((await post(id, { resumeS: "12" })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
+    for (const bad of [null, [], 3, "x"]) expect((await post(id, bad)).status).toBe(400); // JSON, but not an object: a 400, never a 500
     expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { resumeS: 1 })).status).toBe(404);
     expect(row(id).resume_s).toBe(33);
@@ -441,6 +444,7 @@ describe("loop endpoint", () => {
     expect((await post(id, { loop: { a: 2, b: 2.01 } })).status).toBe(400);
     expect((await post(id, { loop: { a: "1", b: 2 } })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
+    for (const bad of [null, [], 3, "x"]) expect((await post(id, bad)).status).toBe(400); // JSON, but not an object: a 400, never a 500
     expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { loop: null })).status).toBe(404);
     expect(row(id)).toEqual({ loop_a_s: null, loop_b_s: null });
@@ -484,6 +488,24 @@ describe("screenshot endpoint", () => {
     expect((await shot(id, "-3", await png())).status).toBe(400);
     expect((await shot(id, "abc", await png())).status).toBe(400);
     expect((await shot(V(999999), "5", await png())).status).toBe(404);
+  });
+});
+
+describe("relocate endpoint (HTTP glue)", () => {
+  const relocate = (id: string, body: string) =>
+    fetch(`${base_url}/api/videos/${id}/relocate`, { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body });
+  const songId = () => (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
+
+  test("a non-object body is a 400; a copyId that is not this Video's (a string included) is a 404; the Copy is untouched", async () => {
+    const id = songId();
+    const before = app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE video_id = ?").all(id);
+    for (const bad of ["null", "[]", "3", "not json"]) expect((await relocate(id, bad)).status).toBe(400);
+    const path = join(localDir, "Song One [aaaaaaaaaaa].mp4");
+    const r = await relocate(id, JSON.stringify({ path, copyId: "5" }));
+    expect(r.status).toBe(404);
+    expect((await r.json()).error).toContain("not this Video's");
+    expect((await relocate(V(999999), JSON.stringify({ path }))).status).toBe(404);
+    expect(app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE video_id = ?").all(id)).toEqual(before);
   });
 });
 

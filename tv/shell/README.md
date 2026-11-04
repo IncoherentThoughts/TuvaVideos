@@ -11,7 +11,7 @@ The thin, signed Tizen app (`TuvaVideos.TuvaTV`), also packaged for LG webOS (`l
 | `discovery.js` | finding the server (last address, /24 sweep, typed), approval, "turned off"; no DOM, tested in `test/tv-shell.test.ts` |
 | `shell.js` | key registration, screens, loading `/tv.css` and `/tv.js` from the server, `window.tuvaTv = { base, keys, exit, restart }` |
 | `keys.js` | **generated** from `src/tv/keys.ts` by `bun run tv-install` (or `bun scripts/tv-install.ts --keys`); a test fails when it is stale |
-| `tv.json` | the TV: `ip`, `target` (model code for `-t`), `duid`, `mac` (the Mac's address, for reference); read by `tv-install` |
+| `tv.json` | the TV: `ip`, `target` (model code for `-t`), `duid`, `mac` (the Mac's address, for reference); read by `tv-install`. Per machine and git-ignored: copy `tv.example.json` to `tv.json` and fill it in |
 
 ## Develop in a desktop browser
 

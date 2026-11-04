@@ -71,7 +71,7 @@ describe("bun run setup", () => {
     const linux = planSetup(probe("linux", []));
     expect(linux.find((l) => l.name === "ffmpeg")!.install).toBe("sudo apt install ffmpeg");
     expect(linux.find((l) => l.name === "trash")!.install).toContain("trash-cli");
-    expect(planSetup(probe("win32", [])).find((l) => l.name === "cwebp")!.install).toBe("scoop install libwebp");
+    expect(planSetup(probe("win32", [])).find((l) => l.name === "cwebp")!.install).toBe("winget install Google.Libwebp");
   });
 
   test("trash, yt-dlp and ImageMagick are optional: missing them still exits 0", () => {

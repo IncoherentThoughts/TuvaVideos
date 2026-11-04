@@ -1,6 +1,8 @@
 // Ticket #27: Studio playback. The normalizer, the matcher's narrowing, absorption and stale-id demotion, the dump cache,
 // the resident bridge against a fake child, the endpoints on a temp data dir with a fake dump and a fake bridge, and the
 // key retargeting map. Nothing here talks to Music.app.
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

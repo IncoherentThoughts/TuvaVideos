@@ -1,5 +1,7 @@
 // The TV Server (docs/tv-spec.md 2, 3.1-3.3): the TV Playback profile's decision, scan-time judging and staleness,
 // the second listener, the route list and the Approved TV allowlist.
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -259,9 +261,12 @@ describe("TV Server listener", () => {
     expect(app.db.query("SELECT model FROM approved_tv WHERE ip = '127.0.0.1'").get()).toEqual({ model: "Samsung 85R85H" });
 
     const videos = (await (await tvReq("/api/videos", { headers: tvModel })).json()) as any[];
-    expect(videos[0].copies[0].tv.order).toBeDefined();
-    const vid = videos[0].id;
-    const copy = videos[0].copies[0].id;
+    // Pick the plain mp4 explicitly: the list order ties on created_at, and the PCM Copy answers
+    // /copy/:id with the designed 503 while its scan-time Fallback is still being made.
+    const plain = videos.find((v) => v.youtubeId === "aaaaaaaaaaa");
+    expect(plain.copies[0].tv.order).toBe("file");
+    const vid = plain.id;
+    const copy = plain.copies[0].id;
     // walk the data: every listed route is answered by its handler (never the unlisted 404)
     for (const r of TV_ROUTES) {
       const path = r.sample.replace(`/videos/${V(1)}`, `/videos/${vid}`).replace("/copies/1", `/copies/${copy}`).replace("/copy/1", `/copy/${copy}`).replace(`/thumbs/${V(1)}/`, `/thumbs/${vid}/`).replace("/live/1/", `/live/${copy}/`);

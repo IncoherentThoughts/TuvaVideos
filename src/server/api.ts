@@ -613,7 +613,8 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/resume$/))) {
           let body: { resumeS?: unknown; copyId?: unknown } = {};
           try {
-            body = (await req.json()) as typeof body; // sendBeacon posts a Blob; the content type does not matter here
+            const parsed = await req.json(); // sendBeacon posts a Blob; the content type does not matter here
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as typeof body; // null, [] or 3: the resumeS check below answers 400
           } catch {}
           if (typeof body.resumeS !== "number" || !Number.isFinite(body.resumeS) || body.resumeS < 0) return json({ error: "resumeS must be a number >= 0" }, 400);
           const r = recordResume(s.db, m[1]!, body.resumeS, typeof body.copyId === "number" ? body.copyId : null);
@@ -627,6 +628,7 @@ export function createHandler(s: Services) {
           } catch {
             return json({ error: "body must be JSON" }, 400);
           }
+          if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "body must be a JSON object" }, 400);
           const l = body.loop;
           if (l !== null) {
             const ok = typeof l === "object" && l != null && typeof (l as StoredLoop).a === "number" && typeof (l as StoredLoop).b === "number" && storedLoop(l as StoredLoop) != null;

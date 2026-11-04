@@ -1,8 +1,8 @@
 // The client write seam (sharing-spec §4.1–§4.3, §4.5, §4.9; ticket #145): op -> function / payload / stamp / Edits,
 // routing by mode, the local routes, a line for every wire word, the conflict reducer; and the companion's reads
 // (kinds, the matchers on Shared Videos, the deleted-match warning) and `removeCopies`.
-import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { editBelongsTo, ERROR_CODES, OPS, STAMP_REQUIRED, type ArchiveError, type ConflictDetail, type WireWord } from "../src/shared/archiveWire";
@@ -300,6 +300,7 @@ describe("kinds, the matchers on Shared Videos, deleted matches (§4.3, §4.5)",
 
 describe("DELETE /api/videos/:id/copies (§4.5)", () => {
   const base = mkdtempSync(join(tmpdir(), "tuva-copies-"));
+  afterAll(() => rmSync(base, { recursive: true, force: true }));
   const rootDir = join(base, "root");
   const trashDir = join(base, "trash");
   mkdirSync(rootDir, { recursive: true });

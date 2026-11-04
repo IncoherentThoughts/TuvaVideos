@@ -1,5 +1,7 @@
 // Ticket #26: the timestamp parser, block selection, Performance merge, the Song matcher, the re-run and tombstone
 // rules, the time-field parser and nudge arithmetic, and the Chapter endpoints.
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

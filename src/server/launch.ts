@@ -85,7 +85,7 @@ export async function launch(cfg: Config) {
   let shutdown: (sig: string) => Promise<void> = async () => {};
   const app = await startApp(cfg, { quit: () => void shutdown("quit (power button)") });
   shutdown = shutdownHandler(app, lock, (code) => process.exit(code));
-  void app.studio.probe(); // spec 9: before the tab opens, so the Automation prompt is predictable
+  void app.studio.probe(); // spec 9: started before the tab opens, not awaited, so the tab is not held up by Music.app
   if (cfg.openTab) openTab(cfg.port);
 
   process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -9,7 +9,7 @@ import { suggestSongsFromTitles, type SongSuggestRow } from "./songSuggest";
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  const id = args.find((a) => /^\d+$/.test(a));
+  const id = args.find((a) => !a.startsWith("-")); // a Video id (a uuid since migration 0015), not only digits
   const dryRun = args.includes("--dry-run");
   const cfg = loadConfig();
   initLog(cfg.logPath);

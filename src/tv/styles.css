@@ -68,6 +68,7 @@ img { display: block; }
 .tag.type-interview { --c: var(--t6); }
 .tag.type-other { --c: var(--fg2); }
 .tag.more { --c: var(--fg2); }
+.tag.sug { border-style: dashed; }
 
 /* ---- cards ---- */
 .card { min-width: 0; height: 278px; padding: 10px; border-radius: var(--r); overflow: hidden; }

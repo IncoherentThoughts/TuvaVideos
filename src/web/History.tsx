@@ -162,7 +162,7 @@ export function EditsView() {
   const entries = [...(page?.entries ?? []), ...more];
   const next = more.length ? null : page?.next ?? null;
   return (
-    <section class="edits-view">
+    <section class="page edits-view">
       <h2>Edits</h2>
       <div class="edits-filters">
         <label>

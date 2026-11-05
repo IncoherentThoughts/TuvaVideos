@@ -3,7 +3,7 @@
 // the miss UI (a search box over the Music.app dump: "match this Track" or "add to Song").
 // The Player owns the keys and pauses the Video; this component owns the Music.app session and the polling.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { AB_OFF, abLoopTarget, abToggle, fmtClock, type AbLoop } from "../shared/playerMath";
+import { AB_OFF, abInside, abLoopTarget, abToggle, fmtClock, type AbLoop } from "../shared/playerMath";
 import { SeekThrottle } from "../shared/seekThrottle";
 import { clampStudioSeek, type DumpHitDto, type SongStudioDto, type StudioEntryDto, type StudioStateDto } from "../shared/studio";
 import { api, apiError } from "./data";
@@ -111,7 +111,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<DumpHitDto[] | null>(null);
 
-  const S = useRef({ st: null as StudioStateDto | null, rx: 0, ab: AB_OFF as AbLoop, seq: 0, seeking: false, error: null as string | null, loopSeekAt: 0, userPaused: false, resuming: false });
+  const S = useRef({ st: null as StudioStateDto | null, rx: 0, ab: AB_OFF as AbLoop, abArmed: false, seq: 0, seeking: false, error: null as string | null, loopSeekAt: 0, userPaused: false, resuming: false });
   S.current.ab = ab;
   const close = useRef(onClose);
   close.current = onClose;
@@ -187,10 +187,11 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
         .finally(() => throttle.current.landed());
     }),
   );
-  const seekTo = (t: number, throttled = false) => {
+  const seekTo = (t: number, throttled = false, internal = false) => {
     const s = S.current.st;
     if (!s?.active) return;
     const c = clampStudioSeek(t, s.duration);
+    if (!internal) S.current.abArmed = abInside(S.current.ab, c); // a seek out of the A-B loop plays on from there
     S.current.st = { ...s, position: c };
     S.current.rx = performance.now();
     throttle.current.request(c, throttled);
@@ -239,10 +240,12 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
       tick((n) => n + 1);
       const s = S.current;
       if (s.st?.state === "playing" && !throttle.current.busy) {
-        const back = abLoopTarget(s.ab, position());
+        const t = position();
+        if (abInside(s.ab, t)) s.abArmed = true; // back inside the loop: it applies
+        const back = abLoopTarget(s.ab, t, false, s.abArmed);
         if (back != null) {
           s.loopSeekAt = performance.now();
-          seekTo(back);
+          seekTo(back, false, true);
         }
       }
     }, 100);
@@ -262,6 +265,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
         const r = abToggle(S.current.ab, position());
         setAb(r.ab);
         S.current.ab = r.ab;
+        S.current.abArmed = abInside(r.ab, position()); // B set here: the playhead is at the loop's end
         sayRef.current(r.label);
       } else seekTo(position() + op.seek);
     },

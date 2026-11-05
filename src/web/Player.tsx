@@ -8,7 +8,7 @@ import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies"
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
-  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
+  AB_OFF, FALLBACK_FPS, abInside, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
 } from "../shared/playerMath";
 import { RESUME_INTERVAL_MS, ResumeClock, ResumeOwner, adoptResume, startPosition, storedResume } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
@@ -198,6 +198,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     seekTarget: null as number | null, // the last requested seek while it is in flight or queued: held keys step from it
     wasPlaying: true,
     ab: (storedLoop(video.loop) ?? AB_OFF) as AbLoop,
+    abArmed: false, // the playhead has been inside the A-B loop since the last user seek: reaching B jumps back to A
     phase: "loading" as Phase,
     osdN: 0,
     osdTimer: 0 as unknown as ReturnType<typeof setTimeout>,
@@ -441,7 +442,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     if (!internal && pl.playlist && pl.entry && seekWidens(pl.entry, c)) pl.widen?.(); // past the Chapter Entry's end: it is a Video Entry now
     if (mode === "keyframe" && R.current.keyframes) c = clampTime(keyframeSeekTarget(c, R.current.keyframes, from), dur);
     R.current.seekTarget = c;
-    if (!internal) owner.current.produced(); // the user's seek: written
+    if (!internal) {
+      owner.current.produced(); // the user's seek: written
+      R.current.abArmed = abInside(R.current.ab, c); // a seek out of the A-B loop plays on from there
+    }
     throttle.current.request(c, throttled);
     setTime(c);
   };
@@ -530,7 +534,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     on("ended", () => {
       if (PL.current.playlist) return void entryEnded();
       // loop by default (as mpv's --loop-file): back to A with an A-B loop set, else to the start
-      const t = abLoopTarget(r.ab, v.currentTime, true) ?? 0;
+      const t = abLoopTarget(r.ab, v.currentTime, true, r.abArmed) ?? 0;
       v.currentTime = t;
       countView(); // each loop back from the end is another view
       void v.play().catch(() => {});
@@ -553,7 +557,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       const t = v.currentTime;
       r.lastPos = t;
       if (!v.paused) {
-        const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : abLoopTarget(r.ab, t);
+        if (!v.seeking && !throttle.current.busy && abInside(r.ab, t)) r.abArmed = true; // back inside the loop: it applies
+        const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : abLoopTarget(r.ab, t, false, r.abArmed);
         if (tgt != null) seekTo(tgt, "exact", undefined, false, true);
         const pl = PL.current;
         if (pl.playlist && pl.entry?.end != null) {
@@ -773,6 +778,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         const was = storedLoop(R.current.ab);
         const s = abToggle(R.current.ab, v.currentTime);
         R.current.ab = s.ab;
+        R.current.abArmed = abInside(s.ab, v.currentTime); // B set here: the playhead is at the loop's end
         setAb(s.ab);
         say(s.label);
         // persist a complete loop, and its clearing; a half-set A is not kept (spec 4.3)

@@ -3,7 +3,7 @@ import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../src/shared/cop
 import { dispatchKey, isRepeatable, keyAction, playerOwnsKey, type PlayerAction } from "../src/shared/keymap";
 import { positionIn, resolvePlayingFrom, stepFrom, uniqueIds, type PlayingFrom } from "../src/shared/playingFrom";
 import {
-  AB_OFF, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, parseFrameRate, speedBy, storedLoop, volumeBy,
+  AB_OFF, abInside, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, parseFrameRate, speedBy, storedLoop, volumeBy,
 } from "../src/shared/playerMath";
 import { FINISHED_WITHIN_S, RESUME_INTERVAL_MS, ResumeClock, isFinished, startPosition, storedResume, adoptResume, ADOPT_QUIET_MS, ResumeOwner } from "../src/shared/resume";
 import { SeekThrottle } from "../src/shared/seekThrottle";
@@ -181,6 +181,18 @@ describe("speed, volume, clamping, A-B loop", () => {
     expect(s.ab).toEqual(AB_OFF);
     expect(abToggle({ a: 20, b: null }, 5).ab).toEqual({ a: 5, b: 20 }); // B before A swaps
     expect(abToggle({ a: 20, b: null }, 20).ab).toEqual({ a: 20, b: null }); // empty loop refused
+  });
+  test("A-B loop applies only from inside it: a seek past B or before A plays on there", () => {
+    const ab = { a: 10, b: 20 };
+    expect(abInside(ab, 10)).toBe(true);
+    expect(abInside(ab, 20)).toBe(true); // B just set at the playhead
+    expect(abInside(ab, 5)).toBe(false);
+    expect(abInside(ab, 25)).toBe(false);
+    expect(abInside({ a: 10, b: null }, 15)).toBe(false); // half-set: nothing to arm
+    expect(abLoopTarget(ab, 20.05, false, true)).toBe(10); // played into B from inside
+    expect(abLoopTarget(ab, 25, false, false)).toBeNull(); // seeked past B: stays there
+    expect(abLoopTarget(ab, 99, true, false)).toBeNull(); // ...and ends normally (the Player goes to the start)
+    expect(abLoopTarget(ab, 99, true, true)).toBe(10);
   });
   test("storedLoop keeps only a complete loop (what persists across sessions)", () => {
     expect(storedLoop(AB_OFF)).toBeNull();

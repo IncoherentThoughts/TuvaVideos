@@ -77,10 +77,22 @@ export function storedLoop(ab: AbLoop | StoredLoop | null | undefined): StoredLo
   return { a: ab.a, b: ab.b };
 }
 
-/** The time to jump back to when playback has run past B (or ended with only A set), else null. */
-export function abLoopTarget(ab: AbLoop, t: number, ended = false): number | null {
+/**
+ * Whether the playhead at t is inside a complete loop [A, B]. The loop is armed while the playhead is inside it, and a
+ * user seek re-judges it: a seek out of the loop (before A or past B) leaves playback free there, and the loop applies
+ * again once playback is back inside it.
+ */
+export function abInside(ab: AbLoop, t: number): boolean {
+  return ab.a != null && ab.b != null && t >= ab.a - 0.001 && t <= ab.b;
+}
+
+/**
+ * The time to jump back to when playback has run past B from inside the loop (`armed`), or ended with only A set,
+ * else null. Past B but not armed (the user seeked there), playback carries on.
+ */
+export function abLoopTarget(ab: AbLoop, t: number, ended = false, armed = true): number | null {
   if (ab.a == null) return null;
-  if (ab.b != null) return t >= ab.b ? ab.a : null;
+  if (ab.b != null) return t >= ab.b && armed ? ab.a : null;
   return ended ? ab.a : null;
 }
 

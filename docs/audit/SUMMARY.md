@@ -67,3 +67,42 @@ No Critical findings. Two cross-report duplicates: **PLAY-1 = TV-1** (same `/cop
 ## Repro material
 
 `repros/NN/` holds the auditors' throwaway scripts and tests (for example `repros/02/sync.audit.repro.ts`, 11 tests that pass while the sync bugs exist; `repros/01/repro.sh`). They were written against scratch paths in the audit container, so treat them as reference for writing real regression tests, not as a runnable suite. Test files are renamed `*.repro.ts` so `bun test` does not pick them up.
+
+## Fix status (2026-11-05)
+
+All eight fix branches are merged into `claude/relaxed-babbage-jo4tzo`. After each merge, `bun run typecheck` and the full `bun test` ran green. The final suite is **1,116 pass, 1 skip, 0 fail**, up from 914 / 1 / 2 at audit time. Each fix came with a regression test where a test was possible.
+
+| Area | Fixed | Partial | Not fixed |
+|---|---|---|---|
+| Security (SEC-1..6) | all | — | — |
+| Sync (SYNC-1..16, DOC-2) | SYNC-1, 2, 3, 4, 6, 7, 9, 10, 12, 13, DOC-2 | SYNC-5 (a local edit made during a drain is still overwritten), SYNC-8, SYNC-11 (undo of a deleted Chapter loses its star), SYNC-15, SYNC-16 | SYNC-14 (needs monotonic stamps in the archive) |
+| DB & scanning (DB-1..14) | DB-1, 2, 4, 5*, 6, 7, 9, 12, 14 | DB-3 (half-copied files aren't skipped), DB-8 / DB-11 (counted, not surfaced in the UI), DB-10 (no progress), DB-13 (no case-insensitive compare) | — |
+| Playback (PLAY-1..13) | all | — | — |
+| Web (WEB-1..15, DOC-1, DOC-3) | all; WEB-6, 10, 12, 15 verified by unit test or code reading only | — | — |
+| TV (TV-1..10) | all; TV-2 verified for the outage-at-load case only | — | — |
+| Tests/build (BLD-1..17) | BLD-1..6, 9..17 | BLD-7 (no tests for the session state machine), BLD-8 (documented, not restructured) | — |
+| Docs (DOC-4..19) | all | — | — |
+
+\* DB-5 (Windows Recycle Bin): unit-tested only; no PowerShell in the audit container.
+
+**Migrations added:** `0019_browser_profile_version.sql` (PLAY-8) and `0020_touch_skips_apply.sql` (SYNC-2). Both run at the next launch.
+
+**Archive-side follow-ups** (not doable from this repo): [archive-followups.md](archive-followups.md), covering SYNC-14, -15, -16, -8, -13, -4, -1.
+
+**Behaviour changes worth knowing:**
+- **Localhost writes:** they must come from the app's own page, as `application/json`. Desktop testing of the TV page at `127.0.0.1` needs `TUVA_TV_LOOPBACK=1`.
+- **TV approval:** loopback and the Mac's own addresses can no longer be approved as TVs.
+- **Instance lock:** one app instance per data dir (`instance.lock`). A second Ctrl-C forces quit.
+- **Matchers:** the Song and Artist matchers run for newly added Videos, in batches, not over the whole library after every scan.
+- **Lyrics editor:** Esc closes it but keeps the draft; Cancel discards it.
+- **TV seeking:** holding an arrow scrubs at about 40 s per second instead of climbing the ramp.
+- **TV pairing:** the address screen opens by itself with the number pad focused and the subnet pre-filled. The Mac's TV menu shows its address and Allow/Deny buttons.
+- **Minimum TV:** Tizen 7.0 (Chromium 94) for the shell.
+- **Personal data:** `tv/shell/tv.json` is untracked (see `tv.example.json`). Restore your copy after pulling with `git show 16d9f1d:tv/shell/tv.json > tv/shell/tv.json`.
+
+**Owner actions:**
+1. Run `bun run tv-install` (and `bun run lg-install`) to get the new shell: the error screen and the address screen.
+2. Restore `tv/shell/tv.json` as above.
+3. Remove any `127.0.0.1` or Mac-IP rows from the Approved TV list.
+4. Check the first CI run on GitHub, especially the macOS job, which has never run.
+5. Check on the real TV: hold-to-scrub, the Resume handoff, focus after Back, and the pairing flow. Screenshots: `screens/tv/`, `screens/web/`.

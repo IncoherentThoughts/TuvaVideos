@@ -7,6 +7,7 @@ The thin, signed Tizen app (`TuvaVideos.TuvaTV`), also packaged for LG webOS (`l
 |---|---|
 | `config.xml`, `icon.png` | package: `internet` + `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>`, olchey icon 512x423 (the knot on a full-bleed `#1f1e1d` fill) |
 | `appinfo.json`, `icon-80.png`, `icon-130.png` | the LG (webOS) package: `disableBackHistoryAPI` so Back arrives as key 461; read by `lg-install` |
+| `symbols-shapes.woff2` | the ◀ ▲ ▼ ▶ ⌫ the screens draw, which LG has no font for (the UI's fonts come from the server's `/fonts/`) |
 | `index.html`, `shell.css` | CSP meta (as jellyfin-tizen ships), `webapis.js`, the 1920x1080 offline screens |
 | `discovery.js` | finding the server (last address, /24 sweep, typed), approval, "turned off"; no DOM, tested in `test/tv-shell.test.ts` |
 | `shell.js` | key registration, screens, loading `/tv.css` and `/tv.js` from the server, `window.tuvaTv = { base, keys, exit, restart }` |

@@ -1,9 +1,8 @@
 name: ci
 
+# Manual only: the gate is local (`bun run ci`), and Actions minutes are scarce (a macOS job bills at 10x).
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

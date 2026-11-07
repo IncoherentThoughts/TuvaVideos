@@ -12,6 +12,7 @@
     "grant-video-access": "bun scripts/grant-video-access.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "ci": "bun run typecheck && bun scripts/setup.ts && bun test && if command -v shellcheck >/dev/null; then shellcheck -S warning scripts/*.sh; else echo 'shellcheck not installed: skipped'; fi",
     "latin-titles": "bun src/server/latinTitles.ts",
     "studio-match": "bun src/server/studio/cli.ts",
     "suggest-chapters": "bun src/server/chapters/cli.ts",

@@ -20,7 +20,7 @@
 // record; the token is used for those calls only, never stored or logged.
 import { renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { changesSince, postgrestClient, tokenExp, whoami, type ArchiveCall, type ArchiveEndpoint, type RpcClient } from "../shared/archive";
+import { changesSince, postgrestClient, TIMEOUT_CODE, TIMEOUT_LINE, tokenExp, whoami, type ArchiveCall, type ArchiveEndpoint, type RpcClient } from "../shared/archive";
 import type { VideoWhoami } from "../shared/archiveWire";
 import { NO_RECONCILE, type ReconcileCounts, type ReconcileResponse } from "../shared/reconcile";
 import { mapNames, videoDiffs, type DiffNames, type DiffNow, type VideoDiff } from "../shared/shelvedDiff";
@@ -28,9 +28,16 @@ import { schemaGateLine, type SessionRecord } from "../shared/session";
 import type { SharedChanges } from "../shared/sharedRows";
 import type { Db } from "./db";
 import { applyShared } from "./localCopy/apply";
+import { freeCollidingIds, RECONCILED_HASH_PREFIX, sameIdentity, videoRefs } from "./localCopy/rekey";
 import { runArchiveFollowUps } from "./localCopy/followUps";
-import { getMeta, loseEditorGrant, readSessionRecord, setMeta, SHARED_SCHEMA, setPendingShare, shelve, writeSessionRecord, type ShelvedPayload } from "./localCopy/meta";
-import { SYNCED_SCHEMA_KEY, wipeShared } from "./sync";
+import {
+  ARCHIVE_SCHEMA_KEY, getMeta, loseEditorGrant, RECONCILE_PENDING_KEY, readSessionRecord, sessionEpoch, setMeta, SHARED_SCHEMA, setPendingShare, shelve, updateSessionRecord, writeSessionRecord,
+  type ShelvedPayload,
+} from "./localCopy/meta";
+
+/** SYNC-7: the reconciliation's line when the sign-in was cancelled (or signed out) while it ran. */
+export const SIGNED_OUT_MEANWHILE = "The sign-in was cancelled or signed out meanwhile; nothing was changed";
+import { clampWatermark, LAST_PULL_KEY, SYNCED_SCHEMA_KEY, wipeShared } from "./sync";
 import { log } from "./log";
 import { reindexChapter, reindexVideo } from "./search";
 
@@ -60,6 +67,11 @@ export interface ReconcileVideo {
   title: string;
   titleLatin: string | null;
   type: string | null;
+  /**
+   * How the local Type came (local Videos only): `suggested` by a matcher, set `manual`ly (Type edits stamp
+   * `suggestion_source = 'manual'`), or left as the scan's default. Absent: treated as set by hand unless it is a default.
+   */
+  typeOrigin?: "suggested" | "manual" | "default";
   songId: string | null;
   versionId: string | null;
   /** Effective Artist ids in position order. */
@@ -86,13 +98,19 @@ export function sharedIndex(shared: ReconcileVideo[]): Map<MatchKey, Map<string,
   return idx;
 }
 
-/** The Shared Video a local Video reconciles to, and by which key; null for an unknown Video. */
+/**
+ * The Shared Video a local Video reconciles to, and by which key; null for an unknown Video. The same uuid counts only
+ * when the identity keys agree too (SYNC-1): migration 0015's legacy uuids are the same on every machine, so another
+ * machine's Video 1 is not the owner's Video 1 unless its YouTube id or content hash says so.
+ */
 export function matchVideo(local: ReconcileVideo, idx: Map<MatchKey, Map<string, ReconcileVideo>>): { shared: ReconcileVideo; by: MatchKey } | null {
   for (const k of MATCH_ORDER) {
     const v = keyOf(local, k);
     if (v == null || v === "") continue;
     const s = idx.get(k)!.get(v);
-    if (s) return { shared: s, by: k };
+    if (!s) continue;
+    if (k === "id" && !sameIdentity({ youtube_id: local.youtubeId, content_hash: local.contentHash }, { youtube_id: s.youtubeId, content_hash: s.contentHash })) continue;
+    return { shared: s, by: k };
   }
   return null;
 }
@@ -111,15 +129,25 @@ export interface ShelveResult {
   favoritesShelved: number;
 }
 
+/** The scan's default Type: `song` since 2026-10-12, `other` before (spec §2.3); neither is a person's edit. */
+export const DEFAULT_TYPES: readonly string[] = ["song", "other"];
+
+/** Whether a local Type is the person's own (DOC-2): not a matcher's suggestion, and not an untouched default. */
+export function typeIsOwn(v: Pick<ReconcileVideo, "type" | "typeOrigin">): boolean {
+  if (!v.type || v.typeOrigin === "suggested") return false;
+  if (v.typeOrigin === "manual") return true;
+  return !DEFAULT_TYPES.includes(v.type);
+}
+
 /**
  * What a matched local Video loses to its Shared Video. Only link data that the Shared row does not already say is
- * shelved: an equal title, an empty or default (`other`) Type, no Song, Artists all among the Shared ones, and
- * Chapters the Shared Video has too lose nothing.
+ * shelved: an equal title, an empty, suggested or untouched default (`song`, or `other` before 2026-10-12) Type, no
+ * Song, Artists all among the Shared ones, and Chapters the Shared Video has too lose nothing.
  */
 export function shelvedFor(local: ReconcileVideo, shared: ReconcileVideo): ShelveResult {
   const out: ShelveResult = { shelved: [], stars: [], favoritesShelved: 0 };
   if (local.title.trim() !== shared.title.trim()) out.shelved.push({ kind: "title", title: local.title, titleLatin: local.titleLatin });
-  if (local.type && local.type !== "other" && local.type !== shared.type) out.shelved.push({ kind: "type", type: local.type });
+  if (typeIsOwn(local) && local.type !== shared.type) out.shelved.push({ kind: "type", type: local.type! });
   if ((local.songId != null || local.versionId != null) && (local.songId !== shared.songId || local.versionId !== shared.versionId)) {
     out.shelved.push({ kind: "song", songId: local.songId, versionId: local.versionId });
   }
@@ -234,7 +262,9 @@ export function localVideos(db: Db, withChildren?: Set<string>): ReconcileVideo[
   }
   return rows.map((v) => ({
     id: v.id, youtubeId: v.youtube_id, contentHash: v.content_hash, instagramId: v.instagram_id, rutubeId: v.rutube_id,
-    title: v.title, titleLatin: v.title_latin, type: v.type, songId: v.song_id ?? v.proposed_song_id, versionId: v.version_id ?? v.proposed_version_id,
+    title: v.title, titleLatin: v.title_latin, type: v.type,
+    typeOrigin: v.type_suggested ? "suggested" : v.suggestion_source === "manual" ? "manual" : "default",
+    songId: v.song_id ?? v.proposed_song_id, versionId: v.version_id ?? v.proposed_version_id,
     artistIds: artists.get(v.id) ?? [], chapters: chapters.get(v.id) ?? [],
   }));
 }
@@ -296,19 +326,6 @@ const EPOCH = "1970-01-01T00:00:00.000Z";
 /** Link data replaced wholesale by the Shared Video's (shelved first). */
 const LINK_CHILDREN = ["video_chapters", "video_artists", "video_chapter_rejections", "video_artist_rejections"];
 
-/** Every (table, column) that points at `videos(id)`, the link children excepted. */
-function videoRefs(db: Db): { table: string; column: string }[] {
-  const tables = (db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((r) => r.name);
-  const out: { table: string; column: string }[] = [];
-  for (const t of tables) {
-    if (LINK_CHILDREN.includes(t)) continue;
-    for (const fk of db.query(`SELECT "table" AS parent, "from" AS col FROM pragma_foreign_key_list(?)`).all(t) as { parent: string; col: string }[]) {
-      if (fk.parent === "videos") out.push({ table: t, column: fk.col });
-    }
-  }
-  return out;
-}
-
 export interface ApplyPlanOptions {
   /** Queue unknown Videos to be shared (a Video Editor at sign-in). */
   queueUnknown?: boolean;
@@ -338,11 +355,11 @@ export function applyPlan(db: Db, plan: ReconcilePlan, opts: ApplyPlanOptions = 
   }
   db.exec("PRAGMA defer_foreign_keys = ON");
   const at = opts.at ?? new Date().toISOString();
-  const refs = videoRefs(db);
+  const refs = videoRefs(db, LINK_CHILDREN);
   const goneChapters: string[] = [];
   // Free the unique keys first: two local Videos may hold the keys of one Shared Video between them.
-  const free = db.prepare("UPDATE videos SET youtube_id = NULL, content_hash = 'reconcile:' || id WHERE id = ?");
-  for (const m of plan.matches) free.run(m.localId);
+  const free = db.prepare("UPDATE videos SET youtube_id = NULL, content_hash = ? || id WHERE id = ?");
+  for (const m of plan.matches) free.run(RECONCILED_HASH_PREFIX, m.localId);
   const groups = new Map<string, string[]>();
   for (const m of plan.matches) (groups.get(m.sharedId) ?? groups.set(m.sharedId, []).get(m.sharedId)!).push(m.localId);
   const exists = db.prepare("SELECT 1 FROM videos WHERE id = ?");
@@ -390,7 +407,8 @@ export function applyPlan(db: Db, plan: ReconcilePlan, opts: ApplyPlanOptions = 
  * The Sync's step (§2.3's clash case): reconciles the local Videos this batch's Shared Videos match, inside the
  * Sync's transaction and before its `applyShared`. Nothing is queued; nothing happens when nothing matches.
  */
-export function reconcileBatch(db: Db, batch: SharedChanges): ReconcileCounts {
+export function reconcileBatch(db: Db, batch: SharedChanges, opts: { idsFreed?: boolean } = {}): ReconcileCounts {
+  if (!opts.idsFreed) freeCollidingIds(db, batch); // SYNC-1: a row holding a Shared id it is not moves out of the way first
   const plan = planFor(db, batch);
   if (!plan.matches.length) return planCounts({ ...plan, unknown: [] }, false);
   return applyPlan(db, { ...plan, unknown: [] }).counts;
@@ -435,14 +453,17 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
   const fail = (error: string, o: Partial<ReconcileResponse> = {}): ReconcileResponse => ({ ok: false, error, record: readSessionRecord(db), mustChangePassword: false, counts: NO_RECONCILE, diffs: [], ...o });
 
   /** whoami (the record), the schema gate, the grant; then the Shared set, pulled whole or reused. */
-  async function prepare(token: string, reuse: boolean) {
+  async function prepare(token: string, reuse: boolean, epoch: number) {
     const exp = tokenExp(token);
     if (exp != null && exp * 1000 <= now()) return { done: fail("The session's access token has expired") };
     const c: RpcClient = postgrestClient(endpoint, token, opts.fetchImpl);
     const r = await whoami(c);
     if (!r.ok) return { done: fail(r.unreachable ? "The archive can't be reached" : refusal(r, "the sign-in")) };
     if (!isWhoami(r.value)) return { done: fail("The archive's video_whoami() answered in an unknown shape") };
+    // SYNC-7: cancelled (the record cleared) while whoami was on the wire: bring no record back.
+    if (sessionEpoch(db) !== epoch) return { done: fail(SIGNED_OUT_MEANWHILE) };
     const w = r.value;
+    setMeta(db, ARCHIVE_SCHEMA_KEY, String(w.shared_schema)); // SYNC-8
     const record: SessionRecord = writeSessionRecord(db, {
       userId: w.user_id, email: w.email ?? null, displayName: w.display_name ?? null, avatarUrl: w.avatar_url ?? null,
       grantLevel: w.grant_level === "editor" || w.grant_level === "member" ? w.grant_level : null,
@@ -457,7 +478,7 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
     const t0 = performance.now();
     const pull = await changesSince(c, null);
     log(`reconcile: whole Shared set pulled in ${Math.round(performance.now() - t0)} ms`);
-    if (!pull.ok) return { done: fail(pull.unreachable ? "The archive can't be reached" : refusal(pull, "the pull"), { record, mustChangePassword }) };
+    if (!pull.ok) return { done: fail(pull.unreachable ? (pull.error.code === TIMEOUT_CODE ? TIMEOUT_LINE : "The archive can't be reached") : refusal(pull, "the pull"), { record, mustChangePassword }) };
     const batch = pull.value as SharedChanges | null;
     if (!batch || typeof batch !== "object") return { done: fail("The archive's shared_changes_since() answered in an unknown shape", { record, mustChangePassword }) };
     if (batch.shared_schema != null && batch.shared_schema !== SHARED_SCHEMA) return { done: fail(schemaGateLine(SHARED_SCHEMA, batch.shared_schema) ?? "Shared schema mismatch", { record, mustChangePassword }) };
@@ -468,8 +489,15 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
   return {
     /** `GET /api/reconcile/preview`: what Continue would do. Writes the record; changes nothing else. */
     async preview(token: string): Promise<ReconcileResponse> {
-      const p = await prepare(token, false);
-      if ("done" in p) return p.done!;
+      // SYNC-3: from here until Continue (or Cancel / Sign out) no Sync runs: it would reconcile without the answer.
+      const epoch = sessionEpoch(db);
+      setMeta(db, RECONCILE_PENDING_KEY, "1");
+      const p = await prepare(token, false, epoch);
+      if ("done" in p) {
+        // No grant: nothing to confirm (and no Sync for this account anyway). A refusal: the dialog signs out.
+        if (p.done!.ok && sessionEpoch(db) === epoch) setMeta(db, RECONCILE_PENDING_KEY, null);
+        return p.done!;
+      }
       const editor = p.record.grantLevel === "editor";
       const plan = planFor(db, p.batch);
       const counts = planCounts(plan, editor);
@@ -483,30 +511,42 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
      */
     async confirm(token: string): Promise<ReconcileResponse> {
       const t0 = performance.now();
-      const p = await prepare(token, true);
-      if ("done" in p) return p.done!;
+      const epoch = sessionEpoch(db);
+      const p = await prepare(token, true, epoch);
+      if ("done" in p) {
+        if (p.done!.ok && sessionEpoch(db) === epoch) setMeta(db, RECONCILE_PENDING_KEY, null);
+        return p.done!;
+      }
       const editor = p.record.grantLevel === "editor";
       let done: AppliedPlan;
       let diffs: VideoDiff[] = [];
+      let freed: { from: string; to: string }[] = [];
       try {
         done = db.transaction(() => {
+          // SYNC-7: Cancel or Sign out while the pull was on the wire: change nothing.
+          if (sessionEpoch(db) !== epoch || readSessionRecord(db)?.userId !== p.record.userId) throw new Error(SIGNED_OUT_MEANWHILE);
           // A Member's unknown Videos stay Unshared, queued ones from an earlier editor session included (§2.5).
           if (!editor) loseEditorGrant(db);
+          // SYNC-1, as at every Sync: rows holding a Shared id they are not move away (their files are renamed below)
+          freed = freeCollidingIds(db, p.batch, { keepThumbnails: !!opts.thumbsDir }).videos;
           const plan = planFor(db, p.batch);
           // Read before the apply: the local values and the local_* names they point at are still where they were.
           diffs = planDiffs(db, plan, p.batch);
           const r = applyPlan(db, plan, { queueUnknown: editor, keepThumbnails: !!opts.thumbsDir });
           wipeShared(db);
-          const applied = applyShared(db, p.batch);
-          writeSessionRecord(db, { userId: p.record.userId, watermark: applied.watermark ?? null });
+          const applied = applyShared(db, p.batch, { idsFreed: true });
+          updateSessionRecord(db, p.record.userId, { watermark: clampWatermark(applied.watermark ?? null, p.batch.server_time) });
           setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
+          if (p.batch.server_time) setMeta(db, LAST_PULL_KEY, p.batch.server_time); // SYNC-10
+          setMeta(db, RECONCILE_PENDING_KEY, null); // SYNC-3: answered; Syncs run again
           return r;
         })();
       } catch (e) {
         return fail(`Reconciliation failed, nothing was changed: ${(e as Error)?.message ?? e}`, { record: p.record, mustChangePassword: p.mustChangePassword });
       }
       held = null;
-      if (opts.thumbsDir) renameThumbnails(opts.thumbsDir, done.rekeyed);
+      // The freed rows first: a matched Video may be re-keyed into the id a freed one left.
+      if (opts.thumbsDir) renameThumbnails(opts.thumbsDir, [...freed, ...done.rekeyed]);
       // The wipe left the search index and the matchers behind, as after a full refetch. They never fail the sign-in.
       try {
         await runArchiveFollowUps(db, { cacheDir: opts.cacheDir });

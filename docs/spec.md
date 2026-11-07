@@ -1,8 +1,8 @@
 # TuvaVideos v1 specification
 
-Assembled in [issue #17](https://github.com/IncoherentThoughts/TuvaVideos/issues/17) from every closed ticket of [map #1](https://github.com/IncoherentThoughts/TuvaVideos/issues/1). Vocabulary is `CONTEXT.md`; a capitalised word here (Video, Copy, Root, Chapter, Suggested, Mirror, Studio track…) carries the meaning given there. Where this document and a per-topic doc disagree, this document wins; the per-topic docs hold the reasoning and the prototypes.
+Assembled in [issue #17](https://github.com/IncoherentThoughts/TuvaVideos/issues/17) from every closed ticket of [map #1](https://github.com/IncoherentThoughts/TuvaVideos/issues/1). Vocabulary is `CONTEXT.md`; a capitalised word here (Video, Copy, Root, Chapter, Suggested, Mirror, Studio track…) carries the meaning given there. Where this document and an older per-topic doc (data-model, playback-architecture, studio-playback, chapter-pipeline, design-direction, playlist, themes) disagree, this document wins; those docs hold the reasoning and the prototypes. **This v1 document is older than [sharing-spec.md](sharing-spec.md), [tv-spec.md](tv-spec.md) and ADRs 0004–0010, and they win over it wherever they cover the same ground**: the Mirror, `bun run import`, the integer-id schema, "macOS only" and "single user, no auth" are all superseded. Sections marked *Superseded* are kept as history; "Mirror" in an unmarked rule now means the archive's rows in the Local copy (`archive_*`), filled by Sync.
 
-Everything here is decided; the grilling in #17 closed every open item.
+Everything here was decided for v1; the grilling in #17 closed every open item. Later changes are recorded in place or in the newer specs above.
 
 Source documents: [data-model.md](data-model.md) · [playback-architecture.md](playback-architecture.md) · [studio-playback.md](studio-playback.md) · [chapter-pipeline.md](chapter-pipeline.md) · [design-direction.md](design-direction.md) · ADRs [0001](adr/0001-mirror-referenced-by-uuid-without-foreign-keys.md), [0002](adr/0002-browser-video-element-not-mpv.md), [0003](adr/0003-studio-playback-through-music-app-automation.md) · research under `docs/research/`.
 
@@ -10,14 +10,14 @@ Source documents: [data-model.md](data-model.md) · [playback-architecture.md](p
 
 ## 1. Product
 
-A single-user, offline, macOS-only local player for a personal library of Tuvan music videos. One Bun + TypeScript process serves a browser UI on localhost: it scans two Roots (an external drive and the laptop), plays Copies in a plain `<video>` with mpv-style keys, and enriches Videos with Types, Artists, Chapters, lyrics and Studio tracks mirrored from the Tuvan Lyrics Archive.
+*(v1 wording; superseded in part: the app now runs on macOS, Linux and Windows, `docs/sharing-spec.md` §8.2, and Members share the link data, sharing-spec §1.)* A single-user, offline, macOS-only local player for a personal library of Tuvan music videos. One Bun + TypeScript process serves a browser UI on localhost: it scans two Roots (an external drive and the laptop), plays Copies in a plain `<video>` with mpv-style keys, and enriches Videos with Types, Artists, Chapters, lyrics and Studio tracks mirrored from the Tuvan Lyrics Archive.
 
 ### Standing constraints
 
-- Single user. No auth. `localhost` only. macOS only. (The **TV Server** is the one exception: a second listener on the home network behind an IP allowlist, [ADR 0004](adr/0004-tv-server-on-the-home-network.md), specified in [tv-spec.md](tv-spec.md); the localhost app is unchanged.)
+- Single user. No auth. `localhost` only. macOS only. (**Superseded** for auth and users by [sharing-spec.md](sharing-spec.md) §1–§2, which add Members and Video Editors signed in with archive accounts, and for platforms by sharing-spec §8.2: macOS, Linux and Windows, macOS tested. `localhost` only still holds for the browser app.) (The **TV Server** is the one exception: a second listener on the home network behind an IP allowlist, [ADR 0004](adr/0004-tv-server-on-the-home-network.md), specified in [tv-spec.md](tv-spec.md); the localhost app is unchanged.) *(Amended after docs/audit/01-security.md.)* "localhost only" is enforced per request, not only by the bind address (`src/server/localOnly.ts`, at the top of the handler): every request needs a loopback `Host` (`localhost`, `127.0.0.1`, `[::1]`) on the listener's port (DNS rebinding); every POST/PUT/PATCH/DELETE whose `Origin` (or, without one, `Referer`) is not the app's own is a 403 (cross-site requests); a write with a body must be `application/json` (the screenshot `image/png`), never a CORS simple type (415); HTML answers carry `X-Frame-Options: DENY` and `frame-ancestors 'none'`. Requests the TV Server passes in are judged by it instead (tv-spec §2.6). The sharing routes keep their stricter check (an Origin is required, sharing-spec §5.2).
 - The app never touches the network. One-off scripts under `scripts/` may (yt-dlp, YouTube).
   (**Superseded for the Shared link data** by [ADR 0010](adr/0010-shared-link-data-lives-in-the-archive-written-through-rpcs.md) and the sharing spec, [sharing-spec.md](sharing-spec.md): the browser reads and writes the Shared tables in the archive's Supabase project and the companion Syncs a Local copy; the Mirror retires per [ADR 0009](adr/0009-the-mirror-retires-archive-rows-arrive-by-sync.md). Files and playback state still never leave the machine.)
-- SQLite is the only store. Mirror entities are read-only and refreshed by importing a newer archive backup.
+- SQLite is the only store. Mirror entities are read-only and refreshed by importing a newer archive backup. (**Superseded** by [ADR 0009](adr/0009-the-mirror-retires-archive-rows-arrive-by-sync.md) and [ADR 0010](adr/0010-shared-link-data-lives-in-the-archive-written-through-rpcs.md): the Shared data lives in the archive's Supabase project and the archive's rows reach `library.db` by Sync; there is no import.)
 - Thumbnails are cached locally so the library can be browsed while every Copy is unavailable.
 - Local Copy always wins when both Roots are available.
 - Chapters live only in the database; container files are never rewritten.
@@ -37,11 +37,11 @@ A single-user, offline, macOS-only local player for a personal library of Tuvan 
 
 ## 2. Storage and data model
 
-Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
+Decided in #13 ([data-model.md](data-model.md)). *The DDL there was normative for v1 and is now history:* migration 0015 rebuilt the schema on uuid keys (`videos`, `video_chapters`, `video_artists`, `video_local`, `archive_*`, `local_*`, `proposed_*`), and the current tables are in [sharing-spec.md](sharing-spec.md) §6.1 and `migrations/0015`–`0018`, which win over §2.1–§2.2 and data-model.md. The rules in §2.3 still hold except where marked.
 
 ### 2.1 Files on disk
 
-`~/Library/Application Support/TuvaVideos/` (overridable by env var for tests):
+`~/Library/Application Support/TuvaVideos/` on macOS, `$XDG_DATA_HOME/TuvaVideos` on Linux, `%APPDATA%\TuvaVideos` on Windows (sharing-spec §8.2; `TUVA_DATA_DIR` overrides it, for tests):
 
 | Path | Holds |
 |---|---|
@@ -52,6 +52,8 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 `bun:sqlite`, numbered `.sql` migrations applied at startup, recorded by file name in the `migration` table (`PRAGMA user_version` keeps the highest number), no ORM.
 
 ### 2.2 Entities
+
+*Superseded by sharing-spec §6.1 and migration 0015 (kept as history):* the tables are now `videos` + `video_local`, `video_chapters` + `chapter_local`, `video_artists`, `archive_*` (the former `mirror_*`), `local_*`, `proposed_*` and the `*_all` views, all keyed by uuid; `mirror_import`, `artist.mirror_id` and the integer ids are gone.
 
 - **root** — path + kind (`local` / `external`).
 - **video** — identity (`youtube_id` else `content_hash`), title, Latin title (+ source), Type (+ suggested flag), Song/Version uuids (+ suggested flag + source), `favorited_at`, `resume_s`, `last_played_at`, thumbnail bookkeeping.
@@ -71,11 +73,13 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 - **Delete a Video** (`DELETE /api/videos/:id`, body `{media}`): from the Delete button at the bottom of Now playing or the Library grid's right-click menu, after a confirmation. Removes the Video with its Copies, Chapters, Artists, rejections, audio settings, search rows, Thumbnails and Fallbacks. `media: true` also moves each Copy's file to the Trash (a Copy on an unmounted Root stays). While any file stays on disk the identity goes into `deleted_video` and scans skip it; a Video whose files were all trashed leaves nothing behind.
 - **Song pointers are columns**: one Song/Version per Video or Chapter; every Suggested value records its source. There is no per-Video track link; Studio tracks derive from the Song.
 - **Favorites** are `favorited_at` on Video and Chapter. **Resume** is `resume_s` + `last_played_at` on Video. **View count** is `view_count` on Video (migration 0009): the Player posts a view (`POST /api/videos/:id/view`) the first time playback starts on a Now playing visit, and another each time the Video loops back from its end (a lone Video's loop, or Repeat one); an A-B loop wrapping from B to A does not count; `DELETE` resets it. It is not shown on cards or rows: the State panel reports it, the Library grid, Favorites and the search results page can sort by it, and a right-click on a Video in any list opens a small menu that shows and resets it. Nothing was imported from mpv: it keeps only resume positions, no play history.
-- **Artists**: a Local Artist has `mirror_id` NULL. Created from the Artist chip editor (§5.3) when the search finds no Mirror Artist. Merged manually from the Artists tab (§5.1): "merge into…" with a Mirror Artist search rewrites `video_artist` rows and deletes the Local row. No automatic merge on import.
+- **Artists** *(v1 wording; since migration 0015 Local Artists are `local_artist` rows and archive Artists `archive_artist`, merged by the Local Artist's Repoint, sharing-spec §4.6)*: a Local Artist has `mirror_id` NULL. Created from the Artist chip editor (§5.3) when the search finds no Mirror Artist. Merged manually from the Artists tab (§5.1): "merge into…" with a Mirror Artist search rewrites `video_artist` rows and deletes the Local row. No automatic merge on import.
 - **Suggested Artists** (the Artist matcher, `src/shared/artistMatch.ts`, migration 0006): a Video's title (and the uploader name when its YouTube info is cached) is cut into segments at the usual separators and brackets; every window of 1–4 words is folded (Cyrillic → Latin, `kh` → `h`, group words like "ensemble" / "группа" dropped) and scored with Jaro-Winkler against every name of every Artist. Accept at 0.90 (0.92 for a one-word name, same first letter, at least ¾ of its length); a window never has more words than the name; a shorter window needs two words aligned with the start or end of the name, each word alike (0.85, or one edit for words of three letters or fewer); generic words (tuva, khoomei, live…) match nothing alone; the near-tie rule is the Song matcher's (0.05). Rows land in `video_artist` with `suggested = 1`, dashed in the UI with a "suggested" mark and a ✓ that confirms them all; × on one rejects it (`artist_rejection` tombstone, never offered again). A Video with any confirmed Artist is left alone; otherwise its suggestions are replaced on every run. Runs for a new Video at scan, after every scan, after an import, and from `bun run suggest-artists [id] [--dry-run]`. Setting the Artists by hand confirms the list given and rejects the Suggested ones left out. 2026-10-11 library: 826 of 1733 Videos get a suggestion (940 rows; 101 Videos already curated).
 - **Suggested Songs from titles** (the Song matcher on Video titles, `src/shared/titleSongMatch.ts`, `src/server/songSuggest.ts`, migration 0010 adds the source `title`): for a Video with no Song that nobody has edited (`suggestion_source IS NULL`), or whose Song is already a `title` suggestion. The title is cut into segments at the usual separators and brackets, never at commas (a Song name may hold one); in each segment the Artist names, a short list of bands named like Songs (Alash, Ene-Sai, Chirgilchin, Yat-Kha, Huun-Huur-Tu) and filler words ("live", "ensemble", "исп."…) are removed, and windows of what is left are scored with Jaro-Winkler against every name of every Song, Mirror and Local, never across segments. Accept at 0.95 (an English name 0.98; a one-word name 0.97 and only when the segment is that word alone); the match must cover at least half of its segment or start it; throat-singing style names (Kargyraa, Ezengileer, Sygyt…) are never matched from titles; a runner-up within 0.04 that covers as much leaves nothing, one that covers less loses. A match sets the Song Suggested (source `title`) and a Type still at an unedited `other` to a Suggested `song`; a re-run replaces it or, when the title no longer matches, clears both. Clearing the Song by hand stamps `manual`, so a rejection never returns; Performances run first and win. Runs for a new Video at scan, after every scan, after an import, when a Local Song is added or renamed, and from `bun run suggest-songs [id] [--dry-run] [-v]`. 2026-10-11 library: 64 of 724 eligible Videos get a Song.
 
 ### 2.4 Mirror import
+
+*Superseded by [ADR 0009](adr/0009-the-mirror-retires-archive-rows-arrive-by-sync.md) and sharing-spec §6 (kept as history).* There is no `bun run import` and no `mirror_import` table any more: the archive's rows arrive by Sync into the `archive_*` tables, and the follow-ups listed below (search index, Studio matcher, Latin titles, plus the Performance defaults and the Artist and title-Song matchers) run after any Sync that changed archive rows and after every full refetch (`runArchiveFollowUps`, `src/server/localCopy/followUps.ts`, called from `src/server/sync.ts` and `src/server/reconcile.ts`).
 
 - Source: a post-migration-129 backup of the archive (2026-10-07 or newer). Older band-shaped backups are unsupported.
 - Imported: songs (hidden ones too: the archive's hidden flag is kept on `mirror_song.is_hidden` but means nothing here and is not shown; they carry a third of the Performance ids), song_lyrics, artists, albums, album_artists, album_tracks, album_track_artists, song_performances. Dropped: the archive's `zz_` test song and its rows, composers, bands, tags, history, profiles, staff/personal tables, and the columns listed in the research doc.
@@ -85,7 +89,7 @@ Decided in #13 ([data-model.md](data-model.md)). The DDL there is normative.
 
 ### 2.5 Latin titles
 
-A one-time task (and a step after import) fills `title_latin` on Videos and Chapters and `name_latin` on Local Artists: `archive` when tied to a Mirror Song/Artist (the archive's alternate spelling or transliteration Script, never `english_name`), else `table` through the transliteration table in [data-model.md](data-model.md#latin-titles). Titles already Latin stay NULL. Manual edits set `manual` and are never regenerated.
+A one-time task (and a step after a Sync that changed archive rows; originally after import) fills `title_latin` on Videos and Chapters and `name_latin` on Local Artists: `archive` when tied to a Mirror Song/Artist (the archive's alternate spelling or transliteration Script, never `english_name`), else `table` through the transliteration table in [data-model.md](data-model.md#latin-titles). Titles already Latin stay NULL. Manual edits set `manual` and are never regenerated.
 
 ---
 
@@ -310,7 +314,7 @@ Decided in #11 and #12 ([design-direction.md](design-direction.md)). Direction "
 
 ### 5.1 Navigation
 
-Top tabs: **Library**, **Now playing**, **Favorites**, **Artists**; a search box, a **Random** button (a random Available Video, `r`) and the Rescan button in the top bar.
+Top tabs, in this order (§9, `src/web/TopBar.tsx`): **Now playing**, **Library**, **Songs**, **Artists**, **Favorites**. To their right in the top bar: the scan indicator while a scan runs, the search box, the TV button (tv-spec), the Rescan button, a **Random** button (a random Available Video, `r`), the account chip (sharing-spec §2.2) and the ⏻ quit button.
 
 **Artists tab**: every Artist with at least one Video (Mirror and Local), with Video count and the poster of their most recent Video; clicking opens the Library grid filtered to that Artist. Filter by name (folded, Latin or Cyrillic), by kind (all / archive / local); sort by name, Video count or latest Video; state in the query string (`/artists?q=&kind=&sort=&dir=`). Local Artists are marked and carry the "merge into…" action (§2.3). A Local Artist's name is edited in place (click it; `PATCH /api/artists/:id`); a Mirror Artist's name belongs to the archive and is not editable. The list fills the width as a multi-column grid. Mirror Artists with no Video are not listed.
 
@@ -342,7 +346,7 @@ Decided in #26: `c` creates the Chapter at once (source `manual`, untitled) so t
 
 Closable right drawer, variant "Reader" (#12). Header: Song title with English title dimmed; a Script segmented control (Cyrillic / Latin / English) showing one Script at a time, disabled when the Version lacks it, choice clamped to a Script the Version has. When the Song has several Versions, a row of pills; the Chapter's Version badged "· this chapter"; opens on the Chapter's Version else the first in display order. Numbered lines continuous across stanzas with blank lines as spacers. No current line (no timed lyrics exist). Footnote markers are superscript accent digits; adjacent markers get a CSS comma; a marker with no entry is struck through; hover/focus shows a two-column tooltip; click jumps to the entry and flashes it; `[` `]` cycle markers while the drawer has focus (the Player's speed keys apply only while the Player has focus; focus is the dispatcher, as for `/` and Esc). A "Footnotes" section at the bottom lists the shown Script's entries.
 
-**Local lyrics.** A Song the archive lacks is made as a **Local Song**: from the Song picker's create row ("add 'X' as local song", the same shape as the Local Artist row) on the header or a Chapter card, or from the Songs tab's "New local Song…". A **Local Version** is written in the drawer's editor (the `+` in the header, or "+ add local lyrics" on a Song without lyrics, or "edit" above a Local Version's lines): a label, one Script at a time behind the same segmented control, a textarea of lines (an empty line is a stanza break, `[3]` a Footnote Marker) and a textarea of Footnotes (`3: text` per line); ⌘/Ctrl+Enter saves, Esc cancels. Local rows are **clearly marked**: a green "local" mark beside the Song title and on the Version pill, and a bordered note above the lines ("Stored in this library, not in the archive · edit") where an archive Version reads "From the archive Mirror". Local Versions come after the archive's in the pill row. A Local Song's name is renamed by clicking it in the drawer; a Local Song nothing points at can be deleted from `/lyrics/:songId`. Endpoints: `POST /api/songs`, `PATCH`/`DELETE /api/songs/:id`, `POST /api/songs/:id/versions`, `PATCH`/`DELETE /api/versions/:id`; archive rows answer 409.
+**Local lyrics.** A Song the archive lacks is made as a **Local Song**: from the Song picker's create row ("add 'X' as local song", the same shape as the Local Artist row) on the header or a Chapter card, or from the Songs tab's "New local Song…". A **Local Version** is written in the drawer's editor (the `+` in the header, or "+ add local lyrics" on a Song without lyrics, or "edit" above a Local Version's lines): a label, one Script at a time behind the same segmented control, a textarea of lines (an empty line is a stanza break, `[3]` a Footnote Marker) and a textarea of Footnotes (`3: text` per line); ⌘/Ctrl+Enter saves, Esc cancels. Local rows are **clearly marked**: a green "local" mark beside the Song title and on the Version pill, and a bordered note above the lines ("Stored in this library, not in the archive · edit") where an archive Version reads "From the archive". Local Versions come after the archive's in the pill row. A Local Song's name is renamed by clicking it in the drawer; a Local Song nothing points at can be deleted from `/lyrics/:songId`. Endpoints: `POST /api/songs`, `PATCH`/`DELETE /api/songs/:id`, `POST /api/songs/:id/versions`, `PATCH`/`DELETE /api/versions/:id`; archive rows answer 409.
 
 Rendering port: the archive's `scripts.ts`, `normalize.ts`, `markers.ts` regex core, `trackVersion.ts`, `highlightSnippet`, with its sanitizer allowlists (`LINE`: `p br b strong i em u s sub sup span`; `FOOTNOTE`: `b strong i em u br sub sup`) applied by a dependency-free server-side tokenizer, not DOMPurify (#25). A Song no Video performs opens at `/lyrics/:songId`. One `<p>` is one line; `<p class="ln-blank">` is a stanza break.
 
@@ -407,12 +411,12 @@ JXA against Music.app through one resident `osascript -l JavaScript` child start
 
 ### 7.2 Library dump
 
-One bulk JXA read of `{persistentID, name, album, artist, albumArtist, duration, cloudStatus}` for all tracks, cached on disk, refreshed after each Mirror import and on any persistent-id miss. Filter on `cloudStatus`, never on the localized `kind`.
+One bulk JXA read of `{persistentID, name, album, artist, albumArtist, duration, cloudStatus}` for all tracks, cached on disk, refreshed each time the matcher runs (after a Sync that changed archive rows, formerly after each Mirror import, and by `bun run studio-match`) and on any persistent-id miss. Filter on `cloudStatus`, never on the localized `kind`.
 
 ### 7.3 Studio tracks and the matcher
 
 - A Video's or Chapter's Studio tracks derive from its Song: Song → Mirror Tracks → each one's match, plus the Song's Local Studio tracks. One match per Mirror Track.
-- **Matcher** runs over every Mirror Track after each import: key = normalized (name, album) (NFKD, strip diacritics, casefold, drop parentheticals, collapse punctuation/whitespace) against the dump; one hit → Suggested; several → narrow by duration ±3 s then artist token overlap; name-only hits are offered, never auto-matched.
+- **Matcher** runs over every archive Track (formerly Mirror Track) after each Sync that changed archive rows (formerly after each import): key = normalized (name, album) (NFKD, strip diacritics, casefold, drop parentheticals, collapse punctuation/whitespace) against the dump; one hit → Suggested; several → narrow by duration ±3 s then artist token overlap; name-only hits are offered, never auto-matched.
 - **Miss UI**: the Studio bar lists each Track of the Song with its match state and a search box over the dump: "match this Track" (confirmed match) or "add to Song" (Local Studio track). A Song with no Tracks and no Local Studio track shows "no studio tracks".
 - **Absorption**: a Local Studio track whose persistent id equals a fresh match for one of the Song's Mirror Tracks becomes that match automatically.
 - **Stale id**: lookup miss → re-dump, re-match; a confirmed match is touched only once its id has left the dump, and then drops to Suggested. A rejected Suggested match is remembered in `studio_rejection` (migration 0004) so the next import does not suggest it again; `no longer available` tracks are excluded from matching and search (#27).
@@ -451,12 +455,14 @@ Decided in #26: the parser strips a leading bullet or dash (`- 0:10 Song`), whic
 - **Start**: `bun run start` (alias `tuva`) starts the server on port **4400** (`TUVA_PORT` overrides, for tests only), then opens `http://localhost:4400` in the default browser. If a TuvaVideos health endpoint already answers on the port, it only opens the tab.
 - **Logs**: stdout and `~/Library/Application Support/TuvaVideos/log.txt`.
 - **Stop**: Ctrl-C. SIGINT lets the ffmpeg job in flight finish, kills the osascript child, checkpoints SQLite, exits.
-- **Startup order**: migrations → Root availability → Music.app `playerState()` read for the Automation prompt → open the tab. No scan at startup (§3.2).
+- **Startup order**: migrations → Root availability → Music.app `playerState()` read for the Automation prompt → open the tab. No scan at startup (§3.2). *As built* (`src/server/launch.ts`): the `playerState()` probe is started but not awaited (it has its own 10 s cap, `probeAutomation`), and the tab opens at once, so on a first launch the Automation prompt may appear over the newly opened tab rather than before it.
 - **UI stack**: Preact + TypeScript bundled by Bun, hand-rolled history routing: `/` Library, `/play/:videoId[?t=]` Now playing, `/favorites`, `/artists`, `/songs`; filters and sort in the query string. Tabs in this order: Now playing, Library, Songs, Artists, Favorites.
 
 ---
 
 ## 10. Implementation plan
+
+*History: the v1 plan, done. The sharing plan is sharing-spec §10.*
 
 Six task tickets (Claude Sonnet 5.5), in order, each leaving a working app:
 
@@ -476,7 +482,7 @@ Six task tickets (Claude Sonnet 5.5), in order, each leaving a working app:
 - Music.app matching trial and play/seek smoke test (§7.3).
 - Chapter fetch over eligible Videos (§8 stage 1).
 - Latin-title fill (§2.5).
-- Mirror import from the 2026-10-07 backup or newer (§2.4).
+- Mirror import from the 2026-10-07 backup or newer (§2.4). (History: superseded by Sync, ADR 0009.)
 - `scripts/download-missing-youtube.sh` with `missing-youtube-ids.txt` (665 Performance ids with no Copy; `research/missing-youtube-performances.md`) is a library-growth tool, not part of the app.
 
 ---
@@ -486,8 +492,8 @@ Six task tickets (Claude Sonnet 5.5), in order, each leaving a working app:
 - Timed (karaoke) lyrics — no per-line timestamps exist.
 - Writing Chapters into mkv/mp4 containers.
 - Menu bar app or login item.
-- Syncing any edit back to the Tuvan Lyrics Archive.
-- Auth, multi-user, non-macOS.
+- Syncing any edit back to the Tuvan Lyrics Archive. (**Superseded** for the Shared link data, which Video Editors write to the archive's project, ADR 0010; the archive's own Songs, lyrics and Artists change from here only by Elevate, sharing-spec §4.4.)
+- Auth, multi-user, non-macOS. (**Superseded**: sharing-spec adds archive sign-in, Members and Video Editors, and Linux and Windows support, §1, §2, §8.2.)
 - MusicKit JS / in-browser audio for Studio tracks.
 - A settings table or settings UI (screenshot folder, ports and paths are fixed or env vars).
 - Artists on Chapters.

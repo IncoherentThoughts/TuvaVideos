@@ -1,5 +1,6 @@
 // bun run tv-install [--permit] [--keys]
 // Builds, signs and installs the TV shell (tv/shell/) on the Samsung TV named in tv/shell/tv.json (docs/tv-spec.md §4.4).
+// tv.json is per machine and not committed: copy tv/shell/tv.example.json to tv/shell/tv.json and fill it in.
 //   --permit  run `tizen install-permit` first (once per distributor certificate)
 //   --keys    only regenerate tv/shell/keys.js from src/tv/keys.ts and stop
 // Prints every command and stops at the first failure with the Tizen output (sdb and tizen often exit 0 on failure,
@@ -44,7 +45,7 @@ export function planSteps(tv: TvConfig, opts: { permit: boolean; tizen: string; 
   steps.push(
     {
       label: "build-web",
-      cmd: [tizen, "build-web", "-e", "README.md", "-e", "*.wgt", "-e", "tv.json", "-e", ".gitignore", "--", "."],
+      cmd: [tizen, "build-web", "-e", "README.md", "-e", "*.wgt", "-e", "tv.json", "-e", "tv.example.json", "-e", ".gitignore", "--", "."],
     },
     {
       label: "package",
@@ -72,7 +73,12 @@ async function main() {
   console.log(`wrote ${KEYS_JS}`)
   if (args.includes("--keys")) return
 
-  const tv = (await Bun.file(join(SHELL_DIR, "tv.json")).json()) as TvConfig
+  const tvJson = join(SHELL_DIR, "tv.json")
+  if (!existsSync(tvJson)) {
+    console.error(`Missing ${tvJson}. Copy tv/shell/tv.example.json to tv/shell/tv.json and fill in your TV (see tv/shell/README.md).`)
+    process.exit(1)
+  }
+  const tv = (await Bun.file(tvJson).json()) as TvConfig
   const tools = join(homedir(), "tizen-studio/tools")
   const tizen = join(tools, "ide/bin/tizen")
   const sdb = join(tools, "sdb")

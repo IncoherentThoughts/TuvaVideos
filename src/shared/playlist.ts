@@ -122,11 +122,24 @@ export function advance(pl: Playlist, playable: Playable = () => true, rng: Rng 
     if (playableAt(pl, pos, playable)) return { pl: { ...pl, cursor: pos }, ended: false };
   }
   if (pl.repeat !== "list" || pl.order.length === 0) return { pl, ended: true };
-  const wrapped = pl.shuffled ? { ...pl, order: shuffle(pl.order, rng), cursor: 0 } : { ...pl, order: sequential(pl.order, 0, pl.entries.length), cursor: 0 };
+  const wrapped = pl.shuffled ? { ...pl, order: reshuffleAfter(pl.order, pl.order[pl.cursor], rng), cursor: 0 } : { ...pl, order: sequential(pl.order, 0, pl.entries.length), cursor: 0 };
   for (let pos = 0; pos < wrapped.order.length; pos++) {
     if (playableAt(wrapped, pos, playable)) return { pl: { ...wrapped, cursor: pos }, ended: false };
   }
   return { pl, ended: true };
+}
+
+/**
+ * A fresh shuffle for a Repeat list wrap that does not open with the Entry that just ended (WEB-12: with n Entries it
+ * came first again one time in n, so it played twice in a row). It swaps with a random later place when it does.
+ */
+export function reshuffleAfter(order: readonly number[], last: number | undefined, rng: Rng = Math.random): number[] {
+  const next = shuffle(order, rng);
+  if (next.length > 1 && next[0] === last) {
+    const j = 1 + Math.floor(rng() * (next.length - 1));
+    [next[0], next[j]] = [next[j]!, next[0]!];
+  }
+  return next;
 }
 
 /** Move to the previous playable Entry (`N`). Wraps to the end only with Repeat list; otherwise stays at the first. */

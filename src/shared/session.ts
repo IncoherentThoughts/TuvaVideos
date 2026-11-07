@@ -199,10 +199,15 @@ export interface EditAccess {
  * The one rule (§5.3): shown when the record says editor; enabled only when this browser holds a settled, unexpired
  * session of the same user and the last probe or Sync reached the archive. Unsettled counts as offline.
  */
-export function editAccess(s: Pick<SessionState, "record" | "authSettled" | "browser" | "reachable">, nowMs: number): EditAccess {
+export function editAccess(
+  s: Pick<SessionState, "record" | "authSettled" | "browser" | "reachable"> & { schemaMismatch?: SchemaMismatch | null },
+  nowMs: number,
+): EditAccess {
   const shown = s.record?.grantLevel === "editor";
   const live = !!s.browser && s.browser.userId === s.record?.userId && (s.browser.expiresAt == null || s.browser.expiresAt * 1000 > nowMs);
-  return { shown, enabled: shown && s.authSettled && live && s.reachable === true };
+  // §6.4's schema gate stops writes as it stops Sync (SYNC-8): this checkout would write the old shapes and apply
+  // rows of a schema it does not speak. The controls stay shown, disabled, under the banner.
+  return { shown, enabled: shown && s.authSettled && live && s.reachable === true && !s.schemaMismatch };
 }
 
 /** §6.4: window focus Syncs when the last successful Sync is older than 10 minutes (or there was none). */

@@ -18,6 +18,9 @@ function ares(name: string): string | null {
   return Bun.which(name) ?? (existsSync(local) ? local : null)
 }
 
+/** A failed step: main() prints it and exits 1 after the `finally` has removed the temp directory. */
+export class StepFailed extends Error {}
+
 async function run(cmd: string[]): Promise<string> {
   console.log(`\n$ ${cmd.join(" ")}`)
   const p = Bun.spawn(cmd, { cwd: SHELL_DIR, stdout: "pipe", stderr: "pipe" })
@@ -25,8 +28,8 @@ async function run(cmd: string[]): Promise<string> {
   const out = (o + e).trim()
   if (out) console.log(out)
   if ((await p.exited) !== 0 || /\berror\b/i.test(out)) {
-    console.error(`\nlg-install stopped at "${cmd[0].split("/").pop()}". See tv/shell/README.md (Install on an LG TV).`)
-    process.exit(1)
+    // throw, not process.exit: exiting here would skip main's `finally` and leak the temp .ipk directory (TV-10)
+    throw new StepFailed(`lg-install stopped at "${cmd[0].split("/").pop()}". See tv/shell/README.md (Install on an LG TV).`)
   }
   return out
 }
@@ -41,7 +44,7 @@ async function main() {
   writeFileSync(join(SHELL_DIR, "keys.js"), renderKeysJs())
   const out = mkdtempSync(join(tmpdir(), "tuva-ipk-"))
   try {
-    const exclude = ["README.md", "tv.json", "config.xml", "icon.png", "*.wgt", "*.ipk", ".buildResult", ".gitignore"]
+    const exclude = ["README.md", "tv.json", "tv.example.json", "config.xml", "icon.png", "*.wgt", "*.ipk", ".buildResult", ".gitignore"]
     await run([pkg, "--no-minify", ...exclude.flatMap((x) => ["-e", x]), "-o", out, "."])
     const ipk = readdirSync(out).find((f) => f.endsWith(".ipk"))
     if (!ipk) throw new Error("ares-package made no .ipk")
@@ -53,4 +56,11 @@ async function main() {
   }
 }
 
-if (import.meta.main) await main()
+if (import.meta.main) {
+  try {
+    await main()
+  } catch (e) {
+    console.error(`\n${e instanceof Error ? e.message : String(e)}`)
+    process.exit(1)
+  }
+}

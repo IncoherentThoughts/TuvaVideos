@@ -77,11 +77,40 @@ export function storedLoop(ab: AbLoop | StoredLoop | null | undefined): StoredLo
   return { a: ab.a, b: ab.b };
 }
 
-/** The time to jump back to when playback has run past B (or ended with only A set), else null. */
-export function abLoopTarget(ab: AbLoop, t: number, ended = false): number | null {
+/**
+ * Whether the playhead at t is inside a complete loop [A, B]. The loop is armed while the playhead is inside it, and a
+ * user seek re-judges it: a seek out of the loop (before A or past B) leaves playback free there, and the loop applies
+ * again once playback is back inside it.
+ */
+export function abInside(ab: AbLoop, t: number): boolean {
+  return ab.a != null && ab.b != null && t >= ab.a - 0.001 && t <= ab.b;
+}
+
+/**
+ * The time to jump back to when playback has run past B from inside the loop (`armed`), or ended with only A set,
+ * else null. Past B but not armed (the user seeked there), playback carries on.
+ */
+export function abLoopTarget(ab: AbLoop, t: number, ended = false, armed = true): number | null {
   if (ab.a == null) return null;
-  if (ab.b != null) return t >= ab.b ? ab.a : null;
+  if (ab.b != null) return t >= ab.b && armed ? ab.a : null;
   return ended ? ab.a : null;
+}
+
+// ---- Chapter steps (`@`/PgDn next, `!`/PgUp previous) ----
+
+/**
+ * Which Chapter a Chapter step goes to: the index into `starts` (sorted), or -1 for the start of the Video. Back more
+ * than 2 s into a Chapter restarts it first. Before the first Chapter, back goes to the start of the Video, never
+ * forward to the first Chapter (WEB-9); next from the last Chapter restarts it, as before.
+ */
+export function chapterStepTarget(starts: readonly number[], t: number, dir: 1 | -1): number {
+  let i = -1;
+  starts.forEach((s, k) => {
+    if (t >= s - 0.001) i = k;
+  });
+  if (dir < 0 && i < 0) return -1;
+  if (dir < 0 && t - starts[i]! >= 2) i += 1; // restart the current one first
+  return Math.min(starts.length - 1, Math.max(0, i + dir));
 }
 
 // ---- formats ----

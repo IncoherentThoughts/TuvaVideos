@@ -16,7 +16,9 @@ import { actionFor, type TvAction } from "../src/tv/keys"
 import { LYR_W_MAX, LYR_W_MIN, clampPage, fitLyrics, lyricsView, nextScript, noLyricsReason, pageLabel, paginate, stripMarkers } from "../src/tv/lyrics"
 import { chapterLine, listOffset, nextUp, osdVisible, pct } from "../src/tv/osd"
 import { buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen } from "../src/tv/playlistOps"
-import { RAMP_S, REW_FF_S, nextSeekStep, stepLabel } from "../src/tv/seekStep"
+import { HOLD_REPEAT_MS, RAMP_S, REW_FF_S, heldSeekStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "../src/tv/seekStep"
+import { HELD_GAP_MS, HeldKeys } from "../src/tv/input"
+import { DECODE_RETRY_MS, MEDIA_ERR_NETWORK, NET_TRIES_WITH_SERVER, onPlayError, retryDelayMs, type PlayErrorFacts } from "../src/tv/playRetry"
 import { focusableTags, infoTexts, playingFromText, tagGrid } from "../src/tv/tags"
 import { BUTTONS, initialZone, reduceZone, type ZoneCtx, type ZoneState } from "../src/tv/zones"
 
@@ -58,10 +60,112 @@ describe("seek acceleration (spec 6.3)", () => {
     expect(REW_FF_S).toBe(60)
   })
 
+  test("a few separate presses stay 10 s jumps", () => {
+    let ramp: SeekRamp | null = null
+    const steps: number[] = []
+    for (let i = 0, t = 0; i < 4; i++, t += 700) {
+      const x = nextSeekStep(ramp, 1, t)
+      steps.push(x.step)
+      ramp = x.ramp
+    }
+    expect(steps).toEqual([10, 10, 10, 10])
+  })
+
+  // A held arrow: one press, then the remote's auto-repeat (500 ms delay, then every 50 ms) for `ms`; the total moved.
+  const hold = (ms: number, start: SeekRamp | null = null) => {
+    const first = nextSeekStep(start, 1, 0)
+    let ramp = first.ramp
+    let moved = first.step
+    const steps = new Set<number>([first.step])
+    for (let t = 500; t <= ms; t += 50) {
+      const x = heldSeekStep(ramp, 1, t)
+      if (!x) continue
+      ramp = x.ramp
+      moved += x.step
+      steps.add(x.step)
+    }
+    return { moved, steps: [...steps], ramp }
+  }
+
+  test("holding an arrow never climbs the ramp and moves at a bounded pace (audit TV-3)", () => {
+    const a = hold(1500)
+    expect(a.steps).toEqual([10])
+    expect(a.moved).toBe(10 + 5 * 10) // 500, 750, 1000, 1250, 1500 ms
+    const b = hold(10_000)
+    expect(b.steps).toEqual([10])
+    expect(b.moved).toBeLessThanOrEqual(10 + (10_000 / HOLD_REPEAT_MS) * 10) // 40 s per second of holding, at most
+    expect(b.ramp.count).toBe(1) // the repeats were not counted as presses
+  })
+
+  test("a hold keeps the rung the presses before it reached", () => {
+    let ramp: SeekRamp | null = null
+    for (let i = 0; i < 5; i++) ramp = nextSeekStep(ramp, 1, -5000 + i * 300).ramp // 10, 10, 10, 10, 30
+    expect(RAMP_S[ramp!.level]).toBe(30)
+    const x = heldSeekStep({ ...ramp!, at: 0 }, 1, HOLD_REPEAT_MS)
+    expect(x!.step).toBe(30)
+    expect(x!.ramp.level).toBe(ramp!.level)
+  })
+
+  test("repeats in between the hold pace are dropped; a repeat with nothing before it is a press", () => {
+    const p = nextSeekStep(null, 1, 0)
+    expect(heldSeekStep(p.ramp, 1, HOLD_REPEAT_MS - 1)).toBeNull()
+    expect(heldSeekStep(p.ramp, 1, HOLD_REPEAT_MS)!.step).toBe(10)
+    expect(heldSeekStep(null, -1, 100)!.step).toBe(10)
+    expect(heldSeekStep(p.ramp, -1, 100)!.ramp.dir).toBe(-1) // the other direction: a fresh press
+    expect(repeatDue(null, 5)).toBe(true)
+    expect(repeatDue(0, HOLD_REPEAT_MS - 1)).toBe(false)
+  })
+
+  test("held keys: e.repeat, or a keydown before the key's keyup", () => {
+    const h = new HeldKeys()
+    expect(h.keydown(39, 0, false)).toBe(false) // a press
+    expect(h.keydown(39, 500, false)).toBe(true) // still down: an auto-repeat the engine did not mark
+    h.keyup(39)
+    expect(h.keydown(39, 600, false)).toBe(false) // let go and pressed again
+    expect(h.keydown(39, 600 + HELD_GAP_MS, false)).toBe(false) // no keyup seen for long: treated as a new press
+    expect(h.keydown(37, 0, true)).toBe(true)
+    h.clear()
+    expect(h.keydown(39, 700, false)).toBe(false)
+  })
+
   test("a plain arrow lands 0.15 s past the nearest keyframe; without an index the exact target", () => {
     const kf = [0, 4, 8, 12]
     expect(keyframeSeekTarget(7.5, kf, 3)).toBeCloseTo(8.15, 5)
     expect(keyframeSeekTarget(7.5, [], 3)).toBe(7.5)
+  })
+})
+
+// ---- media errors (audit TV-2) ----
+
+describe("a media error: retry the network, fail only a real decode error", () => {
+  const f = (o: Partial<PlayErrorFacts> = {}): PlayErrorFacts => ({ serverAnswered: true, code: 3, intact: true, decodeRetried: false, netTries: 0, outageTries: 0, ...o })
+  const DECODE = 3
+  const SRC = 4
+
+  test("the TV Server not answering retries with backoff for as long as it takes, whatever the element says", () => {
+    for (const code of [SRC, MEDIA_ERR_NETWORK, DECODE, null]) {
+      expect(onPlayError(f({ serverAnswered: false, code }))).toEqual({ t: "retry", ms: 1500, net: true, outage: true })
+    }
+    expect(onPlayError(f({ serverAnswered: false, outageTries: 50, decodeRetried: true, intact: false }))).toEqual({ t: "retry", ms: 15000, net: true, outage: true })
+    expect([1, 2, 3, 4, 5, 6, 9].map(retryDelayMs)).toEqual([1500, 3000, 5000, 8000, 12000, 15000, 15000])
+  })
+
+  test("a network error with the server answering retries a few times, then is Copy unavailable, never the codecs message", () => {
+    for (let n = 0; n < NET_TRIES_WITH_SERVER; n++) expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, netTries: n }))).toMatchObject({ t: "retry", net: true })
+    expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, netTries: NET_TRIES_WITH_SERVER }))).toEqual({ t: "lose", failed: false })
+    // a long outage first (the Mac asleep): the stream error once the server is back still gets its retries
+    expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, outageTries: 20 }))).toMatchObject({ t: "retry", net: true })
+  })
+
+  test("a decode error with the server answering: one retry, then failed", () => {
+    expect(onPlayError(f({ code: DECODE }))).toEqual({ t: "retry", ms: DECODE_RETRY_MS, net: false })
+    expect(onPlayError(f({ code: DECODE, decodeRetried: true }))).toEqual({ t: "lose", failed: true })
+    expect(onPlayError(f({ code: SRC, decodeRetried: true }))).toEqual({ t: "lose", failed: true })
+  })
+
+  test("a Copy no longer Available is lost (fail over), not failed", () => {
+    expect(onPlayError(f({ intact: false }))).toEqual({ t: "lose", failed: false })
+    expect(onPlayError(f({ intact: false, code: MEDIA_ERR_NETWORK }))).toEqual({ t: "lose", failed: false })
   })
 })
 

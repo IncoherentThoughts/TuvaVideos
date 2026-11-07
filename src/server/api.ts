@@ -11,11 +11,13 @@ import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import type { TvServer } from "./tv";
 import { factsOfRow, parseDecision } from "./tvJudge";
+import { isTvRequest } from "./tvRequest";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
 import { deleteVideo, removeCopies } from "./deleteVideo";
 import { deletedMatches, kindsOf, rowInfo, sharedSuggestions } from "./sharedWrites";
 import { clearShelved, dropShelved, listEdits, markShelvedSeen, shelvedItems, unseenShelvedVideos, videoHistory } from "./editHistory";
 import { serveFile } from "./stream";
+import { servesShell } from "../shared/routes";
 import type { KeyframeIndex } from "./keyframes";
 import { NO_TRASH_NOTICE, resolveTrash } from "./platform";
 import { run } from "./proc";
@@ -35,7 +37,7 @@ import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "../shared/types";
 import type { SharedChanges } from "../shared/sharedRows";
 import { applyShared } from "./localCopy/apply";
-import { hostError, localRequestError } from "./localOnly";
+import { hostError, localGuard, localRequestError, withFrameHeaders } from "./localOnly";
 import { createReconcile } from "./reconcile";
 import { createSync } from "./sync";
 import { pendingShareBatch, pendingShareSummary, setShareAuto } from "./share";
@@ -343,6 +345,14 @@ export function createHandler(s: Services) {
     const c = s.db.query(`${COPY_SQL.replace("c.fallback_file, c.missing_since", "c.fallback_file, c.missing_since, r.path AS root_path")} WHERE c.id = ?`).get(id) as (CopyDbRow & { root_path: string }) | null;
     if (!c) return json({ error: "no such copy" }, 404);
     if (c.missing_since) return json({ error: "copy is missing", missingSince: c.missing_since }, 404);
+    if (isTvRequest(req)) {
+      // The TV plays by its own Playback profile (tv-spec 3.2): the own file when it plays as-is, else an existing
+      // Fallback it plays. It never asks the Fallback queue to make anything; the Live remux is not built yet.
+      const order = tvJson(c).order;
+      if (order === "file") return serveFile(req, join(c.root_path, c.rel_path));
+      if (order === "fallback" && c.fallback_file) return serveFile(req, join(s.cfg.remuxDir, c.fallback_file), contentTypeFor(extensionOf(c.fallback_file)));
+      return json({ error: "the TV does not play this Copy as-is and the Live remux is not built yet", order }, 409);
+    }
     if (c.playback !== "native") {
       if (!c.fallback_file) {
         const st = s.fallback.request(id, "play");
@@ -426,7 +436,15 @@ export function createHandler(s: Services) {
     return null;
   }
 
-  return async (req: Request): Promise<Response> => {
+  // The guard runs first, for every request (localOnly.ts): a loopback Host, and this companion's Origin on writes.
+  // `server` is the Bun listener (absent when the TV Server passes a request in, which `localGuard` lets through).
+  return async (req: Request, server?: { port?: number }): Promise<Response> => {
+    const refused = localGuard(req, server?.port ?? (s.cfg.port || null));
+    if (refused) return json({ error: refused.error }, refused.status);
+    return withFrameHeaders(await route(req));
+  };
+
+  async function route(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname;
     let m: RegExpMatchArray | null;
@@ -536,8 +554,8 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/scan") return json(s.scanner.progress());
         if (p === "/api/onboarding") return json(onboardingState());
-        // Client routes (hand-rolled history routing, spec 9): every one serves the shell.
-        if (p === "/" || p === "/index.html" || p === "/favorites" || p === "/search" || p === "/artists" || p === "/songs" || /^\/play\/[0-9a-fA-F-]{36}$/.test(p) || /^\/lyrics\/[0-9a-fA-F-]+$/.test(p))
+        // Client routes (hand-rolled history routing, spec 9): every one serves the shell (the list is the router's, shared/routes.ts).
+        if (servesShell(p))
           return new Response(Bun.file(join(s.cfg.webDir, "index.html")), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
       if (req.method === "POST") {
@@ -552,8 +570,9 @@ export function createHandler(s: Services) {
         if (p === "/api/tv/approve" || p === "/api/tv/deny") {
           const b = await readJson(req);
           if (!b || typeof b.ip !== "string" || !b.ip.trim()) return json({ error: "ip is required" }, 400);
-          if (p === "/api/tv/approve") s.tv.approve(b.ip);
-          else s.tv.deny(b.ip);
+          if (p === "/api/tv/approve") {
+            if (!s.tv.approve(b.ip)) return json({ error: "this machine's own address is never a TV" }, 422);
+          } else s.tv.deny(b.ip);
           return json(s.tv.state());
         }
         if ((m = p.match(/^\/api\/(videos|chapters)\/([0-9a-fA-F-]{36})\/favorite$/))) {
@@ -604,7 +623,8 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/resume$/))) {
           let body: { resumeS?: unknown; copyId?: unknown } = {};
           try {
-            body = (await req.json()) as typeof body; // sendBeacon posts a Blob; the content type does not matter here
+            const parsed = await req.json(); // sendBeacon posts a Blob; the content type does not matter here
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as typeof body; // null, [] or 3: the resumeS check below answers 400
           } catch {}
           if (typeof body.resumeS !== "number" || !Number.isFinite(body.resumeS) || body.resumeS < 0) return json({ error: "resumeS must be a number >= 0" }, 400);
           const r = recordResume(s.db, m[1]!, body.resumeS, typeof body.copyId === "number" ? body.copyId : null);
@@ -618,6 +638,7 @@ export function createHandler(s: Services) {
           } catch {
             return json({ error: "body must be JSON" }, 400);
           }
+          if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "body must be a JSON object" }, 400);
           const l = body.loop;
           if (l !== null) {
             const ok = typeof l === "object" && l != null && typeof (l as StoredLoop).a === "number" && typeof (l as StoredLoop).b === "number" && storedLoop(l as StoredLoop) != null;
@@ -898,7 +919,8 @@ export function createHandler(s: Services) {
         if (s.roots.list().length > 0) return json({ error: "This machine already has a videos folder" }, 409);
         const checked = await checkRootPath(body.path, homedir());
         if (!checked.ok) return json({ error: checked.error }, 422);
-        const root = s.roots.add(checked.path);
+        const root = s.roots.addFirst(checked.path); // null: another request added one meanwhile
+        if (!root) return json({ error: "This machine already has a videos folder" }, 409);
         // The check's first "available" already queues the scan through the remount listener (app.ts); a passive
         // server has no listener, so queue it here unless it is running or queued.
         await s.roots.check(root.id);
@@ -925,6 +947,6 @@ export function createHandler(s: Services) {
     } catch (e) {
       return json({ error: String((e as Error).message ?? e) }, 500);
     }
-  };
+  }
 }
 

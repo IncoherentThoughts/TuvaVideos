@@ -1,0 +1,54 @@
+name: ci
+
+# Manual only: the gate is local (`bun run ci`), and Actions minutes are scarce (a macOS job bills at 10x).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14 is Apple Silicon with only /opt/homebrew: it catches hard-coded /usr/local paths.
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4 # match engines in package.json; bump deliberately
+
+      - name: Install ffmpeg and webp (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg webp
+
+      - name: Install ffmpeg and webp (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg webp
+
+      - run: bun install --frozen-lockfile
+
+      - name: Typecheck (src, test, scripts)
+        run: bun run typecheck
+
+      - name: Setup check (required tools are found)
+        run: bun scripts/setup.ts
+
+      - run: bun test
+
+  shell:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck the scripts
+        run: shellcheck -S warning scripts/*.sh

@@ -31,6 +31,8 @@ const isTyping = (t: EventTarget | null) => {
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 };
 
+const modalOpen = () => !!document.querySelector("dialog[open]");
+
 function items(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("[data-item]")];
 }
@@ -70,7 +72,7 @@ export function installKeys() {
     (e) => {
       if (e.key !== "v" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       const player = document.querySelector<HTMLElement>("[data-player]");
-      if (!player || document.querySelector("dialog[open]")) return;
+      if (!player || modalOpen()) return;
       e.preventDefault();
       e.stopPropagation();
       player.focus({ preventScroll: true });
@@ -79,6 +81,9 @@ export function installKeys() {
   );
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // A modal dialog (Delete, Sign in, Shelved edits, a Proposed row) owns the keyboard: `r` would navigate under it
+    // (and a Delete dialog then named another Video, WEB-1/WEB-11), `/` and the arrows would reach for inert elements.
+    if (modalOpen()) return;
     if (e.key === "/" && !isTyping(e.target)) {
       e.preventDefault();
       focusSearch();

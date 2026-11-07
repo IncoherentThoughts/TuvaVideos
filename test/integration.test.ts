@@ -1,3 +1,5 @@
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,6 +7,7 @@ import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 import { sleep } from "../src/server/proc";
+import { jsonInit } from "./helpers/http";
 import { insertChapter, V } from "./helpers/seed";
 
 const base = mkdtempSync(join(tmpdir(), "tuva-it-"));
@@ -16,9 +19,11 @@ const trashDir = join(base, "trash");
 const trashBin = join(base, "fake-trash.sh");
 mkdirSync(localDir, { recursive: true });
 mkdirSync(extDir, { recursive: true });
+// The same lookup the app uses (/opt/homebrew/bin, /usr/local/bin, then PATH), not a hard-coded Intel Homebrew path.
+const { ffmpeg, ffprobe } = loadConfig({});
 
 async function ff(...args: string[]) {
-  const p = Bun.spawn(["/usr/local/bin/ffmpeg", "-v", "error", "-y", ...args], { stdout: "ignore", stderr: "pipe" });
+  const p = Bun.spawn([ffmpeg, "-v", "error", "-y", ...args], { stdout: "ignore", stderr: "pipe" });
   const code = await p.exited;
   if (code !== 0) throw new Error(await new Response(p.stderr).text());
 }
@@ -34,7 +39,7 @@ beforeAll(async () => {
   // id-less file -> SHA-256 identity; E-AC3 audio -> transcode
   await ff(...src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "eac3", join(localDir, "No Id Concert.mkv"));
   // piped (non-seekable) webm: no duration, no Cues -> remux, made lazily on first play
-  const p = Bun.spawn(["/usr/local/bin/ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=4", "-c:v", "libvpx-vp9", "-f", "webm", "pipe:1"], { stdout: Bun.file(join(localDir, "Live [bbbbbbbbbbb].webm")), stderr: "ignore" });
+  const p = Bun.spawn([ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=4", "-c:v", "libvpx-vp9", "-f", "webm", "pipe:1"], { stdout: Bun.file(join(localDir, "Live [bbbbbbbbbbb].webm")), stderr: "ignore" });
   await p.exited;
   writeFileSync(join(localDir, "Song One [aaaaaaaaaaa].f251.webm"), "partial");
   writeFileSync(join(localDir, "._Song One [aaaaaaaaaaa].mp4"), "appledouble");
@@ -52,11 +57,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await app.stop();
+  await app?.stop(); // a failed beforeAll leaves no app; don't mask its error
   rmSync(base, { recursive: true, force: true });
 });
 
-const api = async (path: string, init?: RequestInit) => (await fetch(base_url + path, init)).json() as Promise<any>;
+const api = async (path: string, init?: RequestInit) => (await fetch(base_url + path, jsonInit(init))).json() as Promise<any>;
 
 async function waitFor(cond: () => boolean | Promise<boolean>, ms = 30_000) {
   const t0 = Date.now();
@@ -204,7 +209,7 @@ describe("fallback queue", () => {
     expect(res.status).toBe(206);
     expect(res.headers.get("content-type")).toBe("video/x-matroska");
     await res.arrayBuffer();
-    const probe = Bun.spawnSync(["/usr/local/bin/ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", join(dataDir, "remux", c.id + ".mkv")]);
+    const probe = Bun.spawnSync([ffprobe, "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", join(dataDir, "remux", c.id + ".mkv")]);
     expect(probe.stdout.toString()).toContain("aac");
   });
 });
@@ -222,7 +227,7 @@ describe("lazy remux", () => {
     expect(res.status).toBe(206);
     expect(res.headers.get("content-type")).toBe("video/webm");
     await res.arrayBuffer();
-    const probe = Bun.spawnSync(["/usr/local/bin/ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dataDir, "remux", live.copies[0].id + ".webm")]);
+    const probe = Bun.spawnSync([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", join(dataDir, "remux", live.copies[0].id + ".webm")]);
     expect(parseFloat(probe.stdout.toString())).toBeGreaterThan(3);
   });
 });
@@ -395,15 +400,17 @@ describe("resume endpoint", () => {
     }
   });
 
-  test("a sendBeacon style body (any content type) works; bad input and unknown Videos are refused", async () => {
+  test("a text/plain body is refused on localhost (a cross-site simple request; the TV's go through the TV listener); bad input and unknown Videos are refused", async () => {
     const id = songId();
     app.db.exec(`UPDATE copy SET duration_s = 600 WHERE video_id = '${id}'`);
-    expect((await post(id, { resumeS: 33 }, true)).status).toBe(200);
+    expect((await post(id, { resumeS: 33 })).status).toBe(200);
+    expect((await post(id, { resumeS: 34 }, true)).status).toBe(415);
     expect(row(id).resume_s).toBe(33);
     expect((await post(id, { resumeS: -1 })).status).toBe(400);
     expect((await post(id, { resumeS: "12" })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
-    expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", body: "not json" })).status).toBe(400);
+    for (const bad of [null, [], 3, "x"]) expect((await post(id, bad)).status).toBe(400); // JSON, but not an object: a 400, never a 500
+    expect((await fetch(`${base_url}/api/videos/${id}/resume`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { resumeS: 1 })).status).toBe(404);
     expect(row(id).resume_s).toBe(33);
     app.db.exec(`UPDATE copy SET duration_s = 6 WHERE video_id = '${id}'`);
@@ -437,7 +444,8 @@ describe("loop endpoint", () => {
     expect((await post(id, { loop: { a: 2, b: 2.01 } })).status).toBe(400);
     expect((await post(id, { loop: { a: "1", b: 2 } })).status).toBe(400);
     expect((await post(id, {})).status).toBe(400);
-    expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", body: "not json" })).status).toBe(400);
+    for (const bad of [null, [], 3, "x"]) expect((await post(id, bad)).status).toBe(400); // JSON, but not an object: a 400, never a 500
+    expect((await fetch(`${base_url}/api/videos/${id}/loop`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" })).status).toBe(400);
     expect((await post(V(999999), { loop: null })).status).toBe(404);
     expect(row(id)).toEqual({ loop_a_s: null, loop_b_s: null });
   });
@@ -480,6 +488,24 @@ describe("screenshot endpoint", () => {
     expect((await shot(id, "-3", await png())).status).toBe(400);
     expect((await shot(id, "abc", await png())).status).toBe(400);
     expect((await shot(V(999999), "5", await png())).status).toBe(404);
+  });
+});
+
+describe("relocate endpoint (HTTP glue)", () => {
+  const relocate = (id: string, body: string) =>
+    fetch(`${base_url}/api/videos/${id}/relocate`, { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body });
+  const songId = () => (app.db.query("SELECT id FROM videos WHERE youtube_id = 'aaaaaaaaaaa'").get() as { id: string }).id;
+
+  test("a non-object body is a 400; a copyId that is not this Video's (a string included) is a 404; the Copy is untouched", async () => {
+    const id = songId();
+    const before = app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE video_id = ?").all(id);
+    for (const bad of ["null", "[]", "3", "not json"]) expect((await relocate(id, bad)).status).toBe(400);
+    const path = join(localDir, "Song One [aaaaaaaaaaa].mp4");
+    const r = await relocate(id, JSON.stringify({ path, copyId: "5" }));
+    expect(r.status).toBe(404);
+    expect((await r.json()).error).toContain("not this Video's");
+    expect((await relocate(V(999999), JSON.stringify({ path }))).status).toBe(404);
+    expect(app.db.query("SELECT id, rel_path, missing_since FROM copy WHERE video_id = ?").all(id)).toEqual(before);
   });
 });
 
@@ -564,7 +590,7 @@ describe("Rutube id (ADR 0008)", () => {
 describe("POST /api/cache/apply (sharing-spec §4.9, §6.2)", () => {
   const SV = "33333333-3333-4333-8333-333333333333";
   const row = { id: SV, content_hash: "cache-apply-hash", title: "From the archive", type: "song", created_at: "2026-10-17T00:00:00Z", updated_at: "2026-10-17T00:00:00Z" };
-  const post = (headers: Record<string, string>) => fetch(base_url + "/api/cache/apply", { method: "POST", headers, body: JSON.stringify({ tables: { videos: [row] } }) });
+  const post = (headers: Record<string, string>) => fetch(base_url + "/api/cache/apply", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ tables: { videos: [row] } }) });
   test("refused without this companion's Origin; applied with it, and the Video is Shared", async () => {
     expect((await post({})).status).toBe(403);
     expect((await post({ origin: "https://evil.example" })).status).toBe(403);
@@ -572,10 +598,10 @@ describe("POST /api/cache/apply (sharing-spec §4.9, §6.2)", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ applied: { videos: 1 }, reindex: "rows" });
     expect(await api(`/api/videos/${SV}`)).toMatchObject({ id: SV, title: "From the archive", shared: true });
-    const bad = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ tables: { videos: [{ id: V(999998) }] } }) });
+    const bad = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body: JSON.stringify({ tables: { videos: [{ id: V(999998) }] } }) });
     expect(bad.status).toBe(422);
     // the pre-130 flat body (rows by table at the top) is refused, not silently ignored
-    const flat = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { origin: base_url }, body: JSON.stringify({ videos: [row] }) });
+    const flat = await fetch(base_url + "/api/cache/apply", { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body: JSON.stringify({ videos: [row] }) });
     expect(flat.status).toBe(400);
   });
 });

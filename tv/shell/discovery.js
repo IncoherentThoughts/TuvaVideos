@@ -14,7 +14,8 @@
 //
 // States passed to onState:
 //   { kind: "looking", step: "last" | "sweep" | "typed" | "access", detail }   typed = nothing answered; Enter opens the field
-//   { kind: "typing", prefix, error? }
+//   { kind: "typing", prefix, error? }         the typed field; opened by itself the first time nothing answers. The
+//                                              search keeps retrying behind it and a server it finds takes the screen.
 //   { kind: "denied", base }                  403 from /api/videos: approve this TV on the Mac
 //   { kind: "ready", base }
 //   { kind: "off", base }                     health stopped answering after a success
@@ -58,12 +59,19 @@
     const clock = env.clock
     let gen = 0 // bumping it cancels every loop of the previous run
     let typing = false
+    let autoOpened = false // the typed field opens by itself once per start(), the first time nothing answers
     let current = null
 
     const emit = (s) => {
-      if (typing && s.kind === "looking") return // the typed field owns the screen
+      if (typing && s.kind === "looking") return // the typed field owns the screen while the search retries behind it
+      if (s.kind !== "typing") typing = false // anything else (approve, ready, off) replaces the field: never stuck on
       current = s
       env.onState(s)
+    }
+    const typedPrefix = () => subnetPrefix(lastAddress()) || subnetPrefix(safe(env.localIp)) || ""
+    function openTyped() {
+      typing = true
+      emit({ kind: "typing", prefix: typedPrefix() })
     }
     const sleep = (ms) => new Promise((res) => clock.setTimeout(res, ms))
 
@@ -207,11 +215,14 @@
           if (await connect(addr, myGen)) return
           if (myGen !== gen) return
           // the server stopped answering between health and /api/videos: look again
+        } else if (!autoOpened && !typing) {
+          // Nothing answered: open the field (and its number pad) at once, so no remote menu is needed to get there.
+          autoOpened = true
+          openTyped()
         } else {
           emit({ kind: "looking", step: "typed", detail: "" })
         }
-        await sleep(RETRY_MS)
-        while (typing && myGen === gen) await sleep(RETRY_MS) // the typed field holds the retries
+        await sleep(RETRY_MS) // keeps retrying behind an open field: a server switched on meanwhile is still found
         if (myGen !== gen) return
       }
     }
@@ -219,16 +230,14 @@
     function start() {
       const myGen = ++gen
       typing = false
+      autoOpened = false
       search(myGen)
     }
 
     return {
       start,
-      /** Enter on the looking screen. */
-      openTyped() {
-        typing = true
-        emit({ kind: "typing", prefix: subnetPrefix(lastAddress()) || subnetPrefix(safe(env.localIp)) || "" })
-      },
+      /** Enter on the looking screen (the first time nothing answers it opens by itself). */
+      openTyped,
       /** Back on an empty field. */
       closeTyped() {
         typing = false
@@ -236,10 +245,10 @@
       },
       /** Enter in the field. Returns true when it was an address that answered. */
       async submitTyped(text) {
-        const prefix = subnetPrefix(lastAddress()) || subnetPrefix(safe(env.localIp)) || ""
+        const prefix = typedPrefix()
         const addr = normalizeTyped(text, prefix)
         if (!addr) {
-          emit({ kind: "typing", prefix, error: "That is not an address" })
+          if (typing) emit({ kind: "typing", prefix, error: "That is not an address" })
           return false
         }
         if (!(await probe(addr))) {

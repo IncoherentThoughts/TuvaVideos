@@ -2,6 +2,7 @@
 status: accepted
 date: 2026-10-17
 supersedes: 0001 (entirely; 0006's "ADR-0001 stays for the Mirror until it retires" clause closes here)
+amended: "never wiped" and "nothing on disk is renamed" did not hold as built (see the note at the end)
 ---
 
 # The Mirror retires: the archive's rows reach each machine by Sync into the Local copy
@@ -13,3 +14,5 @@ Decided (#95, 2026-10-17; the shape from #89 and #92): the `mirror_*` tables bec
 Costs accepted: a Standalone user who never signs in loses the Mirror's Songs and lyrics (the owner's machine signs in; collaborators were never going to receive a backup); the companion's schema is rebuilt around uuid keys once, by the `local-copy` build ticket, with thumbnail files already named by identity so nothing on disk is renamed; and the archive's rare hard deletes of Songs, Versions and Artists need an ids-only reconcile at every Sync, since the archive emits no tombstones. The alternative, keeping the Mirror beside the Shared tables, was rejected as two sources of the same truth with two refresh paths. The `Mirror`, `Local Song`, `Local Version` and `Local Artist` glossary terms are retired at cutover (`docs/sharing-spec.md` §9.3); the `local_*` tables survive only as this machine's own rows for Unshared Videos.
 
 In force since the cutover (#121, completed 2026-11-02): the Mirror and its import are gone from every machine, and the four glossary terms are removed from `CONTEXT.md`.
+
+**Amended (as built).** Two sentences above describe the plan, not the code. *"The Local copy is upserted row by row, never wiped"* holds for an ordinary Sync only: a full refetch (first sign-in, a `shared_schema` change, a watermark past retention, "Refresh all Shared data") first wipes the `archive_*` tables, the Proposed tables, the exposure list, the edit history and the tombstones in the apply's transaction, and drops Shared Videos' `updated_at` to the epoch instead of deleting them (`wipeShared` in `src/server/sync.ts`; `docs/sharing-spec.md` §6.4, #139). *"Nothing on disk is renamed"* was wrong: Thumbnail files were named by the integer id (and the #21 seed's by `content_hash` or `youtube_id`), so `renameLegacyThumbnails` (`src/server/thumbs.ts`) renames them to `<uuid>.{poster,strip}.webp` at every start, idempotently, and reconciliation renames a matched Video's files to its Shared id (§6.1, #137; §2.3). Local Song, Version and Artist keep a narrower meaning in `CONTEXT.md` rather than being removed.

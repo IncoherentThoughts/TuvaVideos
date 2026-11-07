@@ -82,6 +82,18 @@ export function notHereVideoIds(db: { query(sql: string): { all(): unknown[] } }
   return new Set((db.query(NOT_HERE_SQL).all() as { id: string }[]).map((r) => r.id));
 }
 
+/**
+ * An answer as the TV gets it: without `path` (a Copy's absolute file path, which names the Mac's user and folders;
+ * the TV plays `url` and never needs it; docs/audit/01-security.md SEC-6). Pure; returns a copy.
+ */
+export function stripPaths(body: unknown): unknown {
+  if (Array.isArray(body)) return body.map(stripPaths);
+  if (!body || typeof body !== "object") return body;
+  const out: Row = {};
+  for (const [k, v] of Object.entries(body as Row)) if (k !== "path") out[k] = stripPaths(v);
+  return out;
+}
+
 type Row = Record<string, unknown>;
 const idOf = (x: unknown): string | null => (x && typeof x === "object" && typeof (x as Row).id === "string" ? ((x as Row).id as string) : null);
 

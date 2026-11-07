@@ -1,5 +1,7 @@
 # TV home and Player prototype (#50, #51) — PROTOTYPE, throwaway
 
+Archived: it predates the UUID Video ids and no longer type-checks, so `bun run typecheck` leaves it out (`tsconfig.scripts.json` covers `scripts/` only).
+
 Three variants of the TV app's home screen (#50), three variants of the Player (#51), one Search. Driven by the arrow keys, Enter and Backspace in a browser, or the remote on
 the TV. Real data from the running app; nothing is written to the library (Resume is read, not saved; views are not
 counted).

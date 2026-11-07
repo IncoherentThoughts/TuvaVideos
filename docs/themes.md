@@ -43,7 +43,7 @@ girl, and their per-picture colours, stay in the fork), and the fork's Hyprland 
 ## What has to be added
 
 1. **The role → token mapping.** TuvaVideos' emitter: the ten roles become the 19 tokens as formulas
-   (`--bg2 = mix(bg 55%, surface)`, `--line = mix(text 12%, bg)`, `--fg3 = mix(muted 70%, bg)`, `--accent = brand`,
+   (`--bg2 = mix(bg 55%, surface)`, `--line = mix(text 12%, bg)`, `--fg3 = mix(muted 88%, bg)` (at least 4.5:1 on `--bg` and `--bg2`), `--accent = brand`,
    `--ok = success`, `--no = negative`). The roles do not cover the **eight tag slots**: a theme adds a `tags` array of
    eight hues (the way the fork's palettes carry optional gender colours). Lawson Night's are catppuccin's red, peach,
    yellow, green, teal, blue, mauve, lavender in the gruvbox slots' order, so song/concert/interview/other keep their
@@ -56,7 +56,7 @@ girl, and their per-picture colours, stay in the fork), and the fork's Hyprland 
    script in `index.html` reading `localStorage tuva.theme`, and swapped at runtime by `src/web/theme.ts`
    (`?theme=<id>` in the URL also picks one, for trying a theme from a link). Added. The TV app has its own styles and
    is out of scope.
-5. **Choosing.** A Theme select in the top bar (prototype) → later a Settings surface, if one appears, and the `tuva:`
+5. **Choosing.** A Theme select in the account chip's menu (`src/web/Account.tsx`; it started in the top bar as a prototype). Added. Later a Settings surface, if one appears, and the `tuva:`
    command-style prompt parked in design-direction.md would be the natural home for `:theme lawson-night`.
 6. **The look for every screen.** Lawson Night's prototype covers the shell (top bar, search dropdown, menus, toasts,
    buttons, chips, fields) and every `.page` screen (Library, Favorites, Artists, Songs, search results) as one glass

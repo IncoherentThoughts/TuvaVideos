@@ -8,9 +8,9 @@ import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies"
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
-  AB_OFF, FALLBACK_FPS, abLoopTarget, abToggle, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
+  AB_OFF, FALLBACK_FPS, abInside, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
 } from "../shared/playerMath";
-import { RESUME_INTERVAL_MS, ResumeClock, adoptResume, startPosition, storedResume } from "../shared/resume";
+import { RESUME_INTERVAL_MS, ResumeClock, ResumeOwner, adoptResume, startPosition, storedResume } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
 import { studioRoute, type SongStudioDto } from "../shared/studio";
 import type { CopyDto, VideoDto } from "../shared/types";
@@ -198,6 +198,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     seekTarget: null as number | null, // the last requested seek while it is in flight or queued: held keys step from it
     wasPlaying: true,
     ab: (storedLoop(video.loop) ?? AB_OFF) as AbLoop,
+    abArmed: false, // the playhead has been inside the A-B loop since the last user seek: reaching B jumps back to A
     phase: "loading" as Phase,
     osdN: 0,
     osdTimer: 0 as unknown as ReturnType<typeof setTimeout>,
@@ -209,6 +210,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const rateRef = useRef(1);
   const alwaysRef = useRef(false);
   const clock = useRef(new ResumeClock(RESUME_INTERVAL_MS));
+  const owner = useRef(new ResumeOwner()); // an adopted position is not written back (audit TV-8)
   const throttle = useRef(new SeekThrottle((t) => {
     const v = vid.current;
     if (v) v.currentTime = t;
@@ -240,7 +242,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   // ---- Resume (spec 4.3) ----
   const writeResume = (beacon = false) => {
     const r = R.current;
-    if (!r.started || !r.resumeOn) return;
+    if (!r.started || !r.resumeOn || !owner.current.mayWrite) return;
     const v = vid.current;
     const pos = v && v.readyState > 0 ? v.currentTime : r.lastPos;
     const url = `/api/videos/${V.current.id}/resume`;
@@ -388,6 +390,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     if (to == null) return;
     r.known = to;
     seekTo(to, "exact", undefined, false, true);
+    owner.current.adopted(); // its seek is not written back: that could overwrite a newer position from the other player
     say(`Resume moved to ${fmtClock(to)} by another player`, 2600);
   }, [video.resumeS]);
 
@@ -403,7 +406,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       r.firstT = false;
       return;
     }
-    if (startT != null && r.started) seekTo(startT, "exact", undefined, false, true);
+    if (startT != null && r.started) {
+      seekTo(startT, "exact", undefined, false, true);
+      owner.current.produced(); // the user picked that time: it is written
+    }
   }, [startT]);
 
   // the library poll: a Root unmounting under the playing Copy, or a Copy coming back after "unavailable"
@@ -436,6 +442,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     if (!internal && pl.playlist && pl.entry && seekWidens(pl.entry, c)) pl.widen?.(); // past the Chapter Entry's end: it is a Video Entry now
     if (mode === "keyframe" && R.current.keyframes) c = clampTime(keyframeSeekTarget(c, R.current.keyframes, from), dur);
     R.current.seekTarget = c;
+    if (!internal) {
+      owner.current.produced(); // the user's seek: written
+      R.current.abArmed = abInside(R.current.ab, c); // a seek out of the A-B loop plays on from there
+    }
     throttle.current.request(c, throttled);
     setTime(c);
   };
@@ -480,6 +490,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       }
     });
     on("play", () => {
+      owner.current.produced();
       setPaused(false);
       // the Video resuming by any path (click on the frame, the ⏵ button) ends Studio playback: never both at once
       if (studioOn.current) void closeStudioRef.current();
@@ -523,7 +534,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     on("ended", () => {
       if (PL.current.playlist) return void entryEnded();
       // loop by default (as mpv's --loop-file): back to A with an A-B loop set, else to the start
-      const t = abLoopTarget(r.ab, v.currentTime, true) ?? 0;
+      const t = abLoopTarget(r.ab, v.currentTime, true, r.abArmed) ?? 0;
       v.currentTime = t;
       countView(); // each loop back from the end is another view
       void v.play().catch(() => {});
@@ -546,7 +557,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       const t = v.currentTime;
       r.lastPos = t;
       if (!v.paused) {
-        const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : abLoopTarget(r.ab, t);
+        if (!v.seeking && !throttle.current.busy && abInside(r.ab, t)) r.abArmed = true; // back inside the loop: it applies
+        const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : abLoopTarget(r.ab, t, false, r.abArmed);
         if (tgt != null) seekTo(tgt, "exact", undefined, false, true);
         const pl = PL.current;
         if (pl.playlist && pl.entry?.end != null) {
@@ -766,6 +778,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         const was = storedLoop(R.current.ab);
         const s = abToggle(R.current.ab, v.currentTime);
         R.current.ab = s.ab;
+        R.current.abArmed = abInside(s.ab, v.currentTime); // B set here: the playhead is at the loop's end
         setAb(s.ab);
         say(s.label);
         // persist a complete loop, and its clearing; a half-set A is not kept (spec 4.3)
@@ -776,14 +789,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       case "chapter": {
         if (!chapters.length) return say("no chapters");
         const sorted = [...chapters].sort((x, y) => x.startS - y.startS);
-        let i = -1;
-        sorted.forEach((c, k) => {
-          if (v.currentTime >= c.startS - 0.001) i = k;
-        });
-        if (a.dir < 0 && i >= 0 && v.currentTime - sorted[i]!.startS >= 2) i += 1; // restart the current one first
-        const to = sorted[Math.min(sorted.length - 1, Math.max(0, i + a.dir))]!;
-        seekTo(to.startS);
-        say(`Chapter: ${to.title}`);
+        const i = chapterStepTarget(sorted.map((c) => c.startS), v.currentTime, a.dir);
+        const to = i >= 0 ? sorted[i]! : null;
+        seekTo(to ? to.startS : 0);
+        say(to ? `Chapter: ${to.title}` : "Start of the Video");
         flash();
         break;
       }

@@ -10,7 +10,12 @@ export function LyricsPage({ songId }: { songId: string }) {
   const [song, setSong] = useState<SongDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
-  useEffect(() => void api.song(songId).then(setSong).catch(() => setSong(null)), [songId]);
+  // main.tsx keys this page on the Song, so the Delete prompt and the old Song never carry over to the next one
+  useEffect(() => {
+    let alive = true;
+    api.song(songId, { fresh: true }).then((s) => alive && setSong(s)).catch(() => alive && setSong(null));
+    return () => void (alive = false);
+  }, [songId]);
   const del = async () => {
     try {
       await api.deleteSong(songId);
@@ -24,14 +29,14 @@ export function LyricsPage({ songId }: { songId: string }) {
     <div class="page lyrics-page">
       <p class="muted">
         {song?.local ? "A local Song: created in this library, not in the archive. " : ""}
-        {song && song.videos.length === 0 ? "No Video in your library performs this Song." : song?.local ? "" : "Lyrics from the archive Mirror."}
+        {song && song.videos.length === 0 ? "No Video in your library performs this Song." : song?.local ? "" : "Lyrics from the archive."}
         {song?.local && song.videos.length === 0 && !confirm && (
           <>
             {" "}
             <button class="linkbtn" onClick={() => setConfirm(true)}>Delete this local Song…</button>
           </>
         )}
-        {confirm && (
+        {confirm && song?.local && song.videos.length === 0 && (
           <>
             {" "}Delete it and its local lyrics?{" "}
             <button class="btn small danger" onClick={() => void del()}>Delete</button>{" "}

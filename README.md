@@ -26,7 +26,23 @@ bun run start        # port 4400, opens a browser tab; Ctrl-C or the ⏻ button 
 
 `bun run setup` prints one line per check with the install command for anything missing, exits non-zero while something required is missing, and does not start the app; yt-dlp, ImageMagick and a trash command are optional. On macOS, `bun run app` builds `~/Applications/TuvaVideos.app`, a double-click launcher for `bun run start` (needs ImageMagick).
 
-Data lives in `~/Library/Application Support/TuvaVideos/` on macOS, `$XDG_DATA_HOME/TuvaVideos` (default `~/.local/share/TuvaVideos`) on Linux and `%APPDATA%\TuvaVideos` on Windows: `library.db`, `thumbs/`, `remux/`, `youtube-info/`, `studio-dump.json`, `log.txt`. `TUVA_PORT`, `TUVA_DATA_DIR`, `TUVA_LOCAL_ROOT` and `TUVA_NO_OPEN=1` override the port, the data dir, the videos folder and the tab, for tests. ffmpeg, ffprobe and cwebp are taken from `/opt/homebrew/bin` (native arm64), then `/usr/local/bin`, then `PATH`; `TUVA_BIN_DIR` puts another directory first.
+Data lives in `~/Library/Application Support/TuvaVideos/` on macOS, `$XDG_DATA_HOME/TuvaVideos` (default `~/.local/share/TuvaVideos`) on Linux and `%APPDATA%\TuvaVideos` on Windows: `library.db`, `thumbs/`, `remux/`, `youtube-info/`, `studio-dump.json`, `log.txt`. ffmpeg, ffprobe and cwebp are taken from `/opt/homebrew/bin` (native arm64), then `/usr/local/bin`, then `PATH`; `TUVA_BIN_DIR` puts another directory first.
+
+Environment variables, all for tests, smoke runs and previews only (`src/server/config.ts`); normal use sets none:
+
+| Variable | Default | Does |
+|---|---|---|
+| `TUVA_PORT` | `4400` | The browser app's port. Any other port on the default data dir (no `TUVA_DATA_DIR`) makes a **passive** server, a preview sharing the real library: it never scans on a remount (only on its own Rescan button) and never starts the TV Server |
+| `TUVA_TV_PORT` | `4401` | The TV Server's port |
+| `TUVA_DATA_DIR` | per platform, above | The data dir |
+| `TUVA_LOCAL_ROOT` | unset | A videos folder added as a Root at every start (if not already there). Changing it adds a second Root rather than replacing the first, so it is not a way to move the library |
+| `TUVA_EXTERNAL_ROOT` | unset | An extra Root of kind `external` (a drive), added the same way |
+| `TUVA_NO_OPEN=1` | unset | Don't open a browser tab at launch |
+| `TUVA_YT_CACHE` | `<data dir>/youtube-info` | The YouTube-info cache that `fetch-youtube-info` writes and `suggest-chapters` and the Artist matcher (uploader names) read |
+| `TUVA_SCREENSHOT_DIR` | `~/Desktop` | Where `s` saves screenshots |
+| `TUVA_TRASH` | the platform's trash command | A command run as `<cmd> <file>` to delete a Video's media, in place of the macOS / `gio trash` / `trash-put` / PowerShell default |
+| `TUVA_ARCHIVE_URL`, `TUVA_ARCHIVE_KEY` | the committed archive project | Point the app at another Supabase project (URL and publishable key), e.g. a seeded test archive |
+| `TUVA_BIN_DIR` | unset | A directory searched first for ffmpeg, ffprobe and cwebp |
 
 ## First launch
 
@@ -67,6 +83,7 @@ Bare keys, handled while the Player has focus (`Esc` or `v` brings focus back). 
 | `←` `→` | seek ±5 s |
 | `↓` `↑` | seek ±60 s |
 | `⇧←` `⇧→` | exact ±1 s |
+| `⇧↓` `⇧↑` | exact ±5 s |
 | `,` `.` | frame step back / forward |
 | `[` `]` | speed ∓0.1 |
 | `{` `}` | speed ½ / ×2 |
@@ -103,6 +120,7 @@ The owner's one-off commands for his own library; nobody else needs them.
 | `bun run fetch-youtube-info [--limit n] [--force] [--replies] [--no-suggest]` | The only networked step: yt-dlp info + top comments for concert-length Videos into `youtube-info/`; ends by running the suggest step on the ids it fetched |
 | `bun run suggest-chapters [ids] [--dry-run]` | Offline: writes Suggested Chapters from the cache and the archive's Performances (the Local copy) |
 | `bun run suggest-artists [id] [--dry-run]` | Re-runs the Artist matcher over the titles (Videos with a confirmed Artist are left alone) |
+| `bun run suggest-songs [id] [--dry-run] [-v]` | Re-runs the Song matcher on Video titles (Videos whose Song was set or cleared by hand are left alone); `-v` prints each match with its score |
 | `bun run studio-match [--cached]` | Matches the archive's Tracks to Music.app tracks |
 | `bun run index-keyframes` | Indexes the keyframes of every Copy on a mounted Root that has none yet, so keyframe seeks are instant from the first play (otherwise each Copy is indexed when it first plays) |
 | `bun test`, `bun run typecheck` | Tests and types |

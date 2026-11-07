@@ -21,6 +21,10 @@ describe("list view state", () => {
     expect(parseArtistsSearch("?sort=videos&dir=asc").dir).toBe("asc");
     expect(artistsQuery({ ...st, dir: "asc" })).toContain("dir=asc");
     expect(parseArtistsSearch("?kind=bogus&sort=bogus")).toEqual(defaultArtistsState());
+    // the retired Mirror name still opens the archive chip, and is written back as `archive`
+    expect(parseArtistsSearch("?kind=mirror").kind).toBe("archive");
+    expect(artistsQuery(parseArtistsSearch("?kind=mirror"))).toBe("?kind=archive");
+    expect(parseArtistsSearch("?kind=archive").kind).toBe("archive");
   });
   test("Songs: lyrics flag and sorts", () => {
     expect(parseSongsSearch("?lyrics=1&sort=chapters")).toEqual({ q: "", lyricsOnly: true, sort: "chapters", dir: "desc" });

@@ -46,6 +46,11 @@ let expectSignedOut = false;
 /** A dropped session is being ended here (the probe's or a SIGNED_OUT's); SIGNED_OUTs meanwhile are part of it. */
 let ending = false;
 let syncInFlight: Promise<SyncResponse | null> | null = null;
+/**
+ * The sign-in's reconciliation preview ran and Continue or Cancel has not been pressed (SYNC-3): no trigger Syncs
+ * meanwhile. The companion refuses `/api/sync` in that window too (other tabs), this keeps this tab from asking.
+ */
+let awaitingConfirm = false;
 
 const toBrowser = (s: Session | null): BrowserSession | null => (s ? { userId: s.user.id, expiresAt: s.expires_at ?? null } : null);
 
@@ -151,7 +156,8 @@ async function onFocus() {
   if (r) dispatch({ type: "record", record: r.record });
   if (!state.browser) return;
   // §6.4: focus Syncs when the last successful Sync is older than 10 minutes (after failures, once the back-off passed).
-  if (syncWanted("focus", state, Date.now())) void runSync(false);
+  // Never while the sign-in confirmation waits for Continue (SYNC-3): that Sync would reconcile without the answer.
+  if (!awaitingConfirm && syncWanted("focus", state, Date.now())) void runSync(false);
   else void probe();
 }
 
@@ -159,7 +165,7 @@ async function onFocus() {
  * A §6.4 trigger: Syncs when the pure rule (`syncWanted`) says so, else resolves null. No timer ever calls this.
  */
 function trigger(t: SyncTrigger): Promise<SyncResponse | null> {
-  if (!syncWanted(t, state, Date.now())) return Promise.resolve(null);
+  if (awaitingConfirm || !syncWanted(t, state, Date.now())) return Promise.resolve(null);
   return runSync(t === "refresh-all");
 }
 
@@ -269,6 +275,7 @@ async function reconcileCall(confirm: boolean): Promise<ReconcileResponse | null
 export async function confirmSignIn(): Promise<{ reconcile: ReconcileResponse | null; sync: Promise<SyncResponse | null> | null }> {
   const reconcile = await reconcileCall(true);
   if (!reconcile?.ok) return { reconcile, sync: null };
+  awaitingConfirm = false;
   firstSyncAfterSignIn = true; // §6.6: the question may ride on the first Sync after the confirmed sign-in
   return { reconcile, sync: runSync(false) };
 }
@@ -292,6 +299,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
 /** §5.1: whoami (the record) and the count of what reconciliation will shelve; the Sync waits for Continue. */
 export async function previewSignIn(): Promise<ReconcileResponse | null> {
+  awaitingConfirm = true;
   const reconcile = await reconcileCall(false);
   changePassword = reconcile?.mustChangePassword === true;
   notify();
@@ -300,6 +308,7 @@ export async function previewSignIn(): Promise<ReconcileResponse | null> {
 
 /** Sign out, and Cancel on the reconciliation confirm (§2.4, §5.1): record cleared first, then the local session. */
 export async function signOut(): Promise<void> {
+  awaitingConfirm = false;
   await clearRecord();
   changePassword = false;
   const c = await (clientReady ?? startSession());

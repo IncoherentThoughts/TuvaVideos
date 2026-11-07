@@ -41,13 +41,14 @@ export const STAR = (
 )
 
 export function Tags({ video }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested"> }) {
-  const artists = video.artists.filter((a) => !a.suggested)
+  // Suggested Artists show too, dashed, as on the browser's card (tv-spec 5.1: a card is the browser's card)
+  const artists = video.artists
   const shown = artists.slice(0, 2)
   return (
     <div class="tags">
       <span class={`tag type-${video.type}`}>{video.type}</span>
       {shown.map((a) => (
-        <span key={a.id} class="tag" style={{ "--c": `var(--t${artistSlot(a.name)})` }}>
+        <span key={a.id} class={a.suggested ? "tag sug" : "tag"} style={{ "--c": `var(--t${artistSlot(a.name)})` }}>
           {a.name}
         </span>
       ))}

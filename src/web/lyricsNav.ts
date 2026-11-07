@@ -9,7 +9,7 @@ import { navigate, PLAY_PATH, playHref } from "./router";
 export async function openLyrics(songId: string, versionId: string | null = null): Promise<void> {
   const here = PLAY_PATH.exec(location.pathname);
   const cur = here ? here[1]! : null;
-  const song = await api.song(songId).catch(() => null);
+  const song = await api.song(songId, { fresh: true }).catch(() => null);
   if (!song) return void navigate(`/lyrics/${songId}`);
   const lyrics = { songId, versionId };
   const keepT = new URLSearchParams(location.search).get("t");

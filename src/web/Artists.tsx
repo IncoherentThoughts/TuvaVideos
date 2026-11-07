@@ -11,7 +11,7 @@ import { navigate } from "./router";
 import { Poster, ProposedMark } from "./ui";
 
 const SORT_LABEL: Record<ArtistSort, string> = { name: "Name", videos: "Videos", added: "Latest Video" };
-const KIND_LABEL = { all: "All", mirror: "Archive", local: "Local" } as const;
+const KIND_LABEL = { all: "All", archive: "Archive", local: "Local" } as const;
 
 /** Filter and order the Artists for the page. `videos` supplies the date of each Artist's newest Video. */
 export function viewArtists(artists: ArtistDto[], st: ArtistsState, videos: VideoDto[] | null): ArtistDto[] {
@@ -148,7 +148,7 @@ export function Artists({ search }: { search: string }) {
         <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name…" label="Filter Artists by name" />
         <span class="sep" />
         {ARTIST_KINDS.map((k) => (
-          <button key={k} class={`chip${st.kind === k ? " on" : ""}`} aria-pressed={st.kind === k} onClick={() => go({ kind: k })} title={k === "mirror" ? "Artists from the archive Mirror" : k === "local" ? "Local Artists, created here" : undefined}>
+          <button key={k} class={`chip${st.kind === k ? " on" : ""}`} aria-pressed={st.kind === k} onClick={() => go({ kind: k })} title={k === "archive" ? "Artists from the archive" : k === "local" ? "Local Artists, created here" : undefined}>
             {KIND_LABEL[k]}
           </button>
         ))}

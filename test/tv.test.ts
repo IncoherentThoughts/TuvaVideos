@@ -1,5 +1,7 @@
 // The TV Server (docs/tv-spec.md 2, 3.1-3.3): the TV Playback profile's decision, scan-time judging and staleness,
 // the second listener, the route list and the Approved TV allowlist.
+// Story-style: the tests against the shared app run in file order and build on each other's state, so
+// `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -128,7 +130,7 @@ async function ff(...args: string[]) {
 const lav = (size: string, secs = 2) => ["-f", "lavfi", "-i", `testsrc=size=${size}:rate=25:duration=${secs}`, "-f", "lavfi", "-i", `sine=duration=${secs}`];
 
 beforeAll(async () => {
-  const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_TV_PORT: "0", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir });
+  const cfg = loadConfig({ TUVA_DATA_DIR: join(base, "data"), TUVA_PORT: "0", TUVA_TV_PORT: "0", TUVA_TV_LOOPBACK: "1", TUVA_NO_OPEN: "1", TUVA_LOCAL_ROOT: localDir }); // the TV requests come from 127.0.0.1
   ffmpeg = cfg.ffmpeg;
   await ff(...lav("320x240", 70), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", join(localDir, "Plain [aaaaaaaaaaa].mp4"));
   await ff(...lav("1080x1920"), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", join(localDir, "Portrait [bbbbbbbbbbb].mp4"));
@@ -259,9 +261,12 @@ describe("TV Server listener", () => {
     expect(app.db.query("SELECT model FROM approved_tv WHERE ip = '127.0.0.1'").get()).toEqual({ model: "Samsung 85R85H" });
 
     const videos = (await (await tvReq("/api/videos", { headers: tvModel })).json()) as any[];
-    expect(videos[0].copies[0].tv.order).toBeDefined();
-    const vid = videos[0].id;
-    const copy = videos[0].copies[0].id;
+    // Pick the plain mp4 explicitly: the list order ties on created_at, and the PCM Copy answers
+    // /copy/:id with the designed 503 while its scan-time Fallback is still being made.
+    const plain = videos.find((v) => v.youtubeId === "aaaaaaaaaaa");
+    expect(plain.copies[0].tv.order).toBe("file");
+    const vid = plain.id;
+    const copy = plain.copies[0].id;
     // walk the data: every listed route is answered by its handler (never the unlisted 404)
     for (const r of TV_ROUTES) {
       const path = r.sample.replace(`/videos/${V(1)}`, `/videos/${vid}`).replace("/copies/1", `/copies/${copy}`).replace("/copy/1", `/copy/${copy}`).replace(`/thumbs/${V(1)}/`, `/thumbs/${vid}/`).replace("/live/1/", `/live/${copy}/`);
@@ -353,8 +358,8 @@ describe("TV Server listener", () => {
   });
 
   test("approve and deny need an ip", async () => {
-    expect((await fetch(`${local}/api/tv/approve`, { method: "POST", body: "{}" })).status).toBe(400);
-    expect((await fetch(`${local}/api/tv/deny`, { method: "POST", body: "nope" })).status).toBe(400);
+    expect((await fetch(`${local}/api/tv/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(400);
+    expect((await fetch(`${local}/api/tv/deny`, { method: "POST", headers: { "content-type": "application/json" }, body: "nope" })).status).toBe(400);
   });
 
   test("off is a hard stop: the listener is gone, the hooks ran, the pending prompt is cleared", async () => {

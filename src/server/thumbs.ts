@@ -320,7 +320,10 @@ export class Thumbnails {
 
   private async frame(src: string, ss: number, scale: number, out: string): Promise<Outcome> {
     await this.gate();
-    const r = await run(this.cfg.ffmpeg, ["-v", "error", "-y", "-ss", ss.toFixed(3), "-i", src, "-an", "-sn", "-dn", "-frames:v", "1", "-vf", `scale=${scale}:-2,setsar=1`, "-c:v", "png", "-compression_level", "1", out], { timeout: 120_000 });
+    const r = await run(this.cfg.ffmpeg, ["-v", "error", "-y", "-ss", ss.toFixed(3), "-i", src, "-an", "-sn", "-dn", "-frames:v", "1", "-vf", `scale=${scale}:-2,setsar=1`, "-c:v", "png", "-compression_level", "1", out], {
+      timeout: 120_000,
+      onSpawn: (p) => (this.children.add(p), p.on("close", () => this.children.delete(p))),
+    });
     if (r.code === 0 && (await fileSize(out)) > 0) return { ok: true };
     return { ok: false, error: r.err.trim().slice(-300) || "no frame produced", io: IO_RE.test(r.err) };
   }
@@ -439,12 +442,25 @@ export class Thumbnails {
         const dims = await webpSize(stripTmp);
         frameH = dims ? Math.round(dims.h / g.rows) : null;
       }
+      // The Video may have been deleted during the minutes this took (audit DB-14): its cache files are already gone,
+      // so publishing these would leave orphans and the row would fail its foreign key.
+      if (!this.db.query("SELECT 1 FROM videos WHERE id = ?").get(videoId)) {
+        log(`thumbs: video ${videoId} was deleted while its Thumbnail was made; discarded`);
+        return;
+      }
       if (!shared) await rename(posterTmp, this.posterPath(videoId));
       if (g) await rename(stripTmp, this.stripPath(videoId));
       else await rm(this.stripPath(videoId), { force: true });
-      this.db
-        .prepare(SET_THUMB)
-        .run(new Date().toISOString(), src.id, g?.frames ?? 0, g?.columns ?? 0, g?.rows ?? 0, g ? STRIP_FRAME_WIDTH : null, frameH, videoId);
+      try {
+        this.db
+          .prepare(SET_THUMB)
+          .run(new Date().toISOString(), src.id, g?.frames ?? 0, g?.columns ?? 0, g?.rows ?? 0, g ? STRIP_FRAME_WIDTH : null, frameH, videoId);
+      } catch (e) {
+        // deleted between the check and the write: take the files back out
+        if (!shared) await rm(this.posterPath(videoId), { force: true });
+        await rm(this.stripPath(videoId), { force: true });
+        throw e;
+      }
       this.stats.generated++;
       log(`thumbs: video ${videoId} done in ${((Date.now() - t0) / 1000).toFixed(1)}s (${g ? g.frames + " frames" : "poster only"})`);
     } finally {

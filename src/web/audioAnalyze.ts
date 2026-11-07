@@ -105,9 +105,25 @@ export async function analyzeFull(copyId: number, onProgress: (frac: number) => 
 }
 
 // ---- sampled: a few spread-out places through the live chain ----
-export interface SampleOpts { places?: number; perPlaceMs?: number }
+export interface SampleOpts { places?: number; perPlaceMs?: number; signal?: AbortSignal }
 
+const aborted = () => new DOMException("Auto was cancelled", "AbortError");
+const pause = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const t = setTimeout(done, ms);
+    function done() {
+      clearTimeout(t);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done);
+  });
+
+/** Measures through the live chain at a few places. An aborted `signal` stops it at once (the playhead and sound are
+ *  put back as they were) and rejects with an AbortError; `onProgress` is not called after that. */
 export async function analyzeSampled(video: HTMLMediaElement, engine: AudioEngine, onProgress: (frac: number) => void, opts: SampleOpts = {}): Promise<Measure> {
+  const signal = opts.signal;
+  if (signal?.aborted) throw aborted();
   const places = opts.places ?? 5, perPlaceMs = opts.perPlaceMs ?? 1200;
   const dur = Number.isFinite(video.duration) ? video.duration : 0;
   const was = { t: video.currentTime, paused: video.paused };
@@ -123,12 +139,14 @@ export async function analyzeSampled(video: HTMLMediaElement, engine: AudioEngin
   let hzPerBin = 0;
   try {
     for (let w = 0; w < positions.length; w++) {
-      await seekAndSettle(video, positions[w]!);
+      await seekAndSettle(video, positions[w]!, signal);
+      if (signal?.aborted) throw aborted();
       const sums: [number, number] = [0, 0];
       const frames: Float32Array[] = [];
       const n = Math.max(4, Math.round(perPlaceMs / 80));
       for (let i = 0; i < n; i++) {
-        await new Promise((r) => setTimeout(r, 80));
+        await pause(80, signal);
+        if (signal?.aborted) throw aborted();
         const [l, r] = engine.inputDb();
         sums[0] += l; sums[1] += r;
         const sp = engine.cleanup.read();
@@ -173,12 +191,25 @@ export async function analyzeSampled(video: HTMLMediaElement, engine: AudioEngin
 
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-function seekAndSettle(video: HTMLMediaElement, t: number): Promise<void> {
+function seekAndSettle(video: HTMLMediaElement, t: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     let done = false;
-    const finish = () => { if (!done) { done = true; video.removeEventListener("seeked", onSeeked); setTimeout(resolve, 300); } };
+    const finish = () => {
+      if (done) return;
+      done = true;
+      video.removeEventListener("seeked", onSeeked);
+      signal?.removeEventListener("abort", stop);
+      setTimeout(resolve, 300);
+    };
     const onSeeked = () => finish();
+    const stop = () => {
+      if (done) return;
+      done = true;
+      video.removeEventListener("seeked", onSeeked);
+      resolve();
+    };
     video.addEventListener("seeked", onSeeked);
+    signal?.addEventListener("abort", stop);
     video.currentTime = t;
     setTimeout(finish, 2000); // an unbuffered seek on a big file: give up waiting and use what plays
   });

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 
 /** stderr patterns that mean the drive is misbehaving, not that the file is bad. */
 export const IO_RE =
@@ -17,10 +17,12 @@ export interface RunResult {
   err: string;
 }
 
-export function run(cmd: string, args: string[], opts: { timeout?: number } = {}): Promise<RunResult> {
+/** `onSpawn` hands the child to the caller, so a shutdown can kill it. */
+export function run(cmd: string, args: string[], opts: { timeout?: number; onSpawn?: (p: ChildProcess) => void; env?: Record<string, string> } = {}): Promise<RunResult> {
   const timeout = opts.timeout ?? 300_000;
   return new Promise((resolve) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: opts.env ? { ...process.env, ...opts.env } : undefined });
+    opts.onSpawn?.(p);
     const out: Buffer[] = [];
     let err = "";
     p.stdout.on("data", (d) => out.push(d));

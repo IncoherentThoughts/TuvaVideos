@@ -1,6 +1,6 @@
 // Relocating a Copy (Now playing's folder button): the parts that need no ffprobe.
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/server/db";
@@ -10,8 +10,14 @@ import { insertChapter, insertCopy, insertVideo, V } from "./helpers/seed";
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
 const cfg = { ffprobe: "/nonexistent/ffprobe", remuxDir: "/nonexistent" };
 
+const dirs: string[] = [];
+afterAll(() => {
+  for (const d of dirs) rmSync(d, { recursive: true, force: true });
+});
+
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "tuva-reloc-"));
+  dirs.push(dir);
   const lib = join(dir, "lib");
   mkdirSync(join(lib, "moved"), { recursive: true });
   writeFileSync(join(lib, "moved", "Song.mp4"), "x");

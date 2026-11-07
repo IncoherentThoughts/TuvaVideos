@@ -121,6 +121,14 @@
     access: (s) => `Found the Mac at ${esc(s.detail)}, asking for the library`,
   }
 
+  // The TV UI needs Chromium 94: its script uses ?? , ?. and ??= (85) and its stylesheet inset and aspect-ratio (88);
+  // config.xml requires Tizen 7.0 (M94) to match, see the README.
+  const MIN_CHROME = 94
+  function chromeMajor() {
+    const m = /Chrome\/(\d+)/.exec(navigator.userAgent)
+    return m ? Number(m[1]) : null
+  }
+
   function render(s) {
     el.hidden = false
     el.className = s.kind === "off" ? "over" : ""
@@ -129,11 +137,12 @@
         `<h1>Looking for TuvaVideos on the Mac…</h1><div class="step">${STEP_TEXT[s.step](s)}</div>` +
         `<div class="hint">${key("Enter")} type the Mac's address &nbsp; ${key("Back")} exit</div>`
     } else if (s.kind === "typing") {
+      const where = s.prefix ? "The TV button on the Mac shows its address: type its last number" : "The TV button on the Mac shows its address"
       el.innerHTML =
         `<h1>The Mac's address</h1><div class="field">${esc(typed)}<i></i></div>` +
-        (s.error ? `<div class="err">${esc(s.error)}</div>` : `<div class="step">Port 4401 is added for you</div>`) +
+        (s.error ? `<div class="err">${esc(s.error)}</div>` : `<div class="step">${where}. Port 4401 is added for you.</div>`) +
         padHtml() +
-        `<div class="hint">${key("◀ ▲ ▼ ▶")} choose &nbsp; ${key("Enter")} press &nbsp; ${key("Back")} delete</div>`
+        `<div class="hint">${key("◀ ▲ ▼ ▶")} choose &nbsp; ${key("Enter")} press &nbsp; ${key("Back")} delete &nbsp; still looking meanwhile</div>`
     } else if (s.kind === "denied") {
       el.innerHTML =
         `<h1>Approve this TV on the Mac</h1><div class="step">Click Allow in the TuvaVideos window on the Mac.</div>` +
@@ -142,12 +151,51 @@
       el.innerHTML =
         `<h1>TV Server turned off</h1><div class="step">Switch it back on in TuvaVideos on the Mac.</div>` +
         `<div class="hint">${key("Enter")} look again &nbsp; ${key("Back")} exit</div>`
+    } else if (s.kind === "starting") {
+      el.innerHTML = `<h1>Starting TuvaVideos…</h1><div class="step">Loading the app from ${esc(s.base)}</div><div class="hint">${key("Back")} exit</div>`
+    } else if (s.kind === "failed") {
+      const v = chromeMajor()
+      const old =
+        v != null && v < MIN_CHROME
+          ? `<div class="step">This TV's browser is Chrome ${v}; TuvaVideos needs Chrome ${MIN_CHROME} or newer (Samsung 2023 / Tizen 7.0, LG webOS 23, or later).</div>`
+          : ""
+      el.innerHTML =
+        `<h1>${esc(s.title)}</h1><div class="step">${esc(s.detail)}</div>${old}` +
+        `<div class="hint">${key("Enter")} try again &nbsp; ${key("Back")} exit</div>`
     }
   }
 
   // ---- loading the UI from the server ----------------------------------------------------------------------------
+  // The shell stays up ("Starting…") until the UI has run: /tv.js loaded, ran without throwing and drew into #tv (or
+  // called tuvaTv.ready()). A load error, a parse or boot error, or nothing after BOOT_TIMEOUT_MS shows "failed"
+  // with Enter to try again and Back to exit, instead of a black screen whose keys go nowhere.
 
+  const BOOT_TIMEOUT_MS = 20000
   let loaded = false
+  let uiUp = false
+  let failure = null
+  let bootTimer = null
+  let bootPoll = null
+
+  function uiStarted() {
+    if (uiUp || failure) return
+    uiUp = true
+    window.clearTimeout(bootTimer)
+    window.clearInterval(bootPoll)
+    el.hidden = true
+  }
+  function bootFailed(title, detail) {
+    if (uiUp || failure) return
+    window.clearTimeout(bootTimer)
+    window.clearInterval(bootPoll)
+    failure = { kind: "failed", title, detail }
+    render(failure)
+  }
+  const drewSomething = () => {
+    const tv = document.getElementById("tv")
+    return !!tv && tv.childNodes.length > 0
+  }
+
   function loadUi(base) {
     if (loaded) return
     loaded = true
@@ -157,16 +205,33 @@
       exit: exitApp,
       // The UI calls this when a request comes back 403 or the stream dies: the shell reloads and finds its way again.
       restart: () => location.reload(),
+      // The UI calls this once it has drawn its first screen.
+      ready: uiStarted,
     }
+    render({ kind: "starting", base })
+    // A parse error or a throw while /tv.js boots arrives here (a cross-origin script may only say "Script error.").
+    window.addEventListener("error", (e) => {
+      if (uiUp || failure) return
+      const msg = (e && e.message) || ""
+      const where = e.filename ? ` (${String(e.filename).replace(/^.*\//, "")}${e.lineno ? `:${e.lineno}` : ""})` : ""
+      // A script from another origin only reports "Script error.": say what that means instead.
+      const detail = !msg || /^Script error\.?$/i.test(msg) ? "Its script from the Mac failed to run on this TV." : `${msg}${where}`
+      bootFailed("The TV app could not start", detail)
+    })
+    bootTimer = window.setTimeout(() => bootFailed("The TV app did not start", `Nothing was drawn ${BOOT_TIMEOUT_MS / 1000} s after loading ${base}/tv.js`), BOOT_TIMEOUT_MS)
     const css = document.createElement("link")
     css.rel = "stylesheet"
     css.href = base + "/tv.css"
     document.head.appendChild(css)
     const js = document.createElement("script")
     js.src = base + "/tv.js"
-    js.onerror = () => render({ kind: "off", base })
+    js.onerror = () => bootFailed("Could not load the TV app", `Nothing came back for ${base}/tv.js`)
+    js.onload = () => {
+      if (failure) return
+      if (drewSomething()) return uiStarted()
+      bootPoll = window.setInterval(() => drewSomething() && uiStarted(), 250)
+    }
     document.body.appendChild(js)
-    el.hidden = true
   }
 
   let prevKind = null
@@ -200,6 +265,13 @@
       const eat = () => {
         e.preventDefault()
         e.stopPropagation()
+      }
+      if (s.kind === "ready") {
+        // "Starting…" or "failed": the shell is on screen, so it owns every key; the UI under it gets none.
+        eat()
+        if (name === "Back" || name === "Exit" || e.key === "Backspace") exitApp()
+        else if (name === "Enter" && failure) location.reload()
+        return
       }
       if (s.kind === "typing") {
         eat()

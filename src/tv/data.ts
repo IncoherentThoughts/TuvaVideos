@@ -8,6 +8,8 @@ export interface TuvaTvShell {
   keys?: unknown
   exit: () => void
   restart: () => void
+  /** The UI has drawn its first screen: the shell takes its "Starting…" screen down (older shells lack it). */
+  ready?: () => void
 }
 
 declare global {
@@ -63,9 +65,12 @@ export function exitApp(): boolean {
  * them; `text/plain` keeps the request "simple" (no preflight from the shell's origin), the server reads the body as
  * JSON whatever the content type.
  */
+const inFlight = new Set<Promise<unknown>>()
 function post(path: string, body: unknown): void {
   try {
-    void fetch(url(path), { method: "POST", headers: { "content-type": "text/plain" }, body: body === undefined ? undefined : JSON.stringify(body), keepalive: true }).catch(() => {})
+    const p = fetch(url(path), { method: "POST", headers: { "content-type": "text/plain" }, body: body === undefined ? undefined : JSON.stringify(body), keepalive: true }).catch(() => {})
+    inFlight.add(p)
+    void p.finally(() => inFlight.delete(p))
   } catch {
     /* a write that cannot be sent is lost; Resume is rewritten every 5 s */
   }
@@ -73,4 +78,7 @@ function post(path: string, body: unknown): void {
 export const writes = {
   resume: (videoId: string, resumeS: number, copyId: number | null) => post(`/api/videos/${videoId}/resume`, { resumeS, copyId }),
   view: (videoId: string) => post(`/api/videos/${videoId}/view`, undefined),
+  /** Resolves once the writes sent so far have been answered (at most `capMs`): a re-read after them sees them (TV-6). */
+  settled: (capMs = 2000): Promise<void> =>
+    Promise.race([Promise.all([...inFlight]), new Promise<void>((r) => setTimeout(r, capMs))]).then(() => {}),
 }

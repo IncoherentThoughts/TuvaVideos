@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks"
 import { libraryFiltered } from "../shared/playlistStart"
 import { api } from "./data"
-import { findByKey, focusEl, keyOf, moveFocus } from "./focus"
+import { findByKey, focusEl, itemsIn, keyOf, moveFocus, zoneOf } from "./focus"
 import { COLS, ROW_H, pageTarget, rowOf, scrollForRow, windowRange, windowRows } from "./gridMath"
 import { useKeyHandler } from "./input"
 import { CHIPS, chipLabel, cycleChip } from "./libchips"
@@ -35,7 +35,27 @@ export function Grid({ spec, nav, active }: { spec: GridSpec; nav: Nav; active: 
   const index = useMemo(() => new Map(all.map((t, i) => [t.key, i])), [all])
   const rows = Math.ceil(all.length / COLS)
 
-  const { root, onFocusIn, ensure } = useScreen(active, !loading, (r) => findByKey(r, all[0]?.key ?? "") ?? findByKey(r, "h-search"))
+  // The tile focus was last on, by key and index: a reload can reorder the grid (the Player just counted a view, so
+  // "Most watched" and Continue watching move that Video) and unmount the focused tile from the window (TV-5).
+  const lastTile = useRef<{ key: string; index: number } | null>(null)
+  /** Where focus belongs when it is lost: the same tile wherever it moved to, else the tile now at its old index. */
+  const restoreIndex = (): number | null => {
+    const t = lastTile.current
+    if (!t || all.length === 0) return null
+    return index.get(t.key) ?? Math.min(t.index, all.length - 1)
+  }
+  const firstRendered = (r: HTMLElement) => itemsIn(r).find((e) => zoneOf(e) === "grid") ?? findByKey(r, "h-search")
+  const screen = useScreen(active, !loading, (r) => {
+    const i = restoreIndex()
+    if (i == null) return firstRendered(r)
+    return findByKey(r, all[i]!.key) // null when it is outside the window: restore() scrolls to it
+  })
+  const { root, ensure } = screen
+  const onFocusIn = (e: FocusEvent) => {
+    screen.onFocusIn(e)
+    const k = keyOf(e.target as Element)
+    if (k != null && index.has(k)) lastTile.current = { key: k, index: index.get(k)! }
+  }
 
   // Measure the view, and follow the scroll (focus moves scroll it; so does paging).
   useLayoutEffect(() => {
@@ -66,6 +86,27 @@ export function Grid({ spec, nav, active }: { spec: GridSpec; nav: Nav; active: 
     }
   })
 
+  /** Focus is nowhere in the grid: put it back on the last tile (scrolling to it when it moved out of the window). */
+  const restore = (): boolean => {
+    const r = root.current
+    const el = scroller.current
+    if (!r || !el || (r.contains(document.activeElement) && document.activeElement !== r)) return false
+    const i = restoreIndex()
+    if (i == null) return ensure()
+    const k = all[i]!.key
+    const found = findByKey(r, k)
+    if (found) return focusEl(found, 24) != null
+    pending.current = k // rendered on the next frame, focused by the effect above
+    el.scrollTop = scrollForRow(rowOf(i))
+    setScrollTop(el.scrollTop)
+    return true
+  }
+
+  // The list changed under an active grid (the reload after the Player): keep focus on the same Video.
+  useLayoutEffect(() => {
+    if (active && !loading) restore()
+  }, [all, active])
+
   const shuffle = () => {
     const grid = spec.kind === "favorites" ? "favorites" : spec.kind === "library" ? "library" : "other"
     const s = shuffleStart(tiles, grid, libraryFiltered(nav.lib))
@@ -88,7 +129,10 @@ export function Grid({ spec, nav, active }: { spec: GridSpec; nav: Nav; active: 
   useKeyHandler(active, (k) => {
     const r = root.current
     if (!r) return false
-    if (k.action !== "back" && k.action !== "backspace" && ensure()) return true // focus was lost (a mouse click): find it again
+    if (k.action !== "back" && k.action !== "backspace" && restore()) {
+      // Focus was lost (a mouse click): it is back on the last tile. The key still counts when that tile is on screen.
+      if (!r.contains(document.activeElement)) return true
+    }
     switch (k.action) {
       case "up":
       case "down":

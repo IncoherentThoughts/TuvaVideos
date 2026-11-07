@@ -70,25 +70,48 @@ export const callWrite = <F extends WriteFunction, O extends OpOf<F>>(c: RpcClie
 /** `shared_changes_since(p_since)`: the pull (§6.2); null asks for everything. */
 export const changesSince = (c: RpcClient, since: Iso | null) => call<SharedChanges>(c, "shared_changes_since", { p_since: since });
 
+/** Per-call timeout of the companion's PostgREST calls. */
+export const CALL_TIMEOUT_MS = 15_000;
+/** The whole-archive pull's timeout (SYNC-16). */
+export const FULL_PULL_TIMEOUT_MS = 180_000;
+/** The error code of a call that ran out of time (status 0, so `unreachable`); the Sync says so distinctly. */
+export const TIMEOUT_CODE = "timeout";
+/** The Sync's and sign-in's line for it. */
+export const TIMEOUT_LINE = "The archive took too long to answer; try again (a slow link makes the full pull slow)";
+
 /**
  * The companion's RpcClient: PostgREST over plain fetch with the browser's access token, for the length of one Sync.
  * The token goes in the Authorization header only, never a URL, a log line or an error message.
  */
-export function postgrestClient(ep: ArchiveEndpoint, accessToken: string, fetchImpl: typeof fetch = fetch): RpcClient {
+export function postgrestClient(ep: ArchiveEndpoint, accessToken: string, fetchImpl: typeof fetch = fetch, timeouts: { callMs?: number; fullPullMs?: number } = {}): RpcClient {
   return {
     async rpc(fn, args) {
+      // SYNC-16: the whole-archive pull (`p_since` null: first Sync, schema change, Refresh all, the sign-in preview)
+      // is the largest answer the app gets, body download included; it gets minutes, every other call 15 s.
+      const fullPull = fn === "shared_changes_since" && (args as { p_since?: unknown } | undefined)?.p_since == null;
+      const ms = fullPull ? (timeouts.fullPullMs ?? FULL_PULL_TIMEOUT_MS) : (timeouts.callMs ?? CALL_TIMEOUT_MS);
+      const timedOut = (e: unknown) => (e as Error)?.name === "TimeoutError";
+      const late = { data: null, error: { code: TIMEOUT_CODE, message: `the archive did not answer within ${Math.round(ms / 1000)} s` }, status: 0 };
       let r: Response;
       try {
         r = await fetchImpl(`${ep.url}/rest/v1/rpc/${encodeURIComponent(fn)}`, {
           method: "POST",
           headers: { apikey: ep.key, authorization: `Bearer ${accessToken}`, "content-type": "application/json", accept: "application/json" },
           body: JSON.stringify(args ?? {}),
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(ms),
         });
       } catch (e) {
+        if (timedOut(e)) return late;
         return { data: null, error: { code: "", message: `the archive can't be reached (${(e as Error)?.name ?? "error"})` }, status: 0 };
       }
-      const text = await r.text().catch(() => "");
+      let text: string;
+      try {
+        text = await r.text();
+      } catch (e) {
+        // The body was cut off (the timeout fired mid-download, or the link dropped): never an "unknown shape".
+        if (timedOut(e)) return late;
+        return { data: null, error: { code: "", message: `the archive's answer was cut off (${(e as Error)?.name ?? "error"})` }, status: 0 };
+      }
       let body: unknown = null;
       try {
         body = text ? JSON.parse(text) : null;

@@ -1,7 +1,7 @@
 // First launch (docs/sharing-spec.md §8.4): the Root field's path check, which onboarding surface shows, and the
 // routes that insert the `root` row (starting the first scan) and dismiss the Member's bar.
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import { startApp, type App } from "../src/server/app";
@@ -47,7 +47,7 @@ describe("the Root field's path", () => {
   });
 
   test("on the real filesystem", async () => {
-    const base = mkdtempSync(join(tmpdir(), "tuva-rootcheck-"));
+    const base = mkdtempSync(join(realpathSync(tmpdir()), "tuva-rootcheck-"));
     try {
       writeFileSync(join(base, "file.mp4"), "x");
       mkdirSync(join(base, "locked"));
@@ -81,7 +81,7 @@ describe("which onboarding surface shows", () => {
 });
 
 describe("first-launch routes", () => {
-  const base = mkdtempSync(join(tmpdir(), "tuva-onboard-"));
+  const base = mkdtempSync(join(realpathSync(tmpdir()), "tuva-onboard-"));
   const apps: App[] = [];
   afterAll(async () => {
     for (const a of apps) await a.stop();
@@ -113,7 +113,7 @@ describe("first-launch routes", () => {
     await app.scanner.whenIdle();
     expect(app.scanner.progress().last.map((s: { rootId: number }) => s.rootId)).toEqual([body.root.id]);
     expect((await post("/api/roots", { path: folder })).status).toBe(409);
-    expect((await fetch(`http://localhost:${app.server.port}/api/roots`, { method: "POST", body: JSON.stringify({ path: folder }) })).status).toBe(403);
+    expect((await fetch(`http://localhost:${app.server.port}/api/roots`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: folder }) })).status).toBe(403);
   });
 
   test("a Member with no Root gets the bar; dismissing it is remembered", async () => {

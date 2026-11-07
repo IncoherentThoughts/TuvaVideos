@@ -34,7 +34,7 @@ export type ChipView =
       avatarUrl: string | null;
       displayName: string;
       email: string | null;
-      /** The role pill; null for an account without the video grant ("No video library access"). */
+      /** The role pill; null for an account without the video grant ("This account has no access to the shared library"). */
       role: "Video Editor" | "Member" | null;
       /** The small slashed dot (§2.2): the archive was not reached, or auth is unsettled (§5.3: unsettled = offline). */
       offline: boolean;

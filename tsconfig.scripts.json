@@ -1,0 +1,6 @@
+{
+  // The maintained scripts/ (setup, installers, migrations, seeds). `bun run typecheck` checks this and tsconfig.json.
+  // tv/home-prototype is an archived design prototype from before the UUID ids and is not checked (see its README).
+  "extends": "./tsconfig.json",
+  "include": ["scripts/**/*.ts"]
+}

@@ -9,17 +9,20 @@
 //
 // The token lives in this job's local variables only: never stored, never logged, gone when the job ends. One Sync at
 // a time per companion; requests arriving during one are coalesced into a single follow-up run.
-import { changesSince, postgrestClient, tokenExp, whoami, type ArchiveCall, type ArchiveEndpoint, type RpcClient } from "../shared/archive";
+import { changesSince, postgrestClient, TIMEOUT_CODE, TIMEOUT_LINE, tokenExp, whoami, type ArchiveCall, type ArchiveEndpoint, type RpcClient } from "../shared/archive";
 import { WATERMARK_OVERLAP_MS, type VideoWhoami } from "../shared/archiveWire";
 import { schemaGateLine, type SessionRecord, type SyncResponse } from "../shared/session";
 import type { ApplySharedResult, Iso, SharedChanges } from "../shared/sharedRows";
 import type { Db } from "./db";
 import { applyShared, tsMicros } from "./localCopy/apply";
 import { runArchiveFollowUps } from "./localCopy/followUps";
-import { getMeta, readSessionRecord, SHARED_SCHEMA, setMeta, writeSessionRecord } from "./localCopy/meta";
+import {
+  ARCHIVE_SCHEMA_KEY, getMeta, RECONCILE_PENDING_KEY, RECONCILE_PENDING_LINE, readSessionRecord, sessionEpoch, SHARED_SCHEMA, setMeta, updateSessionRecord, writeSessionRecord,
+} from "./localCopy/meta";
 import { log } from "./log";
 import { downloadPosters, type PosterDownloadResult } from "./posters";
-import { reconcileBatch } from "./reconcile";
+import { reconcileBatch, renameThumbnails } from "./reconcile";
+import { freeCollidingIds, type FreedIds } from "./localCopy/rekey";
 
 /**
  * One run at a time; calls arriving during a run share one follow-up run, made with the newest argument (the newest
@@ -90,6 +93,21 @@ export function laterOf(a: string | null | undefined, b: string | null | undefin
   return y > x ? b! : a!;
 }
 
+/**
+ * The watermark kept after a pull: never later than the archive's own clock at the pull (SYNC-13). One row stamped in
+ * the future (a client's clock, an import) would otherwise push `p_since` past every real change until real time
+ * caught up, and `laterOf` never lets it come back.
+ */
+export function clampWatermark(watermark: string | null, serverTime: string | null | undefined): string | null {
+  const w = tsMicros(watermark);
+  const s = tsMicros(serverTime);
+  if (w == null || s == null || w <= s) return watermark;
+  return serverTime!;
+}
+
+/** `meta` key: the archive's `server_time` at the last successful pull (SYNC-10: what retention is measured from). */
+export const LAST_PULL_KEY = "last_pull_server_time";
+
 export type FullReason ="requested" | "first" | "schema" | "retention";
 
 /** Which of §6.4's repair cases applies, or null for an incremental pull. */
@@ -101,12 +119,19 @@ export function fullRefetchReason(o: {
   client: number;
   /** The archive's clock (whoami's `server_time`), ms. */
   serverNowMs: number;
+  /**
+   * The archive's clock at the last successful pull (`LAST_PULL_KEY`), ms. Tombstones purged since then are the only
+   * ones a pull can miss (SYNC-10): a quiet archive leaves the watermark old while every Sync still pulls. Unknown
+   * (a Local copy from before this key): the watermark stands in, as before.
+   */
+  lastPullMs?: number | null;
 }): FullReason | null {
   if (o.requested) return "requested";
   const us = tsMicros(o.watermark);
   if (us == null) return "first";
   if (o.syncedSchema !== o.client) return "schema";
-  if (o.serverNowMs - us / 1000 > TOMBSTONE_RETENTION_MS) return "retention";
+  const since = o.lastPullMs != null && Number.isFinite(o.lastPullMs) ? o.lastPullMs : us / 1000;
+  if (o.serverNowMs - since > TOMBSTONE_RETENTION_MS) return "retention";
   return null;
 }
 
@@ -157,6 +182,10 @@ export interface SyncOptions {
 
 const refusal = (r: Extract<ArchiveCall<unknown>, { ok: false }>, what: string) => `The archive refused ${what} (${r.error.code ?? r.error.word})`;
 
+/** SYNC-7: the Sync's line when the record was cleared (or replaced) while it ran. */
+export const SIGNED_OUT_DURING_SYNC = "Signed out during the Sync; nothing was applied";
+class Interrupted extends Error {}
+
 function recordFromWhoami(db: Db, w: VideoWhoami, nowMs: number): SessionRecord {
   return writeSessionRecord(db, {
     userId: w.user_id,
@@ -181,6 +210,11 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
   const once = async ({ accessToken, full = false }: SyncArgs): Promise<SyncResponse> => {
     const exp = tokenExp(accessToken);
     if (exp != null && exp * 1000 <= now()) return fail(db, { error: "The session's access token has expired", unauthorized: true, full });
+    // SYNC-3: the sign-in confirmation is open; a Sync now would reconcile before Continue.
+    if (getMeta(db, RECONCILE_PENDING_KEY)) return fail(db, { reachable: true, error: RECONCILE_PENDING_LINE, full });
+    // SYNC-7: a Sign out while this job awaits the archive bumps the epoch; the job then writes nothing.
+    const epoch = sessionEpoch(db);
+    const interrupted = () => (sessionEpoch(db) !== epoch ? SIGNED_OUT_DURING_SYNC : getMeta(db, RECONCILE_PENDING_KEY) ? RECONCILE_PENDING_LINE : null);
     const c: RpcClient = postgrestClient(endpoint, accessToken, opts.fetchImpl);
     const r = await whoami(c);
     if (!r.ok) {
@@ -189,6 +223,9 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
     }
     if (!isWhoami(r.value)) return fail(db, { reachable: true, error: "The archive's video_whoami() answered in an unknown shape", full });
     const w = r.value;
+    const stop = interrupted();
+    if (stop) return fail(db, { reachable: true, error: stop, full });
+    setMeta(db, ARCHIVE_SCHEMA_KEY, String(w.shared_schema)); // SYNC-8: the cache apply refuses while they differ
     let record = recordFromWhoami(db, w, now());
     const schema = { client: SHARED_SCHEMA, archive: w.shared_schema };
     const mustChangePassword = w.must_change_password === true;
@@ -200,21 +237,24 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
 
     const synced = getMeta(db, SYNCED_SCHEMA_KEY);
     const serverNow = tsMicros(w.server_time);
+    const lastPull = tsMicros(getMeta(db, LAST_PULL_KEY));
     const reason = fullRefetchReason({
       requested: full, watermark: record.watermark, syncedSchema: synced == null ? null : Number(synced), client: SHARED_SCHEMA,
-      serverNowMs: serverNow == null ? now() : serverNow / 1000,
+      serverNowMs: serverNow == null ? now() : serverNow / 1000, lastPullMs: lastPull == null ? null : lastPull / 1000,
     });
     const t0 = performance.now();
     const pull = await changesSince(c, reason ? null : pullSince(record.watermark));
     log(`sync: ${reason ? `full (${reason})` : "incremental"} pull in ${Math.round(performance.now() - t0)} ms`);
     if (!pull.ok) {
       const out = { ...base, record, ok: false, pulled: false, full: reason != null };
+      // SYNC-16: a pull that ran out of time reached the archive; say that, not "can't be reached".
+      if (pull.unreachable && pull.error.code === TIMEOUT_CODE) return { ...out, error: TIMEOUT_LINE };
       if (pull.unreachable) return { ...out, reachable: false, error: "The archive can't be reached" };
       if (pull.unauthorized) return { ...out, unauthorized: true, error: refusal(pull, "the pull") };
       if (pull.error.word === "forbidden") {
         // §6.2: a permission error re-reads the grant and updates the Session record.
         const again = await whoami(c);
-        if (again.ok && isWhoami(again.value)) record = recordFromWhoami(db, again.value, now());
+        if (again.ok && isWhoami(again.value) && !interrupted()) record = recordFromWhoami(db, again.value, now());
         return { ...out, record, error: record.grantLevel ? refusal(pull, "the pull") : "This account no longer has access to the shared library" };
       }
       return { ...out, error: refusal(pull, "the pull") };
@@ -225,26 +265,39 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
       return { ...base, record, schema: { client: SHARED_SCHEMA, archive: batch.shared_schema }, ok: false, pulled: false, full: reason != null, error: schemaGateError(SHARED_SCHEMA, batch.shared_schema) };
     }
 
-    // One transaction: the wipe (repair cases) and the apply stand or fall together; a failure leaves the watermark.
+    // One transaction: the wipe (repair cases), the apply and the record's new watermark stand or fall together; a
+    // failure leaves the watermark.
     let applied: ApplySharedResult;
+    let freed: FreedIds | null = null;
+    const userId = record.userId;
+    const heldWatermark = record.watermark;
     try {
       applied = db.transaction(() => {
+        // SYNC-7: signed out (or another sign-in started) while the pull was on the wire: apply nothing.
+        const stop = interrupted() ?? (readSessionRecord(db)?.userId !== userId ? SIGNED_OUT_DURING_SYNC : null);
+        if (stop) throw new Interrupted(stop);
         if (reason) wipeShared(db);
-        reconcileBatch(db, batch); // §2.3: an Unshared Video this batch's Shared Videos match takes the Shared row first (#149)
-        return applyShared(db, batch);
+        // SYNC-1: this machine's rows holding a Shared id they are not move away first (thumbnail files renamed below)
+        freed = freeCollidingIds(db, batch, { keepThumbnails: !!opts.thumbsDir });
+        reconcileBatch(db, batch, { idsFreed: true }); // §2.3: an Unshared Video this batch's Shared Videos match takes the Shared row first (#149)
+        const a = applyShared(db, batch, { idsFreed: true });
+        record = updateSessionRecord(db, userId, {
+          // The server's watermark, never moved back: an empty pull answers `p_since` (watermark − 5 min), and keeping
+          // that would walk the window back 5 minutes per Sync (a full refetch starts over from the server's).
+          // Never past the archive's clock at this pull (SYNC-13).
+          watermark: clampWatermark(reason ? (a.watermark ?? null) : laterOf(heldWatermark, a.watermark), batch.server_time ?? w.server_time),
+          // This machine's clock, not the archive's: the focus trigger compares it with the browser's clock (§6.4).
+          lastSyncAt: new Date(now()).toISOString(),
+        })!;
+        setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
+        if (w.server_time) setMeta(db, LAST_PULL_KEY, w.server_time); // SYNC-10
+        return a;
       })();
     } catch (e) {
+      if (e instanceof Interrupted) return { ...base, record: readSessionRecord(db), ok: false, pulled: false, full: reason != null, error: e.message };
       return { ...base, record, ok: false, pulled: false, full: reason != null, error: `Sync failed, nothing was applied: ${(e as Error)?.message ?? e}` };
     }
-    record = writeSessionRecord(db, {
-      userId: record.userId,
-      // The server's watermark, never moved back: an empty pull answers `p_since` (watermark − 5 min), and keeping
-      // that would walk the window back 5 minutes per Sync (a full refetch starts over from the server's).
-      watermark: reason ? (applied.watermark ?? null) : laterOf(record.watermark, applied.watermark),
-      // This machine's clock, not the archive's: the focus trigger compares it with the browser's clock (§6.4).
-      lastSyncAt: new Date(now()).toISOString(),
-    });
-    setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
+    if (opts.thumbsDir && freed) renameThumbnails(opts.thumbsDir, (freed as FreedIds).videos);
     // The retired import's follow-ups (Unshared Videos only) when archive rows changed; a full refetch always runs
     // them, as its wipe left the search index behind. They never fail the Sync: its rows are already in.
     if (reason || touchedArchive(applied)) {

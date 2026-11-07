@@ -68,7 +68,7 @@ export function Library({ search }: { search: string }) {
     if (!st.song) return void setSong(undefined);
     let alive = true;
     setSong(undefined);
-    api.song(st.song).then((s) => alive && setSong(s)).catch(() => alive && setSong(null));
+    api.song(st.song, { fresh: true }).then((s) => alive && setSong(s)).catch(() => alive && setSong(null));
     return () => {
       alive = false;
     };

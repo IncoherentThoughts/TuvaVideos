@@ -279,8 +279,8 @@ export function createSync(db: Db, endpoint: ArchiveEndpoint, opts: SyncOptions 
         if (reason) wipeShared(db);
         // SYNC-1: this machine's rows holding a Shared id they are not move away first (thumbnail files renamed below)
         freed = freeCollidingIds(db, batch, { keepThumbnails: !!opts.thumbsDir });
-        reconcileBatch(db, batch); // §2.3: an Unshared Video this batch's Shared Videos match takes the Shared row first (#149)
-        const a = applyShared(db, batch);
+        reconcileBatch(db, batch, { idsFreed: true }); // §2.3: an Unshared Video this batch's Shared Videos match takes the Shared row first (#149)
+        const a = applyShared(db, batch, { idsFreed: true });
         record = updateSessionRecord(db, userId, {
           // The server's watermark, never moved back: an empty pull answers `p_since` (watermark − 5 min), and keeping
           // that would walk the window back 5 minutes per Sync (a full refetch starts over from the server's).

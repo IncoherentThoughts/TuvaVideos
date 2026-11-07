@@ -1,4 +1,4 @@
--- 0019: the touch triggers stay out of `applyShared` (docs/audit/02-sync-shared-data.md SYNC-2). They stamp a local
+-- 0020: the touch triggers stay out of `applyShared` (docs/audit/02-sync-shared-data.md SYNC-2). They stamp a local
 -- edit of a Shared table "unless the statement set `updated_at`", but they cannot tell "did not set it" from "set it to
 -- the value it already had": the apply re-upserts a bumped Video's unchanged children with the stamp they already hold,
 -- the trigger fired, and each such Chapter got this machine's clock instead of the archive's stamp, so its next edit

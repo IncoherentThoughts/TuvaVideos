@@ -26,7 +26,7 @@ import {
 
 /** Above this many changed rows the search index is rebuilt once instead of row by row (§6.2). */
 export const REBUILD_THRESHOLD = 200;
-/** `meta` key held while an apply runs: the touch triggers skip their stamp (migration 0019). */
+/** `meta` key held while an apply runs: the touch triggers skip their stamp (migration 0020). */
 export const APPLYING_KEY = "applying_shared";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -170,7 +170,12 @@ interface Changed {
   tracks: boolean;
 }
 
-export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
+export interface ApplyOptions {
+  /** The caller already ran `freeCollidingIds` on this batch inside the same transaction (a Sync, a reconcile). */
+  idsFreed?: boolean;
+}
+
+export function applyShared(db: Db, batch: SharedChanges, opts: ApplyOptions = {}): ApplySharedResult {
   const t0 = performance.now();
   if (batch.shared_schema != null && batch.shared_schema !== SHARED_SCHEMA) {
     throw new Error(`the batch is Shared schema ${batch.shared_schema}, this checkout speaks ${SHARED_SCHEMA}`);
@@ -208,7 +213,7 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
   };
 
   db.transaction(() => {
-    // The touch triggers stay quiet while this row is held (migration 0019): every stamp the apply writes is the
+    // The touch triggers stay quiet while this row is held (migration 0020): every stamp the apply writes is the
     // archive's, including the unchanged stamp of a re-applied child (SYNC-2). Written and removed inside this
     // transaction, so a failure rolls it back with everything else.
     db.query("INSERT INTO meta (key, value) VALUES (?, '1') ON CONFLICT(key) DO NOTHING").run(APPLYING_KEY);
@@ -221,7 +226,7 @@ export function applyShared(db: Db, batch: SharedChanges): ApplySharedResult {
 
   function applyRows() {
     // ---- this machine's rows that hold an incoming Shared id but are another Video, Chapter or Artist (SYNC-1)
-    freeCollidingIds(db, batch);
+    if (!opts.idsFreed) freeCollidingIds(db, batch);
     // ---- a held Shared Video the archive no longer returns, whose key a new Shared Video holds (SYNC-4): it joins
     // the new row instead of wedging every Sync with "is held by". Two Shared rows cannot hold one key upstream, so a
     // clash with a Shared row that is not in this batch is a purged row. Unshared clashes still refuse (reconcile first).

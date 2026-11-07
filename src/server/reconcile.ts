@@ -407,8 +407,8 @@ export function applyPlan(db: Db, plan: ReconcilePlan, opts: ApplyPlanOptions = 
  * The Sync's step (§2.3's clash case): reconciles the local Videos this batch's Shared Videos match, inside the
  * Sync's transaction and before its `applyShared`. Nothing is queued; nothing happens when nothing matches.
  */
-export function reconcileBatch(db: Db, batch: SharedChanges): ReconcileCounts {
-  freeCollidingIds(db, batch); // SYNC-1: a row holding a Shared id it is not moves out of the way first
+export function reconcileBatch(db: Db, batch: SharedChanges, opts: { idsFreed?: boolean } = {}): ReconcileCounts {
+  if (!opts.idsFreed) freeCollidingIds(db, batch); // SYNC-1: a row holding a Shared id it is not moves out of the way first
   const plan = planFor(db, batch);
   if (!plan.matches.length) return planCounts({ ...plan, unknown: [] }, false);
   return applyPlan(db, { ...plan, unknown: [] }).counts;
@@ -534,7 +534,7 @@ export function createReconcile(db: Db, endpoint: ArchiveEndpoint, opts: Reconci
           diffs = planDiffs(db, plan, p.batch);
           const r = applyPlan(db, plan, { queueUnknown: editor, keepThumbnails: !!opts.thumbsDir });
           wipeShared(db);
-          const applied = applyShared(db, p.batch);
+          const applied = applyShared(db, p.batch, { idsFreed: true });
           updateSessionRecord(db, p.record.userId, { watermark: clampWatermark(applied.watermark ?? null, p.batch.server_time) });
           setMeta(db, SYNCED_SCHEMA_KEY, String(SHARED_SCHEMA));
           if (p.batch.server_time) setMeta(db, LAST_PULL_KEY, p.batch.server_time); // SYNC-10

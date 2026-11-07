@@ -1,6 +1,6 @@
 // Root paths are canonical, the first Root cannot be added twice, and relocate sees through symlinks (audit DB-13).
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/server/db";
@@ -10,7 +10,7 @@ import { Roots } from "../src/server/roots";
 import { insertCopy, insertVideo, V } from "./helpers/seed";
 
 const MIGRATIONS = join(import.meta.dir, "..", "migrations");
-const base = mkdtempSync(join(tmpdir(), "tuva-rootcanon-"));
+const base = mkdtempSync(join(realpathSync(tmpdir()), "tuva-rootcanon-"));
 const real = join(base, "Real");
 const link = join(base, "link");
 mkdirSync(real);

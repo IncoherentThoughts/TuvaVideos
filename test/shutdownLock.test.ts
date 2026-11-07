@@ -1,7 +1,7 @@
 // One server per data dir and a quit that cannot hang (audit PLAY-2, PLAY-6), and validators on streamed files so a
 // file replaced under the same URL is never spliced into a running play (PLAY-13).
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InstanceLock } from "../src/server/instanceLock";
@@ -50,6 +50,24 @@ describe("instance lock", () => {
     const lock = new InstanceLock(dir, 4604);
     expect(lock.acquire().ok).toBe(true);
     lock.release();
+  });
+
+  test("setState replaces the file whole and leaves no temp file; a second taker still sees the live holder", () => {
+    const dir = tmp();
+    const lock = new InstanceLock(dir, 4604);
+    expect(lock.acquire().ok).toBe(true);
+    lock.setState("stopping");
+    expect(readdirSync(dir)).toEqual(["instance.lock"]);
+    // the same pid reads as "this process" in holder(): fake another live owner by rewriting the pid
+    const holder = Bun.spawn(["sleep", "30"]);
+    try {
+      writeFileSync(join(dir, "instance.lock"), JSON.stringify({ pid: holder.pid, port: 4604, state: "stopping", startedAt: "x" }));
+      const r = new InstanceLock(dir, 4605).acquire();
+      expect(r.ok).toBe(false);
+      expect(readdirSync(dir)).toEqual(["instance.lock"]);
+    } finally {
+      holder.kill();
+    }
   });
 
   test("gives up after the wait when the holder never lets go", async () => {

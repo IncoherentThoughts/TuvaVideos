@@ -31,7 +31,16 @@ interface Job {
   stopped?: "preempted" | "shutdown";
   /** Rejects the running job at once (a child stuck in the kernel may never close). */
   abort?: (e: Error) => void;
+  /** Runs whose result was thrown away because the Copy changed under them (`MAX_CHANGED_RUNS`). */
+  changedRuns?: number;
 }
+
+/**
+ * A job whose Copy changed under it this many times in a row gives up (a file still being written, a download in
+ * progress) instead of transcoding the whole file again and again. The next play or scan request starts it afresh.
+ */
+export const MAX_CHANGED_RUNS = 2;
+export const KEEPS_CHANGING = "the file kept changing while its Fallback was made (still being written?)";
 
 interface CopyInfo {
   id: number;
@@ -206,8 +215,13 @@ export class FallbackQueue {
     job.stopped = undefined;
     try {
       const again = await this.runJob(job);
-      if (again && !this.stopping) Object.assign(job, { state: "queued", progress: 0, proc: undefined });
-      else this.jobs.delete(job.copyId);
+      if (again && !this.stopping) {
+        job.changedRuns = (job.changedRuns ?? 0) + 1;
+        if (job.changedRuns >= MAX_CHANGED_RUNS) {
+          Object.assign(job, { state: "failed", error: KEEPS_CHANGING, proc: undefined });
+          log(`fallback job for copy ${job.copyId} gave up: ${KEEPS_CHANGING}`);
+        } else Object.assign(job, { state: "queued", progress: 0, proc: undefined });
+      } else this.jobs.delete(job.copyId);
     } catch (e) {
       if (job.stopped === "preempted" && !this.stopping) {
         Object.assign(job, { state: "queued", progress: 0, proc: undefined, stopped: undefined });

@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/server/db";
-import { FallbackQueue } from "../src/server/fallback";
+import { FallbackQueue, KEEPS_CHANGING, MAX_CHANGED_RUNS } from "../src/server/fallback";
 import { KeyframeIndex } from "../src/server/keyframes";
 import { serveFile } from "../src/server/stream";
 import { sleep } from "../src/server/proc";
@@ -104,6 +104,23 @@ describe("Fallback jobs", () => {
     await until(() => fallbackFile(db, 1) != null, 8000);
     expect(fallbackFile(db, 1)).toBe("1.mkv");
     expect(readdirSync(remuxDir)).toEqual(["1.mkv"]);
+  });
+
+  test("a Copy that keeps changing (still being written) gives up after MAX_CHANGED_RUNS runs; a new request retries", async () => {
+    const { q, db, remuxDir, delay } = setup();
+    delay(3);
+    q.request(1, "scan");
+    for (let run = 1; run <= MAX_CHANGED_RUNS; run++) {
+      await until(() => q.status(1).state === "preparing" && (q as any).current?.changedRuns === (run === 1 ? undefined : run - 1));
+      db.query("UPDATE copy SET size = ?, mtime = ? WHERE id = 1").run(10 + run, `m${run}`); // the download grew
+      if (run < MAX_CHANGED_RUNS) await until(() => (q as any).current?.changedRuns === run, 4000);
+    }
+    await until(() => q.status(1).state === "failed", 4000);
+    expect(q.status(1).error).toBe(KEEPS_CHANGING);
+    expect(fallbackFile(db, 1)).toBeNull();
+    expect(readdirSync(remuxDir)).toEqual([]);
+    q.request(1, "play"); // the file is finished now: a new request starts afresh
+    await until(() => q.status(1).state === "ready", 4000);
   });
 
   test("a Copy deleted while its job ran leaves no file behind", async () => {

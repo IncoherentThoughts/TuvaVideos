@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb, type Db } from "../src/server/db";
 import { applyShared } from "../src/server/localCopy/apply";
+import { mergeStaleVideoInto } from "../src/server/localCopy/rekey";
 import { clearSessionRecord, getMeta, readSessionRecord, setMeta, writeSessionRecord } from "../src/server/localCopy/meta";
 import { createReconcile, reconcileBatch, planFor } from "../src/server/reconcile";
 import { clampWatermark, createSync, fullRefetchReason, TOMBSTONE_RETENTION_MS, wipeShared } from "../src/server/sync";
@@ -464,6 +465,19 @@ describe("SYNC-4 (cont.)", () => {
     const db = fresh();
     insertVideo(db, { title: "Mine", youtube_id: "YT" });
     expect(() => applyShared(db, b)).toThrow(/held by/);
+  });
+
+  test("merged into a Video already held, the stale row's Resume, last play and A-B loop join it", () => {
+    const OLD = "aaaaaaaa-0000-4000-8000-0000000000a1";
+    const db = fresh();
+    applyShared(db, batch([sv(OLD, { youtube_id: "YT-old", content_hash: null }), sv(NEW, { youtube_id: "YT-new", content_hash: null })]));
+    db.query("UPDATE video_local SET resume_s = 42, last_played_at = '2026-10-20T00:00:00Z', loop_a_s = 5, loop_b_s = 9, view_count = 3, favorited_at = '2026-09-09T00:00:00Z' WHERE video_id = ?").run(OLD);
+    db.query("UPDATE video_local SET resume_s = 7, last_played_at = '2026-10-01T00:00:00Z', view_count = 2 WHERE video_id = ?").run(NEW);
+    db.transaction(() => mergeStaleVideoInto(db, OLD, NEW))();
+    expect(db.query("SELECT favorited_at, view_count, resume_s, last_played_at, loop_a_s, loop_b_s FROM video_local WHERE video_id = ?").get(NEW)).toEqual({
+      favorited_at: "2026-09-09T00:00:00Z", view_count: 5, resume_s: 42, last_played_at: "2026-10-20T00:00:00Z", loop_a_s: 5, loop_b_s: 9,
+    });
+    expect(db.query("SELECT COUNT(*) AS n FROM videos WHERE id = ?").get(OLD)).toEqual({ n: 0 });
   });
 });
 

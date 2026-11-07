@@ -75,8 +75,16 @@ export function mergeStaleVideoInto(db: Db, from: string, to: string) {
   if (!db.query("SELECT 1 FROM videos WHERE id = ?").get(to)) {
     moveVideo(db, from, to);
   } else {
-    db.query(`UPDATE video_local SET favorited_at = COALESCE(favorited_at, (SELECT favorited_at FROM video_local WHERE video_id = ?)),
-        view_count = view_count + COALESCE((SELECT view_count FROM video_local WHERE video_id = ?), 0) WHERE video_id = ?`).run(from, from, to);
+    // This machine's own columns join the incoming row: the Favorite and the view count add up, the Resume position
+    // comes from whichever row was played last, and the A-B loop is kept when the incoming row has none.
+    db.query(`UPDATE video_local AS t SET
+        favorited_at = COALESCE(t.favorited_at, f.favorited_at),
+        view_count = t.view_count + f.view_count,
+        resume_s = CASE WHEN COALESCE(f.last_played_at, '') > COALESCE(t.last_played_at, '') THEN f.resume_s ELSE COALESCE(t.resume_s, f.resume_s) END,
+        last_played_at = CASE WHEN COALESCE(f.last_played_at, '') > COALESCE(t.last_played_at, '') THEN f.last_played_at ELSE t.last_played_at END,
+        loop_a_s = CASE WHEN t.loop_a_s IS NULL AND t.loop_b_s IS NULL THEN f.loop_a_s ELSE t.loop_a_s END,
+        loop_b_s = CASE WHEN t.loop_a_s IS NULL AND t.loop_b_s IS NULL THEN f.loop_b_s ELSE t.loop_b_s END
+      FROM (SELECT * FROM video_local WHERE video_id = ?) AS f WHERE t.video_id = ?`).run(from, to);
     for (const r of videoRefs(db, LINK_CHILDREN)) {
       db.query(`UPDATE OR IGNORE ${r.table} SET ${r.column} = ? WHERE ${r.column} = ?`).run(to, from);
       db.query(`DELETE FROM ${r.table} WHERE ${r.column} = ?`).run(from);

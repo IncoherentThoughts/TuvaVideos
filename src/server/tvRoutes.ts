@@ -47,6 +47,7 @@ export const TV_ROUTES: readonly TvRoute[] = [
   { method: "GET", pattern: /^\/tv\.js$/, kind: "ui", sample: "/tv.js" },
   { method: "GET", pattern: /^\/tv\.css$/, kind: "ui", sample: "/tv.css" },
   { method: "GET", pattern: /^\/olchey\.svg$/, kind: "ui", sample: "/olchey.svg" },
+  { method: "GET", pattern: /^\/fonts\/[a-z0-9-]+\.woff2$/, kind: "ui", sample: "/fonts/symbols-misc.woff2" },
   { method: "GET", pattern: /^\/live\/\d+\/(index\.m3u8|seg[^/]*\.ts)$/, kind: "live", sample: "/live/1/index.m3u8" },
 ];
 

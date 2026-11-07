@@ -33,7 +33,8 @@ export class Archive {
     const headers = new Headers(init.headers);
     headers.set("apikey", init.key);
     headers.set("Authorization", `Bearer ${init.bearer ?? init.key}`);
-    const res = await fetch(`${this.env.url}${path}`, { ...init, headers });
+    // A stalled socket fails after two minutes instead of hanging the run; a re-run resumes from the marker.
+    const res = await fetch(`${this.env.url}${path}`, { ...init, headers, signal: AbortSignal.timeout(120_000) });
     if (!res.ok) {
       const text = await res.text();
       let body: Record<string, string | null> = {};
@@ -130,9 +131,14 @@ export class Archive {
 
   /**
    * A session for `email` minted with the service-role key (Auth admin `generate_link` magiclink, then `verify`), so
-   * the writes run as that account. No email is sent. Re-minted when older than 30 minutes (tokens last an hour).
+   * the writes run as that account. No email is sent. Re-minted when older than 10 minutes (a token expired mid-run at cutover).
    */
   async signInAs(email: string): Promise<void> {
+    // generate_link creates the account when the email has none, so an unknown email stops here instead.
+    const known = (await (await this.call("profile lookup", `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id`, {
+      key: this.service(),
+    })).json()) as { id: string }[];
+    if (known.length !== 1) throw new Error(`no archive account has the email ${email}`);
     const link = (await (await this.call("generate_link", "/auth/v1/admin/generate_link", {
       key: this.service(), method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "magiclink", email }),
@@ -152,7 +158,7 @@ export class Archive {
 
   private async bearer(): Promise<string> {
     if (!this.token || !this.email) throw new Error("not signed in: call signInAs first");
-    if (Date.now() - this.token.at > 30 * 60 * 1000) await this.signInAs(this.email);
+    if (Date.now() - this.token.at > 10 * 60 * 1000) await this.signInAs(this.email);
     return this.token.access;
   }
 

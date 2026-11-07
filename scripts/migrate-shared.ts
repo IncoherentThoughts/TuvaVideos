@@ -4,7 +4,7 @@
 //
 //   TUVA_ARCHIVE_URL=https://<ref>.supabase.co TUVA_ARCHIVE_KEY=<publishable key> \
 //   TUVA_ARCHIVE_SERVICE_KEY=<service-role key> TUVA_MIGRATE_AS=<owner's archive email> \
-//   bun scripts/migrate-shared.ts [--dry-run] [--accept "<name>"]...
+//   bun scripts/migrate-shared.ts [--dry-run] [--accept "<name>"]... [--keep-labels] [--keep-unreferenced-songs]
 //
 // It reads library.db from the data dir (TUVA_DATA_DIR honoured) through a migrated temporary copy, so the owner's
 // file is never written. It refuses, printing the list, while the §9.2 rows are unresolved (re-counted every run);
@@ -13,6 +13,8 @@
 // write functions as the owner: Proposed Songs -> Versions -> Artists, the Videos with Chapters and Artist links
 // (posters uploaded first), the deletions; the rejections and the library's `created_at` with the service-role key;
 // prints the exposure list and exposes it after a y/n. `--dry-run` prints every count and refusal and writes nothing.
+// `--keep-labels` lets the working-note Version labels through as they are; `--keep-unreferenced-songs` carries the
+// unreferenced Local Songs as Proposed Songs instead of refusing on them (the owner's call at cutover, 2026-10-21).
 // A failed run is re-run as is: the marker lets it start on its own rows, and it skips what the target already holds.
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,6 +33,8 @@ const SHARED_TABLES = [
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
+const keepLabels = args.includes("--keep-labels");
+const keepUnreferencedSongs = args.includes("--keep-unreferenced-songs");
 const accept: string[] = [];
 for (let i = 0; i < args.length; i++) if (args[i] === "--accept" && args[i + 1]) accept.push(args[++i]!);
 
@@ -82,7 +86,7 @@ function printPlan(plan: Plan) {
 async function main() {
   console.log(`migrate-shared${dryRun ? " --dry-run" : ""}: library ${cfg.dbPath}`);
   const snap = readLibrary();
-  const refusals = preflight(snap, { accept });
+  const refusals = preflight(snap, { accept, keepLabels, keepUnreferencedSongs });
   printRefusals(refusals);
 
   const url = env.TUVA_ARCHIVE_URL;
@@ -106,7 +110,7 @@ async function main() {
     const p = findPoster(cfg.thumbsDir, v);
     if (p) posters.set(v.id, p);
   }
-  const plan = buildPlan(snap, { mappedArtistId, posters });
+  const plan = buildPlan(snap, { mappedArtistId, posters, keepUnreferencedSongs });
   printPlan(plan);
 
   // The target: empty, or holding only this script's rows under a resume marker.

@@ -107,6 +107,19 @@ describe("preflight", () => {
 
     const accepted = preflight(readSnapshot(db), { accept: ["Karan Duruyaa", "shodek]"] });
     expect(accepted.nearDuplicates.map((d) => d.name).sort()).toEqual(["Nachyn Chodu", "Nachyn Choodu", "gend"]);
+
+    const kept = preflight(readSnapshot(db), { keepLabels: true, keepUnreferencedSongs: true });
+    expect(kept.workingNoteLabels).toEqual([]);
+    expect(kept.unreferencedSongs).toEqual([]);
+    expect(kept.nearDuplicates).toHaveLength(5);
+
+    // Kept, the unreferenced Songs are carried as Proposed Songs with their Versions; eir is still dropped.
+    const p = buildPlan(readSnapshot(db), { mappedArtistId: LIVE_ANDREI, keepUnreferencedSongs: true });
+    const songs = p.steps.filter((s) => s.kind === "proposed_song").map((s) => s.id);
+    expect(songs).toContain("d2");
+    expect(songs).toContain(LOCAL_SONG);
+    expect(p.steps.some((s) => s.kind === "proposed_version" && s.id === "v9")).toBe(true);
+    expect(p.dropped.songs.map((s) => s.why)).not.toContain("referenced by no Video or Chapter");
   });
 
   test("a Local name the archive's dedupe would refuse is a refusal", () => {

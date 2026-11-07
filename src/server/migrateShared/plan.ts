@@ -211,6 +211,10 @@ export function hasRefusals(r: Refusals): boolean {
 export interface PreflightOptions {
   /** Names (Local Songs or Artists) a human reviewed and accepted as distinct: `--accept <name>`. */
   accept?: string[];
+  /** The owner keeps the working-note Version labels as they are: `--keep-labels`. */
+  keepLabels?: boolean;
+  /** The owner keeps the unreferenced Local Songs; they are carried as Proposed Songs: `--keep-unreferenced-songs`. */
+  keepUnreferencedSongs?: boolean;
 }
 
 /** The Local Song ids a Video or a Chapter points at (Shared-wise referenced; Studio tracks are not Shared). */
@@ -277,11 +281,11 @@ export function preflight(snap: LibrarySnapshot, opts: PreflightOptions = {}): R
 
   const songName = new Map(snap.localSongs.map((s) => [s.id, s.name]));
   const workingNoteLabels = snap.localVersions
-    .filter((v) => sameLabel(v.label))
+    .filter((v) => !opts.keepLabels && sameLabel(v.label))
     .map((v) => ({ id: v.id, song: songName.get(v.song_id) ?? v.song_id, label: v.label }));
 
   const unreferencedSongs = songs
-    .filter((s) => !refSongs.has(s.id) && !accepted(s.name))
+    .filter((s) => !opts.keepUnreferencedSongs && !refSongs.has(s.id) && !accepted(s.name))
     .map((s) => ({ id: s.id, name: s.name, versions: snap.localVersions.filter((v) => v.song_id === s.id).length }));
 
   return { nearDuplicates, workingNoteLabels, unreferencedSongs, pointerMismatches: pointerMismatches(snap) };
@@ -371,6 +375,8 @@ export interface PlanOptions {
   mappedArtistId: string | null;
   /** The local poster file per Video id, when there is one. */
   posters?: Map<string, PosterFile>;
+  /** Carry the unreferenced Local Songs (and their Versions) as Proposed Songs instead of dropping them. */
+  keepUnreferencedSongs?: boolean;
 }
 
 const MIGRATED = "Carried from the owner's library by the one-time migration (#113)";
@@ -403,11 +409,12 @@ export function buildPlan(snap: LibrarySnapshot, opts: PlanOptions): Plan {
   const dropped: Plan["dropped"] = { songs: [], artists: [], deletedVideos: [], posters: [] };
   const steps: Step[] = [];
 
-  // Proposed Songs: the referenced Local Songs (the preflight refused the unreferenced ones, junk aside).
+  // Proposed Songs: the referenced Local Songs (the preflight refused the unreferenced ones, junk aside), or every one
+  // under keepUnreferencedSongs.
   const carriedSongs = new Set<string>();
   for (const s of snap.localSongs) {
     if (sameName(DROPPED_SONGS, s.name)) { dropped.songs.push({ id: s.id, name: s.name, why: "junk (#87): deleted by the migration" }); continue; }
-    if (!refSongs.has(s.id)) { dropped.songs.push({ id: s.id, name: s.name, why: "referenced by no Video or Chapter" }); continue; }
+    if (!refSongs.has(s.id) && !opts.keepUnreferencedSongs) { dropped.songs.push({ id: s.id, name: s.name, why: "referenced by no Video or Chapter" }); continue; }
     carriedSongs.add(s.id);
     const alt = [...alternates(s.alternate_titles), ...alternates(s.alternate_spellings)];
     steps.push({

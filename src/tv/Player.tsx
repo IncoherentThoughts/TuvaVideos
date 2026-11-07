@@ -110,7 +110,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     entryDone: false, // the Playlist Entry's end was handled once; cleared when the playhead is back inside it
     failed: new Set<number>(),
     retried: new Set<number>(), // the Copies whose one decode retry is spent
-    netTries: 0, // network retries in a row (playRetry.ts); a load that reaches its metadata resets it
+    netTries: 0, // network retries in a row with the server answering (playRetry.ts); a load that reaches its metadata resets it
+    outageTries: 0, // retries while the server did not answer; reset with netTries
     lastPos: 0,
     known: null as number | null, // the Resume position as this Player last read or wrote it
     wroteAt: 0,
@@ -490,6 +491,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     if (muted()) v.muted = true
     if (at > 0) v.currentTime = clampTime(at, v.duration)
     r.netTries = 0
+    r.outageTries = 0
     setReconnecting(false)
     r.started = true
     r.lastPos = at
@@ -588,13 +590,14 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     const intact = !!cur && cur.available && !cur.missing
     // a lost server or stream retries with backoff and plays on; only a Copy that keeps failing while the server
     // answers is marked failed with the codecs message (playRetry.ts, audit TV-2)
-    const act = onPlayError({ serverAnswered: !!fresh, code, intact, decodeRetried: r.retried.has(id), netTries: r.netTries })
+    const act = onPlayError({ serverAnswered: !!fresh, code, intact, decodeRetried: r.retried.has(id), netTries: r.netTries, outageTries: r.outageTries })
     if (act.t === "lose") {
       setReconnecting(false)
       return lose(id, act.failed, pos, play)
     }
     if (act.net) {
-      r.netTries++
+      if (act.outage) r.outageTries++
+      else r.netTries++
       setReconnecting(true)
     } else r.retried.add(id)
     r.pending = { at: pos, play, announce: false }

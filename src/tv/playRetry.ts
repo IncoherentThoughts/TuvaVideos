@@ -27,18 +27,26 @@ export interface PlayErrorFacts {
   intact: boolean
   /** The decode retry was already spent on this Copy. */
   decodeRetried: boolean
-  /** Network retries already made in a row (reset when a load succeeds). */
+  /** Network retries already made in a row while the server answered (reset when a load succeeds). */
   netTries: number
+  /**
+   * Retries made while the server did not answer (reset when a load succeeds). Counted apart from `netTries`: an
+   * outage (the Mac asleep) must not spend the budget a stream error gets once the server is back.
+   */
+  outageTries: number
 }
 
 export type PlayErrorAction =
-  /** Try the same Copy again after `ms`; `net`: a network retry (counts against `netTries`, says "reconnecting"). */
-  | { t: "retry"; ms: number; net: boolean }
+  /**
+   * Try the same Copy again after `ms`; `net`: a network retry (says "reconnecting"), counted in `outageTries` when
+   * `outage` (the server did not answer), else in `netTries`.
+   */
+  | { t: "retry"; ms: number; net: boolean; outage?: true }
   /** Give the Copy up: fail over to the next one, else "Copy unavailable" (`failed` false) or the codecs message. */
   | { t: "lose"; failed: boolean }
 
 export function onPlayError(f: PlayErrorFacts): PlayErrorAction {
-  if (!f.serverAnswered) return { t: "retry", ms: retryDelayMs(f.netTries + 1), net: true } // the TV Server is gone for now: keep trying
+  if (!f.serverAnswered) return { t: "retry", ms: retryDelayMs(f.outageTries + 1), net: true, outage: true } // the TV Server is gone for now: keep trying
   if (!f.intact) return { t: "lose", failed: false } // the Root unmounted or the file went Missing
   if (f.code === MEDIA_ERR_NETWORK || f.code === MEDIA_ERR_ABORTED) {
     return f.netTries < NET_TRIES_WITH_SERVER ? { t: "retry", ms: retryDelayMs(f.netTries + 1), net: true } : { t: "lose", failed: false }

@@ -138,21 +138,23 @@ describe("seek acceleration (spec 6.3)", () => {
 // ---- media errors (audit TV-2) ----
 
 describe("a media error: retry the network, fail only a real decode error", () => {
-  const f = (o: Partial<PlayErrorFacts> = {}): PlayErrorFacts => ({ serverAnswered: true, code: 3, intact: true, decodeRetried: false, netTries: 0, ...o })
+  const f = (o: Partial<PlayErrorFacts> = {}): PlayErrorFacts => ({ serverAnswered: true, code: 3, intact: true, decodeRetried: false, netTries: 0, outageTries: 0, ...o })
   const DECODE = 3
   const SRC = 4
 
   test("the TV Server not answering retries with backoff for as long as it takes, whatever the element says", () => {
     for (const code of [SRC, MEDIA_ERR_NETWORK, DECODE, null]) {
-      expect(onPlayError(f({ serverAnswered: false, code }))).toEqual({ t: "retry", ms: 1500, net: true })
+      expect(onPlayError(f({ serverAnswered: false, code }))).toEqual({ t: "retry", ms: 1500, net: true, outage: true })
     }
-    expect(onPlayError(f({ serverAnswered: false, netTries: 50, decodeRetried: true, intact: false }))).toEqual({ t: "retry", ms: 15000, net: true })
+    expect(onPlayError(f({ serverAnswered: false, outageTries: 50, decodeRetried: true, intact: false }))).toEqual({ t: "retry", ms: 15000, net: true, outage: true })
     expect([1, 2, 3, 4, 5, 6, 9].map(retryDelayMs)).toEqual([1500, 3000, 5000, 8000, 12000, 15000, 15000])
   })
 
   test("a network error with the server answering retries a few times, then is Copy unavailable, never the codecs message", () => {
     for (let n = 0; n < NET_TRIES_WITH_SERVER; n++) expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, netTries: n }))).toMatchObject({ t: "retry", net: true })
     expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, netTries: NET_TRIES_WITH_SERVER }))).toEqual({ t: "lose", failed: false })
+    // a long outage first (the Mac asleep): the stream error once the server is back still gets its retries
+    expect(onPlayError(f({ code: MEDIA_ERR_NETWORK, outageTries: 20 }))).toMatchObject({ t: "retry", net: true })
   })
 
   test("a decode error with the server answering: one retry, then failed", () => {

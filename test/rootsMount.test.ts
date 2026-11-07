@@ -33,12 +33,28 @@ const empty = (lib: string) => {
 
 describe("Roots.check with every sampled Copy gone (DB-1)", () => {
   test("an empty mount point on its parent's device is not mounted", async () => {
-    const { lib, roots } = setup();
+    const { db, lib, roots } = setup();
     expect(await roots().check(1)).toBe(true);
     empty(lib); // `umount /mnt` leaves the directory behind, empty
-    const r = roots(); // a fresh process: no device learned
+    db.query("DELETE FROM meta WHERE key = 'root_device:1'").run();
+    const r = roots(); // a fresh process, and no device ever learned
     expect(await r.check(1)).toBe(false);
     expect(r.isAvailable(1)).toBe(false);
+  });
+
+  test("after a restart the remembered device decides: the drive's own device is gone, its leftover mount point is not mounted", async () => {
+    const { db, lib, roots } = setup();
+    expect(await roots().check(1)).toBe(true); // learns and stores the device
+    empty(lib);
+    db.query("UPDATE meta SET value = '-1' WHERE key = 'root_device:1'").run(); // as if the drive had been on another device
+    expect(await roots().check(1)).toBe(false);
+  });
+
+  test("a folder Root emptied of every file is still mounted after a restart (its Copies can go Missing)", async () => {
+    const { lib, roots } = setup();
+    expect(await roots().check(1)).toBe(true);
+    empty(lib); // every video deleted from a plain folder on the boot disk
+    expect(await roots().check(1)).toBe(true); // a fresh process: the stored device matches
   });
 
   test("a mounted Root whose sampled files were deleted stays available when the directory holds anything", async () => {

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import { log } from "./log";
+import { getMeta, setMeta } from "./localCopy/meta";
 
 export interface RootRow {
   id: number;
@@ -137,19 +138,31 @@ export class Roots {
     return ok;
   }
 
-  /** The device the Root directory was on the last time one of its Copies read fine (this process only). */
+  /**
+   * The device the Root directory was on the last time one of its Copies read fine. Kept in `meta` too, so a restart
+   * still knows it: without it an emptied folder on its parent's disk could not be told from an unmounted drive's
+   * leftover mount point, and the Root would read unavailable forever.
+   */
   private devices = new Map<number, number>();
+  private deviceOf(rootId: number): number | undefined {
+    if (this.devices.has(rootId)) return this.devices.get(rootId);
+    const v = getMeta(this.db, `root_device:${rootId}`);
+    return v != null && Number.isFinite(Number(v)) ? Number(v) : undefined;
+  }
   /** Roots whose "a Missing Copy is readable again" event already fired, so the poll fires it once. */
   private revivalFired = new Set<number>();
 
   private async learnDevice(root: RootRow) {
     const st = await stat(root.path).catch(() => null);
-    if (st) this.devices.set(root.id, st.dev);
+    if (!st) return;
+    if (this.deviceOf(root.id) !== st.dev) setMeta(this.db, `root_device:${root.id}`, String(st.dev));
+    this.devices.set(root.id, st.dev);
   }
 
   /**
    * The sampled Copies are all gone. The Root counts as mounted only when (1) another known Copy is still there, or
-   * (2) the directory is on the device a Copy was last read from, or, with no device learned yet, (3) the directory is
+   * (2) the directory is on the device a Copy was last read from (remembered across restarts), or, with no device ever
+   * learned, (3) the directory is
    * a live mount point (another device than its parent) or holds anything at all. An empty directory on its parent's
    * device is what an unmounted drive leaves behind: unavailable, so nothing is marked Missing (CONTEXT.md "Missing").
    */
@@ -162,7 +175,7 @@ export class Roots {
     for (const k of more) {
       if (await withTimeout(stat(join(root.path, k.rel_path)), READ_TIMEOUT_MS).then(() => true, () => false)) return true;
     }
-    const dev = this.devices.get(root.id);
+    const dev = this.deviceOf(root.id);
     if (dev !== undefined) return st.dev === dev;
     const parent = await stat(dirname(root.path)).catch(() => null);
     if (parent && parent.dev !== st.dev) return true;

@@ -230,6 +230,7 @@ setInterval(() => {
     }
   }
   for (const j of running) {
+    j.speed = Math.min(6, Math.max(0.6, j.speed + (Math.random() - 0.5) * 0.6));
     j.doneMB = Math.min(j.sizeMB, j.doneMB + j.speed * 0.25 * DEMO_SPEEDUP);
     const pct = (j.doneMB / j.sizeMB) * 100;
     const eta = Math.max(0, (j.sizeMB - j.doneMB) / j.speed);

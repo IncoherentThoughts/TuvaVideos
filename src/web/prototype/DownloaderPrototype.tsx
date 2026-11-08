@@ -293,11 +293,14 @@ function DialogA() {
 const TILE_HUE: Record<Opt, string> = { full: "var(--t6, #89b4fa)", random: "var(--t7, #cba6f7)", type: "var(--t5, #94e2d5)", artist: "var(--t2, #fab387)", favorites: "var(--t1, #f38ba8)" };
 const fmtLen = (s: number | null) => (s == null ? "–" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`);
 const dlLabel = (n: number, mb: number) => `Download ${n} Video${n === 1 ? "" : "s"} (${fmtMB(mb)}) ~${fmtDur(estS(mb))}`;
-const CHEVRON = (
-  <svg class="pb-chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-    <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+const TERM_ICON = (
+  <svg class="pb-termic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <rect x="2.5" y="4" width="19" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+    <path d="M7 9.5l3 2.5-3 2.5M12.5 15h4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
   </svg>
 );
+/** Speed in the theme's red / yellow / green: under 1.5 MB/s slow, under 4 middling, else fast. */
+const Speed = ({ v }: { v: number }) => <span class={`pb-speed ${v < 1.5 ? "slow" : v < 4 ? "mid" : "fast"}`}>{v.toFixed(1)} MB/s</span>;
 
 function DialogB() {
   const m = useModel();
@@ -311,7 +314,7 @@ function DialogB() {
           <span>
             <b>{t.nDone} of {t.jobs.length}</b> downloaded{t.nFailed ? <span class="pdl-bad"> · {t.nFailed} failed</span> : null}
             <br />
-            <span class="dim">{fmtMB(t.done)} of {fmtMB(t.size)} · ~{fmtDur(t.etaS)} left · {t.speed.toFixed(1)} MB/s</span>
+            <span class="dim">{fmtMB(t.done)} of {fmtMB(t.size)} ~{fmtDur(t.etaS)}</span> <span class="dim">·</span> <Speed v={t.speed} />
           </span>
         </div>
         <Bar pct={t.pct} />
@@ -319,14 +322,13 @@ function DialogB() {
           {[...bulkJobs()].sort((a, b) => rank(a) - rank(b)).map((j) => (
             <li key={j.id} class={`pb-job ${j.state}`}>
               <span class="pb-ic">{j.state === "done" ? "✓" : j.state === "failed" ? "!" : j.state === "running" ? "↓" : ""}</span>
-              <span class="pb-t">{j.title}<small class="dim">{j.state === "failed" ? j.reason : j.state === "running" ? `${Math.floor((j.doneMB / j.sizeMB) * 100)}% · ${j.speed.toFixed(1)} MB/s` : j.state === "cancelled" ? "cancelled" : `${fmtMB(j.sizeMB)}`}</small></span>
+              <span class="pb-t">{j.title}<small class="dim">{j.state === "failed" ? j.reason : j.state === "running" ? <>{fmtMB(j.doneMB)} of {fmtMB(j.sizeMB)} ~{fmtDur((j.sizeMB - j.doneMB) / j.speed)} · <Speed v={j.speed} /></> : j.state === "cancelled" ? "cancelled" : `${fmtMB(j.sizeMB)}`}</small></span>
               {j.state === "running" && <Bar pct={(j.doneMB / j.sizeMB) * 100} thin />}
             </li>
           ))}
         </ul>
         <button class={`pb-termbtn${showTerm ? " open" : ""}`} aria-expanded={showTerm} onClick={() => setShowTerm(!showTerm)}>
-          {CHEVRON}
-          <span class="mono">&gt;_</span>
+          {TERM_ICON}
           <span>{showTerm ? "Hide" : "Show"} yt-dlp output</span>
           <span class="dim pb-termn">{sim.lines.length} lines{t.nFailed ? ` · ${t.nFailed} errors` : ""}</span>
         </button>
@@ -724,8 +726,8 @@ dialog.pdl select.btn { appearance: none; -webkit-appearance: none; padding-righ
 .pb-job.done, .pb-job.cancelled { opacity: .55; }
 .pb-termbtn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 9%, #0d0c0c); color: var(--fg); font-weight: 600; text-align: left; transition: background .15s; }
 .pb-termbtn:hover { background: color-mix(in srgb, var(--accent) 16%, #0d0c0c); }
-.pb-termbtn .mono { color: var(--accent); }
-.pb-chev { flex: none; display: block; transition: transform .18s; } .pb-termbtn.open .pb-chev { transform: rotate(90deg); }
+.pb-termic { flex: none; display: block; color: var(--accent); }
+.pb-speed { font-weight: 600; font-variant-numeric: tabular-nums; } .pb-speed.slow { color: var(--no, #fb4934); } .pb-speed.mid { color: var(--t3, #fabd2f); } .pb-speed.fast { color: var(--ok, #b8bb26); }
 .pb-termn { margin-left: auto; font-weight: 400; font-size: .88em; }
 .pb-foot { display: flex; gap: 8px; flex-wrap: wrap; }
 /* C */

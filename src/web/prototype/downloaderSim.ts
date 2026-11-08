@@ -114,8 +114,9 @@ function push(job: Job, line: string, replaceProgress = false) {
   if (replaceProgress && job.log.length && job.log[job.log.length - 1]!.startsWith("[download]  ")) job.log[job.log.length - 1] = line;
   else job.log.push(line);
   if (sim.bulk?.includes(job.id)) {
-    if (replaceProgress && sim.lines.length && sim.lines[sim.lines.length - 1]!.startsWith(`[download]  `) && sim.lines[sim.lines.length - 1]!.includes(job.id)) sim.lines[sim.lines.length - 1] = `${line}  ‹${job.id}›`;
-    else sim.lines.push(replaceProgress ? `${line}  ‹${job.id}›` : line);
+    const tag = `‹${job.title.length > 22 ? job.title.slice(0, 21) + "…" : job.title}›`;
+    if (replaceProgress && sim.lines.length && sim.lines[sim.lines.length - 1]!.startsWith(`[download]  `) && sim.lines[sim.lines.length - 1]!.endsWith(tag)) sim.lines[sim.lines.length - 1] = `${line}  ${tag}`;
+    else sim.lines.push(replaceProgress ? `${line}  ${tag}` : line);
     if (sim.lines.length > 800) sim.lines.splice(0, sim.lines.length - 800);
   }
 }

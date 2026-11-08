@@ -909,6 +909,17 @@ export function createHandler(s: Services) {
         if (/-128|cancel/i.test(r.err)) return json({ cancelled: true });
         return json({ error: r.err.trim() || "the file dialog failed" }, 500);
       }
+      // PROTOTYPE #193: the Downloader dialog's Root and its "Change…" folder dialog. Throwaway, never merged.
+      if (req.method === "GET" && p === "/api/prototype/root") return json({ path: s.roots.list()[0]?.path ?? null });
+      if (req.method === "POST" && p === "/api/prototype/choose-folder") {
+        const body = (await readJson(req)) ?? {};
+        const start = typeof body.start === "string" && body.start.startsWith("/") && (await stat(body.start).then((x) => x.isDirectory(), () => false)) ? body.start : "";
+        const loc = start ? ` default location (POSIX file ${JSON.stringify(start)})` : "";
+        const r = await run("osascript", ["-e", 'tell application "System Events" to activate', "-e", `tell application "System Events" to return POSIX path of (choose folder with prompt "Download Videos into:"${loc})`], { timeout: 600_000 });
+        if (r.code === 0) return json({ path: r.out.trim().replace(/\/$/, "") });
+        if (/-128|cancel/i.test(r.err)) return json({ cancelled: true });
+        return json({ error: r.err.trim() || "the folder dialog failed" }, 500);
+      }
       // First launch (sharing-spec §8.4): the typed folder becomes the machine's one Root and its first scan starts at
       // once; the no-scan-at-startup rule holds for later launches. Same-origin only, like the other machine writes.
       if (req.method === "POST" && p === "/api/roots") {

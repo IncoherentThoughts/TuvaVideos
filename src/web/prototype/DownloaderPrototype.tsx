@@ -13,7 +13,6 @@ import {
   proto, retryFailed, saveFailureReport, setPretend, setVariant, sim, startBulk, togglePause, useSim, type Job, type Quality,
 } from "./downloaderSim";
 
-const ROOT = "/Volumes/Server/Khöömei/Collection"; // PROTOTYPE: the real one comes from the config
 const stop = (e: Event) => (e.preventDefault(), e.stopPropagation());
 const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
@@ -39,7 +38,11 @@ function useModel() {
   const [artist, setArtist] = useState("");
   const artistId = artist || artists[0]?.id || "";
   const [quality, setQuality] = useState<Quality>("1080p");
-  const [dest, setDest] = useState(ROOT);
+  const [root, setRoot] = useState("Root");
+  const [dest, setDest] = useState<string | null>(null); // null = the Root
+  useEffect(() => {
+    void fetch("/api/prototype/root").then((r) => r.json()).then((j: { path: string | null }) => j.path && setRoot(j.path));
+  }, []);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [step, setStep] = useState<"options" | "selection" | "log">(sim.bulk ? "log" : "options");
 
@@ -65,12 +68,13 @@ function useModel() {
   return {
     cands, opt, choose, n, setN: (x: number) => (setN(Math.max(1, x)), setExcluded(new Set())), reroll: () => (setSeed(seed + 1), setExcluded(new Set())),
     type, setType: (t: VideoType) => (setType(t), setExcluded(new Set())), artists, artistId, setArtist: (a: string) => (setArtist(a), setExcluded(new Set())),
-    quality, setQuality, dest, inRoot: dest.startsWith(ROOT),
-    changeDest: () => {
-      const p = prompt("PROTOTYPE: type a folder path (the real one opens a folder picker)", dest);
-      if (p) setDest(p);
+    quality, setQuality, root, dest: dest ?? root, isRoot: dest === null, inRoot: dest === null || dest === root || dest.startsWith(root + "/"),
+    changeDest: async () => {
+      const r = await fetch("/api/prototype/choose-folder", { method: "POST", body: JSON.stringify({ start: dest ?? root }) }).then((x) => x.json()) as { path?: string; error?: string };
+      if (r.path) setDest(r.path === root ? null : r.path);
+      else if (r.error) alert(r.error);
     },
-    resetDest: () => setDest(ROOT),
+    resetDest: () => setDest(null),
     poolFor, totals, pool, selected, sel, excluded, toggle,
     selectAll: () => setExcluded(new Set()), selectNone: () => setExcluded(new Set(pool.map((v) => v.id))),
     needsSelection: opt !== "full",
@@ -120,12 +124,26 @@ function QualityPick({ m, compact }: { m: Model; compact?: boolean }) {
 function DestRow({ m }: { m: Model }) {
   return (
     <div class="pdl-dest">
-      <span class="dim">Into</span> <span class="mono pdl-path" title={m.dest}>{m.dest === ROOT ? "Root" : m.dest}</span>
-      <button class="btn small" onClick={m.changeDest}>Change…</button>
-      {!m.inRoot && <button class="btn small" onClick={m.resetDest}>Back to Root</button>}
+      <span class="dim">Into</span> <span class="mono pdl-path" title={m.dest}>{m.isRoot ? "Root" : m.dest}</span>
+      <button class="btn small" onClick={() => void m.changeDest()}>Change…</button>
+      {!m.isRoot && <button class="btn small" onClick={m.resetDest}>Back to Root</button>}
       {!m.inRoot && <div class="pdl-warn">This folder is outside the Root: the downloads won't appear in the library.</div>}
     </div>
   );
+}
+
+/** yt-dlp's own colours, roughly: progress numbers like its --color output, ERROR red, WARNING yellow, tags dim blue. */
+function colorize(l: string): preact.ComponentChildren {
+  if (l.startsWith("$ ")) return <><span class="t-g">$</span> {l.slice(2)}</>;
+  if (l.startsWith("✓")) return <span class="t-g">{l}</span>;
+  if (l.startsWith("ERROR:")) return <><span class="t-r t-b">ERROR:</span><span class="t-r">{l.slice(6)}</span></>;
+  if (l.startsWith("WARNING:")) return <><span class="t-y t-b">WARNING:</span>{l.slice(8)}</>;
+  if (l.startsWith("^C") || l.startsWith("‖") || l.startsWith("---")) return <span class="t-y">{l}</span>;
+  const pm = /^(\[download\])(\s+)(\S+%)( of\s+)(\S+)( at\s+)(\S+)( ETA )(\S+)(.*)$/.exec(l);
+  if (pm) return <><span class="t-c">{pm[1]}</span>{pm[2]}<span class="t-bl t-b">{pm[3]}</span>{pm[4]}<span class="t-m">{pm[5]}</span>{pm[6]}<span class="t-g">{pm[7]}</span>{pm[8]}<span class="t-y">{pm[9]}</span><span class="t-d">{pm[10]}</span></>;
+  const tm = /^(\[[^\]]+\])(.*)$/.exec(l);
+  if (tm) return <><span class={tm[1] === "[download]" ? "t-c" : tm[1] === "[Merger]" ? "t-m" : "t-bl"}>{tm[1]}</span>{tm[2]}</>;
+  return l;
 }
 
 function Terminal({ lines, idle }: { lines: string[]; idle?: string }) {
@@ -136,7 +154,7 @@ function Terminal({ lines, idle }: { lines: string[]; idle?: string }) {
   });
   return (
     <pre class="pdl-term" ref={el} onScroll={(e) => { const p = e.currentTarget; stick.current = p.scrollHeight - p.scrollTop - p.clientHeight < 30; }}>
-      {lines.length ? lines.map((l, i) => <div key={i} class={l.startsWith("ERROR") ? "err" : l.startsWith("✓") ? "ok" : ""}>{l}</div>) : <div class="dim">{idle}</div>}
+      {lines.length ? lines.map((l, i) => <div key={i}>{colorize(l)}</div>) : <div class="dim">{idle}</div>}
     </pre>
   );
 }
@@ -169,6 +187,10 @@ function Shell({ variant, children }: { variant: string; children: preact.Compon
   const d = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     d.current?.showModal();
+    // nothing behind the dialog scrolls while it is open
+    const h = document.documentElement, was = h.style.overflow;
+    h.style.overflow = "hidden";
+    return () => void (h.style.overflow = was);
   }, []);
   return (
     <dialog class={`pdl pdl-${variant}`} ref={d} onClose={() => openDownloader(false)} onCancel={() => openDownloader(false)}>
@@ -268,6 +290,15 @@ function DialogA() {
 }
 
 // ---------------------------------------------------------------- Variant B — One sheet
+const TILE_HUE: Record<Opt, string> = { full: "var(--t6, #89b4fa)", random: "var(--t7, #cba6f7)", type: "var(--t5, #94e2d5)", artist: "var(--t2, #fab387)", favorites: "var(--t1, #f38ba8)" };
+const fmtLen = (s: number | null) => (s == null ? "–" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`);
+const dlLabel = (n: number, mb: number) => `Download ${n} Video${n === 1 ? "" : "s"} (${fmtMB(mb)}) ~${fmtDur(estS(mb))}`;
+const CHEVRON = (
+  <svg class="pb-chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+    <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+);
+
 function DialogB() {
   const m = useModel();
   const [showTerm, setShowTerm] = useState(false);
@@ -284,16 +315,21 @@ function DialogB() {
           </span>
         </div>
         <Bar pct={t.pct} />
-        <ul class="pb-jobs">
+        <ul class={`pb-jobs${showTerm ? " short" : ""}`}>
           {[...bulkJobs()].sort((a, b) => rank(a) - rank(b)).map((j) => (
             <li key={j.id} class={`pb-job ${j.state}`}>
-              <span class="pb-ic">{j.state === "done" ? "✓" : j.state === "failed" ? "!" : j.state === "running" ? "↓" : j.state === "cancelled" ? "–" : "·"}</span>
-              <span class="pb-t">{j.title}<small class="dim">{j.state === "failed" ? j.reason : j.state === "running" ? `${Math.floor((j.doneMB / j.sizeMB) * 100)}% · ${j.speed.toFixed(1)} MB/s` : `${fmtMB(j.sizeMB)}`}</small></span>
+              <span class="pb-ic">{j.state === "done" ? "✓" : j.state === "failed" ? "!" : j.state === "running" ? "↓" : ""}</span>
+              <span class="pb-t">{j.title}<small class="dim">{j.state === "failed" ? j.reason : j.state === "running" ? `${Math.floor((j.doneMB / j.sizeMB) * 100)}% · ${j.speed.toFixed(1)} MB/s` : j.state === "cancelled" ? "cancelled" : `${fmtMB(j.sizeMB)}`}</small></span>
               {j.state === "running" && <Bar pct={(j.doneMB / j.sizeMB) * 100} thin />}
             </li>
           ))}
         </ul>
-        <button class="pb-disc" onClick={() => setShowTerm(!showTerm)}>{showTerm ? "▾" : "▸"} yt-dlp output</button>
+        <button class={`pb-termbtn${showTerm ? " open" : ""}`} aria-expanded={showTerm} onClick={() => setShowTerm(!showTerm)}>
+          {CHEVRON}
+          <span class="mono">&gt;_</span>
+          <span>{showTerm ? "Hide" : "Show"} yt-dlp output</span>
+          <span class="dim pb-termn">{sim.lines.length} lines{t.nFailed ? ` · ${t.nFailed} errors` : ""}</span>
+        </button>
         {showTerm && <Terminal lines={sim.lines} />}
         <footer class="pb-foot">
           <button class="btn small" onClick={togglePause} disabled={!t.nLeft}>{sim.paused ? "Resume" : "Pause"}</button>
@@ -303,40 +339,61 @@ function DialogB() {
         </footer>
       </Shell>
     );
+  const allOn = m.pool.length > 0 && m.excluded.size === 0;
+  const someOn = m.selected.length > 0 && !allOn;
   return (
     <Shell variant="B">
       <h3 class="pb-h">Download Videos</h3>
-      <div class="pb-tiles">
+      <div class="pb-tiles" role="radiogroup">
         {OPTS.map((o) => {
           const tt = m.totals(m.poolFor(o));
           return (
-            <button key={o} class={`pb-tile${m.opt === o ? " on" : ""}`} disabled={!tt.n} onClick={() => m.choose(o)}>
+            // every tile keeps its control, so choosing one never changes the tiles' height
+            <div key={o} role="radio" aria-checked={m.opt === o} tabIndex={0} class={`pb-tile${m.opt === o ? " on" : ""}${tt.n ? "" : " empty"}`} style={{ "--h": TILE_HUE[o] }} onClick={() => m.choose(o)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && m.choose(o)}>
               <span class="pb-tn">{OPT_LABEL[o]}</span>
               <span class="pb-tc">{tt.n}</span>
-              <span class="dim">{fmtMB(tt.mb)} · ~{fmtDur(tt.s)}</span>
-              {m.opt === o && <OptExtra m={m} o={o} />}
-            </button>
+              <span class="pb-ts"><span>{fmtMB(tt.mb)}</span><span>~{fmtDur(tt.s)}</span></span>
+              <span class="pb-tx" onFocusCapture={() => m.opt !== o && m.choose(o)}>{o === "full" ? <span class="dim">everything</span> : o === "favorites" ? <span class="dim">your ★ Videos</span> : <OptExtra m={m} o={o} />}</span>
+            </div>
           );
         })}
       </div>
       <div class="pb-line"><QualityPick m={m} compact /> <DestRow m={m} /></div>
-      {m.needsSelection && (
-        <ul class="pb-list">
-          {m.pool.map((v) => (
-            <li key={v.id} class={m.excluded.has(v.id) ? "off" : ""}>
+      <div class="pb-listwrap">
+        {m.needsSelection ? (
+          <div class="pb-fade" key={m.opt}>
+            <div class="pb-listhead">
               <label>
-                <input type="checkbox" checked={!m.excluded.has(v.id)} onChange={() => m.toggle(v.id)} />
-                <Poster video={v} />
-                <span class="pb-t">{v.title}<small class="dim">{v.artists.map((a) => a.nameLatin ?? a.name).join(", ") || v.type}</small></span>
-                <span class="dim">{fmtMB(estMB(v, m.quality))}</span>
+                <input type="checkbox" checked={allOn} ref={(el) => void (el && (el.indeterminate = someOn))} onChange={() => (allOn ? m.selectNone() : m.selectAll())} />
+                <span>{allOn ? "Deselect all" : "Select all"}</span>
               </label>
-            </li>
-          ))}
-        </ul>
-      )}
+              <span class="dim">{m.selected.length} of {m.pool.length} picked · uncheck to leave out</span>
+              <span class="pb-cols dim"><span>Length</span><span>Size</span></span>
+            </div>
+            <ul class="pb-list">
+              {m.pool.map((v) => (
+                <li key={v.id} class={m.excluded.has(v.id) ? "off" : ""}>
+                  <label>
+                    <input type="checkbox" checked={!m.excluded.has(v.id)} onChange={() => m.toggle(v.id)} />
+                    <Poster video={v} />
+                    <span class="pb-t">{v.title}<small class="dim">{v.artists.map((a) => a.nameLatin ?? a.name).join(", ") || v.type}</small></span>
+                    <span class="mono pb-len">{fmtLen(v.durationS)}</span>
+                    <span class="mono pb-size">{fmtMB(estMB(v, m.quality))}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div class="pb-fade pb-fullnote" key="full">
+            <b>Every Video that is Not on this machine</b>
+            <span class="dim">No picking: the whole archive goes in the queue, 2 at a time. Close this window and it keeps going.</span>
+          </div>
+        )}
+      </div>
       <footer class="pb-sticky">
         <span class={m.tooBig ? "pdl-warn" : "dim"}>{fmtMB(DISK_FREE_MB)} free{m.tooBig ? " — not enough" : ""}</span>
-        <button class="btn primary big" disabled={!m.sel.n || m.tooBig} onClick={m.start}>Download {m.sel.line}</button>
+        <button class="btn primary big" disabled={!m.sel.n || m.tooBig} onClick={m.start}>{dlLabel(m.sel.n, m.sel.mb)}</button>
       </footer>
     </Shell>
   );
@@ -442,7 +499,8 @@ export function ProtoThumbOverlay({ v }: { v: VideoDto }) {
   const c = useCard(v);
   const [out, setOut] = useState(false);
   const close = (e: Event) => (stop(e), setOut(false));
-  if (proto.variant === "A") {
+  if (proto.variant === "A" || proto.variant === "B") {
+    // B borrows A's card (owner's pick, 2026-11-08)
     const { j } = c;
     return (
       <div class="pa-card">
@@ -459,26 +517,6 @@ export function ProtoThumbOverlay({ v }: { v: VideoDto }) {
         )}
         {j && (j.state === "running" || j.state === "queued") && <div class="pa-strip"><i style={{ width: `${c.pct}%` }} /></div>}
         {out && j?.state === "failed" && <CardOutput j={j} onClose={close} />}
-      </div>
-    );
-  }
-  if (proto.variant === "B") {
-    const { j } = c;
-    if (out && j?.state === "failed") return <div class="pb-card flip"><CardOutput j={j} onClose={close} /></div>;
-    return (
-      <div class={`pb-card ${j?.state ?? "idle"}`}>
-        {j && j.state !== "cancelled" && j.state !== "done" && <div class="pb-veil" style={{ left: `${c.pct}%` }} />}
-        {!j || j.state === "cancelled" ? (
-          <button class="pb-dl" onClick={c.download} title="Download">{DL_ICON}<small>{fmtMB(c.est)}</small></button>
-        ) : j.state === "queued" ? (
-          <span class="pb-mid">queued · #{c.queuePos}</span>
-        ) : j.state === "running" ? (
-          <span class="pb-mid big">{c.pct}%</span>
-        ) : j.state === "failed" ? (
-          <button class="pb-mid fail" onClick={(e) => (stop(e), setOut(true))}>Failed · show output</button>
-        ) : (
-          <span class="pb-mid">✓</span>
-        )}
       </div>
     );
   }
@@ -593,7 +631,7 @@ dialog.pdl::backdrop { background: rgba(0,0,0,.6); }
 .pdl-bar.thin { height: 3px; }
 .pdl-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s linear; }
 .pdl-term { flex: 1; min-height: 120px; margin: 0; overflow: auto; background: #0d0c0c; color: #c9c6bf; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 11.5px/1.45 var(--font-mono); white-space: pre-wrap; word-break: break-all; }
-.pdl-term .err { color: #fb4934; } .pdl-term .ok { color: #b8bb26; }
+.pdl-term .t-r { color: #f38ba8; } .pdl-term .t-g { color: #a6e3a1; } .pdl-term .t-y { color: #f9e2af; } .pdl-term .t-bl { color: #89b4fa; } .pdl-term .t-c { color: #94e2d5; } .pdl-term .t-m { color: #cba6f7; } .pdl-term .t-d { color: #7f849c; } .pdl-term .t-b { font-weight: 700; }
 .pdl-warn { color: #fabd2f; font-size: .9em; }
 .pdl-bad { color: #fb4934; } .pdl-ok { color: #b8bb26; }
 .pdl-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -603,8 +641,9 @@ dialog.pdl::backdrop { background: rgba(0,0,0,.6); }
 .pdl-path { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pdl-extra { display: inline-flex; gap: 4px; } .pdl-extra input { width: 64px; padding: 2px 6px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
 .pdl-failacts { display: inline-flex; gap: 6px; }
-.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
-.btn.primary:disabled { opacity: .45; }
+dialog.pdl .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+dialog.pdl .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, #fff); }
+dialog.pdl .btn.primary:disabled { opacity: .45; }
 .btn.big { padding: 9px 18px; font-size: 1.02em; }
 .small { font-size: .85em; }
 
@@ -650,41 +689,45 @@ dialog.pdl::backdrop { background: rgba(0,0,0,.6); }
 dialog.pdl-B { grid-template-columns: 200px 1fr; }
 .pb-h { margin: 0; font-size: 1.15em; }
 .pb-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-.pb-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; text-align: left; font-size: .85em; }
-.pb-tile.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.pb-tile:disabled { opacity: .4; }
-.pb-tn { font-weight: 600; } .pb-tc { font-size: 1.9em; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.pb-tile .pdl-extra, .pb-tile select { margin-top: 4px; max-width: 100%; }
+.pb-tile { --h: var(--accent); display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px; border: 1px solid color-mix(in srgb, var(--h) 30%, var(--line)); border-radius: 10px; font-size: .85em; cursor: pointer; background: color-mix(in srgb, var(--h) 7%, transparent); transition: background .18s, border-color .18s, box-shadow .18s, transform .18s; }
+.pb-tile:hover { background: color-mix(in srgb, var(--h) 13%, transparent); }
+.pb-tile.on { border-color: var(--h); background: color-mix(in srgb, var(--h) 18%, transparent); box-shadow: inset 0 0 0 1px var(--h), 0 6px 18px color-mix(in srgb, var(--h) 18%, transparent); }
+.pb-tile.empty { opacity: .45; }
+.pb-tn { font-weight: 600; color: var(--h); }
+.pb-tc { font-size: 1.9em; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pb-ts { display: flex; flex-wrap: wrap; column-gap: 10px; white-space: nowrap; color: var(--fg2); font-variant-numeric: tabular-nums; }
+.pb-tx { margin-top: 4px; min-height: 26px; display: flex; align-items: center; max-width: 100%; }
+.pb-tx select { max-width: 100%; }
+dialog.pdl select.btn { appearance: none; -webkit-appearance: none; padding-right: 26px; line-height: 1.3; text-overflow: ellipsis; background: color-mix(in srgb, var(--fg) 7%, transparent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%239aa1b7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 7px center / 13px; }
 .pb-line { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.pb-list { flex: 1; overflow: auto; list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-.pb-list label { display: grid; grid-template-columns: 20px 64px 1fr auto; align-items: center; gap: 10px; padding: 5px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.pb-listwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.pb-fade { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: pb-in .22s ease-out; }
+@keyframes pb-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pb-listhead { display: flex; align-items: center; gap: 12px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: .88em; }
+.pb-listhead label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.pb-cols { margin-left: auto; display: grid; grid-template-columns: 52px 64px; text-align: right; gap: 10px; }
+.pb-list { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: 0; }
+.pb-list label { display: grid; grid-template-columns: 20px 64px 1fr 52px 64px; align-items: center; gap: 10px; padding: 5px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .pb-list .thumb { width: 64px; }
-.pb-list li.off { opacity: .4; }
+.pb-len, .pb-size { text-align: right; font-size: .85em; color: var(--fg2); }
+.pb-list li { transition: opacity .15s; } .pb-list li.off { opacity: .4; }
+.pb-fullnote { justify-content: center; align-items: center; text-align: center; gap: 6px; padding: 20px; }
 .pb-t { display: flex; flex-direction: column; min-width: 0; } .pb-t small { font-size: .8em; }
 .pb-sticky { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .pb-big { display: flex; align-items: center; gap: 18px; }
 .pb-pct { font-size: 3.4em; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; } .pb-pct small { font-size: .45em; color: var(--fg2); }
 .pb-jobs { flex: 1; min-height: 80px; overflow: auto; list-style: none; margin: 0; padding: 0; }
+.pb-jobs.short { flex: 0 1 30%; }
 .pb-job { display: grid; grid-template-columns: 22px 1fr 120px; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: .9em; }
 .pb-job .pb-ic { text-align: center; font-weight: 700; color: var(--fg3); }
-.pb-job.done .pb-ic { color: #b8bb26; } .pb-job.failed .pb-ic, .pb-job.failed small { color: #fb4934; } .pb-job.running .pb-ic { color: var(--accent); }
+.pb-job.done .pb-ic { color: var(--ok, #b8bb26); } .pb-job.failed .pb-ic, .pb-job.failed small { color: var(--no, #fb4934); } .pb-job.running .pb-ic { color: var(--accent); }
 .pb-job.done, .pb-job.cancelled { opacity: .55; }
-.pb-disc { align-self: flex-start; color: var(--fg2); font-size: .9em; }
+.pb-termbtn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 9%, #0d0c0c); color: var(--fg); font-weight: 600; text-align: left; transition: background .15s; }
+.pb-termbtn:hover { background: color-mix(in srgb, var(--accent) 16%, #0d0c0c); }
+.pb-termbtn .mono { color: var(--accent); }
+.pb-chev { flex: none; display: block; transition: transform .18s; } .pb-termbtn.open .pb-chev { transform: rotate(90deg); }
+.pb-termn { margin-left: auto; font-weight: 400; font-size: .88em; }
 .pb-foot { display: flex; gap: 8px; flex-wrap: wrap; }
-.pb-card { position: absolute; inset: 0; border-radius: 6px; overflow: hidden; display: grid; place-items: center; }
-.pb-card.idle { background: rgba(0,0,0,.25); } .card:hover .pb-card.idle { background: rgba(0,0,0,.5); }
-.pb-veil { position: absolute; top: 0; right: 0; bottom: 0; background: rgba(10,10,10,.72); backdrop-filter: grayscale(1); transition: left .25s linear; }
-.pb-card.failed { background: rgba(204,36,29,.45); }
-.pb-dl { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 54px; height: 54px; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; border: 2px solid rgba(255,255,255,.5); opacity: .75; transition: opacity .15s, transform .15s; }
-.card:hover .pb-dl { opacity: 1; transform: scale(1.08); } .pb-dl:hover { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-.pb-dl small { font-size: 9px; font-weight: 600; }
-.pb-mid { position: relative; color: #fff; font-weight: 600; text-shadow: 0 1px 4px #000; font-size: 13px; }
-.pb-mid.big { font-size: 30px; font-variant-numeric: tabular-nums; }
-.pb-mid.fail { background: rgba(0,0,0,.75); padding: 4px 10px; border-radius: 99px; text-shadow: none; }
-.pb-card.flip { background: #0d0c0c; place-items: stretch; }
-.pb-card.flip .pcard-out { position: static; border: 0; box-shadow: none; height: 100%; display: flex; flex-direction: column; }
-.pb-card.flip pre { flex: 1; max-height: none; }
-
 /* C */
 dialog.pdl-C { grid-template-columns: 72px 1fr; width: min(1100px, calc(100vw - 32px)); height: min(760px, calc(100vh - 48px)); }
 .pdl-art-C span { writing-mode: vertical-rl; } .pdl-art-C small { display: none; }

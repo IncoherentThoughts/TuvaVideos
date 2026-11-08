@@ -49,6 +49,9 @@ import { clearSessionRecord, getMeta, machineMode, readSessionRecord, setMeta } 
 import type { OnboardingDto } from "../shared/types";
 import { homedir } from "node:os";
 import { createDownloaderTools } from "./downloads/toolsInstall";
+import type { DownloadQueue } from "./downloads/queue";
+import { createDownloadService } from "./downloads/service";
+import { downloadRoutes } from "./downloads/routes";
 
 const THUMB_CACHE = "public, max-age=86400";
 /** The top-level keys of a `POST /api/cache/apply` body: `SharedChanges` (a write's return or a pull's). */
@@ -74,6 +77,8 @@ export interface Services {
   startedAt: number;
   /** Set by the launcher: stops the server (the power button). Absent under tests and the smoke runs. */
   quit?: () => void;
+  /** The Download queue (downloader-spec §4). Built on first use by `createHandler` when the caller did not supply one. */
+  downloads?: DownloadQueue;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -142,6 +147,7 @@ export function createHandler(s: Services) {
   const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const reconcile = createReconcile(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const downloaderTools = createDownloaderTools({ dataDir: s.cfg.dataDir, db: s.db });
+  const downloads = (s.downloads ??= createDownloadService({ cfg: s.cfg, db: s.db, roots: s.roots, scanner: s.scanner, tools: downloaderTools }));
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
@@ -836,6 +842,11 @@ export function createHandler(s: Services) {
         void downloaderTools.installMissing();
         return json(await downloaderTools.status());
       }
+      // The Download queue (downloader-spec §4, §6): snapshot, jobs, card, pause/resume, cancel, retry, log, report.
+      if (p === "/api/downloads" || p.startsWith("/api/downloads/")) {
+        const res = await downloadRoutes(req, url, downloads);
+        if (res) return res;
+      }
       // The `pending_share` queue (sharing-spec §6.6, #140): its counts for the one question and the chip row, the
       // inserts the browser drains it with, and the machine's "Share once, then automatic" answer. Posters (§6.5):
       // the local posters a Video Editor's browser uploads. This machine's pages only (Host; writes also Origin).
@@ -954,6 +965,14 @@ export function createHandler(s: Services) {
       }
       if (req.method === "POST" && p === "/api/quit") {
         if (!s.quit) return json({ error: "this server cannot quit itself" }, 409);
+        // Downloads running (downloader-spec §4.7): the web asks first and repeats with `force`; the processes are killed
+        // (partials kept) before the server goes.
+        const running = downloads.runningCount();
+        if (running > 0) {
+          const force = (await req.json().catch(() => null) as { force?: boolean } | null)?.force === true || url.searchParams.get("force") === "1";
+          if (!force) return json({ error: `${running} download${running === 1 ? " is" : "s are"} running`, running, confirm: true }, 409);
+          await downloads.killAll();
+        }
         setTimeout(s.quit, 200); // after the reply has left
         return json({ quitting: true }, 202);
       }

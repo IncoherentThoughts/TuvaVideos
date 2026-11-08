@@ -87,6 +87,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
       // later. The port stays bound until they have stopped (audit PLAY-2).
       log("shutting down: stopping the ffmpeg jobs in flight");
       roots.stop();
+      await services.downloads?.shutdown(); // yt-dlp killed, partials kept; the items wait for the next launch
       tv.stop();
       studio.shutdown(); // kills the osascript child
       keyframes.shutdown();
@@ -97,6 +98,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
       log("bye");
     },
     kill() {
+      void services.downloads?.shutdown();
       fallback.kill();
       keyframes.shutdown();
       void thumbs.shutdown(); // kills its children synchronously

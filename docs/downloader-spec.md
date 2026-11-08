@@ -111,7 +111,7 @@ Local migrations `0023_download_setting.sql` (the `download_setting` table, tick
 
 ```sql
 CREATE TABLE download_job (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,   -- never reused (a deleted job's log directory and a tab's job id stay unambiguous)
   kind TEXT NOT NULL CHECK (kind IN ('bulk', 'card')),
   option TEXT,                 -- 'full' | 'random' | 'type' | 'artist' | 'favorites'; NULL for a card
   quality TEXT NOT NULL CHECK (quality IN ('720', '1080', 'best')),
@@ -122,7 +122,7 @@ CREATE TABLE download_job (
   cancelled_at TEXT
 );
 CREATE TABLE download_item (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id INTEGER NOT NULL REFERENCES download_job(id) ON DELETE CASCADE,
   video_id TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('youtube', 'instagram', 'rutube')),
@@ -142,13 +142,16 @@ CREATE TABLE download_item (
   UNIQUE (job_id, video_id)
 );
 CREATE INDEX download_item_runnable ON download_item(state, queue_pos);
+-- one live item per Video across jobs, enforced by the database
+CREATE UNIQUE INDEX download_item_one_live ON download_item(video_id)
+  WHERE state IN ('queued', 'sizing', 'downloading', 'merging', 'scanning', 'waiting');
 ```
 
 `download_setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)` is created by 0023 (ticket 1) and is not repeated in 0024.
 
 Keys in `download_setting`: `ytdlp_checked_at`, `deno_checked_at`, `last_throughput_bps`, `queue_paused` (`1` when the user paused), `instagram_auth` (JSON, §5.2), `instagram_notice_ack_at`. The per-item log lives at `<dataDir>/downloads/<job_id>/<item_id>.log`; a job's directory is deleted with the job.
 
-A Video is in at most one live item at a time across jobs: adding a Video that is already queued or running in another job moves that item instead of inserting a second.
+A Video is in at most one live item at a time across jobs (a partial unique index): adding a Video that is already queued or waiting in another job moves that item into the new job at its new position; one that is already running stays in its job (the response counts it as `alreadyRunning`).
 
 ### 4.2 Item states
 
@@ -222,9 +225,9 @@ The `error_line` is kept verbatim; the Failure report shows the class's words an
 ### 4.5 Scheduling, offline and rate limits
 
 - **Picking:** the runner fills two slots with the lowest `queue_pos` items in `queued` whose `not_before` has passed, whose site is not paused, and, for Instagram, only when no other Instagram item is running and the Instagram pause (§5.4) has elapsed.
-- **Network:** a `network` failure (after yt-dlp's own retries) puts the item back to `queued` (not failed, `attempts` unchanged) and pauses the whole queue as **offline**. The runner probes connectivity (`HEAD https://www.youtube.com/generate_204`, 5 s timeout) every 15 s, doubling to 2 min, and resumes on the first success. Dialog: "Waiting for connection…". Interrupted items resume from their `.part`.
-- **429 / YouTube sign-in check:** the item returns to `queued` and only that **site** pauses: 1 min, then 5, then 10. The third consecutive rate limit on one item fails it as `rate_limited`. Other sites keep downloading. A success on the site resets its backoff.
-- **Disk:** before Confirm, the estimate check of §3.4. At run time, `disk_full` fails the item, pauses the queue and shows "Disk full: free space on <volume> and press Resume".
+- **Network:** a `network` failure (after yt-dlp's own retries) puts the item back in line (not failed, `attempts` unchanged) as `waiting` with `reason` `network`, stops the other running items the same way (partials kept), and pauses the whole queue as **offline**. The probe's first success turns every `waiting`/`network` item back to `queued`. The runner probes connectivity (`HEAD https://www.youtube.com/generate_204`, 5 s timeout) every 15 s, doubling to 2 min, and resumes on the first success. Dialog: "Waiting for connection…". Interrupted items resume from their `.part`.
+- **429 / YouTube sign-in check:** the item goes `waiting` (`reason` `rate_limited`, `not_before` = the site's resume time, then `queued` by itself) and only that **site** pauses: 1 min, then 5, then 10 (by the site's consecutive limits; a second item hitting the limit while the site is already paused does not escalate it). The third consecutive rate limit on one item fails it as `rate_limited`, and the site rests that 10 min too. A `youtube_signin` is stored and shown as `rate_limited`. Other sites keep downloading. A success on the site resets its backoff.
+- **Disk:** before Confirm, the estimate check of §3.4. At run time, `disk_full` fails the item, pauses the queue (the other running items are stopped, partials kept) and shows "Disk full: free space on <volume> and press Resume" (`diskFull: { dir }` in the snapshot); Resume also puts the items that the full disk failed back to `queued`.
 - **Pause:** `queue_paused = 1`; running processes are killed (partials kept) and their items go back to `queued`. Resume clears it.
 - **Cancel job:** running items killed; their and every queued item's partials deleted (the files matching the item's id under the destination); those items → `cancelled`; the job gets `cancelled_at`.
 - **Cancel one Video:** the same for one item (a log-list row's ×, the card's ×).
@@ -233,17 +236,17 @@ The `error_line` is kept verbatim; the Failure report shows the class's words an
 
 ### 4.6 File to Copy
 
-When yt-dlp exits 0, the runner calls a new `Scanner.scanFile(rootId, relPath)`: a single-file entry around `processEntry` (`src/server/scan.ts`), followed by the same finishing steps scoped to the one Video (`judgeStaleCopies`, `judgeBrowserCopies`, `matchNewVideos` for a new Video, a search index update). It takes the scan lock like a Rescan; if a Rescan is running, it waits for it. The result: the Video has a Copy, `presence` turns it playable, and the card swaps on its next poll. A failed probe fails the item as `unknown` with the probe error. A destination outside every Root skips the scan and ends `done_outside`.
+When yt-dlp exits 0, the runner calls a new `Scanner.scanFile(rootId, relPath)`: a single-file entry around `processEntry` (`src/server/scan.ts`), followed by the same finishing steps scoped to the one Video (`judgeStaleCopies`, `judgeBrowserCopies`, `matchNewVideos` for a new Video, a search index update). It takes the scan lock like a Rescan; if a Rescan is running, it waits for it. The result: the Video has a Copy, `presence` turns it playable, and the card swaps on its next poll. `scanFile` returns `{ ok: true, videoId }` or `{ ok: false, error }` (the probe error, or "the file is not a Video"). The path yt-dlp prints is resolved against the real path of the Root (macOS `/var` vs `/private/var`) before it is made relative. A failed probe fails the item as `unknown` with the probe error. A destination outside every Root skips the scan and ends `done_outside`.
 
 ### 4.7 Resume after quit or crash
 
-At startup the runner starts nothing. If any job has items in a live state, those items are reset to `queued` and `GET /api/downloads` reports `resumePrompt: { jobId, left, estBytes }`. The first tab shows a bar: "Download job: N Videos left (≈ X GB) — **Resume** / **Discard**". Resume starts the runner; Discard cancels the job (deletes partials). If the job's destination Root is unmounted, the bar says "waiting for <Root>" and Resume is disabled until it is mounted. A card click while the prompt is open adds its job of one and starts the runner, which resumes the old job too.
+At startup the runner starts nothing. If any job has items in a live state, those items are reset to `queued` and `GET /api/downloads` reports `resumePrompt: { jobId, left, estBytes, waitingForRoot }` (`waitingForRoot` is the Root's path while it is unmounted, else null; `POST /resume` answers 409 then). The first tab shows a bar: "Download job: N Videos left (≈ X GB) — **Resume** / **Discard**". Resume starts the runner; Discard cancels the job (deletes partials). If the job's destination Root is unmounted, the bar says "waiting for <Root>" and Resume is disabled until it is mounted. A card click while the prompt is open adds its job of one and starts the runner, which resumes the old job too.
 
-**Quit guard:** ⏻ (`POST /api/quit`) while items are running asks "N downloads are running. Quit anyway? They will resume next time." The server kills the processes (partials kept) before exiting.
+**Quit guard:** ⏻ (`POST /api/quit`) while items are running asks "N downloads are running. Quit anyway? They will resume next time." The server kills the processes (partials kept) before exiting. Server side: with items running, `POST /api/quit` answers 409 `{ error, running: N, confirm: true }` without quitting; the web asks and repeats with body `{ "force": true }`, and the server then kills the processes (the items return to `queued`) and quits. With nothing running it quits at once.
 
 ### 4.8 Retention
 
-Only the latest **bulk** job and its Failure report are kept. A new Confirm deletes older finished bulk jobs (rows and log directories). Card jobs are deleted when they finish successfully; a failed card job stays until Retry or dismissal (§8). The latest bulk job stays reachable from the avatar menu ("Last download…") until the next Confirm.
+Only the latest **bulk** job and its Failure report are kept. A new Confirm deletes older finished bulk jobs (rows and log directories); an unfinished older job stays until it finishes. Card jobs are deleted when they finish successfully (or are cancelled; the card's per-Video map keeps a `done` entry for 30 s so it can show "✓ Downloaded"); a failed card job stays until Retry or dismissal (§8). The latest bulk job stays reachable from the avatar menu ("Last download…") until the next Confirm.
 
 ---
 
@@ -285,13 +288,13 @@ All under the existing host check (`hostError`), JSON, on `src/server/api.ts`, i
 | `GET /api/downloads/tools` | §2.5 |
 | `POST /api/downloads/tools/install` | installs yt-dlp and deno if missing; progress via `GET /api/downloads/tools` |
 | `POST /api/downloads/plan` | body `{ option, n?, seed?, type?, artistId?, quality, destDir? }` → `{ videos: [{ id, title, artists, source, durationS, estBytes, posterUrl }], totals: { count, estBytes, withoutEstimate, estSeconds, throughputAssumed }, freeBytes, destInRoot, instagramCount }`; also `options` counts per tile (§7) |
-| `POST /api/downloads/jobs` | body `{ option, quality, destDir, videoIds }` → the new job; the browser sends the picked ids |
-| `POST /api/downloads/card` | body `{ videoId }` → a job of one at the front, or moves an existing item to the front |
-| `GET /api/downloads?logCursor=<n>&job=<id>` | queue snapshot: running job(s), items (state, bytes, speed, eta, reason), per-Video map for cards, `paused`, `offline`, site pauses, `resumePrompt`, and new log lines since the cursor (with the next cursor) for the selected job |
+| `POST /api/downloads/jobs` | body `{ option, quality, destDir, videoIds, estBytes? }` (`quality` `720`, `1080` or `best`, `720p` accepted; `estBytes` an optional `{ videoId: bytes }` snapshot for the resume prompt) → 201 `{ jobId, added, moved, alreadyRunning, rejected: [{ videoId, why }] }`; Videos that are unknown, hash-only or already have a Copy are `rejected`; 400 when none is left, 409 when the destination Root is unmounted |
+| `POST /api/downloads/card` | body `{ videoId, quality?, destDir? }` → 201 `{ jobId, itemId, moved }`: a job of one at the front, or moves the Video's live item to the front (`moved: true`). Quality defaults to the last job's (else 1080), the destination to the first mounted Root. 409 when the Video already has a Copy |
+| `GET /api/downloads?logCursor=<n>&job=<id>` | queue snapshot (`started`, `paused`, `offline: { since, nextProbeAt }`, `diskFull`, `sitePauses`, `resumePrompt`, `runningCount`, `lastBulkJobId`, `jobs`, the selected `job` with counts and bytes, its `items`, the per-Video `videos` map with a queue `rank`, and `log: { lines: [{ itemId, text }], cursor, reset }`; the log is the job's items' log files read through a bounded in-memory buffer, `reset` when the cursor was stale, e.g. after a restart); in short: running job(s), items (state, bytes, speed, eta, reason), per-Video map for cards, `paused`, `offline`, site pauses, `resumePrompt`, and new log lines since the cursor (with the next cursor) for the selected job |
 | `POST /api/downloads/pause` / `resume` | §4.5 |
 | `POST /api/downloads/jobs/:id/cancel` · `/retry-failed` · `/discard` | §4.5, §4.7 |
 | `POST /api/downloads/items/:id/cancel` · `/retry` · `/dismiss` | one item |
-| `GET /api/downloads/items/:id/log?tail=200` | the card's pop-up |
+| `GET /api/downloads/items/:id/log?tail=200` | the card's pop-up: `{ lines, errorAt, state, reason }`, `errorAt` the index of the last `ERROR:` line (or -1) |
 | `GET /api/downloads/jobs/:id/report.txt` | the Failure report (§9), `Content-Disposition: attachment` |
 | `GET /api/downloads/settings` · `PUT` | Instagram auth (§5.2) and the notice ack; never returns cookie contents |
 | `POST /api/choose-folder` | macOS `osascript -e 'choose folder'`, like `/api/choose-file`; other platforms return 501 and the dialog shows a path field |
@@ -371,7 +374,7 @@ Reason words: "unavailable", "private", "not available in your country", "login 
 ## 10. Testing
 
 - **Unit (`bun test`):** the progress-line parser, the failure classifier (every row of §4.4 on real messages from the research notes), the estimate maths (§3.4 incl. the height rules and the without-estimate count), the selectors and output templates round-tripping through `parseFilename`, the queue state machine with a fake runner (pause, cancel, retry, offline, per-site backoff, Instagram one-at-a-time and needs-sign-in, resume after restart, retention), the cookies.txt header check, and the Reference size Copy choice.
-- **Fake yt-dlp:** `test/fixtures/fake-yt-dlp.ts`, a script that the queue tests point `TUVA_BIN_DIR` at, which replays scripted progress, errors, exit codes and a small real clip as its output file. The queue and scan-in are tested end to end with it, offline.
+- **Fake yt-dlp:** `test/fixtures/fake-yt-dlp.ts`, a script that the queue tests point `TUVA_BIN_DIR` at, which replays scripted progress, errors, exit codes and a small real clip as its output file; a `perUrl` map overrides the scenario per Video (the URL contains the key), so one scenario scripts a whole job. The pure state machine tests use a stub runner and an injected clock (`test/downloadQueue.test.ts`); `test/downloadQueueApp.test.ts` runs the real app, runner and scanner against the fake. The queue and scan-in are tested end to end with it, offline.
 - **Archive (Lyrics Website):** pgTAP for the three columns and `write_videos`; the RLS snapshot.
 - **Real downloads (verification ticket):** on this Mac and a clean Mac account: install from scratch (Gatekeeper, checksums), one YouTube, one Instagram reel signed out, one Rutube Video; the progress template on a real download (including a `bv+ba` merge and an HLS source); pull the network mid-download and restore it; kill the server mid-download and resume; a full-disk run on a small disk image. The agent's browser pass on the dialog and card in Lawson Night and one light theme (muted, per the smoke-test rule). Message wordings that differ from the classifier become fixes.
 

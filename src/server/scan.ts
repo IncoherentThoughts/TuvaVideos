@@ -94,6 +94,8 @@ export class Scanner {
   };
   private seedHashes: Map<string, string>;
   private idle: (() => void)[] = [];
+  /** The last probe failure `processEntry` logged, for `scanFile` to report. */
+  private lastProbeError: string | null = null;
 
   constructor(
     private db: Db,
@@ -124,6 +126,49 @@ export class Scanner {
     const ids = this.roots.list().filter((r) => this.roots.isAvailable(r.id)).map((r) => r.id);
     for (const id of ids) this.request(id);
     return ids;
+  }
+
+  /**
+   * One finished file into the library (downloader-spec §4.6): `processEntry` for `relPath`, then the finishing steps
+   * scoped to that Video. Takes the scan lock like a Rescan: if one is running (or another file is going in) this waits.
+   */
+  async scanFile(rootId: number, relPath: string): Promise<{ ok: true; videoId: string } | { ok: false; error: string }> {
+    const root = this.roots.get(rootId);
+    if (!root) return { ok: false, error: "the Root is gone" };
+    while (this.running) await this.whenIdle();
+    this.running = true;
+    try {
+      const abs = join(root.path, relPath);
+      const st = await stat(abs);
+      const entry: Entry = { rel: relPath, name: relPath.split("/").pop()!, size: st.size, mtimeMs: st.mtimeMs };
+      const row = this.db
+        .query("SELECT id, video_id, rel_path, size, mtime, missing_since, fallback_file, playback, content_hash FROM copy WHERE root_id = ? AND rel_path = ?")
+        .get(rootId, relPath) as CopyRow | null;
+      const summary: RootScanSummary = {
+        rootId, filesSeen: 1, newCopies: 0, updatedCopies: 0, revived: 0, markedMissing: 0, skippedNotVideo: 0, skippedSymlinks: 0,
+        skippedDeleted: 0, probeFailed: 0, ioErrors: 0, dirErrors: [], durationMs: 0,
+      };
+      const newVideos: string[] = [];
+      this.lastProbeError = null;
+      await this.processEntry(root, entry, row ?? undefined, summary, { active: 0 }, newVideos);
+      const after = this.db.query("SELECT video_id FROM copy WHERE root_id = ? AND rel_path = ?").get(rootId, relPath) as { video_id: string } | null;
+      if (!after) {
+        const why = this.lastProbeError ?? (summary.skippedDeleted ? "the Video was deleted" : "the file is not a Video");
+        return { ok: false, error: why };
+      }
+      judgeStaleCopies(this.db);
+      judgeBrowserCopies(this.db);
+      await this.matchNewVideos(newVideos);
+      rebuildSearchIndex(this.db);
+      this.afterScan(rootId);
+      return { ok: true, videoId: after.video_id };
+    } catch (e) {
+      return { ok: false, error: String((e as Error).message ?? e) };
+    } finally {
+      this.running = false;
+      for (const r of this.idle.splice(0)) r();
+      if (this.queue.size) void this.loop();
+    }
   }
 
   private async loop() {
@@ -309,6 +354,7 @@ export class Scanner {
     if (!probe.ok) {
       if (probe.io) summary.ioErrors++; // retryable: the row (if any) stays as it was, nothing is inserted
       else summary.probeFailed++;
+      this.lastProbeError = probe.error;
       log(`scan: probe ${probe.io ? "I/O error (will retry next scan)" : "failed"}: ${entry.rel}: ${probe.error}`);
       return;
     }

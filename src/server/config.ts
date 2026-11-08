@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, win32 } from "node:path";
+import { delimiter, join, win32 } from "node:path";
 import { archiveEndpoint, type ArchiveEndpoint } from "../shared/archive";
 
 export interface Config {
@@ -54,6 +54,23 @@ export function findBin(name: string, env: Record<string, string | undefined> = 
   const dirs = [env.TUVA_BIN_DIR, "/opt/homebrew/bin", "/usr/local/bin"].filter((d): d is string => !!d);
   for (const d of dirs) if (existsSync(join(d, name))) return join(d, name);
   return Bun.which(name) ?? name;
+}
+
+/**
+ * Where the Downloader's yt-dlp (or deno) is (docs/downloader-spec.md §2.1): `TUVA_BIN_DIR`, then the app's own
+ * `<dataDir>/bin`, then Homebrew, then `PATH`; `null` when there is none. `name` carries the platform's suffix
+ * (`yt-dlp.exe`). A user's `TUVA_BIN_DIR` wins over the copy the app installed.
+ */
+export function findDownloaderBin(
+  name: string,
+  dataDir: string,
+  env: Record<string, string | undefined> = process.env,
+  exists: ((path: string) => boolean) | undefined = existsSync,
+): string | null {
+  const onPath = (env.PATH ?? "").split(delimiter).filter(Boolean);
+  const dirs = [env.TUVA_BIN_DIR, join(dataDir, "bin"), "/opt/homebrew/bin", "/usr/local/bin", ...onPath].filter((d): d is string => !!d);
+  for (const d of dirs) if (exists(join(d, name))) return join(d, name);
+  return null;
 }
 
 /** All paths and knobs in one place. `TUVA_*` env vars exist for tests and the smoke run only. */

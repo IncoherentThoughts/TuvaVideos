@@ -48,6 +48,7 @@ import { checkRootPath, onboardingFor, ROOT_BAR_DISMISSED } from "./rootSetup";
 import { clearSessionRecord, getMeta, machineMode, readSessionRecord, setMeta } from "./localCopy/meta";
 import type { OnboardingDto } from "../shared/types";
 import { homedir } from "node:os";
+import { createDownloaderTools } from "./downloads/toolsInstall";
 
 const THUMB_CACHE = "public, max-age=86400";
 /** The top-level keys of a `POST /api/cache/apply` body: `SharedChanges` (a write's return or a pull's). */
@@ -140,6 +141,7 @@ const COPY_SQL = `SELECT c.id, c.video_id, c.root_id, r.kind AS root_kind, c.rel
 export function createHandler(s: Services) {
   const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const reconcile = createReconcile(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
+  const downloaderTools = createDownloaderTools({ dataDir: s.cfg.dataDir, db: s.db });
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
@@ -821,6 +823,18 @@ export function createHandler(s: Services) {
         } catch (e) {
           return json({ error: `nothing was applied: ${(e as Error).message ?? e}` }, 422);
         }
+      }
+      // The Downloader's tools (downloader-spec §2.5, §6): what is installed, and the install (progress is this GET).
+      if (p === "/api/downloads/tools" && req.method === "GET") {
+        const refused = hostError(req);
+        if (refused) return json({ error: refused }, 403);
+        return json(await downloaderTools.status());
+      }
+      if (p === "/api/downloads/tools/install" && req.method === "POST") {
+        const refused = hostError(req) ?? (req.headers.get("origin") ? localRequestError(req) : null);
+        if (refused) return json({ error: refused }, 403);
+        void downloaderTools.installMissing();
+        return json(await downloaderTools.status());
       }
       // The `pending_share` queue (sharing-spec §6.6, #140): its counts for the one question and the chip row, the
       // inserts the browser drains it with, and the machine's "Share once, then automatic" answer. Posters (§6.5):

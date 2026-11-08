@@ -53,7 +53,7 @@ musl Linux is out of scope for now (§12).
 
 ### 2.3 Self-update
 
-`yt-dlp -U` on the app-installed binary, at most once per 24 h, recorded as `ytdlp_checked_at` in the `download_setting` table (§4.1). It runs before a job starts when no download is running and the last check is over 24 h old, and never while a yt-dlp process is alive. Failure (exit 100, or no network) keeps the old binary and is logged; the job starts anyway. deno is updated the same way by re-running the install when its release is newer, at most weekly. A failed extraction does not trigger an extra update.
+`yt-dlp -U` on the app-installed binary, at most once per 24 h, recorded as `ytdlp_checked_at` in the `download_setting` table (§4.1). It runs before a job starts when no download is running and the last check is over 24 h old, and never while a yt-dlp process is alive. Failure (exit 100, or no network) keeps the old binary (restored from a `.bak` copy if `-U` left it unrunnable) and is logged; the job starts anyway, and the next try waits an hour. The queue calls `updateYtDlpIfDue(ytdlpRunning)` and `updateDenoIfDue()` from `src/server/downloads/toolsInstall.ts`. deno is updated the same way by re-running the install when its release is newer, at most weekly. A failed extraction does not trigger an extra update.
 
 ### 2.4 ffmpeg
 
@@ -61,7 +61,7 @@ musl Linux is out of scope for now (§12).
 
 ### 2.5 Tool status
 
-`GET /api/downloads/tools` returns `{ ytdlp: { path, version, source: "app"|"found"|"missing", checkedAt }, jsRuntime: { kind: "deno"|"node"|"none", path, version }, impersonation: boolean }`. With no JS runtime and no way to install one (offline), the dialog shows "YouTube needs deno; it will be installed when you are online" and YouTube Videos are held as waiting (§4.2), not failed.
+`GET /api/downloads/tools` returns `{ ytdlp: { path, version, source: "app"|"found"|"missing", checkedAt }, jsRuntime: { kind: "deno"|"node"|"none", path, version }, impersonation: boolean, install: { running, tool, receivedBytes, totalBytes, error } }` (`install` is the progress of `POST /api/downloads/tools/install`, which returns at once; `impersonation` is true without a check for the app's own yt-dlp, whose assets bundle curl-cffi; `--list-impersonate-targets` rows read `Chrome-133  Macos-15  curl_cffi`, with `(unavailable)` when it is missing). With no JS runtime and no way to install one (offline), the dialog shows "YouTube needs deno; it will be installed when you are online" and YouTube Videos are held as waiting (§4.2), not failed.
 
 ---
 
@@ -142,8 +142,9 @@ CREATE TABLE download_item (
   UNIQUE (job_id, video_id)
 );
 CREATE INDEX download_item_runnable ON download_item(state, queue_pos);
-CREATE TABLE download_setting (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ```
+
+`download_setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)` is created by 0023 (ticket 1) and is not repeated in 0024.
 
 Keys in `download_setting`: `ytdlp_checked_at`, `deno_checked_at`, `last_throughput_bps`, `queue_paused` (`1` when the user paused), `instagram_auth` (JSON, §5.2), `instagram_notice_ack_at`. The per-item log lives at `<dataDir>/downloads/<job_id>/<item_id>.log`; a job's directory is deleted with the job.
 

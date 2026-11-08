@@ -32,10 +32,39 @@ export class ApiError extends Error {
   }
 }
 
+/** The `error` of a 403's JSON body, null when it has none. */
+async function refusal(r: Response): Promise<string | null> {
+  try {
+    const b = (await r.json()) as { error?: unknown }
+    return typeof b?.error === "string" ? b.error : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A 403 reloads the whole app (the shell looks for the Mac and the access prompt again) only when it says this TV is
+ * not approved, and a second ask (`HEAD /api/videos`) is refused too. Any other 403, or one the second ask does not repeat, fails just this request:
+ * reloading drops the Player and the screen the TV was on.
+ */
+export async function shouldRestart(first: Response, recheck: () => Promise<Response>): Promise<boolean> {
+  if ((await refusal(first)) !== "approve") return false
+  try {
+    // a HEAD (the recheck carries no body): the approval is checked before anything else, so 403 is still "approve"
+    return (await recheck()).status === 403
+  } catch {
+    return false // the server did not answer: an outage, not a lost approval
+  }
+}
+
+let restarting = false
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   // No custom header: the UI runs on the packaged shell's origin, and a header would turn every read into a preflight.
   const r = await fetch(url(path), { signal })
-  if (r.status === 403) shell()?.restart() // not approved (any more): the shell looks again
+  if (r.status === 403 && !restarting && (await shouldRestart(r, () => fetch(url("/api/videos"), { method: "HEAD" })))) {
+    restarting = true
+    shell()?.restart() // not approved (any more): the shell looks again
+  }
   if (!r.ok) throw new ApiError(r.status, path)
   return (await r.json()) as T
 }

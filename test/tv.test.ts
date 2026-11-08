@@ -281,6 +281,21 @@ describe("TV Server listener", () => {
     expect(ui).toMatch(/\d+\.\d+\.\d+\.\d+:\d+|no network address/);
   });
 
+  test("the log names each 403 the TV gets and each load of the TV app (/tv.js)", async () => {
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+    try {
+      await tvReq("/tv.js", { headers: tvModel });
+      await tvReq("/api/videos", { headers: { ...tvModel, origin: "https://evil.example" } });
+      await tvReq("/api/videos", { headers: { ...tvModel, origin: "https://evil.example" } }); // within the minute: counted, not logged
+    } finally {
+      console.log = orig;
+    }
+    expect(lines.filter((l) => l.includes("TV 127.0.0.1: loaded the TV app (/tv.js)"))).toHaveLength(1);
+    expect(lines.filter((l) => l.includes("TV 127.0.0.1: 403 GET /api/videos (Origin is not the TV app)"))).toHaveLength(1);
+  });
+
   test("the two writes work over the TV listener", async () => {
     const vid = (await j("/api/videos")).find((v: any) => v.youtubeId === "aaaaaaaaaaa").id; // the 70 s one: Resume near the end stores 0
     const r = await tvReq(`/api/videos/${vid}/resume`, { method: "POST", headers: tvModel, body: JSON.stringify({ resumeS: 12.5 }) });

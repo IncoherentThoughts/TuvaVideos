@@ -41,7 +41,7 @@ function wellFormed(s: ArchiveCallSpec) {
   expect("id" in s.args.p_payload && s.fn === "write_videos").toBe(false);
 }
 
-const VIDEO_UPDATE_KEYS = new Set(["title", "type", "type_suggested", "song_id", "proposed_song_id", "version_id", "proposed_version_id", "song_suggested", "suggestion_source", "title_latin", "title_latin_source", "instagram_id", "rutube_id", "poster_path"]);
+const VIDEO_UPDATE_KEYS = new Set(["title", "type", "type_suggested", "song_id", "proposed_song_id", "version_id", "proposed_version_id", "song_suggested", "suggestion_source", "title_latin", "title_latin_source", "instagram_id", "rutube_id", "poster_path", "size_bytes", "duration_s", "height"]);
 const CHAPTER_KEYS = new Set(["id", "start_s", "title", "title_latin", "song_id", "proposed_song_id", "version_id", "proposed_version_id", "suggested", "source"]);
 
 describe("routing by mode (§4.9)", () => {

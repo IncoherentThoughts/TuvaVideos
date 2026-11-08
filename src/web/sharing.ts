@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { callWrite, type RpcClient } from "../shared/archive";
 import type { ArchiveError, EditInput, WriteResult } from "../shared/archiveWire";
 import { POSTER_BUCKET, POSTER_CACHE_SECONDS, uploadPosters, type PosterUploadItem, type PosterUploadResult } from "../shared/posters";
+import { fillReferenceSizes, type ReferenceSizeCandidate, type ReferenceSizeFillResult } from "../shared/referenceSize";
 import { drainPendingShare, type CallOutcome, type DrainDeps, type DrainResult, type PendingShareBatch, type PendingShareSummary } from "../shared/share";
 
 async function getJson<T>(base: string, path: string): Promise<T | null> {
@@ -103,5 +104,18 @@ export async function runPosterUpload(
     },
     apply: (result) => applyToCache(base, result),
     onProgress,
+  });
+}
+
+/** Fills the Reference size of Shared Videos that have none, from a Copy held here (downloader-spec §3.3). */
+export async function runReferenceSizeFill(rpc: RpcClient, base = ""): Promise<ReferenceSizeFillResult | null> {
+  const list = await getJson<{ candidates: ReferenceSizeCandidate[] }>(base, "/api/reference-size/candidates");
+  if (!list) return null;
+  return fillReferenceSizes(list.candidates, {
+    async write(videoId, payload, updatedAt, edit) {
+      const r = await callWrite(rpc, "write_videos", { p_op: "update", p_target: videoId, p_payload: payload, p_expected_updated_at: updatedAt, p_edits: [edit] });
+      return r.ok ? { ok: true, value: r.value } : { ok: false, error: r.error.word + (r.error.message ? `: ${r.error.message}` : "") };
+    },
+    apply: (result) => applyToCache(base, result),
   });
 }

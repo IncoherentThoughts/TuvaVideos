@@ -83,7 +83,7 @@ export type TargetType = (typeof TARGET_TYPES)[number];
 export const EVENT_TYPES = [
   "video.scanned", "video.migrated", "video.title_changed", "video.type_changed",
   "video.song_changed", "video.version_changed", "video.title_latin_changed",
-  "video.provenance_changed", "video.poster_changed", "video.suggested",
+  "video.provenance_changed", "video.poster_changed", "video.reference_size_changed", "video.suggested",
   "video.deleted", "video.restored",
   "chapter.added", "chapter.changed", "chapter.deleted", "chapter.suggested",
   "chapter.confirmed", "chapter.rejected", "chapter.unrejected",
@@ -153,6 +153,10 @@ export interface VideoColumns {
   instagram_id: string | null;
   rutube_id: string | null;
   poster_path: string | null;
+  /** Reference size (downloader-spec §3.3): set together, once, by a Video Editor's machine. */
+  size_bytes: number | null;
+  duration_s: number | null;
+  height: number | null;
   youtube_id: string | null;
   content_hash: string | null;
 }

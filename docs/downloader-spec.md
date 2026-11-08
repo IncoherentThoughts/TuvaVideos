@@ -75,13 +75,15 @@ On the Shared `public.videos` table (Lyrics Website repo, migration 144 by that 
 
 ### 3.2 Local copy
 
-Local migration `0022_reference_size.sql`: the same three columns on the Local copy's `videos` table (migration 0015) and in its `*_all` view (0021). `applyShared` and `src/shared/archiveWire.ts` (`VideoRow`) carry them. Standalone rows never set them.
+Local migration `0022_reference_size.sql`: the same three columns on the Local copy's `videos` table (migration 0015) with `CHECK (> 0)` each. There is no `videos` `*_all` view (0021 rebuilt only `song_all`, `version_all` and `artist_all`; a Video's read view is `video_full`, which does not list them), so no view is rebuilt. `applyShared` and `src/shared/archiveWire.ts` (`SharedVideoRow` in `sharedRows.ts` for the pull, `VideoColumns` for the write) carry them; on the pull they are optional keys, because the archive may not have applied the columns yet (a pull without them leaves the held values). Standalone rows never set them. The migration was numbered 0022 after 0023 existed: `migrate()` records by name, so it applies (tested).
 
 ### 3.3 Fill
 
 - **Which Copy:** among this machine's non-Missing Copies of the Video, the one with the greatest `height` ≤ 1080; if none is ≤ 1080, the largest by `size`. Copy columns `size`, `duration_s`, `height` already exist.
 - **When:** fill-empty, like `poster_path` (sharing spec §6.5). Only a Video Editor's machine writes, and only when all three Shared fields are null. `GET /api/reference-size/candidates` lists Shared Videos with null Reference size and a qualifying Copy here; the browser writes each through `write_videos` update (`p_payload: { size_bytes, duration_s, height }`), as `runPosterUpload` does in `src/web/sharing.ts`, and applies the result to the cache. It runs at the same trigger as the poster upload (after a scan and after Sync). Never overwritten, so existing Shared Videos backfill on the owner's next scan; no script.
-- **Edit history:** one edit per Video, field `reference_size`, like the poster's.
+- **A qualifying Copy** has `size`, `duration_s` and `height` each positive (ffprobe read it); a Copy without them is not considered, so a probe failure never hides a good Copy and never writes a partial Reference size. Ties on height go to the larger `size`, then the earlier Copy. Pure and tested: `chooseReferenceCopy` in `src/shared/referenceSize.ts`; the list is `src/server/referenceSize.ts`. Soft-deleted Videos are left out. The write is one `update` per Video with the Video's stamp as `p_expected_updated_at`; a stale stamp fails that Video only, and the next trigger retries it.
+- **Edit history:** one edit per Video, event type `video.reference_size_changed`, field `reference_size`, `old_value` null, `new_value` the three numbers. Not undoable from the app (like `video.poster_changed`).
+- **Failures:** a conflict skips that one Video; any other failure (an archive without the columns, a lost grant, the network) stops the run, and the rest wait for the next trigger. Until archive migration 144 is live, the first call fails and nothing more is sent.
 
 ### 3.4 Estimates
 
@@ -385,7 +387,7 @@ Build tickets run on Claude Opus 5.5 (`claude-opus-5-5`), one per ticket in its 
 |---|---|---|---|
 | 1 | `downloader-tools` ([#197](https://github.com/IncoherentThoughts/TuvaVideos/issues/197)) | §2: `findDownloaderBin`, install of yt-dlp and deno with checksums, PATH detection of deno/Node, daily `-U`, impersonation check, `GET /api/downloads/tools` + install endpoint, ffmpeg location, migration 0023 (`download_setting`). | — |
 | 2 | `reference-size-archive` ([#198](https://github.com/IncoherentThoughts/TuvaVideos/issues/198)) | §3.1 in the Lyrics Website checkout by that repo's rules: migration 144, `write_videos` fields, pgTAP, RLS snapshot; live apply HITL. | — |
-| 3 | `reference-size-app` ([#199](https://github.com/IncoherentThoughts/TuvaVideos/issues/199)) | §3.2–3.3: local migration 0022 incl. the `*_all` view, `archiveWire`, `applyShared`, candidates endpoint, the browser fill beside the poster upload. | 2 |
+| 3 | `reference-size-app` ([#199](https://github.com/IncoherentThoughts/TuvaVideos/issues/199)) | §3.2–3.3: local migration 0022 (no `*_all` view holds Videos), `archiveWire`, `applyShared`, candidates endpoint, the browser fill beside the poster upload. | 2 |
 | 4 | `ytdlp-runner` ([#200](https://github.com/IncoherentThoughts/TuvaVideos/issues/200)) | §4.3–4.4 for one item, no queue: argument builder, selectors, templates, progress parser, sizing pass, classifier, the fake yt-dlp fixture. Pure modules in `src/server/downloads/` with tests. | — |
 | 5 | `download-queue` ([#201](https://github.com/IncoherentThoughts/TuvaVideos/issues/201)) | §4.1–4.2, 4.5–4.8, §5.4 pacing, §6 endpoints except plan and settings: migration 0024, runner and slots, offline and per-site backoff, `Scanner.scanFile`, resume prompt endpoint, quit guard on the server, retention, the report (§9). | 1, 4 |
 | 6 | `download-plan` ([#202](https://github.com/IncoherentThoughts/TuvaVideos/issues/202)) | §3.4 and the plan endpoint: options and their counts, Random with seed, Type, Artist, Favorites, estimates per quality, throughput, free disk, `/api/choose-folder`. | 3 |

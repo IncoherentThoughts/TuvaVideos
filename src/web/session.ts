@@ -16,7 +16,7 @@ import {
 } from "../shared/session";
 import { shareStep, type DrainResult, type PendingShareSummary, type ShareEvent } from "../shared/share";
 import type { PosterUploadResult } from "../shared/posters";
-import { readShareSummary, runDrain, runPosterUpload, scanBusy, setShareAuto } from "./sharing";
+import { readShareSummary, runDrain, runPosterUpload, runReferenceSizeFill, scanBusy, setShareAuto } from "./sharing";
 
 // ---------------------------------------------------------------------------------------------------------------
 // The store
@@ -475,9 +475,20 @@ export function uploadPostersNow(): Promise<PosterUploadResult | null> {
   return posterRun;
 }
 
+/** Fills the Reference size of Shared Videos that have none (downloader-spec §3.3): Video Editor only, the poster upload's trigger. */
+async function fillReferenceSizesNow(): Promise<number> {
+  if (!shareReady()) return 0;
+  const rpc = archiveRpc();
+  if (!rpc) return 0;
+  const r = await runReferenceSizeFill(rpc);
+  if (r?.errors.length) console.warn(`reference size: ${r.errors.join("; ")}`);
+  return r?.filled ?? 0;
+}
+
 async function afterSyncShare() {
   await considerShare("sync");
   await uploadPostersNow();
+  await fillReferenceSizesNow();
 }
 
 /**
@@ -487,7 +498,8 @@ async function afterSyncShare() {
 export async function afterScan(): Promise<boolean> {
   const d = await considerShare("scan-end");
   const u = await uploadPostersNow();
-  return (d?.shared ?? 0) + (u?.uploaded ?? 0) > 0;
+  const f = await fillReferenceSizesNow();
+  return (d?.shared ?? 0) + (u?.uploaded ?? 0) + f > 0;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

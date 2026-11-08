@@ -173,9 +173,10 @@ yt-dlp --newline --no-colors --no-update --no-playlist
   --ffmpeg-location <§2.4> [--js-runtimes deno:<path>]
   -f <selector> [--merge-output-format <mp4|mkv>]
   -o <template>
+  --progress
   --progress-template "download:TUVA %(progress.status)s %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s"
   --progress-template "postprocess:TUVAPP %(progress.status)s"
-  --print after_move:"TUVAFILE %(filepath)s"
+  --print after_move:"TUVAFILE %(filepath)s" --no-simulate
   [--cookies <file> | --cookies-from-browser <browser>]   # Instagram retry only, §5
   <source_url>
 ```
@@ -190,7 +191,7 @@ yt-dlp --newline --no-colors --no-update --no-playlist
 
   `--merge-output-format mp4` when the chosen video codec is `avc1`, `mkv` otherwise (VP9 + Opus, and Best's AV1). The sizing pass's `requested_formats` tells which.
 - **Output templates** (the existing provenance names, `src/server/filename.ts`): YouTube `%(title).150B [%(id)s].%(ext)s`; Instagram `%(title).150B [instagram-%(id)s].%(ext)s`; Rutube `%(title).150B [rutube-%(id)s].%(ext)s`. `--restrict-filenames` is not used (titles are Tuvan Cyrillic); `--windows-filenames` is added on Windows. A unit test asserts that `parseFilename` reads each template's output back to the item's source id.
-- **Parsing:** stdout lines starting `TUVA ` update the item (`NA` = null); `TUVAPP started` → `merging`; `TUVAFILE ` sets `file_path`. Every stdout and stderr line is appended to the item's log. The server writes progress to the row at most once a second.
+- **Parsing:** lines starting `TUVA ` update the item (`NA` = null); `TUVAPP started` → `merging`; `TUVAFILE ` sets `file_path`. Every stdout and stderr line is appended to the item's log. *Verified on a real `bv+ba` download (yt-dlp 2026.10.21, `jNQXAC9IVRw`, #200):* `--print` implies `--quiet`, which silenced the progress templates entirely until `--progress` was added (and `--no-simulate` keeps the run a download). `TUVA` and `TUVAFILE` arrive on stdout but `TUVAPP` arrives on **stderr**, so the parser reads both streams, and the two pipes' relative order is not guaranteed (a `TUVAPP` can trail `TUVAFILE`). Each stream ends with one `finished` line (`eta` `NA`); every post-processor reports its own `started`/`finished` pair (two pairs in the merge), so `merging` is entered once. `total_bytes_estimate` was `NA` and `total_bytes` known for both streams, whose sum equalled the sizing pass's `exact_bytes` (545262). yt-dlp's own `[download]` chatter is not printed under `--quiet`, so the log holds only these lines and `ERROR:`/`WARNING:` text. The server writes progress to the row at most once a second.
 - **Exit:** 0 with `file_path` → scanning. Non-zero → classified from the last `ERROR:` line (§4.4).
 - **Kill:** cancel and pause send SIGTERM, then SIGKILL after 5 s. `.part` / `.part.ytdl` / `.fNNN` files stay for `--continue` unless the item is cancelled.
 - **Partial files and scans:** `PARTIAL_SEGMENT` in `filename.ts` already ignores yt-dlp's partials, so a Rescan during a download imports nothing half-done.

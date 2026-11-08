@@ -211,7 +211,8 @@ export function HeaderFields({ video: v, onChange }: { video: VideoDto; onChange
     <>
       <div class="np-meta2">
         <TypeField v={v} patch={patch} />
-        <SongField v={v} patch={patch} />
+        {/* a concert has many Songs (its Chapters carry them): no empty Song row; one already set stays, to clear */}
+        {(v.type !== "concert" || v.song) && <SongField v={v} patch={patch} />}
         <ArtistField v={v} apply={apply} />
       </div>
       {err && <div class="edit-err" role="alert">{err}</div>}

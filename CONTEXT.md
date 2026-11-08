@@ -231,3 +231,21 @@ _Avoid_: missing, remote, unavailable, no copy
 **Shelved (edits)**:
 The title, Type, Song and Version pointers, Artists and Chapters a Video carried on this machine before sign-in reconciliation replaced them with the Shared row. Kept locally, read-only, never synced; shown in a drawer on the Video, copyable back into the Shared data by a Video Editor as an ordinary edit, and clearable by hand. Made only by reconciliation.
 _Avoid_: backup, history, old tags, overlay, local edits
+
+### Downloading
+
+**Download (a Video)**:
+Fetching a Video's file from its source (YouTube, Instagram or Rutube) onto this machine, named with the source's id so a scan makes it a Copy. Only a Video with a source id can be downloaded; one known by content hash alone cannot. Never the act of Sync, which moves link data and posters, not Video files.
+_Avoid_: sync, import, fetch, pull, install
+
+**Download queue**:
+This machine's one ordered list of Videos waiting to be Downloaded or being Downloaded, fed by Download jobs and by a card's download button (which goes to the front). Run by the app, not the tab: closing the tab loses nothing, and what a quit or crash left is offered for resuming at the next launch.
+_Avoid_: download list, backlog, batch
+
+**Download job**:
+The Videos one Confirm in the download dialog put on the Download queue, with the destination and quality chosen for them. Its progress, live yt-dlp log and Failure report belong to it; a single card's download is a job of one.
+_Avoid_: batch, run, task, bulk install
+
+**Failure report**:
+The list of a Download job's Videos that did not Download, one line each with title, source link and reason, savable as a text file and retryable.
+_Avoid_: error log, failed list

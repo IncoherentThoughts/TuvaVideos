@@ -49,6 +49,7 @@ import { checkRootPath, onboardingFor, ROOT_BAR_DISMISSED } from "./rootSetup";
 import { clearSessionRecord, getMeta, machineMode, readSessionRecord, setMeta } from "./localCopy/meta";
 import type { OnboardingDto } from "../shared/types";
 import { homedir } from "node:os";
+import { buildPlan, parsePlanRequest } from "./downloadPlan";
 import { createDownloaderTools } from "./downloads/toolsInstall";
 
 const THUMB_CACHE = "public, max-age=86400";
@@ -924,6 +925,31 @@ export function createHandler(s: Services) {
         if (r.code === 0) return json({ path: r.out.trim() });
         if (/-128|cancel/i.test(r.err)) return json({ cancelled: true });
         return json({ error: r.err.trim() || "the file dialog failed" }, 500);
+      }
+      // The download dialog (downloader-spec §6, §7.2): the plan for each option, and the Finder's folder chooser. Host
+      // check, and for a browser page also the Origin check, like the other POSTs. (The queue's routes live in /api/downloads/*.)
+      if (req.method === "POST" && p === "/api/downloads/plan") {
+        const refused = hostError(req) ?? (req.headers.get("origin") ? localRequestError(req) : null);
+        if (refused) return json({ error: refused }, 403);
+        const parsed = parsePlanRequest((await readJson(req)) ?? {});
+        if (typeof parsed === "string") return json({ error: parsed }, 400);
+        const roots = s.roots.list();
+        return json(await buildPlan({ db: s.db, videos: allVideos(), mountedRoots: roots.filter((r) => s.roots.isAvailable(r.id)).map((r) => r.path), allRoots: roots.map((r) => r.path) }, parsed));
+      }
+      if (req.method === "POST" && p === "/api/choose-folder") {
+        const refused = hostError(req) ?? (req.headers.get("origin") ? localRequestError(req) : null);
+        if (refused) return json({ error: refused }, 403);
+        // Only macOS has the Finder dialog; the dialog shows a path field elsewhere.
+        if (process.platform !== "darwin") return json({ error: "the folder chooser is only available on macOS" }, 501);
+        const body = (await readJson(req)) ?? {};
+        let start = typeof body.start === "string" && body.start.startsWith("/") ? body.start : "";
+        while (start && start !== "/" && !(await stat(start).then((x) => x.isDirectory(), () => false))) start = dirname(start);
+        if (start === "/") start = "";
+        const loc = start ? ` default location (POSIX file ${JSON.stringify(start)})` : "";
+        const r = await run("osascript", ["-e", 'tell application "System Events" to activate', "-e", `tell application "System Events" to return POSIX path of (choose folder with prompt "Download Videos into which folder?"${loc})`], { timeout: 600_000 });
+        if (r.code === 0) return json({ path: r.out.trim().replace(/(.)\/+$/, "$1") });
+        if (/-128|cancel/i.test(r.err)) return json({ cancelled: true });
+        return json({ error: r.err.trim() || "the folder dialog failed" }, 500);
       }
       // First launch (sharing-spec §8.4): the typed folder becomes the machine's one Root and its first scan starts at
       // once; the no-scan-at-startup rule holds for later launches. Same-origin only, like the other machine writes.

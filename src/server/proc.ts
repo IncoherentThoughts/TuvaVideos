@@ -18,10 +18,10 @@ export interface RunResult {
 }
 
 /** `onSpawn` hands the child to the caller, so a shutdown can kill it. */
-export function run(cmd: string, args: string[], opts: { timeout?: number; onSpawn?: (p: ChildProcess) => void; env?: Record<string, string> } = {}): Promise<RunResult> {
+export function run(cmd: string, args: string[], opts: { timeout?: number; onSpawn?: (p: ChildProcess) => void; env?: Record<string, string>; cwd?: string } = {}): Promise<RunResult> {
   const timeout = opts.timeout ?? 300_000;
   return new Promise((resolve) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: opts.env ? { ...process.env, ...opts.env } : undefined });
+    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], cwd: opts.cwd, env: opts.env ? { ...process.env, ...opts.env } : undefined });
     opts.onSpawn?.(p);
     const out: Buffer[] = [];
     let err = "";

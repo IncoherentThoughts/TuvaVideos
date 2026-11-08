@@ -129,7 +129,6 @@ describe("fillReferenceSizes", () => {
       async write(videoId, payload, updatedAt, edit) {
         writes.push({ videoId, payload, updatedAt, edit });
         if (videoId === U(2)) return { ok: false, error: "conflict" };
-        if (videoId === U(3)) throw new Error("network");
         return { ok: true, value: { tables: { videos: [{ id: videoId }] } } };
       },
       async apply(result) {
@@ -137,15 +136,33 @@ describe("fillReferenceSizes", () => {
         return videoId(result) !== U(4); // the cache refuses the fourth
       },
     });
-    expect(r.filled).toBe(1); // 1 ok; 2 refused, 3 threw, 4 not taken by the cache
-    expect(r.failed).toBe(3);
-    expect(r.errors).toHaveLength(3);
+    expect(r.filled).toBe(2); // 1 and 3 ok; 2 a conflict (the run goes on), 4 not taken by the cache
+    expect(r.failed).toBe(2);
+    expect(r.errors).toHaveLength(2);
+    expect(r.stopped).toBeUndefined();
     expect(writes).toHaveLength(4);
     expect(writes[0]).toEqual({
       videoId: U(1), payload: { size_bytes: 1000, duration_s: 10, height: 720 }, updatedAt: T(1),
       edit: { event_type: "video.reference_size_changed", field_name: "reference_size", old_value: null, new_value: { size_bytes: 1000, duration_s: 10, height: 720 }, description: "Reference size filled" },
     });
-    expect(applied).toHaveLength(2);
+    expect(applied).toHaveLength(3);
+  });
+
+  test("a failure other than a conflict stops the run (an archive without the columns would refuse every call)", async () => {
+    for (const fail of [
+      async () => ({ ok: false as const, error: "malformed: unknown key size_bytes" }),
+      async (): Promise<never> => { throw new Error("network"); },
+    ]) {
+      let calls = 0;
+      const r = await fillReferenceSizes(items, {
+        async write() { calls++; return fail(); },
+        async apply() { return true; },
+      });
+      expect(calls).toBe(1);
+      expect(r.stopped).toBe(true);
+      expect(r.failed).toBe(1);
+      expect(r.filled).toBe(0);
+    }
   });
 
   test("the Edit is one the archive accepts for write_videos", () => {

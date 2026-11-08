@@ -71,6 +71,8 @@ export interface ReferenceSizeFillResult {
   filled: number;
   failed: number;
   errors: string[];
+  /** True when a failure other than a conflict ended the run early (the rest are tried at the next trigger). */
+  stopped?: boolean;
 }
 
 /** Writes each candidate in turn (a few hundred small calls at most), applying each result to the cache. */
@@ -83,7 +85,11 @@ export async function fillReferenceSizes(items: readonly ReferenceSizeCandidate[
       if (!w.ok) {
         out.failed++;
         out.errors.push(`reference size ${it.videoId}: ${w.error}`);
-        continue;
+        // A stale stamp is this one Video's problem; anything else (an archive without the columns, a lost grant, the
+        // network) would fail every call alike, so the run stops rather than sending hundreds of doomed writes.
+        if (w.error.startsWith("conflict")) continue;
+        out.stopped = true;
+        break;
       }
       if (await d.apply(w.value)) out.filled++;
       else {
@@ -93,6 +99,8 @@ export async function fillReferenceSizes(items: readonly ReferenceSizeCandidate[
     } catch (e) {
       out.failed++;
       out.errors.push(`reference size ${it.videoId}: ${String(e)}`);
+      out.stopped = true;
+      break;
     }
   }
   return out;

@@ -471,7 +471,7 @@ Build tickets run on Claude Opus 5.5 (`claude-opus-5-5`), one per ticket in its 
 ## 11. Later
 
 - The control center tab from the avatar chip: Roots, Settings; "Refresh all Shared data" may move there from the chip menu.
-- The in-app yt-dlp downloader, and with it the general source model (§3.2) and a downloading guide for Members.
+- The in-app yt-dlp downloader: specified in `docs/downloader-spec.md`. With it, later, the general source model (§3.2) and a downloading guide for Members.
 - A packaged, signed Mac app.
 - Supabase Realtime, if the handful of editors ever want to see each other's edits mid-session.
 - Removing Studio playback.

@@ -208,6 +208,9 @@ describe("a line for every wire word (§4.2)", () => {
   test("details are used", () => {
     expect(writeErrorLine(err("duplicate-candidate", [{ kind: "archive", id: "x", name: "Ezir-Kara" }]))).toBe("Already exists: Ezir-Kara (archive).");
     expect(writeErrorLine(err("in-use", { count: 3 }))).toBe("Still in use by 3 rows.");
+    // a unique violation names what clashed: an Artist write is never told about Chapters
+    expect(writeErrorLine(err("exists"), { fn: "write_video_chapters" })).toBe("A Chapter already starts at that time.");
+    expect(writeErrorLine(err("exists"), { fn: "write_video_artists" })).not.toContain("Chapter");
     expect(writeErrorLine(err("malformed"))).toContain("raw");
   });
   test("unreachable and unauthorized win over the word", () => {

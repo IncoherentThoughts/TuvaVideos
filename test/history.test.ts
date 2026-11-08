@@ -88,6 +88,11 @@ describe("the inversion table (§4.7)", () => {
     const as = spec(video(), a.op);
     expect(as).toMatchObject({ fn: "write_video_artists", args: { p_op: "unreject", p_target: "R2" } });
     expect(editBelongsTo(as.fn, as.args.p_edits[0]!)).toBe(true);
+    // a rejection recorded with its whole Chapter: unreject, then add the Suggested Chapter back
+    const rej = spec(video(), { kind: "chapter.reject", chapter: chapter({ startS: 45, title: "Песня", suggested: true, source: "description" }) });
+    const back = plan([E("chapter.rejected", { targetType: "chapter_rejection", fieldName: "chapter", oldValue: rej.args.p_edits[0]!.old_value, rejectionId: "R1" })]);
+    expect(back.op).toEqual({ kind: "chapter.unreject", rejectionId: "R1" });
+    expect(back.then).toEqual({ kind: "chapter.add", chapter: { startS: 45, title: "Песня", songId: null, versionId: null, suggested: true, source: "description" } });
     // undo-only ops never go to the companion's routes
     expect(routeFor({ shared: false }, c.op, "editor")).toEqual({ to: "refused", line: UNDO_SHARED_LINE });
   });

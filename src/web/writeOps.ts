@@ -367,7 +367,8 @@ function build(video: LinkVideo, op: LinkOp, kinds: Kinds, opts: CallOptions): A
       ]);
     case "chapter.reject":
       return call("write_video_chapters", "reject", op.chapter.id, {}, opts.stamp !== undefined ? opts.stamp : op.chapter.updatedAt, [
-        { event_type: "chapter.rejected", field_name: "start_s", old_value: op.chapter.startS, description: `Suggested Chapter rejected: ${op.chapter.title}` },
+        // the whole Chapter, so an undo can add the suggestion back (rows before this recorded only `start_s`)
+        { event_type: "chapter.rejected", field_name: "chapter", old_value: { start_s: op.chapter.startS, title: op.chapter.title, song_id: op.chapter.songId ?? null, version_id: op.chapter.versionId ?? null, suggested: true, source: op.chapter.source ?? null }, description: `Suggested Chapter rejected: ${op.chapter.title}` },
       ]);
     case "chapters.confirmAll":
       return call("write_video_chapters", "confirm_all", video.id, {}, null, [{ event_type: "chapter.confirmed", description: "Every Suggested Chapter confirmed" }]);
@@ -400,7 +401,8 @@ export interface UndoContext {
   chapters: LinkChapter[];
 }
 
-export type UndoPlan = { op: LinkOp; reverses: { id: string; fieldName: string | null }[] } | { refused: string };
+/** `then`: a second write after `op` (an undone rejection adds its Suggested Chapter back once the tombstone is gone). */
+export type UndoPlan = { op: LinkOp; then?: LinkOp; reverses: { id: string; fieldName: string | null }[] } | { refused: string };
 
 const isConfirmation = (e: UndoEntry) =>
   e.eventType === "chapter.confirmed" || e.eventType === "artists.confirmed" ||
@@ -465,8 +467,16 @@ export function inverseOf(entries: UndoEntry[], ctx: UndoContext): UndoPlan {
       }
       return { op: { kind: "chapter.update", chapter: c, patch }, reverses };
     }
-    case "chapter.rejected":
-      return { op: { kind: "chapter.unreject", rejectionId: first.rejectionId! }, reverses };
+    case "chapter.rejected": {
+      const op: LinkOp = { kind: "chapter.unreject", rejectionId: first.rejectionId! };
+      const o = first.oldValue;
+      // a row from before the whole Chapter was recorded only takes the rejection back; so does one whose start is taken again
+      if (!o || typeof o !== "object" || !("start_s" in o)) return { op, reverses };
+      const c = o as { start_s: number; title?: string | null; song_id?: string | null; version_id?: string | null; source?: ChapterDto["source"] | null };
+      if (ctx.chapters.some((x) => x.startS === Number(c.start_s))) return { op, reverses };
+      const back: LinkOp = { kind: "chapter.add", chapter: { startS: Number(c.start_s), title: c.title ?? "", songId: c.song_id ?? null, versionId: c.version_id ?? null, suggested: true, source: c.source ?? undefined } };
+      return { op, then: back, reverses };
+    }
     case "artist_link.rejected":
       return { op: { kind: "artists.unreject", rejectionId: first.rejectionId! }, reverses };
     case "artists.replaced": {
@@ -531,7 +541,8 @@ export function copyBackOp(item: { kind: string; payload: Record<string, unknown
 export const OFFLINE_WRITE_LINE = "The archive can't be reached, so the edit was not saved. Try again when you're online.";
 export const SIGNED_OUT_WRITE_LINE = "Your session has ended, so the edit was not saved. Sign in again to edit Shared Videos.";
 
-export function writeErrorLine(e: ArchiveError, flags: { unreachable?: boolean; unauthorized?: boolean } = {}): string {
+/** `fn`: the function that refused, so a unique violation (23505) names what clashed. */
+export function writeErrorLine(e: ArchiveError, flags: { unreachable?: boolean; unauthorized?: boolean; fn?: string } = {}): string {
   if (flags.unreachable) return OFFLINE_WRITE_LINE;
   if (flags.unauthorized) return SIGNED_OUT_WRITE_LINE;
   switch (e.word) {
@@ -546,7 +557,9 @@ export function writeErrorLine(e: ArchiveError, flags: { unreachable?: boolean; 
     case "in-use":
       return e.detail ? `Still in use by ${e.detail.count} row${e.detail.count === 1 ? "" : "s"}.` : "Still in use.";
     case "exists":
-      return "A Chapter already starts at that time.";
+      if (flags.fn === "write_video_chapters") return "A Chapter already starts at that time.";
+      if (flags.fn === "write_video_artists") return "That Artist is already on this Video once; the list would name it twice.";
+      return "A row like that already exists in the Shared data.";
     case "malformed":
       return `The archive refused the edit as malformed (a bug in this app): ${e.message}`;
     default:

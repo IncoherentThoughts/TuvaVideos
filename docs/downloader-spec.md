@@ -107,7 +107,7 @@ The ratios are keyed on a Reference height of 1080. For a stored `height` below 
 
 ### 4.1 Tables in `library.db`
 
-Local migration `0023_download_queue.sql`:
+Local migrations `0023_download_setting.sql` (the `download_setting` table, ticket 1) and `0024_download_queue.sql` (the rest, ticket 5):
 
 ```sql
 CREATE TABLE download_job (
@@ -381,16 +381,16 @@ Build tickets run on Claude Opus 5.5 (`claude-opus-5-5`), one per ticket in its 
 
 | # | Ticket | Scope | Blocked by |
 |---|---|---|---|
-| 1 | `downloader-tools` | §2: `findDownloaderBin`, install of yt-dlp and deno with checksums, PATH detection of deno/Node, daily `-U`, impersonation check, `GET /api/downloads/tools` + install endpoint, ffmpeg location. | — |
-| 2 | `reference-size-archive` | §3.1 in the Lyrics Website checkout by that repo's rules: migration 144, `write_videos` fields, pgTAP, RLS snapshot; live apply HITL. | — |
-| 3 | `reference-size-app` | §3.2–3.3: local migration 0022 incl. the `*_all` view, `archiveWire`, `applyShared`, candidates endpoint, the browser fill beside the poster upload. | 2 |
-| 4 | `ytdlp-runner` | §4.3–4.4 for one item, no queue: argument builder, selectors, templates, progress parser, sizing pass, classifier, the fake yt-dlp fixture. Pure modules in `src/server/downloads/` with tests. | — |
-| 5 | `download-queue` | §4.1–4.2, 4.5–4.8, §5.4 pacing, §6 endpoints except plan and settings: migration 0023, runner and slots, offline and per-site backoff, `Scanner.scanFile`, resume prompt endpoint, quit guard on the server, retention, the report (§9). | 1, 4 |
-| 6 | `download-plan` | §3.4 and the plan endpoint: options and their counts, Random with seed, Type, Artist, Favorites, estimates per quality, throughput, free disk, `/api/choose-folder`. | 3 |
-| 7 | `download-dialog` | §7: port variant B from `prototype/downloader-dialog-193` onto §6, avatar menu entries, resume bar and quit question in the web app, theme fixes (§7.4). | 5, 6 |
-| 8 | `card-download` | §8: card button and states, the Player panel's Download button, the 1 s card polling. | 5 |
-| 9 | `instagram-cookies` | §5.1–5.3 and the cookies retry of §5.4: settings endpoints, cookies.txt copy and check, browser choice, the notice, the dialog's Instagram row, expired detection. | 5, 7 |
-| 10 | `downloader-verification` | §10's real-download pass (HITL where it needs a clean Mac or a small disk), the browser pass, fixes as follow-ups, then the owner's pass. | 1–9 |
+| 1 | `downloader-tools` ([#197](https://github.com/IncoherentThoughts/TuvaVideos/issues/197)) | §2: `findDownloaderBin`, install of yt-dlp and deno with checksums, PATH detection of deno/Node, daily `-U`, impersonation check, `GET /api/downloads/tools` + install endpoint, ffmpeg location, migration 0023 (`download_setting`). | — |
+| 2 | `reference-size-archive` ([#198](https://github.com/IncoherentThoughts/TuvaVideos/issues/198)) | §3.1 in the Lyrics Website checkout by that repo's rules: migration 144, `write_videos` fields, pgTAP, RLS snapshot; live apply HITL. | — |
+| 3 | `reference-size-app` ([#199](https://github.com/IncoherentThoughts/TuvaVideos/issues/199)) | §3.2–3.3: local migration 0022 incl. the `*_all` view, `archiveWire`, `applyShared`, candidates endpoint, the browser fill beside the poster upload. | 2 |
+| 4 | `ytdlp-runner` ([#200](https://github.com/IncoherentThoughts/TuvaVideos/issues/200)) | §4.3–4.4 for one item, no queue: argument builder, selectors, templates, progress parser, sizing pass, classifier, the fake yt-dlp fixture. Pure modules in `src/server/downloads/` with tests. | — |
+| 5 | `download-queue` ([#201](https://github.com/IncoherentThoughts/TuvaVideos/issues/201)) | §4.1–4.2, 4.5–4.8, §5.4 pacing, §6 endpoints except plan and settings: migration 0024, runner and slots, offline and per-site backoff, `Scanner.scanFile`, resume prompt endpoint, quit guard on the server, retention, the report (§9). | 1, 4 |
+| 6 | `download-plan` ([#202](https://github.com/IncoherentThoughts/TuvaVideos/issues/202)) | §3.4 and the plan endpoint: options and their counts, Random with seed, Type, Artist, Favorites, estimates per quality, throughput, free disk, `/api/choose-folder`. | 3 |
+| 7 | `download-dialog` ([#203](https://github.com/IncoherentThoughts/TuvaVideos/issues/203)) | §7: port variant B from `prototype/downloader-dialog-193` onto §6, avatar menu entries, resume bar and quit question in the web app, theme fixes (§7.4). | 5, 6 |
+| 8 | `card-download` ([#204](https://github.com/IncoherentThoughts/TuvaVideos/issues/204)) | §8: card button and states, the Player panel's Download button, the 1 s card polling. | 5 |
+| 9 | `instagram-cookies` ([#205](https://github.com/IncoherentThoughts/TuvaVideos/issues/205)) | §5.1–5.3 and the cookies retry of §5.4: settings endpoints, cookies.txt copy and check, browser choice, the notice, the dialog's Instagram row, expired detection. | 5, 7 |
+| 10 | `downloader-verification` ([#206](https://github.com/IncoherentThoughts/TuvaVideos/issues/206)) | §10's real-download pass (HITL where it needs a clean Mac or a small disk), the browser pass, fixes as follow-ups, then the owner's pass. | 1–9 |
 
 1, 2 and 4 start together; 3 follows 2; 5 needs 1 and 4; 6 needs 3; 7 needs 5 and 6; 8 follows 5 alongside 6 and 7 (different files: the card and Player vs. the dialog); 9 follows 7.
 

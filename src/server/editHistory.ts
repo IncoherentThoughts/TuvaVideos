@@ -32,8 +32,10 @@ const SELECT = `SELECT h.*, v.title AS video_title,
 function rejectionOf(db: Db, r: HistoryDbRow, oldValue: unknown): string | null {
   if (!r.video_id) return null;
   // old_value is a TEXT column: a number comes back as its text
-  if (r.event_type === "chapter.rejected" && oldValue != null && Number.isFinite(Number(oldValue)))
-    return (db.query("SELECT id FROM video_chapter_rejections WHERE video_id = ? AND start_s = ? ORDER BY created_at DESC LIMIT 1").get(r.video_id, Number(oldValue)) as { id: string } | null)?.id ?? null;
+  // `start_s` alone (older rows) or the whole Chapter
+  const start = r.event_type === "chapter.rejected" ? (oldValue && typeof oldValue === "object" ? (oldValue as { start_s?: unknown }).start_s : oldValue) : null;
+  if (start != null && Number.isFinite(Number(start)))
+    return (db.query("SELECT id FROM video_chapter_rejections WHERE video_id = ? AND start_s = ? ORDER BY created_at DESC LIMIT 1").get(r.video_id, Number(start)) as { id: string } | null)?.id ?? null;
   if (r.event_type === "artist_link.rejected" && typeof oldValue === "string")
     return (db.query("SELECT id FROM video_artist_rejections WHERE video_id = ? AND (artist_id = ?2 OR proposed_artist_id = ?2) ORDER BY created_at DESC LIMIT 1").get(r.video_id, oldValue) as { id: string } | null)?.id ?? null;
   return null;

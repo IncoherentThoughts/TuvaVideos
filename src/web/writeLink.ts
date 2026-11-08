@@ -166,7 +166,7 @@ async function writeLinkOnce<O extends LinkOp>(video: LinkVideo, op: O, opts: Wr
   }
   const out = await callWrite(rpc, spec.fn, spec.args as never);
   if (!out.ok) {
-    const line = writeErrorLine(out.error, out);
+    const line = writeErrorLine(out.error, { ...out, fn: spec.fn });
     if (out.error.word === "conflict" && !opts.quietConflict) void raiseConflict({ video, op, detail: out.error.detail });
     // §2.5 (SYNC-12): a permission error re-reads the grant at once; the Sync's whoami rewrites the record.
     if (out.error.word === "forbidden") void requestSync().catch(() => null);
@@ -239,6 +239,8 @@ export async function undoWrite(entries: HistoryEntry[]): Promise<void> {
   const plan = inverseOf(entries, { video, chapters });
   if ("refused" in plan) throw new WriteLinkError(plan.refused, "refused");
   await writeLink(video, plan.op, { reverses: plan.reverses });
+  // the add takes no Video stamp, so the first write's bump does not make it a conflict
+  if (plan.then) await writeLink(video, plan.then, { reverses: plan.reverses });
   window.dispatchEvent(new CustomEvent(RELOADED_EVENT, { detail: { videoId } }));
 }
 
@@ -401,7 +403,7 @@ export async function writeRow(op: RowOp, opts: { stamp?: string | null } = {}):
   const out = await callWrite(rpc, spec.fn, spec.args as never);
   if (!out.ok) {
     if (out.error.word === "forbidden") void requestSync().catch(() => null); // §2.5 (SYNC-12)
-    throw new WriteLinkError(writeErrorLine(out.error, out), out.error.word, out.error);
+    throw new WriteLinkError(writeErrorLine(out.error, { ...out, fn: spec.fn }), out.error.word, out.error);
   }
   const applied = await fetch("/api/cache/apply", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(out.value) });
   if (!applied.ok) throw new WriteLinkError(`saved to the archive, but this machine could not take the rows (${applied.status}); Sync to see it`, "unknown");

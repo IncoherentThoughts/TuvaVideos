@@ -122,7 +122,10 @@ class Archive {
     return [...this.rows].reverse().map((r) => {
       const oldValue = decodeValue(sqlite(r.old_value));
       let rejectionId: string | null = null;
-      if (r.event_type === "chapter.rejected") rejectionId = [...this.chRej].reverse().find((x) => x.startS === Number(oldValue))?.id ?? null;
+      if (r.event_type === "chapter.rejected") {
+        const start = oldValue && typeof oldValue === "object" ? (oldValue as { start_s: number }).start_s : oldValue;
+        rejectionId = [...this.chRej].reverse().find((x) => x.startS === Number(start))?.id ?? null;
+      }
       if (r.event_type === "artist_link.rejected") rejectionId = [...this.arRej].reverse().find((x) => x.artistId === oldValue)?.id ?? null;
       return {
         id: r.id, videoId: "V1", videoTitle: this.v.title, targetType: r.target_type, targetId: r.target_id, editorId: "me", eventType: r.event_type, fieldName: r.field_name,
@@ -147,6 +150,11 @@ class Archive {
     const s = archiveCall(this.video(), plan.op, undefined, { reverses: plan.reverses, newId: plan.op.kind === "chapter.add" ? this.id("c") : undefined });
     if ("refused" in s) return s.refused;
     this.apply(s);
+    if (plan.then) {
+      const t = archiveCall(this.video(), plan.then, undefined, { reverses: plan.reverses, newId: plan.then.kind === "chapter.add" ? this.id("c") : undefined });
+      if ("refused" in t) return t.refused;
+      this.apply(t);
+    }
     return null;
   }
 
@@ -213,15 +221,17 @@ describe("Undo round trips: Chapters", () => {
     a.chapters[0]!.suggested = true;
     roundTrip(a, (x) => ({ kind: "chapter.delete", chapter: x.chapterDtos()[0]! }));
   });
-  // §4.7: an undone rejection is only taken back; the matcher may suggest the Chapter again
-  test("reject: the rejection is taken back, the Suggested Chapter is not re-added", () => {
+  // §4.7: an undone rejection takes the tombstone back, then adds the recorded Suggested Chapter back
+  test("reject: the rejection is taken back and the Suggested Chapter is added back", () => {
     const a = new Archive();
     a.chapters[0]!.suggested = true;
     a.chapters[0]!.source = "description";
     const before = a.snapshot();
     a.write({ kind: "chapter.reject", chapter: a.chapterDtos()[0]! });
     expect(a.undo()).toBeNull();
-    expect(a.snapshot()).toEqual({ ...before, chapters: [] });
+    // the tombstone is gone and the Suggested Chapter is back (a new id, the same start, title, flag and source)
+    expect(a.snapshot()).toEqual(before);
+    expect(a.chapters[0]!.source).toBe("description");
   });
 });
 

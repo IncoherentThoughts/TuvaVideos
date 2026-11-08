@@ -98,6 +98,9 @@ export class TvServer {
   private pending = new Map<string, string | null>();
   private denied = new Set<string>();
   private seenWritten = new Map<string, number>();
+  /** The last request from each address, and the last logged refusal per address and reason (`trace`). */
+  private lastAt = new Map<string, number>();
+  private refusedLogged = new Map<string, { at: number; more: number }>();
   private activity: Activity | null = null;
   private stopHooks: (() => void)[] = [];
 
@@ -157,6 +160,8 @@ export class TvServer {
     this.server.stop(true);
     this.server = null;
     this.pending.clear();
+    this.lastAt.clear();
+    this.refusedLogged.clear();
     this.activity = null;
     for (const fn of this.stopHooks) {
       try {
@@ -231,6 +236,30 @@ export class TvServer {
 
   // ---- requests ----
 
+  /**
+   * The request log a TV reload is read from: every 403 the TV gets (path and reason), and every `/tv.js` load, which
+   * is the TV app starting or reloading, with how long that address had been quiet. A refusal repeated within a minute
+   * is counted, not logged again (an unapproved TV asks every few seconds).
+   */
+  private trace(ip: string, req: Request, status: number, reason: string | null) {
+    const now = Date.now();
+    const path = new URL(req.url).pathname;
+    const quietS = this.lastAt.has(ip) ? Math.round((now - this.lastAt.get(ip)!) / 1000) : null;
+    this.lastAt.set(ip, now);
+    if (status === 403) {
+      const key = `${ip} ${reason}`;
+      const prev = this.refusedLogged.get(key);
+      if (prev && now - prev.at < 60_000) {
+        prev.more++;
+        return;
+      }
+      this.refusedLogged.set(key, { at: now, more: 0 });
+      log(`TV ${ip || "?"}: 403 ${req.method} ${path} (${reason})${prev?.more ? `, ${prev.more} more since the last line` : ""}`);
+    } else if (path === "/tv.js" && req.method === "GET") {
+      log(`TV ${ip || "?"}: loaded the TV app (/tv.js)${quietS == null ? ", first request since the TV Server came on" : `, ${quietS} s after its previous request`}`);
+    }
+  }
+
   private touch(ip: string, model: string | null, path: string) {
     const now = Date.now();
     const db = this.deps.db;
@@ -250,7 +279,10 @@ export class TvServer {
   async fetch(req: Request, ip: string): Promise<Response> {
     const dev = !!this.deps.cfg.tvLoopback;
     const refused = tvRequestError(req, dev);
-    if (refused) return new Response(JSON.stringify({ error: refused }), { status: 403, headers: { "content-type": "application/json", "cache-control": "no-store", vary: "origin" } });
+    if (refused) {
+      this.trace(ip, req, 403, refused);
+      return new Response(JSON.stringify({ error: refused }), { status: 403, headers: { "content-type": "application/json", "cache-control": "no-store", vary: "origin" } });
+    }
     const cors = tvCorsOrigin(req.headers.get("origin"), dev);
     if (req.method === "OPTIONS") {
       return new Response(null, {
@@ -269,6 +301,8 @@ export class TvServer {
       });
     }
     const res = await this.respond(req, ip);
+    if (res.status === 403) this.trace(ip, req, 403, await res.clone().json().then((b) => String(b?.error ?? "?"), () => "?"));
+    else this.trace(ip, req, res.status, null);
     const set = (h: Headers) => {
       h.append("vary", "origin");
       if (!cors) return;

@@ -34,6 +34,10 @@ export interface SharedVideoRow {
   song_suggested: boolean;
   suggestion_source: SuggestionSource | null;
   poster_path: string | null;
+  /** Reference size (downloader-spec §3): one Video Editor's Copy, all three null until filled. Absent from a pull before the archive applied it. */
+  size_bytes?: number | null;
+  duration_s?: number | null;
+  height?: number | null;
   deleted_at: Iso | null;
   deleted_by: string | null;
   delete_reason: string | null;

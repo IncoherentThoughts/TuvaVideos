@@ -244,6 +244,21 @@
       "notNull": false
     },
     {
+      "name": "size_bytes",
+      "type": "bigint",
+      "notNull": false
+    },
+    {
+      "name": "duration_s",
+      "type": "real",
+      "notNull": false
+    },
+    {
+      "name": "height",
+      "type": "integer",
+      "notNull": false
+    },
+    {
       "name": "deleted_at",
       "type": "timestamptz",
       "notNull": false

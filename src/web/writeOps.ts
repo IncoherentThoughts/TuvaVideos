@@ -401,6 +401,38 @@ export interface UndoContext {
   chapters: LinkChapter[];
 }
 
+/**
+ * What the toast's Undo takes back. Naming a Chapter just added (`c`, then a title) is a second write, so an Undo of
+ * the last write alone only cleared the title and left the Chapter: edits of the Chapter the last write added join
+ * that add's Undo (for `ADD_FOLD_MS`), and the Undo then deletes the Chapter.
+ */
+export interface UndoTarget {
+  videoId: string;
+  ids: string[];
+  line: string;
+  /** Set while the target is a Chapter add that later edits of the same Chapter join. */
+  added?: { chapterId: string; at: number };
+}
+export const ADD_FOLD_MS = 60_000;
+
+type ToastRow = { id: string; event_type: string; field_name: string | null; new_value: unknown; target_id: string | null; description?: string | null };
+
+export function nextUndoTarget(prev: UndoTarget | null, videoId: string, rows: ToastRow[], now: number): UndoTarget {
+  const a = prev?.added;
+  if (prev && a && prev.videoId === videoId && now - a.at < ADD_FOLD_MS && rows.length && rows.every((r) => r.event_type === "chapter.changed" && r.target_id === a.chapterId)) {
+    const title = rows.find((r) => r.field_name === "title");
+    return { ...prev, ids: [...prev.ids, ...rows.map((r) => r.id)], line: title && title.new_value ? `Saved: Chapter added: ${String(title.new_value)}` : prev.line };
+  }
+  const line = rows.length === 1 ? `Saved: ${rows[0]!.description ?? "edit"}` : `Saved ${rows.length} edits`;
+  const add = rows.length === 1 && rows[0]!.event_type === "chapter.added" && rows[0]!.target_id ? { chapterId: rows[0]!.target_id, at: now } : undefined;
+  return { videoId, ids: rows.map((r) => r.id), line, ...(add ? { added: add } : {}) };
+}
+
+/** The toast's write(s) as one undo, oldest write first, so a folded Chapter add leads and its inverse deletes the Chapter. */
+export function undoEntriesFor<E extends UndoEntry>(groups: { entries: E[] }[], ids: string[]): E[] {
+  return groups.filter((g) => g.entries.some((e) => ids.includes(e.id))).reverse().flatMap((g) => g.entries);
+}
+
 /** `then`: a second write after `op` (an undone rejection adds its Suggested Chapter back once the tombstone is gone). */
 export type UndoPlan = { op: LinkOp; then?: LinkOp; reverses: { id: string; fieldName: string | null }[] } | { refused: string };
 

@@ -15,8 +15,8 @@ import { api, forgetSong, loadArtists, loadVideos, removeVideo, replaceVideo } f
 import { decodeValue, groupWrites, type HistoryEntry } from "../shared/editHistory";
 import {
   applyMineStamp, archiveCall, artistRepointPlan, conflictReducer, IDLE_CONFLICT, inverseOf, kindsNeeded, LOCAL_TARGET_LINE, localRepointRequest, localRequest, NOTHING_TO_CHANGE, repointPlan,
-  routeFor, rowCall, rowKindsNeeded, rowRefusal, rowRoles, SIGNED_OUT_WRITE_LINE, undoBlock, writeErrorLine,
-  type ConflictAction, type ConflictEntry, type ConflictState, type Kinds, type LinkOp, type LinkVideo, type NamedRow, type RowOp, type RowTable, type SuggestPatch, type UndoEntry,
+  nextUndoTarget, routeFor, rowCall, rowKindsNeeded, rowRefusal, rowRoles, SIGNED_OUT_WRITE_LINE, undoBlock, undoEntriesFor, writeErrorLine,
+  type ConflictAction, type ConflictEntry, type ConflictState, type Kinds, type LinkOp, type LinkVideo, type NamedRow, type RowOp, type RowTable, type SuggestPatch, type UndoEntry, type UndoTarget,
   type WriteMode,
 } from "./writeOps";
 
@@ -203,14 +203,25 @@ function setToast(t: UndoToast | null) {
 }
 export const dismissToast = () => setToast(null);
 
-/** After a Shared write: "Saved" with Undo when the write can be undone, for the last write only. */
-function offerUndo(videoId: string, rows: { id: string; event_type: string; field_name: string | null; old_value: unknown; new_value: unknown; target_id: string | null; reverses?: string | null }[], wasUndo: boolean) {
+/** The last write the toast offered to undo, kept past the toast's timer so naming a new Chapter still joins its add. */
+let lastTarget: UndoTarget | null = null;
+
+/** After a Shared write: "Saved" with Undo when the write can be undone, for the last write only (edits of a Chapter just added join its add). */
+function offerUndo(videoId: string, rows: { id: string; event_type: string; field_name: string | null; old_value: unknown; new_value: unknown; target_id: string | null; reverses?: string | null; description?: string | null }[], wasUndo: boolean) {
   if (!rows.length) return;
-  if (wasUndo) return setToast({ n: ++toastN, line: "Undone.", undo: null, busy: false, error: false });
+  if (wasUndo) {
+    lastTarget = null;
+    return setToast({ n: ++toastN, line: "Undone.", undo: null, busy: false, error: false });
+  }
   // the bundle carries no rejection ids: a rejection is assumed still held until the Undo reads the history
   const entries: UndoEntry[] = rows.map((r) => ({ id: r.id, targetId: r.target_id, eventType: r.event_type, fieldName: r.field_name, oldValue: decodeValue(r.old_value), newValue: decodeValue(r.new_value), reversedBy: null, rejectionId: "held" }));
-  if (undoBlock(entries)) return;
-  setToast({ n: ++toastN, line: rows.length === 1 ? `Saved: ${(rows[0] as { description?: string }).description ?? "edit"}` : `Saved ${rows.length} edits`, undo: { videoId, ids: rows.map((r) => r.id) }, busy: false, error: false });
+  if (undoBlock(entries)) {
+    lastTarget = null;
+    return;
+  }
+  const t = nextUndoTarget(lastTarget, videoId, rows.map((r) => ({ ...r, new_value: decodeValue(r.new_value) })), Date.now());
+  lastTarget = t;
+  setToast({ n: ++toastN, line: t.line, undo: { videoId: t.videoId, ids: t.ids }, busy: false, error: false });
 }
 
 /** The toast's Undo: the write's rows read back from the Local copy, inverted, and sent as a new write. */
@@ -220,9 +231,9 @@ export async function undoFromToast() {
   setToast({ ...toast, busy: true });
   try {
     const history = await (await fetch(`/api/videos/${videoId}/history`)).json() as HistoryEntry[];
-    const group = groupWrites(history).find((g) => g.entries.some((e) => ids.includes(e.id)));
-    if (!group) throw new WriteLinkError("That edit is not in this machine's history yet; Sync and undo it from the History tab.", "unknown");
-    await undoWrite(group.entries);
+    const entries = undoEntriesFor(groupWrites(history), ids);
+    if (!entries.length) throw new WriteLinkError("That edit is not in this machine's history yet; Sync and undo it from the History tab.", "unknown");
+    await undoWrite(entries);
   } catch (e) {
     setToast({ n: ++toastN, line: (e as Error).message, undo: null, busy: false, error: true });
   }

@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { decodeValue, groupWrites, type HistoryEntry } from "../src/shared/editHistory";
 import { latinByTable } from "../src/shared/translit";
 import type { ChapterDto } from "../src/shared/types";
-import { ALREADY_UNDONE_LINE, archiveCall, CONFIRM_NOT_UNDOABLE_LINE, inverseOf, undoBlock, type ArchiveCallSpec, type LinkOp } from "../src/web/writeOps";
+import { ADD_FOLD_MS, ALREADY_UNDONE_LINE, archiveCall, CONFIRM_NOT_UNDOABLE_LINE, inverseOf, nextUndoTarget, undoBlock, undoEntriesFor, type ArchiveCallSpec, type LinkOp, type UndoTarget } from "../src/web/writeOps";
 
 interface Ch { id: string; startS: number; title: string; suggested: boolean; source: ChapterDto["source"]; songId: string | null; versionId: string | null; updatedAt: string }
 interface Ar { id: string; name: string; suggested: boolean; linkId: string }
@@ -276,6 +276,36 @@ describe("Undo chains and the toast", () => {
     expect(a.v.titleLatin).toBe(latinByTable("Песня степи"));
     expect(a.v.type).toBe("interview");
     expect(a.chapters).toHaveLength(2);
+  });
+  // a Chapter added with `c` and then named is two writes; the toast's Undo takes back both (the Chapter goes)
+  test("the toast's Undo after naming a new Chapter deletes the Chapter, not just its title", () => {
+    const a = new Archive();
+    const before = a.snapshot();
+    const toast = (prev: UndoTarget | null, at: number) => {
+      const ids = new Set(a.lastWriteIds());
+      return nextUndoTarget(prev, "V1", a.rows.filter((r) => ids.has(r.id)), at);
+    };
+    a.write({ kind: "chapter.add", chapter: { startS: 0.67, title: "" } });
+    let t = toast(null, 1000);
+    expect(t.added).toBeDefined();
+    const added = a.chapterDtos().find((c) => c.startS === 0.67)!;
+    a.write({ kind: "chapter.update", chapter: added as never, patch: { title: "test" } });
+    t = toast(t, 3000);
+    expect(t.ids).toHaveLength(2);
+    expect(t.line).toBe("Saved: Chapter added: test");
+    const entries = undoEntriesFor(groupWrites(a.history()), t.ids);
+    const plan = inverseOf(entries, { video: a.video(), chapters: a.chapterDtos() as never });
+    expect(plan).toMatchObject({ op: { kind: "chapter.delete" } });
+    if ("refused" in plan) throw new Error(plan.refused);
+    const s = archiveCall(a.video(), plan.op, undefined, { reverses: plan.reverses });
+    if ("refused" in s) throw new Error(s.refused);
+    a.apply(s);
+    expect(a.snapshot()).toEqual(before);
+    // an edit of another Chapter, or one after the fold window, starts its own Undo
+    a.write({ kind: "chapter.add", chapter: { startS: 5, title: "" } });
+    const t2 = toast(null, 0);
+    a.write({ kind: "chapter.update", chapter: a.chapterDtos().find((c) => c.startS === 5)! as never, patch: { title: "late" } });
+    expect(toast(t2, ADD_FOLD_MS + 1).ids).toHaveLength(1);
   });
   test("an added Chapter deleted since: the undo is refused, not sent", () => {
     const a = new Archive();

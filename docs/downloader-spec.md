@@ -101,7 +101,8 @@ The ratios are keyed on a Reference height of 1080. For a stored `height` below 
 - **Neither:** the Video is counted but carries no size; totals say "+ N without an estimate".
 - **Displayed with "≈"** everywhere before a job runs. Once a Video is sized by yt-dlp (§4.3), its exact size replaces the estimate.
 - **Time** = total size ÷ throughput. Throughput is 2 MB/s, labelled "assumed", until a job has finished at least one Video; after that, the most recent job's average throughput (bytes downloaded ÷ downloading seconds), stored as `last_throughput_bps` in `download_setting`.
-- **Disk:** free space of the destination's volume (`statfs`), shown in the footer. Confirm is disabled when the total estimate × 1.1 exceeds it.
+- **Best** is keyed like 1080p: a Reference taller than 1080 is scaled by (1080/height)² before the ×1.6, and a shorter one is not scaled. The 720p ratio is likewise applied unchanged to a Reference below 720 (it is a ratio against a 1080 Reference, not a clamp). Implemented in `src/shared/downloadEstimate.ts`.
+- **Disk:** free space of the destination's volume (`statfs`), shown in the footer. Confirm is disabled when the total estimate × 1.1 exceeds it (`fitsDisk`; unknown free space does not block).
 
 ---
 
@@ -286,7 +287,7 @@ All under the existing host check (`hostError`), JSON, on `src/server/api.ts`, i
 |---|---|
 | `GET /api/downloads/tools` | §2.5 |
 | `POST /api/downloads/tools/install` | installs yt-dlp and deno if missing; progress via `GET /api/downloads/tools` |
-| `POST /api/downloads/plan` | body `{ option, n?, seed?, type?, artistId?, quality, destDir? }` → `{ videos: [{ id, title, artists, source, durationS, estBytes, posterUrl }], totals: { count, estBytes, withoutEstimate, estSeconds, throughputAssumed }, freeBytes, destInRoot, instagramCount }`; also `options` counts per tile (§7) |
+| `POST /api/downloads/plan` | body `{ option, n?, seed?, type?, artistId?, quality, destDir? }` → `{ videos: [{ id, title, artists, source, durationS, estBytes, posterUrl }], totals: { count, estBytes, withoutEstimate, estSeconds, throughputAssumed }, freeBytes, destInRoot, instagramCount }`; also `options`, one `{ count, estBytes, withoutEstimate, estSeconds }` per tile (`full`, `random`, `type`, `artist`, `favorites`; Random's is for the chosen N and seed). `option` is one of those five keys, `quality` one of `720p`, `1080p`, `best`. The reply echoes what the controls resolved to (`n`, default 20; `seed`, generated when absent and the same seed always gives the same pick; `type` and `artistId`, defaulting to the choice with the most downloadable Videos), plus `types` and `artists` (the select choices that have something to download, with counts), `destDir` (default: the first mounted Root; null when none is mounted) and `throughputBps`. `freeBytes` is null when the volume cannot be read, and the dialog then does not block Confirm. Hash-only Videos (no `youtube_id`, `instagram_id` or `rutube_id`) are in no list, count or estimate. Source: YouTube, else Instagram, else Rutube. Host check, and the Origin check when a browser sends one (`src/server/downloadPlan.ts`) |
 | `POST /api/downloads/jobs` | body `{ option, quality, destDir, videoIds }` → the new job; the browser sends the picked ids |
 | `POST /api/downloads/card` | body `{ videoId }` → a job of one at the front, or moves an existing item to the front |
 | `GET /api/downloads?logCursor=<n>&job=<id>` | queue snapshot: running job(s), items (state, bytes, speed, eta, reason), per-Video map for cards, `paused`, `offline`, site pauses, `resumePrompt`, and new log lines since the cursor (with the next cursor) for the selected job |
@@ -296,7 +297,7 @@ All under the existing host check (`hostError`), JSON, on `src/server/api.ts`, i
 | `GET /api/downloads/items/:id/log?tail=200` | the card's pop-up |
 | `GET /api/downloads/jobs/:id/report.txt` | the Failure report (§9), `Content-Disposition: attachment` |
 | `GET /api/downloads/settings` · `PUT` | Instagram auth (§5.2) and the notice ack; never returns cookie contents |
-| `POST /api/choose-folder` | macOS `osascript -e 'choose folder'`, like `/api/choose-file`; other platforms return 501 and the dialog shows a path field |
+| `POST /api/choose-folder` | macOS `osascript -e 'choose folder'`, like `/api/choose-file`; other platforms return 501 and the dialog shows a path field. Body `{ start? }` opens the dialog there (or the nearest folder above that exists); reply `{ path }` without a trailing slash, `{ cancelled: true }`, or `{ error }`. Same Host and Origin checks |
 
 **Polling:** 1 s while the dialog is open or any card on screen is queued or running; otherwise the grid's existing refresh. Log lines come by cursor so the page never re-reads the whole log.
 

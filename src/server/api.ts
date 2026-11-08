@@ -42,6 +42,7 @@ import { createReconcile } from "./reconcile";
 import { createSync } from "./sync";
 import { pendingShareBatch, pendingShareSummary, setShareAuto } from "./share";
 import { posterUploadCandidates } from "./posters";
+import { referenceSizeCandidates } from "./referenceSize";
 import { looksLikeJwt } from "../shared/archive";
 import type { SessionResponse } from "../shared/session";
 import { checkRootPath, onboardingFor, ROOT_BAR_DISMISSED } from "./rootSetup";
@@ -839,11 +840,12 @@ export function createHandler(s: Services) {
       // The `pending_share` queue (sharing-spec §6.6, #140): its counts for the one question and the chip row, the
       // inserts the browser drains it with, and the machine's "Share once, then automatic" answer. Posters (§6.5):
       // the local posters a Video Editor's browser uploads. This machine's pages only (Host; writes also Origin).
-      if (req.method === "GET" && (p === "/api/share" || p === "/api/share/pending" || p === "/api/posters/upload")) {
+      if (req.method === "GET" && (p === "/api/share" || p === "/api/share/pending" || p === "/api/posters/upload" || p === "/api/reference-size/candidates")) {
         const refused = hostError(req);
         if (refused) return json({ error: refused }, 403);
         if (p === "/api/share") return json(pendingShareSummary(s.db));
         if (p === "/api/share/pending") return json(pendingShareBatch(s.db));
+        if (p === "/api/reference-size/candidates") return json({ candidates: referenceSizeCandidates(s.db) }); // downloader-spec §3.3
         return json({ candidates: posterUploadCandidates(s.db, s.cfg.thumbsDir) });
       }
       if (req.method === "POST" && p === "/api/share/auto") {

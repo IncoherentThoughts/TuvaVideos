@@ -26,7 +26,7 @@ const HELD = Object.keys(cols130).filter((t) => t !== "video_access");
 const LOCAL_ONLY: Record<string, string[]> = { video_chapters: ["title_latin_source"] };
 /** How a Postgres type of 130 is declared in the Local copy. */
 const AFFINITY: Record<string, string> = {
-  uuid: "TEXT", text: "TEXT", timestamptz: "TEXT", jsonb: "TEXT", boolean: "INTEGER", smallint: "INTEGER", integer: "INTEGER", "double precision": "REAL",
+  uuid: "TEXT", text: "TEXT", timestamptz: "TEXT", jsonb: "TEXT", boolean: "INTEGER", smallint: "INTEGER", integer: "INTEGER", bigint: "INTEGER", real: "REAL", "double precision": "REAL",
 };
 
 const localColumns = (db: Db, t: string) => db.query(`PRAGMA table_info(${t})`).all() as { name: string; type: string }[];
@@ -79,7 +79,7 @@ const ROWS: Required<Pick<SharedTables,
   videos: [{
     id: V1, youtube_id: "aaaaaaaaaaa", content_hash: "h1", instagram_id: "insta", rutube_id: "a555f5d081a84ab8bdb2e97107f82d2d", title: "Title", title_latin: "Title",
     title_latin_source: "manual", type: "song", type_suggested: true, song_id: null, proposed_song_id: PS, version_id: null, proposed_version_id: PV,
-    song_suggested: true, suggestion_source: "title", poster_path: `${V1}/abcdef12.webp`, deleted_at: null, deleted_by: null, delete_reason: null,
+    song_suggested: true, suggestion_source: "title", poster_path: `${V1}/abcdef12.webp`, size_bytes: 123456789, duration_s: 212.5, height: 720, deleted_at: null, deleted_by: null, delete_reason: null,
     created_at: T(1), updated_at: T(3),
   }],
   video_chapters: [{

@@ -75,7 +75,7 @@ On the Shared `public.videos` table (Lyrics Website repo, migration 144 by that 
 
 ### 3.2 Local copy
 
-Local migration `0022_reference_size.sql`: the same three columns on the Local copy's `videos` table (migration 0015) (migration 0015) with `CHECK (> 0)` each. There is no `videos` `*_all` view (0021 rebuilt only `song_all`, `version_all` and `artist_all`; a Video's read view is `video_full`, which does not list them), so no view is rebuilt. `applyShared` and `src/shared/archiveWire.ts` (`SharedVideoRow` in `sharedRows.ts` for the pull, `VideoColumns` for the write) carry them; on the pull they are optional keys, because the archive may not have applied the columns yet (a pull without them leaves the held values). Standalone rows never set them. The migration was numbered 0022 after 0023 existed: `migrate()` records by name, so it applies (tested).
+Local migration `0022_reference_size.sql`: the same three columns on the Local copy's `videos` table (migration 0015) with `CHECK (> 0)` each. There is no `videos` `*_all` view (0021 rebuilt only `song_all`, `version_all` and `artist_all`; a Video's read view is `video_full`, which does not list them), so no view is rebuilt. `applyShared` and `src/shared/archiveWire.ts` (`SharedVideoRow` in `sharedRows.ts` for the pull, `VideoColumns` for the write) carry them; on the pull they are optional keys, because the archive may not have applied the columns yet (a pull without them leaves the held values). Standalone rows never set them. The migration was numbered 0022 after 0023 existed: `migrate()` records by name, so it applies (tested).
 
 ### 3.3 Fill
 

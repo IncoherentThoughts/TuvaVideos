@@ -18,6 +18,7 @@ import { openSignIn } from "./Account";
 import { useSession } from "./session";
 import { useUnseenShelved } from "./History";
 import { hasUnseenShelved } from "../shared/editHistory";
+import { ProtoCardBelow, ProtoThumbOverlay, protoCardOn } from "./prototype/DownloaderPrototype"; // PROTOTYPE #193
 
 const SORT_LABEL: Record<SortKey, string> = { added: "Date added", title: "Title", duration: "Duration", played: "Last played", views: "Views" };
 
@@ -31,8 +32,16 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
   const shelfNew = hasUnseenShelved(useUnseenShelved(), v.id);
   return (
     <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}${unshared ? " unshared" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
-      <Poster video={v} dur />
-      {notHere && <NotHereMark />}
+      {/* PROTOTYPE #193: the download button and progress over the poster */}
+      {protoCardOn(v) ? (
+        <div class="pdl-thumbwrap">
+          <Poster video={v} dur />
+          <ProtoThumbOverlay v={v} />
+        </div>
+      ) : (
+        <Poster video={v} dur />
+      )}
+      {notHere && !protoCardOn(v) && <NotHereMark />}
       {unshared && <UnsharedMark />}
       <div class="ttl">
         {shelfNew && <span class="shelf-dot" title="Shelved edits you have not looked at (History tab on the Video)" />}
@@ -42,6 +51,7 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
       {why}
       <Tags video={v} />
       {!notHere && <SpecTags video={v} />}
+      {protoCardOn(v) && <ProtoCardBelow v={v} />}
       {((!notHere && v.availability !== "local") || v.chapterCount > 0 || v.viewCount > 0) && (
         <div class="meta">
           {/* Nearly every Copy is local, so only the exceptions (external, unavailable) get an icon here; Now playing always shows it. */}

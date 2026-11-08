@@ -8,6 +8,7 @@ import { refreshDeletedMatches } from "./ConflictNotice";
 import { drainSharedSuggestions } from "./writeLink";
 import { afterScan } from "./session";
 import { Link, type Route } from "./router";
+import { DownloaderPrototype } from "./prototype/DownloaderPrototype"; // PROTOTYPE #193
 
 function ScanIndicator({ scan }: { scan: ScanDto }) {
   if (!scan.running) return null;
@@ -134,6 +135,7 @@ export function TopBar({ route }: { route: Route }) {
           </svg>
         </button>
       </div>
+      <DownloaderPrototype />
       {off && (
         <div class="off-page" role="status">
           <img src="/olchey.svg?v=2" alt="" width="64" height="64" />

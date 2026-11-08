@@ -2,6 +2,7 @@
 // header's right, the sign-in dialog with the reconciliation confirmation, and the "Your session ended" banner.
 // Everything reads and acts through useSession() (src/web/session.ts); what renders from which state is chipView.ts.
 import type { Ref } from "preact";
+import { openDownloader } from "./prototype/downloaderSim"; // PROTOTYPE #193
 import { useEffect, useRef, useState } from "preact/hooks";
 import { SIGN_IN_ERRORS } from "../shared/session";
 import { chipView, type ChipView, endedLine, FORGOT_URL, NO_ACCESS_HINT, NO_ACCESS_LINE, OFFLINE_LINE, REFRESH_ALL_CONFIRM, shelveLine, submitBlocked } from "./chipView";
@@ -185,6 +186,9 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
               ))}
             </select>
           </label>
+          <button role="menuitem" onClick={() => (setOpen(false), openDownloader(true))}>
+            Download videos… <span class="dim">(prototype)</span>
+          </button>
           <button role="menuitem" onClick={() => (setOpen(false), navigate("/edits"))}>
             Edits
           </button>

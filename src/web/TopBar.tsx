@@ -8,6 +8,7 @@ import { refreshDeletedMatches } from "./ConflictNotice";
 import { drainSharedSuggestions } from "./writeLink";
 import { afterScan } from "./session";
 import { Link, type Route } from "./router";
+import { quitAsking } from "./downloader/store";
 
 function ScanIndicator({ scan }: { scan: ScanDto }) {
   if (!scan.running) return null;
@@ -87,7 +88,8 @@ export function TopBar({ route }: { route: Route }) {
   const powerOff = async () => {
     setBusy(true);
     try {
-      await api.quit();
+      // downloader-spec §4.7: with downloads running the server asks first; "no" leaves everything as it was
+      if (!(await quitAsking())) return setBusy(false);
     } catch (e) {
       setBusy(false);
       alert(`Could not stop the server: ${apiError(e)}`);

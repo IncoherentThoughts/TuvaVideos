@@ -11,6 +11,9 @@ import { navigate } from "./router";
 import { THEMES, useTheme } from "./theme";
 import { ShelvedExplainer, VideoDiffList } from "./ShelvedDiff";
 import type { VideoDiff } from "../shared/shelvedDiff";
+import { useStore } from "./data";
+import { anyDownloadable } from "./downloader/model";
+import { openDownloads, openLastDownload, refresh as refreshDownloads, useDownloads } from "./downloader/store";
 
 // One dialog for the whole app: the chip's "Sign in", the banner's and the first-launch panel's all open it.
 let dialogOpen = false;
@@ -82,9 +85,12 @@ export function AccountChip() {
   const body =
     view.kind === "none" ? null
     : view.kind === "sign-in" ? (
-      <button class="btn" onClick={openSignIn} disabled={checking}>
-        {checking ? "Signing in…" : "Sign in"}
-      </button>
+      <>
+        <SignedOutDownloads />
+        <button class="btn" onClick={openSignIn} disabled={checking}>
+          {checking ? "Signing in…" : "Sign in"}
+        </button>
+      </>
     ) : (
       <Chip view={view} open={open} setOpen={setOpen} box={box} />
     );
@@ -185,6 +191,7 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
               ))}
             </select>
           </label>
+          <DownloadItems open={open} close={() => setOpen(false)} />
           <button role="menuitem" onClick={() => (setOpen(false), navigate("/edits"))}>
             Edits
           </button>
@@ -204,6 +211,45 @@ function Chip({ view, open, setOpen, box }: { view: Extract<ChipView, { kind: "c
         </div>
       )}
     </div>
+  );
+}
+
+/** downloader-spec §7: "Download videos…" while any downloadable Video is Not on this machine, "Last download…" while
+ *  a bulk job is kept (§4.8). The queue is read again each time the menu opens. */
+function DownloadItems({ open, close }: { open: boolean; close: () => void }) {
+  const { videos } = useStore();
+  const lastBulk = useDownloads().snap?.lastBulkJobId ?? null;
+  useEffect(() => {
+    if (open) void refreshDownloads();
+  }, [open]);
+  return (
+    <>
+      {anyDownloadable(videos) && (
+        <button role="menuitem" onClick={() => (close(), void openDownloads())}>
+          Download videos…
+        </button>
+      )}
+      {lastBulk != null && (
+        <button role="menuitem" onClick={() => (close(), openLastDownload(lastBulk))}>
+          Last download…
+        </button>
+      )}
+    </>
+  );
+}
+
+/** Signed out there is no avatar menu, but the Download queue needs no account: one button stands in for both items
+ *  (a running or kept job opens its log, else the chooser). */
+function SignedOutDownloads() {
+  const { videos } = useStore();
+  const s = useDownloads();
+  const lastBulk = s.snap?.lastBulkJobId ?? null;
+  const live = s.snap?.jobs.some((j) => j.kind === "bulk" && j.running);
+  if (!anyDownloadable(videos) && lastBulk == null) return null;
+  return (
+    <button class="btn" title={anyDownloadable(videos) ? "Download videos…" : "Last download…"} onClick={() => (anyDownloadable(videos) || live ? void openDownloads() : openLastDownload(lastBulk!))}>
+      Download…
+    </button>
   );
 }
 

@@ -21,6 +21,8 @@
   --r: 10px;
   --pad: 8px;
   --bar-h: 52px;
+  /* the one select chevron (downloader-spec §7.4): select.btn and select.chip */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 L6 8 L9.5 4.5' fill='none' stroke='%2393918c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,8 +54,9 @@ kbd { font-family: var(--font-mono); font-size: .85em; background: var(--bg3); b
 .btn:hover:not(:disabled) { background: var(--bg3); }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.small { padding: 2px 9px; font-size: .92em; }
-/* The Theme select (docs/themes.md): a .btn with the chip select's chevron. */
-select.btn.theme { appearance: none; -webkit-appearance: none; padding-right: 26px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 L6 8 L9.5 4.5' fill='none' stroke='%2393918c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; background-size: 12px 12px; cursor: pointer; }
+/* Every select.btn (the Theme select, the download dialog's) wears the one chevron instead of the native arrows
+   (downloader-spec §7.4); `html:root` so a theme's `.btn { background }` and the hover's shorthand do not wipe it. */
+html:root select.btn, html:root select.btn:hover:not(:disabled) { appearance: none; -webkit-appearance: none; padding-right: 26px; background-image: var(--chevron); background-repeat: no-repeat; background-position: right 8px center; background-size: 12px 12px; cursor: pointer; }
 .btn.power { display: grid; place-items: center; width: 32px; height: 30px; padding: 0; color: var(--fg2); }
 .btn.power:hover:not(:disabled) { color: var(--t1); border-color: color-mix(in srgb, var(--t1) 50%, var(--line)); }
 .off-page { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: var(--bg); color: var(--fg2); font-size: 1.1em; }
@@ -120,7 +123,7 @@ mark { background: color-mix(in srgb, var(--t3) 35%, transparent); color: var(--
 /* The shuffle button ends the .controls row (spec 4.8); it wraps with the count on a narrow page. */
 .controls .chip.shuffle { white-space: nowrap; }
 .chip.artist, .chip.song { display: inline-flex; gap: 6px; align-items: center; }
-select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 L6 8 L9.5 4.5' fill='none' stroke='%2393918c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center / 12px 12px; cursor: pointer; padding-right: 28px; }
+select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2) var(--chevron) no-repeat right 9px center / 12px 12px; cursor: pointer; padding-right: 28px; }
 
 /* ---- library ---- */
 .page { padding: 16px 20px 40px; }
@@ -780,7 +783,9 @@ dialog.signin .si-field input { padding: 6px 8px; border: 1px solid var(--line);
 dialog.signin .si-links { font-size: .85em; }
 dialog.signin a { color: var(--accent); }
 dialog.signin .si-note { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg3); font-size: .9em; }
-.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+/* `:root` lifts the primary button over every theme's `.btn` and `.btn:hover` (downloader-spec §7.4; Lawson Night). */
+:root .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+:root .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, #fff); }
 .btn.primary:disabled { opacity: .5; }
 .ended-bar { border-color: var(--t2); }
 
@@ -918,6 +923,110 @@ dialog.shelf .sd-row .btn { margin-left: auto; }
 .apill.reject { --c: var(--no); }
 .apill.migrate { --c: var(--fg2); }
 .apill.new { --c: var(--t3); }
+
+/* === download dialog (#203) === */
+/* docs/downloader-spec.md §7: variant B "One sheet" of the #193 prototype. src/web/downloader/. */
+dialog.dl { margin: auto; padding: 0; width: min(980px, calc(100vw - 32px)); height: min(680px, calc(100vh - 48px)); color: var(--fg); background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 14px 40px rgba(0, 0, 0, .55); display: grid; grid-template-columns: 200px 1fr; overflow: hidden; }
+dialog.dl::backdrop { background: rgba(0, 0, 0, .6); }
+.dl-art { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--fg3); background: repeating-linear-gradient(45deg, var(--bg3) 0 12px, var(--bg2) 12px 24px); border-right: 1px solid var(--line); font-size: 1.1em; }
+.dl-right { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 18px 20px; gap: 12px; overflow: hidden; }
+.dl-x { position: absolute; right: 10px; top: 6px; font-size: 22px; color: var(--fg2); padding: 0 6px; }
+.dl-x:hover { color: var(--fg); }
+.dl-h { margin: 0; font-size: 1.15em; }
+.dl-empty { flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; text-align: center; }
+.dl-warn { color: var(--t3); font-size: .9em; }
+.dl-bad { color: var(--no); }
+.dl-held { color: var(--t3); font-weight: 600; }
+.dl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-right: 28px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--t3) 45%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--t3) 8%, transparent); font-size: .9em; }
+/* tiles */
+.dl-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.dl-tile { --h: var(--accent); display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 10px; border: 1px solid color-mix(in srgb, var(--h) 30%, var(--line)); border-radius: 10px; font-size: .85em; cursor: pointer; background: color-mix(in srgb, var(--h) 7%, transparent); transition: background .18s, border-color .18s, box-shadow .18s; }
+.dl-tile:hover { background: color-mix(in srgb, var(--h) 13%, transparent); }
+.dl-tile.on { border-color: var(--h); background: color-mix(in srgb, var(--h) 18%, transparent); box-shadow: inset 0 0 0 1px var(--h), 0 6px 18px color-mix(in srgb, var(--h) 18%, transparent); }
+.dl-tile:focus-visible { outline: 2px solid var(--h); outline-offset: 2px; }
+.dl-tile.empty { opacity: .5; }
+.dl-tn { font-weight: 600; color: var(--h); }
+.dl-tc { font-size: 1.9em; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.dl-ts { display: flex; flex-wrap: wrap; column-gap: 10px; white-space: nowrap; color: var(--fg2); font-variant-numeric: tabular-nums; }
+.dl-tx { margin-top: 4px; min-height: 26px; display: flex; align-items: center; max-width: 100%; }
+.dl-tx select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.dl-extra { display: inline-flex; gap: 4px; }
+.dl-extra input { width: 64px; padding: 2px 6px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+/* quality and destination */
+.dl-line { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.dl-seg button { padding: 3px 12px; font-size: .9em; }
+.dl-dest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .92em; min-width: 0; }
+.dl-dest .dl-warn { flex-basis: 100%; }
+.dl-path { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the picker */
+.dl-listwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.dl-fade { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: dl-in .22s ease-out; }
+@keyframes dl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.dl-listhead { display: flex; align-items: center; gap: 12px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: .88em; }
+.dl-listhead label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.dl-cols { margin-left: auto; display: grid; grid-template-columns: 52px 64px; text-align: right; gap: 10px; }
+.dl-list { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: 0; }
+.dl-list label { display: grid; grid-template-columns: 20px 64px minmax(0, 1fr) 52px 64px; align-items: center; gap: 10px; padding: 5px 2px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.dl-list .thumb { width: 64px; }
+.dl-list li { transition: opacity .15s; }
+.dl-list li.off { opacity: .4; }
+.dl-len, .dl-size { text-align: right; font-size: .85em; color: var(--fg2); }
+.dl-fullnote { justify-content: center; align-items: center; text-align: center; gap: 6px; padding: 20px; }
+.dl-t { display: flex; flex-direction: column; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-t small { font-size: .8em; overflow: hidden; text-overflow: ellipsis; }
+/* footer */
+.dl-sticky { margin-top: auto; display: flex; align-items: center; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.dl-notes { display: inline-flex; gap: 10px; margin-right: auto; font-size: .88em; }
+.btn.big { padding: 9px 18px; font-size: 1.02em; }
+dialog.dl .btn.primary { font-weight: 600; }
+/* the log */
+.dl-big { display: flex; align-items: center; gap: 18px; padding-right: 28px; }
+.dl-pct { font-size: 3.4em; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.dl-pct small { font-size: .45em; color: var(--fg2); }
+.dl-bar { height: 8px; border-radius: 99px; background: var(--bg3); overflow: hidden; flex: none; }
+.dl-bar.thin { height: 3px; width: 100%; }
+.dl-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s linear; }
+.dl-rows { flex: 1; min-height: 80px; overflow: auto; list-style: none; margin: 0; padding: 0; }
+.dl-rows.short { flex: 0 1 30%; }
+.dl-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 150px; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: .9em; }
+.dl-row .dl-ic { text-align: center; font-weight: 700; color: var(--fg3); }
+.dl-row small { color: var(--fg3); }
+.dl-row.done .dl-ic { color: var(--ok); }
+.dl-row.failed .dl-ic, .dl-row.failed small { color: var(--no); }
+.dl-row.running .dl-ic { color: var(--accent); }
+.dl-row.done, .dl-row.cancelled { opacity: .6; }
+.dl-rowend { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.dl-rx { flex: none; padding: 0 6px; font-size: 1.15em; color: var(--fg3); }
+.dl-rx:hover { color: var(--no); }
+.dl-speed { font-weight: 600; font-variant-numeric: tabular-nums; }
+.dl-speed.slow { color: var(--no); }
+.dl-speed.mid { color: var(--t3); }
+.dl-speed.fast { color: var(--ok); }
+.dl-termbtn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 9%, var(--bg)); color: var(--fg); font-weight: 600; text-align: left; transition: background .15s; }
+.dl-termbtn:hover { background: color-mix(in srgb, var(--accent) 16%, var(--bg)); }
+.dl-termic { flex: none; display: block; color: var(--accent); }
+.dl-termn { margin-left: auto; font-weight: 400; font-size: .88em; }
+/* yt-dlp's own --color tones on a terminal-black ground, the same in every theme */
+.dl-term { flex: 1; min-height: 120px; margin: 0; overflow: auto; background: #0d0c0c; color: #c9c6bf; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 11.5px/1.45 var(--font-mono); white-space: pre-wrap; word-break: break-all; }
+.dl-term .t-err { color: #f38ba8; font-weight: 700; }
+.dl-term .t-warn { color: #f9e2af; font-weight: 700; }
+.dl-term .t-pct { color: #89b4fa; font-weight: 700; }
+.dl-term .t-speed { color: #a6e3a1; }
+.dl-term .t-eta { color: #f9e2af; }
+.dl-term .t-tag { color: #94e2d5; }
+.dl-term .t-size { color: #cba6f7; }
+.dl-term .dim { color: #7f849c; }
+.dl-foot { display: flex; gap: 8px; flex-wrap: wrap; }
+.dl-foot .dl-new { margin-left: auto; }
+.dl-foot a.btn { text-decoration: none; }
+/* the resume bar (§4.7) */
+.dl-resume { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.dl-resume span { margin-right: auto; color: var(--fg); }
+@media (max-width: 760px) {
+  dialog.dl { grid-template-columns: 1fr; }
+  .dl-art { display: none; }
+  .dl-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 
 /* === card download (#204) === */
 /* downloader-spec §8: over the thumbnail (the card's 8px padding, 16:9), the corner button or state pill, and the 4px strip. */

@@ -1027,3 +1027,35 @@ dialog.dl .btn.primary { font-weight: 600; }
   .dl-art { display: none; }
   .dl-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* === card download (#204) === */
+/* downloader-spec §8: over the thumbnail (the card's 8px padding, 16:9), the corner button or state pill, and the 4px strip. */
+.card .cdl { position: absolute; left: 8px; right: 8px; top: 8px; aspect-ratio: 16 / 9; z-index: 2; pointer-events: none; border-radius: calc(var(--r) * .7); overflow: hidden; }
+.cdl > * { pointer-events: auto; }
+.cdl-btn, .cdl-pill { position: absolute; left: 6px; top: 6px; display: inline-flex; align-items: center; gap: 6px; height: 26px; border-radius: 13px; background: rgba(0,0,0,.75); color: #f2f0ec; font-size: .82em; font-weight: 600; white-space: nowrap; box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
+.cdl-btn { min-width: 26px; max-width: 26px; padding: 0 6px; overflow: hidden; cursor: pointer; transition: max-width .15s ease, background .15s ease; }
+.cdl-btn svg { flex: none; }
+.cdl-btn .cdl-est { opacity: 0; font-family: var(--font-mono); font-weight: 500; transition: opacity .15s ease; }
+.cdl-btn:hover, .cdl-btn:focus-visible { max-width: 220px; padding-right: 10px; background: var(--accent); color: var(--accent-fg); outline: none; }
+.cdl-btn:hover .cdl-est, .cdl-btn:focus-visible .cdl-est { opacity: 1; }
+.cdl-btn.err { box-shadow: 0 0 0 1.5px var(--no); }
+.cdl-btn:disabled { opacity: .6; cursor: progress; }
+.cdl-pill { padding: 0 10px; font-family: var(--font-mono); font-weight: 500; }
+.cdl-pill.queued, .cdl-pill.waiting { color: #e6e3dd; }
+.cdl-pill.running, .cdl-pill.merging, .cdl-pill.adding { color: #fff; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent); }
+.cdl-pill.failed { background: color-mix(in srgb, var(--no) 85%, #000); color: #fff; cursor: pointer; border: 0; font-weight: 600; }
+.cdl-pill.done { background: color-mix(in srgb, var(--ok) 80%, #000); color: #08130a; font-weight: 600; }
+.cdl-strip { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.55); pointer-events: none; }
+.cdl-strip i { display: block; height: 100%; background: var(--accent); transition: width .9s linear; }
+.cdl-merging .cdl-strip i, .cdl-adding .cdl-strip i { animation: cdl-pulse 1.2s ease-in-out infinite; }
+@keyframes cdl-pulse { 50% { opacity: .45; } }
+.cdl-pop { position: fixed; z-index: 1000; width: 360px; max-width: calc(100vw - 16px); padding: 12px; background: var(--bg2); color: var(--fg); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 12px 32px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 10px; }
+.cdl-pop-reason b { color: var(--no); font-weight: 600; }
+.cdl-log { max-height: 180px; overflow: auto; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: calc(var(--r) * .6); font-family: var(--font-mono); font-size: .76em; line-height: 1.45; white-space: pre-wrap; word-break: break-all; color: var(--fg2); }
+.cdl-log .err { color: var(--no); background: color-mix(in srgb, var(--no) 12%, transparent); }
+.cdl-pop-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.nothere-panel .cdl-panel-row { display: flex; justify-content: center; }
+.cdl-panel { display: inline-flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+.cdl-panel-btn { display: inline-flex; align-items: center; gap: 6px; }
+.cdl-panel .cdl-pill { position: static; }
+.cdl-panel-err { font-size: .9em; }

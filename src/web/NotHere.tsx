@@ -3,6 +3,7 @@
 // a Copy (a scan found the file), the way the unmounted overlay gives way today.
 import type { VideoDto } from "../shared/types";
 import { NOT_HERE_MESSAGE, sourceLink } from "../shared/presence";
+import { PanelDownload } from "./cardDownload";
 
 export function NotHerePanel({ video }: { video: VideoDto }) {
   const link = sourceLink(video);
@@ -21,6 +22,12 @@ export function NotHerePanel({ video }: { video: VideoDto }) {
           </p>
         ) : (
           <p class="dim">No source link is known for this Video.</p>
+        )}
+        {/* downloader-spec §8: the card's Download button beside the source link, with the same states. */}
+        {link && (
+          <p class="cdl-panel-row">
+            <PanelDownload video={video} />
+          </p>
         )}
       </div>
     </div>

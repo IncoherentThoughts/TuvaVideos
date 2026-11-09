@@ -13,6 +13,8 @@ import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, NotHereMark, Poster, SpecTags, Tags, UnsharedMark } from "./ui";
 import { isNotHere, sharingMark, showOnThisMachineChip } from "../shared/presence";
 import { useWindowed } from "./windowed";
+import { CardDownload } from "./cardDownload";
+import { hasSourceId } from "./cardDownloadState";
 import { FirstLaunchPanel, NoRootBar, useOnboarding } from "./Onboarding";
 import { openSignIn } from "./Account";
 import { useSession } from "./session";
@@ -30,9 +32,10 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
   // #159: Shelved edits not looked at yet: a small dot before the title (the corners are §7.1's and #158's).
   const shelfNew = hasUnseenShelved(useUnseenShelved(), v.id);
   return (
-    <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}${unshared ? " unshared" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={onOpen}>
+    <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}${unshared ? " unshared" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={(e: MouseEvent) => !(e.target as Element).closest?.(".cdl") && onOpen()}>
       <Poster video={v} dur />
-      {notHere && <NotHereMark />}
+      {/* downloader-spec §8: a downloadable Video's corner is the download button and its states; hash-only keeps the mark. */}
+      {notHere && (hasSourceId(v) ? <CardDownload video={v} /> : <NotHereMark />)}
       {unshared && <UnsharedMark />}
       <div class="ttl">
         {shelfNew && <span class="shelf-dot" title="Shelved edits you have not looked at (History tab on the Video)" />}

@@ -151,6 +151,10 @@ describe("parsePlanRequest", () => {
   test("accepts a good body and keeps what was given", () => {
     expect(parsePlanRequest({ option: "random", quality: "best", n: 5, seed: 3, destDir: "/x" })).toEqual({ option: "random", quality: "best", n: 5, seed: 3, destDir: "/x" });
   });
+  test("takes the legacy 720 / 1080 spelling and answers in the canonical one", () => {
+    expect(parsePlanRequest({ option: "full", quality: "720" })).toEqual({ option: "full", quality: "720p" });
+    expect(parsePlanRequest({ option: "full", quality: 1080 })).toEqual({ option: "full", quality: "1080p" });
+  });
   test("refuses the rest with a message", () => {
     for (const b of [{}, { option: "all", quality: "1080p" }, { option: "full" }, { option: "full", quality: "1080p", n: 0 }, { option: "full", quality: "1080p", n: 1.5 },
       { option: "full", quality: "1080p", seed: "1" }, { option: "type", quality: "1080p", type: "film" }, { option: "full", quality: "1080p", destDir: "rel" }, { option: "full", quality: "1080p", artistId: "" }])

@@ -2,7 +2,7 @@
 // would download, what they weigh and how long that takes, and whether the destination can hold them. Read-only.
 import { statfs } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { ASSUMED_THROUGHPUT_BPS, estimateVideoBytes, isQuality, totalsOf, type EstimateTotals, type Quality } from "../shared/downloadEstimate";
+import { ASSUMED_THROUGHPUT_BPS, estimateVideoBytes, normQuality, totalsOf, type EstimateTotals, type Quality } from "../shared/downloadEstimate";
 import { TYPES, type VideoType } from "../shared/filters";
 import { videoPresence } from "../shared/presence";
 import type { ArtistRef, CopyDto } from "../shared/types";
@@ -52,8 +52,9 @@ export interface PlanRequest {
 export function parsePlanRequest(body: Record<string, unknown>): PlanRequest | string {
   const { option, quality, n, seed, type, artistId, destDir } = body;
   if (!PLAN_OPTIONS.includes(option as PlanOption)) return `option must be one of ${PLAN_OPTIONS.join(", ")}`;
-  if (!isQuality(quality)) return "quality must be 720p, 1080p or best";
-  const req: PlanRequest = { option: option as PlanOption, quality };
+  const q = normQuality(quality);
+  if (!q) return "quality must be 720p, 1080p or best";
+  const req: PlanRequest = { option: option as PlanOption, quality: q };
   if (n != null) {
     if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > MAX_RANDOM_N) return `n must be an integer from 1 to ${MAX_RANDOM_N}`;
     req.n = n;

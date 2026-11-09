@@ -73,7 +73,7 @@ describe("a job of 5 through the real app", () => {
     perUrl[ids[4]!] = { exit: 1, steps: [{ err: "ERROR: [youtube] aaaaaaaaaa5: Private video. Sign in if you've been granted access to this video" }] };
     writeFileSync(scenarioPath, JSON.stringify({ sizing: SIZING, steps, perUrl }));
 
-    const r = await post("/api/downloads/jobs", { option: "random", quality: "1080", destDir: rootDir, videoIds: ["v1", "v2", "v3", "v4", "v5"] });
+    const r = await post("/api/downloads/jobs", { option: "random", quality: "1080p", destDir: rootDir, videoIds: ["v1", "v2", "v3", "v4", "v5"] });
     expect(r.status).toBe(201);
     const jobId = r.json.jobId as number;
     await until(async () => (await api("/api/downloads")).json.job?.running === false);

@@ -8,6 +8,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import type { Db } from "../db";
 import { log } from "../log";
 import type { Quality, Source } from "./args";
+import { normQuality, storedQuality, type StoredQuality } from "../../shared/downloadEstimate";
 import type { FailureReason } from "./classify";
 import { failureReport, reportFileName, type ReportItem } from "./report";
 import { runItem, sizeItem, type ItemEvent, type ItemRun, type ItemSpec } from "./runItem";
@@ -132,9 +133,10 @@ export type CardReq = { videoId: string; quality?: string; destDir?: string };
 const OPTIONS = new Set(["full", "random", "type", "artist", "favorites"]);
 const iso = (ms: number) => new Date(ms).toISOString();
 
-export function normQuality(q: unknown): "720" | "1080" | "best" | null {
-  const s = String(q ?? "").toLowerCase().replace(/p$/, "");
-  return s === "720" || s === "1080" || s === "best" ? s : null;
+/** A request's quality in the stored spelling; the wire's canonical `720p` / `1080p` / `best` and the legacy `720` / `1080`. */
+export function normStoredQuality(q: unknown): StoredQuality | null {
+  const c = normQuality(q);
+  return c ? storedQuality(c) : null;
 }
 
 export function sourceUrlOf(source: Source, id: string): string {
@@ -322,8 +324,8 @@ export class DownloadQueue {
   /** Confirm in the download dialog (§6 `POST /jobs`). Videos already live in another job move into this one. */
   addBulk(req: StartReq): { jobId: number; added: number; moved: number; alreadyRunning: number; rejected: { videoId: string; why: string }[] } {
     if (!OPTIONS.has(req.option)) throw new QueueError(400, "option must be full, random, type, artist or favorites");
-    const quality = normQuality(req.quality);
-    if (!quality) throw new QueueError(400, "quality must be 720, 1080 or best");
+    const quality = normStoredQuality(req.quality);
+    if (!quality) throw new QueueError(400, "quality must be 720p, 1080p or best");
     if (!Array.isArray(req.videoIds) || !req.videoIds.length) throw new QueueError(400, "no Videos picked");
     const { dir, rootId } = this.destination(req.destDir);
     const ids = [...new Set(req.videoIds.map(String))];
@@ -417,8 +419,8 @@ export class DownloadQueue {
     const [source, sourceId] = v.youtube_id ? (["youtube", v.youtube_id] as const) : v.instagram_id ? (["instagram", v.instagram_id] as const) : v.rutube_id ? (["rutube", v.rutube_id] as const) : [null, null];
     if (!source || !sourceId) throw new QueueError(400, "this Video has no source id");
     if (this.hasCopy(id)) throw new QueueError(409, "this Video is already on this machine");
-    let quality = req.quality === undefined ? null : normQuality(req.quality);
-    if (req.quality !== undefined && !quality) throw new QueueError(400, "quality must be 720, 1080 or best");
+    let quality = req.quality === undefined ? null : normStoredQuality(req.quality);
+    if (req.quality !== undefined && !quality) throw new QueueError(400, "quality must be 720p, 1080p or best");
     quality ??= (this.db.query("SELECT quality FROM download_job ORDER BY id DESC LIMIT 1").get() as { quality: "720" | "1080" | "best" } | null)?.quality ?? "1080";
     let dest: { dir: string; rootId: number | null };
     if (req.destDir) dest = this.destination(req.destDir);
@@ -1025,7 +1027,7 @@ export class DownloadQueue {
       id: j.id,
       kind: j.kind,
       option: j.option,
-      quality: j.quality,
+      quality: normQuality(j.quality) ?? "1080p",
       destDir: j.dest_dir,
       destRootId: j.dest_root_id,
       createdAt: j.created_at,

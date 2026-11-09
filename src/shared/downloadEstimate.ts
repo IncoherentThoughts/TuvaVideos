@@ -4,6 +4,15 @@
 export const QUALITIES = ["720p", "1080p", "best"] as const;
 export type Quality = (typeof QUALITIES)[number];
 export const isQuality = (q: unknown): q is Quality => (QUALITIES as readonly unknown[]).includes(q);
+/** The canonical wire spelling (`720p`, `1080p`, `best`) of a quality; the legacy `720` / `1080` (string or number) and any
+ *  case are accepted on input. Null when it is none of them. */
+export function normQuality(q: unknown): Quality | null {
+  const s = String(q ?? "").trim().toLowerCase().replace(/^(720|1080)p$/, "$1");
+  return s === "720" || s === "1080" ? `${s}p` : s === "best" ? "best" : null;
+}
+/** The spelling `download_job.quality` stores (migration 0024's CHECK): the canonical one without its `p`. */
+export type StoredQuality = "720" | "1080" | "best";
+export const storedQuality = (q: Quality): StoredQuality => (q === "best" ? "best" : (q.slice(0, -1) as StoredQuality));
 
 /** The Reference size is taken at a height of 1080 (§3.3), so these ratios are keyed on it. */
 export const QUALITY_RATIO: Record<Quality, number> = { "720p": 0.5, "1080p": 1, best: 1.6 };

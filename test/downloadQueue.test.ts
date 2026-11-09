@@ -158,7 +158,7 @@ function setup(extra: Partial<QueueDeps> = {}) {
     return { id, sid };
   };
   const vids = (k: number, source: "youtube" | "instagram" | "rutube" = "youtube") => Array.from({ length: k }, () => video(source));
-  const bulk = (v: { id: string }[], o: { quality?: string; destDir?: string } = {}) => q.addBulk({ option: "random", quality: o.quality ?? "1080", destDir: o.destDir ?? rootDir, videoIds: v.map((x) => x.id) });
+  const bulk = (v: { id: string }[], o: { quality?: string; destDir?: string } = {}) => q.addBulk({ option: "random", quality: o.quality ?? "1080p", destDir: o.destDir ?? rootDir, videoIds: v.map((x) => x.id) });
   const items = (jobId?: number) => db.query(`SELECT * FROM download_item ${jobId ? "WHERE job_id = " + jobId : ""} ORDER BY id`).all() as ItemRow[];
   const states = (jobId?: number) => items(jobId).map((i) => i.state);
   const item = (videoId: string) => db.query("SELECT * FROM download_item WHERE video_id = ? ORDER BY id DESC").get(videoId) as ItemRow;
@@ -226,7 +226,7 @@ describe("a job runs", () => {
   test("done_outside: a folder outside every Root is not scanned; inside is", async () => {
     const [a, b] = h.vids(2);
     const out = join(h.dir, "elsewhere");
-    h.q.addBulk({ option: "random", quality: "720", destDir: out, videoIds: [a!.id] });
+    h.q.addBulk({ option: "random", quality: "720p", destDir: out, videoIds: [a!.id] });
     await h.q.settled();
     expect(h.item(a!.id).state).toBe("done_outside");
     expect(h.state.scanned).toEqual([]);
@@ -262,10 +262,10 @@ describe("a job runs", () => {
     h.db.prepare("INSERT INTO videos (id, content_hash, title, created_at, updated_at) VALUES ('hashonly', 'hh', 'No source', 'x', 'x')").run();
     const [c] = h.vids(1);
     h.state.copies.add(c!.id);
-    const r = h.q.addBulk({ option: "random", quality: "1080", destDir: h.rootDir, videoIds: [a!.id, "hashonly", "nope", c!.id] });
+    const r = h.q.addBulk({ option: "random", quality: "1080p", destDir: h.rootDir, videoIds: [a!.id, "hashonly", "nope", c!.id] });
     expect(r.added).toBe(1);
     expect(r.rejected.map((x) => x.why).sort()).toEqual(["already on this machine", "no source id", "unknown Video"]);
-    expect(() => h.q.addBulk({ option: "random", quality: "1080", destDir: h.rootDir, videoIds: ["nope"] })).toThrow(QueueError);
+    expect(() => h.q.addBulk({ option: "random", quality: "1080p", destDir: h.rootDir, videoIds: ["nope"] })).toThrow(QueueError);
   });
 });
 
@@ -762,7 +762,7 @@ describe("the log and the Failure report (§6, §9)", () => {
     const v = h.vids(4);
     h.stub.plan(v[0]!.sid, { ok: false, reason: "unavailable", errorLine: "[youtube] x: Video unavailable" });
     h.stub.plan(v[1]!.sid, { ok: false, reason: "geo", errorLine: "The uploader has not made this video available in your country" });
-    h.bulk(v, { quality: "720" });
+    h.bulk(v, { quality: "720p" });
     await h.q.settled();
     const job = h.db.query("SELECT created_at FROM download_job").get() as any;
     const r = h.q.report(1);
@@ -865,17 +865,29 @@ describe("routes (§6)", () => {
     const bad = await downloadRoutes(new Request("http://evil.example/api/downloads", { headers: { host: "evil.example" } }), new URL("http://evil.example/api/downloads"), h.q);
     expect(bad!.status).toBe(403);
     expect((await post("/api/downloads/pause", undefined, "http://evil.example"))!.status).toBe(403);
-    expect((await post("/api/downloads/jobs", { option: "x", quality: "1080", destDir: h.rootDir, videoIds: ["a"] }))!.status).toBe(400);
+    expect((await post("/api/downloads/jobs", { option: "x", quality: "1080p", destDir: h.rootDir, videoIds: ["a"] }))!.status).toBe(400);
     expect((await post("/api/downloads/jobs", { option: "random", quality: "4k", destDir: h.rootDir, videoIds: ["a"] }))!.status).toBe(400);
-    expect((await post("/api/downloads/jobs", { option: "random", quality: "720", destDir: "relative/dir", videoIds: ["a"] }))!.status).toBe(400);
+    expect((await post("/api/downloads/jobs", { option: "random", quality: "720p", destDir: "relative/dir", videoIds: ["a"] }))!.status).toBe(400);
     expect((await post("/api/downloads/card", { videoId: "nope" }))!.status).toBe(404);
     for (const p of ["/api/downloads/plan", "/api/downloads/settings", "/api/downloads/tools", "/api/choose-folder"]) expect(await call(p, { method: p.endsWith("plan") ? "POST" : "GET" })).toBeNull();
+  });
+
+  test("quality: canonical 720p / 1080p / best, the legacy 720 / 1080 still accepted, the snapshot answers canonical", async () => {
+    const [a, b] = h.vids(2);
+    const r1 = (await post("/api/downloads/jobs", { option: "random", quality: "1080", destDir: h.rootDir, videoIds: [a!.id] }))!;
+    expect(r1.status).toBe(201);
+    const r2 = (await post("/api/downloads/jobs", { option: "random", quality: "720p", destDir: h.rootDir, videoIds: [b!.id] }))!;
+    expect(r2.status).toBe(201);
+    const snap = h.q.snapshot();
+    expect(snap.jobs.map((j) => j.quality)).toEqual(["1080p", "720p"]);
+    const bad = await (await post("/api/downloads/jobs", { option: "random", quality: "4k", destDir: h.rootDir, videoIds: [a!.id] }))!.json();
+    expect(bad.error).toBe("quality must be 720p, 1080p or best");
   });
 
   test("an unmounted destination Root is refused", async () => {
     const [a] = h.vids(1);
     h.state.mounted = false;
-    const r = (await post("/api/downloads/jobs", { option: "random", quality: "720", destDir: h.rootDir, videoIds: [a!.id] }))!;
+    const r = (await post("/api/downloads/jobs", { option: "random", quality: "720p", destDir: h.rootDir, videoIds: [a!.id] }))!;
     expect(r.status).toBe(409);
   });
 });

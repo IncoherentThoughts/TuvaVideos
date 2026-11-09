@@ -19,6 +19,8 @@ import { ConflictNotice, DeletedMatchNotice } from "./ConflictNotice";
 import { ShareQuestion } from "./ShareQuestion";
 import { RowPromptHost } from "./ProposedRows";
 import { EditsView, ShelvedDrawer, UndoToastView } from "./History";
+import { DownloadDialogHost } from "./downloader/DownloadDialog";
+import { ResumeBar } from "./downloader/ResumeBar";
 
 function App() {
   const loc = useLocation();
@@ -31,6 +33,7 @@ function App() {
       <VideoMenu />
       <main>
         <EndedBanner />
+        <ResumeBar />
         <SchemaBanner />
         <ConflictNotice />
         <DeletedMatchNotice />
@@ -49,6 +52,7 @@ function App() {
       </main>
       <ShelvedDrawer />
       <UndoToastView />
+      <DownloadDialogHost />
     </>
   );
 }

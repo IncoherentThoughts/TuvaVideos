@@ -57,6 +57,8 @@ class Stub implements Runner {
   plans = new Map<string, Beh[]>();
   sizeFails = new Map<string, { reason: FailureReason; errorLine: string }[]>();
   started: string[] = [];
+  /** The cookies each run was given, in run order (the Instagram retry, §5.4). */
+  cookiesUsed: (string | null)[] = [];
   killed: string[] = [];
   live = new Map<string, { fin: (o: ItemOutcome) => void; cwd: string }>();
   exact = 1000;
@@ -74,6 +76,7 @@ class Stub implements Runner {
   };
   run: Runner["run"] = (spec, onEvent) => {
     this.started.push(spec.url);
+    this.cookiesUsed.push(spec.cookies ? ("file" in spec.cookies ? `file:${spec.cookies.file}` : `browser:${spec.cookies.browser}`) : null);
     const b = this.pick(spec.url);
     let resolve!: (o: ItemOutcome) => void;
     const done = new Promise<ItemOutcome>((r) => (resolve = r));
@@ -119,7 +122,7 @@ function setup(extra: Partial<QueueDeps> = {}) {
   db.prepare("INSERT INTO root (path, kind) VALUES (?, 'local')").run(rootDir);
   const clock = new Clock();
   const stub = new Stub();
-  const state = { mounted: true, copies: new Set<string>(), scanOk: true, scanned: [] as string[], runtime: true, cookies: false, prepared: 0 };
+  const state = { mounted: true, copies: new Set<string>(), scanOk: true, scanned: [] as string[], runtime: true, cookies: false, prepared: 0, cookieEvents: [] as string[] };
   const deps: QueueDeps = {
     db,
     dataDir,
@@ -136,7 +139,8 @@ function setup(extra: Partial<QueueDeps> = {}) {
     },
     hasCopy: (id) => state.copies.has(id),
     jsRuntimeAvailable: async () => state.runtime,
-    instagramCookies: () => state.cookies,
+    instagramCookies: () => (state.cookies ? { file: "/fake/instagram-cookies.txt" } : null),
+    onInstagramCookies: (o) => void state.cookieEvents.push(o),
     now: clock.now,
     random: () => 0,
     setTimer: clock.setTimer,
@@ -516,15 +520,60 @@ describe("Instagram", () => {
     expect(h.states().filter((s) => s === "done").length).toBeGreaterThanOrEqual(2);
   });
 
-  test("with cookies configured a login wall fails only that item (the retry with cookies is ticket #205)", async () => {
+  test("with cookies a login wall gets one immediate retry with them; success notes that they worked", async () => {
     h.state.cookies = true;
     const ig = h.vids(2, "instagram");
     h.stub.plan(ig[0]!.sid, { ok: false, reason: "login_wall", errorLine: "empty media response" });
     h.bulk(ig);
     await h.q.settled();
+    expect(h.item(ig[0]!.id)).toMatchObject({ state: "done", reason: null, attempts: 1 });
+    expect(h.stub.cookiesUsed).toEqual([null, "file:/fake/instagram-cookies.txt"]); // signed out first (§5.1)
+    expect(h.state.cookieEvents).toEqual(["worked"]);
     await h.clock.advance(10_000);
     await h.q.settled();
+    expect(h.states()).toEqual(["done", "done"]);
+    expect(h.stub.cookiesUsed[2]).toBeNull(); // the next Video is again tried signed out
+  });
+
+  test("a second login wall with cookies fails that item only: no needs sign-in for the rest", async () => {
+    h.state.cookies = true;
+    const ig = h.vids(2, "instagram");
+    const wall = { ok: false, reason: "login_wall", errorLine: "empty media response" } as const;
+    h.stub.plan(ig[0]!.sid, wall, wall);
+    h.bulk(ig);
+    await h.q.settled();
+    await h.clock.advance(10_000);
+    await h.q.settled();
+    expect(h.item(ig[0]!.id)).toMatchObject({ state: "failed", reason: "login_wall" });
     expect(h.states()).toEqual(["failed", "done"]);
+    expect(h.stub.cookiesUsed.filter(Boolean)).toHaveLength(1); // one retry, not two
+    expect(h.state.cookieEvents).toEqual([]);
+  });
+
+  test("cookies_expired on the retry fails the item as cookies expired and flips the expired flag", async () => {
+    h.state.cookies = true;
+    const [ig] = h.vids(1, "instagram");
+    h.stub.plan(ig!.sid, { ok: false, reason: "login_wall", errorLine: "empty media response" }, { ok: false, reason: "cookies_expired", errorLine: "WARNING: [Instagram] The provided account cookies are no longer valid" });
+    h.bulk([ig!]);
+    await h.q.settled();
+    expect(h.item(ig!.id)).toMatchObject({ state: "failed", reason: "cookies_expired" });
+    expect(h.state.cookieEvents).toEqual(["expired"]);
+  });
+
+  test("a login wall in the sizing pass retries with cookies too, and YouTube login walls never do", async () => {
+    h.state.cookies = true;
+    const [ig] = h.vids(1, "instagram");
+    h.stub.sizeFails.set(ig!.sid, [{ reason: "login_wall", errorLine: "redirected to the login page" }]);
+    h.bulk([ig!]);
+    await h.q.settled();
+    expect(h.item(ig!.id).state).toBe("done");
+    expect(h.stub.cookiesUsed).toEqual(["file:/fake/instagram-cookies.txt"]);
+    const [yt] = h.vids(1);
+    h.stub.plan(yt!.sid, { ok: false, reason: "login_wall", errorLine: "redirected to the login page" });
+    h.bulk([yt!]);
+    await h.q.settled();
+    expect(h.item(yt!.id)).toMatchObject({ state: "failed", reason: "login_wall" });
+    expect(h.stub.cookiesUsed.at(-1)).toBeNull();
   });
 });
 

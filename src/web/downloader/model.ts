@@ -3,6 +3,8 @@
 // no fetch: `test/downloadDialog.test.ts` covers it.
 import { DISK_MARGIN, totalsOf, type EstimateTotals } from "../../shared/downloadEstimate";
 import type { ItemState } from "../../server/downloads/queue";
+import type { Browser, InstagramAuth } from "../../server/downloads/instagramAuth";
+import { localDate } from "../../server/downloads/report";
 
 // ---- words ---------------------------------------------------------------------------------------------------------
 
@@ -234,3 +236,33 @@ export function resumeLine(p: { left: number; estBytes: number; waitingForRoot: 
 export function anyDownloadable(list: readonly { youtubeId: string | null; instagramId: string | null; rutubeId: string | null; available: boolean; copies: { missing: boolean }[] }[] | null): boolean {
   return !!list?.some((v) => (v.youtubeId || v.instagramId || v.rutubeId) && !v.available && v.copies.every((c) => c.missing));
 }
+
+// ---- the Instagram row (§5.2) --------------------------------------------------------------------------------------
+
+export const BROWSER_LABEL: Record<Browser, string> = {
+  firefox: "Firefox", safari: "Safari", chrome: "Chrome", brave: "Brave", edge: "Edge", chromium: "Chromium", opera: "Opera", vivaldi: "Vivaldi",
+};
+
+/** The row's words: "signed out", "cookies from Firefox", "cookies.txt, last worked 2026-11-08"; `expired` adds the red word. */
+export function instagramStatus(a: InstagramAuth): { text: string; expired: boolean } {
+  if (a.kind === "none") return { text: "signed out", expired: false };
+  const what = a.kind === "browser" ? `cookies from ${BROWSER_LABEL[a.browser] ?? a.browser}` : "cookies.txt";
+  return { text: a.lastWorkedAt ? `${what}, last worked ${localDate(a.lastWorkedAt)}` : what, expired: !!a.expired };
+}
+
+/** The picker's macOS notes (§5.2): Chrome-family browsers raise a keychain prompt, Safari may need Full Disk Access. */
+export function browserNote(b: Browser, platform: string): string | null {
+  if (platform !== "darwin" || b === "firefox") return null;
+  if (b === "safari") return "Safari's cookies may need Full Disk Access for TuvaVideos (System Settings → Privacy & Security → Full Disk Access).";
+  return `macOS will ask for your login password once, to unlock "${BROWSER_LABEL[b]} Safe Storage" in the keychain.`;
+}
+
+/** The row is shown only when the current selection includes Instagram Videos (§5.2). */
+export const hasInstagram = (list: readonly { source: string }[]) => list.some((v) => v.source === "instagram");
+
+/** The one-time notice (§5.3), acknowledged before cookies can be set. */
+export const INSTAGRAM_NOTICE = [
+  "Instagram may lock or ban an account whose cookies are used this way.",
+  "Meta's terms bar automated collection, which this is.",
+  "Use a throwaway account in a browser profile of its own, never your own account.",
+];

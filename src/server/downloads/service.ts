@@ -7,7 +7,8 @@ import type { Roots } from "../roots";
 import type { Scanner } from "../scan";
 import { createDownloadQueue, type DownloadQueue, type ToolSet } from "./queue";
 import { detectJsRuntime, ffmpegLocation } from "./tools";
-import { getSetting, type DownloaderTools } from "./toolsInstall";
+import { cookiesFor, noteCookies } from "./instagramAuth";
+import type { DownloaderTools } from "./toolsInstall";
 
 export const PROBE_URL = "https://www.youtube.com/generate_204";
 
@@ -57,13 +58,7 @@ export function createDownloadService(o: { cfg: Pick<Config, "dataDir" | "ffprob
       rtCache = null;
       return (await jsRuntime()) !== null;
     },
-    instagramCookies: () => {
-      try {
-        const a = JSON.parse(getSetting(o.db, "instagram_auth") ?? "null") as { kind?: string; expired?: boolean } | null;
-        return !!a && (a.kind === "browser" || a.kind === "file") && !a.expired;
-      } catch {
-        return false;
-      }
-    },
+    instagramCookies: () => cookiesFor(o.db, o.cfg.dataDir),
+    onInstagramCookies: (outcome) => noteCookies(o.db, outcome),
   });
 }

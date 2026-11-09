@@ -7,7 +7,7 @@ import { appendFileSync, closeSync, mkdirSync, openSync, readdirSync, readSync, 
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Db } from "../db";
 import { log } from "../log";
-import type { Quality, Source } from "./args";
+import type { Cookies, Quality, Source } from "./args";
 import { normQuality, storedQuality, type StoredQuality } from "../../shared/downloadEstimate";
 import type { FailureReason } from "./classify";
 import { failureReport, reportFileName, type ReportItem } from "./report";
@@ -110,8 +110,10 @@ export interface QueueDeps {
   hasCopy?: (videoId: string) => boolean;
   /** Is a JS runtime installed now (§4.4 `no_js_runtime`). Default: always true. */
   jsRuntimeAvailable?: () => Promise<boolean>;
-  /** Instagram cookies are configured and not expired (§5.4; the cookie retry itself is ticket #205). */
-  instagramCookies?: () => boolean;
+  /** The Instagram cookies for the one retry after a login wall (§5.4), or null when none are configured or they expired. */
+  instagramCookies?: () => Cookies | null;
+  /** The cookies retry's outcome (§5.4): `worked` sets `lastWorkedAt`, `expired` flips the auth row's `expired` (§5.2). */
+  onInstagramCookies?: (outcome: "worked" | "expired") => void;
   now?: () => number;
   random?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -540,7 +542,11 @@ export class DownloadQueue {
     const ctl: Ctl = { itemId: item.id, source: item.source, dead: false, run: null };
     this.running.set(item.id, ctl);
     this.patch(item.id, { state: "sizing", reason: null, error_line: null, not_before: null, attempts: item.attempts + 1, speed_bps: null, eta_s: null });
-    void this.execute(item, ctl).catch((e) => {
+    this.launch(item, ctl, null);
+  }
+
+  private launch(item: ItemRow & { dest_dir: string; quality: JobRow["quality"] }, ctl: Ctl, cookies: Cookies | null) {
+    void this.execute(item, ctl, cookies).catch((e) => {
       log(`downloads: item ${item.id} crashed: ${e}`);
       if (!ctl.dead) this.fail(item, ctl, "unknown", `internal error: ${(e as Error).message ?? e}`);
     });
@@ -551,7 +557,8 @@ export class DownloadQueue {
     this.running.delete(ctl.itemId);
   }
 
-  private async execute(item: ItemRow & { dest_dir: string; quality: JobRow["quality"] }, ctl: Ctl) {
+  /** `cookies`: the Instagram retry after a login wall (§5.4); every first run is signed out (§5.1). */
+  private async execute(item: ItemRow & { dest_dir: string; quality: JobRow["quality"] }, ctl: Ctl, cookies: Cookies | null) {
     const tools = await this.deps.tools();
     if (ctl.dead) return;
     if (!tools) return this.fail(item, ctl, "unknown", "yt-dlp is not installed");
@@ -567,11 +574,12 @@ export class DownloadQueue {
       logPath: item.log_path,
       env: tools.env,
       windows: this.deps.windows ?? process.platform === "win32",
+      cookies,
     } satisfies Omit<ItemSpec, "mergeFormat" | "exactBytes">;
 
     const sized = await this.runner.size(base);
     if (ctl.dead) return;
-    if (!sized.ok) return this.onFailure(item, ctl, sized.reason, sized.errorLine);
+    if (!sized.ok) return this.onFailure(item, ctl, sized.reason, sized.errorLine, cookies);
     this.patch(item.id, { state: "downloading", exact_bytes: sized.sizing.exactBytes, started_at: iso(this.now()), done_bytes: 0 });
     const run = this.runner.run({ ...base, exactBytes: sized.sizing.exactBytes, mergeFormat: sized.sizing.mergeFormat }, (e) => {
       if (ctl.dead) return;
@@ -585,7 +593,8 @@ export class DownloadQueue {
     ctl.run = run;
     const out = await run.done;
     if (ctl.dead) return;
-    if (!out.ok) return this.onFailure(item, ctl, out.reason, out.errorLine);
+    if (!out.ok) return this.onFailure(item, ctl, out.reason, out.errorLine, cookies);
+    if (cookies) this.deps.onInstagramCookies?.("worked");
 
     // §4.6: the file becomes a Copy.
     this.patch(item.id, { state: "scanning", file_path: out.filePath, speed_bps: null, eta_s: null });
@@ -640,7 +649,7 @@ export class DownloadQueue {
   }
 
   /** A run or sizing pass ended in failure (§4.4 → §4.5, §5.4). */
-  private onFailure(item: ItemRow, ctl: Ctl, reason: FailureReason, errorLine: string | null) {
+  private onFailure(item: ItemRow & { dest_dir: string; quality: JobRow["quality"] }, ctl: Ctl, reason: FailureReason, errorLine: string | null, usedCookies: Cookies | null) {
     switch (reason) {
       case "network":
         return this.goOffline(item, ctl);
@@ -653,8 +662,21 @@ export class DownloadQueue {
       case "no_js_runtime":
         return this.noRuntime(item, ctl, errorLine);
       case "login_wall":
-        if (item.source === "instagram" && !this.deps.instagramCookies?.()) this.markNeedsSignin(item.job_id);
+        if (item.source === "instagram" && !usedCookies) {
+          // §5.4: one immediate retry with cookies when they are configured; without them the rest of the job's
+          // Instagram items would only hit the same wall.
+          const c = this.deps.instagramCookies?.() ?? null;
+          if (c) {
+            this.note(item, `login wall: trying once more with cookies (${"file" in c ? "cookies.txt" : `from ${c.browser}`})`);
+            this.patch(item.id, { state: "sizing", reason: null, error_line: null, speed_bps: null, eta_s: null });
+            return this.launch(item, ctl, c);
+          }
+          this.markNeedsSignin(item.job_id);
+        }
         return this.fail(item, ctl, "login_wall", errorLine);
+      case "cookies_expired":
+        if (usedCookies) this.deps.onInstagramCookies?.("expired");
+        return this.fail(item, ctl, "cookies_expired", errorLine);
       default:
         return this.fail(item, ctl, reason, errorLine);
     }

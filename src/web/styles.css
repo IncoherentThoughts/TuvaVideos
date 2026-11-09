@@ -959,6 +959,18 @@ dialog.dl::backdrop { background: rgba(0, 0, 0, .6); }
 .dl-dest .dl-warn { flex-basis: 100%; }
 .dl-path { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the picker */
+/* the Instagram row (§5.2, #205) */
+.dl-ig { display: flex; flex-direction: column; gap: 8px; font-size: .92em; }
+.dl-ig.open { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg3); }
+.dl-igline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.dl-ign { font-weight: 600; color: var(--t7); }
+.dl-ighint { font-size: .92em; }
+.dl-igedit { display: flex; flex-direction: column; gap: 8px; }
+.dl-igopt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dl-igopt select { padding: 2px 6px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+.dl-rec { padding: 0 6px; border-radius: 999px; font-size: .85em; color: var(--ok); border: 1px solid currentColor; }
+.dl-ignotice { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--t3) 45%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--t3) 8%, transparent); }
+.dl-ignotice ul { margin: 0; padding-left: 18px; }
 .dl-listwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .dl-fade { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: dl-in .22s ease-out; }
 @keyframes dl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

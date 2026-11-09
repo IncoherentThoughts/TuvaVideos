@@ -54,6 +54,7 @@ import { createDownloaderTools } from "./downloads/toolsInstall";
 import type { DownloadQueue } from "./downloads/queue";
 import { createDownloadService } from "./downloads/service";
 import { downloadRoutes } from "./downloads/routes";
+import { cardEstimate } from "./downloads/cardEstimate";
 
 const THUMB_CACHE = "public, max-age=86400";
 /** The top-level keys of a `POST /api/cache/apply` body: `SharedChanges` (a write's return or a pull's). */
@@ -843,6 +844,13 @@ export function createHandler(s: Services) {
         if (refused) return json({ error: refused }, 403);
         void downloaderTools.installMissing();
         return json(await downloaderTools.status());
+      }
+      // The card's hover estimate (downloader-spec §8): one Video's size at the quality a card click would use.
+      if (p === "/api/downloads/card/estimate" && req.method === "GET") {
+        const refused = hostError(req);
+        if (refused) return json({ error: refused }, 403);
+        const est = cardEstimate(s.db, url.searchParams.get("videoId") ?? "");
+        return est ? json(est) : json({ error: "unknown Video" }, 404);
       }
       // The Download queue (downloader-spec §4, §6): snapshot, jobs, card, pause/resume, cancel, retry, log, report.
       if (p === "/api/downloads" || p.startsWith("/api/downloads/")) {

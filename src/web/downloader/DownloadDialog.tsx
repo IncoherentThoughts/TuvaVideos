@@ -10,12 +10,14 @@ import type { VideoType } from "../../shared/filters";
 import { Poster } from "../ui";
 import {
   colorLine, confirmBlock, confirmLabel, displayLine, fmtBytes, fmtDur, fmtLen, fmtSpeed, headline, heldStatus, isLive, paceOf, picked,
-  ROW_MARK, rowGroup, selectAllState, sortRows, tileLine, videos as nVideos,
+  ROW_MARK, rowGroup, selectAllState, sortRows, tileLine, videos as nVideos, BROWSER_LABEL, browserNote, hasInstagram, instagramStatus, INSTAGRAM_NOTICE,
 } from "./model";
 import {
   cancelItem, cancelJob, chooseFolder, choose, closeDownloads, confirmDownload, installTools, newDownload, pauseQueue, reportUrl, resumeQueue,
-  retryFailed, setExcluded, toggleVideo, useDownloads, type ItemDto, type JobDto,
+  retryFailed, setExcluded, toggleVideo, useDownloads, type ItemDto, type JobDto, acknowledgeInstagramNotice, chooseCookiesFile, editInstagram,
+  setInstagramAuth,
 } from "./store";
+import type { Browser } from "../../server/downloads/instagramAuth";
 
 const OPTS: PlanOption[] = ["full", "random", "type", "artist", "favorites"];
 const OPT_LABEL: Record<PlanOption, string> = { full: "Full archive", random: "Random", type: "By Type", artist: "By Artist", favorites: "Favorites" };
@@ -211,6 +213,7 @@ function Chooser() {
         </span>
         <Destination plan={plan} />
       </div>
+      {hasInstagram(chosen) && <InstagramRow />}
       {/* the list is the plan's: while the next plan is on its way, the last one stays (no flash of the wrong list) */}
       <div class="dl-listwrap">
         {plan.option === "full" ? (
@@ -295,6 +298,82 @@ function Destination({ plan }: { plan: PlanResponse }) {
         </button>
       )}
       {dir && !plan.destInRoot && <div class="dl-warn">Videos downloaded here won't appear in the library.</div>}
+    </div>
+  );
+}
+
+// ---- the Instagram row (§5.2–5.3) -----------------------------------------------------------------------------------
+
+function InstagramRow() {
+  const { settings, igEditing, igError } = useDownloads();
+  const [browser, setBrowser] = useState<Browser>("firefox");
+  if (!settings) return null;
+  const a = settings.instagramAuth;
+  const status = instagramStatus(a);
+  const note = browserNote(browser, settings.platform);
+  return (
+    <div class={`dl-ig${igEditing ? " open" : ""}`}>
+      <div class="dl-igline">
+        <span class="dl-ign">Instagram</span>
+        <span class={a.kind === "none" ? "dim" : ""}>{status.text}</span>
+        {status.expired && <b class="dl-bad">expired</b>}
+        <button class="linkbtn" aria-expanded={igEditing} onClick={() => editInstagram(!igEditing)}>
+          {igEditing ? "Done" : "Change…"}
+        </button>
+        {!igEditing && a.kind === "none" && <span class="dim dl-ighint">Tried signed out first; cookies help only with Videos behind the login wall.</span>}
+      </div>
+      {igEditing && (
+        <div class="dl-igedit">
+          {!settings.noticeAckAt ? (
+            // §5.3: one time, before cookies can be set at all
+            <div class="dl-ignotice" role="alert">
+              <b>Before you give TuvaVideos Instagram cookies</b>
+              <ul>
+                {INSTAGRAM_NOTICE.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+              <div>
+                <button class="btn small primary" onClick={() => void acknowledgeInstagramNotice()}>
+                  I understand
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div class="dl-igopt">
+                <button class="btn small" onClick={() => void chooseCookiesFile()}>
+                  {a.kind === "file" ? "Replace cookies.txt…" : "Choose cookies.txt…"}
+                </button>
+                <span class="dl-rec">recommended</span>
+                <span class="dim">Export it (Netscape format) from a throwaway account in a browser profile of its own. It is copied; the original can go.</span>
+              </div>
+              <div class="dl-igopt">
+                <select aria-label="Browser" value={browser} onChange={(e) => setBrowser((e.target as HTMLSelectElement).value as Browser)}>
+                  {settings.browsers.map((b) => (
+                    <option key={b} value={b}>
+                      {BROWSER_LABEL[b]}
+                    </option>
+                  ))}
+                </select>
+                <button class="btn small" onClick={() => void setInstagramAuth({ kind: "browser", browser })}>
+                  Use this browser's cookies
+                </button>
+                {note && <span class="dim">{note}</span>}
+              </div>
+              {a.kind !== "none" && (
+                <div class="dl-igopt">
+                  <button class="btn small" onClick={() => void setInstagramAuth({ kind: "none" })}>
+                    Sign out
+                  </button>
+                  {a.kind === "file" && <span class="dim">deletes the copied cookies.txt</span>}
+                </div>
+              )}
+            </>
+          )}
+          {igError && <div class="dl-bad">{igError}</div>}
+        </div>
+      )}
     </div>
   );
 }

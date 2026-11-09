@@ -55,6 +55,7 @@ import type { DownloadQueue } from "./downloads/queue";
 import { createDownloadService } from "./downloads/service";
 import { downloadRoutes } from "./downloads/routes";
 import { cardEstimate } from "./downloads/cardEstimate";
+import { getSettings as getDownloadSettings, putSettings as putDownloadSettings, SettingsError } from "./downloads/instagramAuth";
 
 const THUMB_CACHE = "public, max-age=86400";
 /** The top-level keys of a `POST /api/cache/apply` body: `SharedChanges` (a write's return or a pull's). */
@@ -852,6 +853,21 @@ export function createHandler(s: Services) {
         const est = cardEstimate(s.db, url.searchParams.get("videoId") ?? "");
         return est ? json(est) : json({ error: "unknown Video" }, 404);
       }
+      // Instagram sign-in and the notice (downloader-spec §5.2–5.3, §6). Never returns cookie contents. Host check; a PUT
+      // from a browser also needs a same-origin Origin (it reads a file on this machine).
+      if (p === "/api/downloads/settings" && (req.method === "GET" || req.method === "PUT")) {
+        const refused = hostError(req) ?? (req.method === "PUT" && req.headers.get("origin") ? localRequestError(req) : null);
+        if (refused) return json({ error: refused }, 403);
+        if (req.method === "GET") return json(getDownloadSettings(s.db));
+        const body = await readJson(req);
+        if (!body) return json({ error: "body must be a JSON object" }, 400);
+        try {
+          return json(putDownloadSettings(s.db, s.cfg.dataDir, body));
+        } catch (e) {
+          if (e instanceof SettingsError) return json({ error: e.message }, 400);
+          throw e;
+        }
+      }
       // The Download queue (downloader-spec §4, §6): snapshot, jobs, card, pause/resume, cancel, retry, log, report.
       if (p === "/api/downloads" || p.startsWith("/api/downloads/")) {
         const res = await downloadRoutes(req, url, downloads);
@@ -940,7 +956,9 @@ export function createHandler(s: Services) {
         while (start && start !== "/" && !(await stat(start).then((x) => x.isDirectory(), () => false))) start = dirname(start);
         if (start === "/") start = "";
         const loc = start ? ` default location (POSIX file ${JSON.stringify(start)})` : "";
-        const r = await run("osascript", ["-e", 'tell application "System Events" to activate', "-e", `tell application "System Events" to return POSIX path of (choose file with prompt "Where is this Video's file now?"${loc})`], { timeout: 600_000 });
+        // `purpose: "cookies"`: the download dialog's Instagram row picks a cookies.txt (downloader-spec §5.2).
+        const ask = body.purpose === "cookies" ? "Choose the Instagram cookies.txt (Netscape format)" : "Where is this Video's file now?";
+        const r = await run("osascript", ["-e", 'tell application "System Events" to activate', "-e", `tell application "System Events" to return POSIX path of (choose file with prompt "${ask}"${loc})`], { timeout: 600_000 });
         if (r.code === 0) return json({ path: r.out.trim() });
         if (/-128|cancel/i.test(r.err)) return json({ cancelled: true });
         return json({ error: r.err.trim() || "the file dialog failed" }, 500);

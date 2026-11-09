@@ -9,6 +9,8 @@
 //     ignoreSigterm?: boolean,  // survive SIGTERM, so only SIGKILL stops it
 //     perUrl?: { [urlPart]: Scenario-fields } } // the last argument (the URL) containing urlPart overrides the fields above,
 //                                               // so one scenario file can script a whole job (the queue tests and the smoke run)
+//   withCookies?: Scenario-fields }  // applied last when the run passes --cookies or --cookies-from-browser (the
+//                                    // Instagram retry, downloader-spec §5.4); may sit inside a perUrl entry too
 // In the sizing pass (`-J`) a step's stdout is not replayed (it would pollute the JSON), its stderr and the exit code are.
 // FAKE_YTDLP_CLIP is a small real video that becomes the output file. FAKE_YTDLP_ARGV_FILE, if set, receives the argv as JSON.
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
@@ -27,13 +29,23 @@ interface Scenario {
   hang?: boolean;
   ignoreSigterm?: boolean;
   perUrl?: Record<string, Omit<Scenario, "perUrl">>;
+  withCookies?: Omit<Scenario, "perUrl" | "withCookies">;
 }
 
 const argv = process.argv.slice(2);
+// The tools' own questions (§2.5 status: `--version`, the impersonation check) are answered and never touch the
+// scenario: before #205 they fell through to the download path and dropped "Fake clip [jNQXAC9IVRw].mp4" into
+// whatever cwd the server had (the repo root, in a smoke run with FAKE_YTDLP_CLIP set).
+if (argv.length === 1 && argv[0] === "--version") {
+  process.stdout.write("2026.10.21\n");
+  process.exit(0);
+}
+if (argv.includes("--list-impersonate-targets")) process.exit(0);
 if (process.env.FAKE_YTDLP_ARGV_FILE) writeFileSync(process.env.FAKE_YTDLP_ARGV_FILE, JSON.stringify(argv));
 const sc: Scenario = process.env.FAKE_YTDLP_SCENARIO ? JSON.parse(readFileSync(process.env.FAKE_YTDLP_SCENARIO, "utf8")) : {};
 const urlArg = argv[argv.length - 1] ?? "";
 for (const [part, over] of Object.entries(sc.perUrl ?? {})) if (urlArg.includes(part)) Object.assign(sc, over);
+if (sc.withCookies && (argv.includes("--cookies") || argv.includes("--cookies-from-browser"))) Object.assign(sc, sc.withCookies);
 if (sc.ignoreSigterm) process.on("SIGTERM", () => {});
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -51,5 +63,6 @@ for (const s of sc.steps ?? []) {
 }
 if (sc.hang && !argv.includes("-J")) await new Promise(() => {});
 
-if ((sc.exit ?? 0) === 0 && !argv.includes("-J") && process.env.FAKE_YTDLP_CLIP) copyFileSync(process.env.FAKE_YTDLP_CLIP, target);
+// Only a download (it has an output template) writes the file.
+if ((sc.exit ?? 0) === 0 && !argv.includes("-J") && argv.includes("-o") && process.env.FAKE_YTDLP_CLIP) copyFileSync(process.env.FAKE_YTDLP_CLIP, target);
 process.exit(sc.exit ?? 0);

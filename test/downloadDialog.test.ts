@@ -4,9 +4,32 @@ import { describe, expect, test } from "bun:test";
 import { normQuality, storedQuality } from "../src/shared/downloadEstimate";
 import {
   anyDownloadable, colorLine, confirmBlock, confirmLabel, displayLine, fmtBytes, fmtDur, fmtLen, headline, heldStatus, isErrorLine, isLive, paceOf,
-  picked, quitQuestion, resumeLine, ROW_MARK, rowGroup, selectAllState, sortRows, tileLine,
+  picked, quitQuestion, resumeLine, ROW_MARK, rowGroup, selectAllState, sortRows, tileLine, browserNote, hasInstagram, instagramStatus,
 } from "../src/web/downloader/model";
+import { localDate } from "../src/server/downloads/report";
 import type { ItemState } from "../src/server/downloads/queue";
+
+describe("the Instagram row (§5.2)", () => {
+  test("its words for each setting; expired is a separate (red) word", () => {
+    expect(instagramStatus({ kind: "none" })).toEqual({ text: "signed out", expired: false });
+    expect(instagramStatus({ kind: "browser", browser: "firefox" })).toEqual({ text: "cookies from Firefox", expired: false });
+    const at = "2026-11-08T12:00:00Z";
+    expect(instagramStatus({ kind: "file", lastWorkedAt: at })).toEqual({ text: `cookies.txt, last worked ${localDate(at)}`, expired: false });
+    expect(instagramStatus({ kind: "file", lastWorkedAt: at, expired: true }).expired).toBe(true);
+  });
+  test("macOS notes: keychain for the Chrome family, Full Disk Access for Safari, none for Firefox or off macOS", () => {
+    expect(browserNote("chrome", "darwin")).toMatch(/keychain/);
+    expect(browserNote("brave", "darwin")).toContain("Brave Safe Storage");
+    expect(browserNote("safari", "darwin")).toMatch(/Full Disk Access/);
+    expect(browserNote("firefox", "darwin")).toBeNull();
+    expect(browserNote("chrome", "linux")).toBeNull();
+  });
+  test("shown only when the selection includes an Instagram Video", () => {
+    expect(hasInstagram([{ source: "youtube" }, { source: "rutube" }])).toBe(false);
+    expect(hasInstagram([{ source: "youtube" }, { source: "instagram" }])).toBe(true);
+    expect(hasInstagram([])).toBe(false);
+  });
+});
 
 describe("quality spelling (§6)", () => {
   test("720p / 1080p / best is canonical; 720 / 1080 (string or number, any case) still accepted", () => {

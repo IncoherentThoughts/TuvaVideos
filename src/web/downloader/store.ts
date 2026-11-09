@@ -5,6 +5,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { DownloadQueue } from "../../server/downloads/queue";
 import type { PlanOption, PlanResponse } from "../../server/downloadPlan";
 import type { ToolStatus } from "../../server/downloads/toolsInstall";
+import type { DownloadSettings, InstagramAuth } from "../../server/downloads/instagramAuth";
 import type { Quality } from "../../shared/downloadEstimate";
 import type { VideoType } from "../../shared/filters";
 import { quitQuestion } from "./model";
@@ -41,6 +42,11 @@ interface State {
   plan: PlanResponse | null;
   planError: string | null;
   choice: Choice;
+  /** Instagram sign-in and the notice (§5.2–5.3); never holds cookie contents (the server never sends them). */
+  settings: DownloadSettings | null;
+  /** The Instagram row's chooser is open ("Change…"). */
+  igEditing: boolean;
+  igError: string | null;
 }
 
 const st: State = {
@@ -55,6 +61,9 @@ const st: State = {
   plan: null,
   planError: null,
   choice: { option: "full", n: 20, seed: null, type: null, artistId: null, quality: "1080p", destDir: null, excluded: new Set() },
+  settings: null,
+  igEditing: false,
+  igError: null,
 };
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
@@ -72,7 +81,7 @@ export const downloadsState = () => st;
 
 // ---- HTTP ----------------------------------------------------------------------------------------------------------
 
-async function call<T>(method: "GET" | "POST", url: string, body?: unknown): Promise<T> {
+async function call<T>(method: "GET" | "POST" | "PUT", url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, { method, headers: body === undefined ? undefined : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await r.text();
   let j: unknown = null;
@@ -170,6 +179,7 @@ export async function openDownloads() {
     st.view = "log";
   } else st.view = "choose";
   void loadTools();
+  void loadSettings();
   if (st.view === "choose") void loadPlan();
   loop();
 }
@@ -263,6 +273,55 @@ export async function chooseFolder(): Promise<void> {
     if (typed && typed.startsWith("/")) choose({ destDir: typed.replace(/(.)\/+$/, "$1") });
     else if (typed) alert(`Not an absolute path. (${(e as Error).message})`);
   }
+}
+
+// ---- the Instagram row (§5.2–5.3, GET/PUT /api/downloads/settings) ------------------------------------------------
+
+export async function loadSettings() {
+  try {
+    st.settings = await call<DownloadSettings>("GET", "/api/downloads/settings");
+  } catch {}
+  emit();
+}
+
+export function editInstagram(on: boolean) {
+  st.igEditing = on;
+  st.igError = null;
+  emit();
+}
+
+async function putSettings(body: { noticeAck?: true; instagramAuth?: { kind: "none" } | { kind: "browser"; browser: string } | { kind: "file"; path: string } }): Promise<boolean> {
+  try {
+    st.settings = await call<DownloadSettings>("PUT", "/api/downloads/settings", body);
+    st.igError = null;
+    return true;
+  } catch (e) {
+    st.igError = (e as Error).message;
+    return false;
+  } finally {
+    emit();
+  }
+}
+
+/** §5.3: the notice's "I understand". */
+export const acknowledgeInstagramNotice = () => putSettings({ noticeAck: true });
+
+export async function setInstagramAuth(a: Exclude<InstagramAuth, { kind: "file" }>) {
+  if (await putSettings({ instagramAuth: a.kind === "none" ? { kind: "none" } : { kind: "browser", browser: a.browser } })) editInstagram(false);
+}
+
+/** The Finder's file chooser (`/api/choose-file`), else a typed path; the server checks and copies it (§5.2). */
+export async function chooseCookiesFile() {
+  let path: string | null = null;
+  try {
+    const r = await call<{ path?: string; cancelled?: boolean; error?: string }>("POST", "/api/choose-file", { purpose: "cookies" });
+    if (r.cancelled) return;
+    if (r.error) throw new Error(r.error);
+    path = r.path ?? null;
+  } catch {
+    path = prompt("Path of the cookies.txt (an absolute path)")?.trim() || null;
+  }
+  if (path && (await putSettings({ instagramAuth: { kind: "file", path } }))) editInstagram(false);
 }
 
 // ---- Confirm and the log's buttons ---------------------------------------------------------------------------------

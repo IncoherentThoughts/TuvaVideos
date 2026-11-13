@@ -147,11 +147,13 @@ export function Artists({ search }: { search: string }) {
       <div class="controls" role="toolbar" aria-label="Artist filters">
         <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name…" label="Filter Artists by name" />
         <span class="sep" />
-        {ARTIST_KINDS.map((k) => (
-          <button key={k} class={`chip${st.kind === k ? " on" : ""}`} aria-pressed={st.kind === k} onClick={() => go({ kind: k })} title={k === "archive" ? "Artists from the archive" : k === "local" ? "Local Artists, created here" : undefined}>
-            {KIND_LABEL[k]}
-          </button>
-        ))}
+        <span class="cgroup" role="group">
+          {ARTIST_KINDS.map((k) => (
+            <button key={k} class={`chip${st.kind === k ? " on" : ""}`} aria-pressed={st.kind === k} onClick={() => go({ kind: k })} title={k === "archive" ? "Artists from the archive" : k === "local" ? "Local Artists, created here" : undefined}>
+              {KIND_LABEL[k]}
+            </button>
+          ))}
+        </span>
         <span class="sep" />
         <SortControls sorts={ARTIST_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />
         <span class="count">{artists ? `${shown.length} of ${artists.length} Artist${artists.length === 1 ? "" : "s"}` : "loading…"}</span>

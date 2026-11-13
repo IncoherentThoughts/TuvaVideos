@@ -1,5 +1,5 @@
 // The Chapter filmstrip under the Player on Now playing (spec 5.3): one card per Chapter with the strip frame at its start,
-// timestamp, ♪ when it has a Song, a dashed "suggested" mark and the title. A focused card handles its own keys (they
+// timestamp, the Song mark when it has a Song, a dashed "suggested" mark and the title. A focused card handles its own keys (they
 // never reach the Player): Enter edits the title, t the time, `.` sets the start to the playhead, ← → nudge ±1 s and
 // seek, s attaches a Song, ⌫ deletes after a confirm, y / x confirm / reject a Suggested Chapter, f toggles Favorite,
 // Space seeks, Esc gives focus back to the Player.
@@ -8,7 +8,7 @@ import { formatStart, nudgeStart, parseTimeField } from "../shared/timestamps";
 import type { ChapterDto, ChapterPatch, VideoDto } from "../shared/types";
 import { Picker, createSongRow, rowsOf, songPickerRow, type SongRow } from "./HeaderEdit";
 import { TRASH } from "./ui";
-import type { PlayerCtl } from "./Player";
+import { LOOP_EVENT, REPEAT_ICON, type PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
 import { RELOADED_EVENT, writeLink, WriteLinkError } from "./writeLink";
 import { FavoriteBadge, ProposedMark, StripFrame } from "./ui";
@@ -159,6 +159,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
               video={video}
               ctl={ctl}
               cur={c.id === curId}
+              endS={chapters.filter((x) => x.startS > c.startS).reduce((m, x) => Math.min(m, x.startS), duration || Infinity)}
               autoEdit={c.id === newId}
               duration={duration}
               onNewDone={onNewDone}
@@ -204,6 +205,8 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
 interface CardProps {
   c: ChapterDto;
   video: VideoDto;
+  /** Where this Chapter ends: the next Chapter's start, else the Video's end. */
+  endS: number;
   ctl: { current: PlayerCtl | null };
   cur: boolean;
   autoEdit: boolean;
@@ -216,13 +219,43 @@ interface CardProps {
   gate: EditGate;
 }
 
-function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, keepFocus, afterDelete, pickSong, gate }: CardProps) {
+
+/** The Song mark: lyric lines with a note, wherever a Chapter shows its linked Song. */
+const SongIcon = () => (
+  <span class="songic" aria-hidden="true">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3" />
+    </svg>
+  </span>
+);
+
+function ChapterCard({ c, video, ctl, cur, endS, autoEdit, duration, onNewDone, run, keepFocus, afterDelete, pickSong, gate }: CardProps) {
   const locked = gate !== "enabled";
   const lockTitle = gate === "disabled" ? EDIT_DISABLED_NOTICE : undefined;
   const [mode, setModeRaw] = useState<Mode>(autoEdit && !locked ? "title" : "view");
   // a locked card never leaves "view": no title, time or delete mode
   const setMode = (m: Mode) => setModeRaw(locked && m !== "view" ? "view" : m);
   const [err, setErr] = useState<string | null>(null);
+  // Repeat this Chapter: the Player's A-B loop set to [start, end). Any card or the `l` key can change the loop, so
+  // every card redraws on the Player's loop event.
+  const [, loopChanged] = useState(0);
+  useEffect(() => {
+    const on = () => loopChanged((n) => n + 1);
+    window.addEventListener(LOOP_EVENT, on);
+    return () => window.removeEventListener(LOOP_EVENT, on);
+  }, []);
+  const lp = ctl.current?.loop() ?? null;
+  const repeating = !!lp && Math.abs(lp.a - c.startS) < 0.05 && Math.abs(lp.b - endS) < 0.05;
+  const toggleRepeat = () => {
+    const p = ctl.current;
+    if (!p || !Number.isFinite(endS)) return;
+    if (repeating) p.setLoop(null, "Repeat Chapter: off");
+    else {
+      const t = p.time();
+      if (t < c.startS || t >= endS) p.seekTo(c.startS);
+      p.setLoop({ a: c.startS, b: endS }, `Repeat Chapter: ${c.title || formatStart(c.startS)}`);
+    }
+  };
   const root = useRef<HTMLDivElement>(null);
   const fresh = useRef(autoEdit); // opened by `c`: Esc removes it, and focus returns to the Player afterwards
   const typedAhead = useRef(autoEdit ? takeSink() : ""); // what was typed between pressing `c` and the card appearing
@@ -362,7 +395,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
       <button class="chthumb" tabIndex={-1} title={`Seek to ${formatStart(c.startS)}`} onClick={() => (ctl.current?.seekTo(c.startS), root.current?.focus({ preventScroll: true }))}>
         <StripFrame video={video} t={c.startS} />
         <span class="chnote" aria-hidden="true">
-          {c.songId ? "♪" : ""}
+          {c.songId ? <SongIcon /> : ""}
         </span>
       </button>
       <div class="chbody">
@@ -381,6 +414,17 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
             </button>
           )}
           {c.suggested && <span class="sugmark" title={`Suggested from ${c.source}: confirm or reject`}>suggested</span>}
+          <button
+            class={`chrep${repeating ? " on" : ""}`}
+            tabIndex={-1}
+            aria-pressed={repeating}
+            aria-label={repeating ? "Stop repeating this Chapter" : "Repeat this Chapter"}
+            title={repeating ? "Repeating this Chapter: click to stop (l clears the loop)" : "Repeat this Chapter (sets the A-B loop to it)"}
+            disabled={!Number.isFinite(endS)}
+            onClick={toggleRepeat}
+          >
+            {REPEAT_ICON}
+          </button>
           <button
             class="favtoggle chfav"
             tabIndex={-1}
@@ -401,7 +445,7 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
         )}
         {c.song && (
           <div class="chsong" title={c.song.englishName ?? undefined}>
-            ♪ {c.song.name ?? <span class="dim">unknown song</span>}
+            <SongIcon /> {c.song.name ?? <span class="dim">unknown song</span>}
             {c.song.proposed && <ProposedMark tag />}
           </div>
         )}
@@ -440,11 +484,13 @@ function ChapterCard({ c, video, ctl, cur, autoEdit, duration, onNewDone, run, k
               </>
             )}
             <button class="chbtn" tabIndex={-1} title="Attach a Song (s)" onClick={pickSong}>
-              ♪ {c.songId ? "change" : "Song"}
+              <SongIcon /> {c.songId ? "change" : "Song"}
             </button>
             {c.songId && (
-              <button class="chbtn" tabIndex={-1} title="Clear the Song" aria-label="Clear the Song" onClick={() => void tryPatch({ songId: null })}>
-                ×
+              <button class="chbtn chclear" tabIndex={-1} title="Clear the Song" aria-label="Clear the Song" onClick={() => void tryPatch({ songId: null })}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
               </button>
             )}
             {!c.suggested && (

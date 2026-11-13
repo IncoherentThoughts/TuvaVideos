@@ -8,7 +8,7 @@ import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies"
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
-  AB_OFF, FALLBACK_FPS, abInside, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
+  AB_OFF, FALLBACK_FPS, abInside, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop, type StoredLoop,
 } from "../shared/playerMath";
 import { RESUME_INTERVAL_MS, ResumeClock, ResumeOwner, adoptResume, startPosition, storedResume } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
@@ -35,6 +35,10 @@ export interface PlayerCtl {
   focus(): void;
   /** The <video> element, for the Audio panel's meters. */
   video(): HTMLVideoElement | null;
+  /** The complete A-B loop, or null. */
+  loop(): StoredLoop | null;
+  /** Set the A-B loop to a range (a Chapter's "repeat" button), or clear it; persisted like `l`. */
+  setLoop(l: StoredLoop | null, label: string): void;
 }
 
 type Phase = "loading" | "preparing" | "ready" | "unavailable" | "failed";
@@ -127,7 +131,9 @@ const SHUFFLE_ICON = (
     <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
   </svg>
 );
-const REPEAT_ICON = (
+/** Fired on window whenever the A-B loop changes (the Chapter cards' repeat buttons redraw on it). */
+export const LOOP_EVENT = "tuva:loop";
+export const REPEAT_ICON = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="m17 2 4 4-4 4" />
     <path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4" />
@@ -451,7 +457,25 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   };
 
   useEffect(() => onTime?.(time), [time]);
-  if (ctl) ctl.current = { time: () => vid.current?.currentTime ?? time, seekTo: (t) => seekTo(t), say: (text) => say(text, 2200), focus: refocus, video: () => vid.current };
+  if (ctl)
+    ctl.current = {
+      time: () => vid.current?.currentTime ?? time,
+      seekTo: (t) => seekTo(t),
+      say: (text) => say(text, 2200),
+      focus: refocus,
+      video: () => vid.current,
+      loop: () => storedLoop(R.current.ab),
+      setLoop: (l, label) => {
+        const was = storedLoop(R.current.ab);
+        const next: AbLoop = l ?? AB_OFF;
+        R.current.ab = next;
+        R.current.abArmed = abInside(next, vid.current?.currentTime ?? 0);
+        setAb(next);
+        window.dispatchEvent(new Event(LOOP_EVENT));
+        say(label, 2200);
+        if (l || was) void api.setLoop(V.current.id, l).catch(() => {});
+      },
+    };
 
   // ---- Audio settings (spec 4.7) ----
   useEffect(() => {
@@ -780,6 +804,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         R.current.ab = s.ab;
         R.current.abArmed = abInside(s.ab, v.currentTime); // B set here: the playhead is at the loop's end
         setAb(s.ab);
+        window.dispatchEvent(new Event(LOOP_EVENT));
         say(s.label);
         // persist a complete loop, and its clearing; a half-set A is not kept (spec 4.3)
         const now = storedLoop(s.ab);

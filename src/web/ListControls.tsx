@@ -25,11 +25,20 @@ export function NameFilter({ value, onChange, placeholder, label }: { value: str
   );
 }
 
+/** The sort direction as a drawn arrow: the text glyphs ↑ ↓ are hairline-thin in the UI font. */
+export function SortArrow({ dir }: { dir: Dir }) {
+  return (
+    <svg class="sortarrow" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      {dir === "asc" ? <path d="M8 13.5V2.5M3.5 7 8 2.5 12.5 7" /> : <path d="M8 2.5v11M3.5 9 8 13.5 12.5 9" />}
+    </svg>
+  );
+}
+
 export function SortControls<S extends string>({ sorts, labels, sort, dir, onSort, onDir }: {
   sorts: readonly S[]; labels: Record<S, string>; sort: S; dir: Dir; onSort: (s: S) => void; onDir: (d: Dir) => void;
 }) {
   return (
-    <>
+    <span class="cgroup sortgrp">
       <select class="chip" aria-label="Sort" value={sort} onChange={(e) => onSort((e.target as HTMLSelectElement).value as S)}>
         {sorts.map((s) => (
           <option key={s} value={s}>
@@ -37,9 +46,9 @@ export function SortControls<S extends string>({ sorts, labels, sort, dir, onSor
           </option>
         ))}
       </select>
-      <button class="chip" title="Reverse the order" aria-label={`Sorted ${dir === "asc" ? "ascending" : "descending"}; reverse`} onClick={() => onDir(dir === "asc" ? "desc" : "asc")}>
-        {dir === "asc" ? "↑" : "↓"}
+      <button class="chip dir" title="Reverse the order" aria-label={`Sorted ${dir === "asc" ? "ascending" : "descending"}; reverse`} onClick={() => onDir(dir === "asc" ? "desc" : "asc")}>
+        <SortArrow dir={dir} />
       </button>
-    </>
+    </span>
   );
 }

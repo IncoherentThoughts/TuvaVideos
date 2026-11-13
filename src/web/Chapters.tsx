@@ -8,10 +8,10 @@ import { formatStart, nudgeStart, parseTimeField } from "../shared/timestamps";
 import type { ChapterDto, ChapterPatch, VideoDto } from "../shared/types";
 import { Picker, createSongRow, rowsOf, songPickerRow, type SongRow } from "./HeaderEdit";
 import { TRASH } from "./ui";
-import { LOOP_EVENT, REPEAT_ICON, type PlayerCtl } from "./Player";
+import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
 import { RELOADED_EVENT, writeLink, WriteLinkError } from "./writeLink";
-import { FavoriteBadge, ProposedMark, StripFrame } from "./ui";
+import { FavoriteBadge, ProposedMark, REPEAT_ICON, StripFrame } from "./ui";
 import { EDIT_DISABLED_NOTICE, type EditGate } from "./chipView";
 
 interface StripProps {
@@ -23,6 +23,8 @@ interface StripProps {
   chapters: ChapterDto[];
   /** The Chapter the playhead is in. */
   curId: string | null;
+  /** The Chapter the Player loops (`L`), if any. */
+  loopId?: string | null;
   ctl: { current: PlayerCtl | null };
   /** A Chapter just made with `c`: its card opens with the title field. */
   newId: string | null;
@@ -53,7 +55,7 @@ export function catchTyping() {
   el.focus({ preventScroll: true });
 }
 
-export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd, onNewDone, gate = "enabled" }: StripProps) {
+export function ChapterStrip({ video, chapters, curId, loopId = null, ctl, newId, onList, onAdd, onNewDone, gate = "enabled" }: StripProps) {
   const locked = gate !== "enabled";
   const lockTitle = gate === "disabled" ? EDIT_DISABLED_NOTICE : undefined;
   const scroller = useRef<HTMLDivElement>(null);
@@ -159,7 +161,7 @@ export function ChapterStrip({ video, chapters, curId, ctl, newId, onList, onAdd
               video={video}
               ctl={ctl}
               cur={c.id === curId}
-              endS={chapters.filter((x) => x.startS > c.startS).reduce((m, x) => Math.min(m, x.startS), duration || Infinity)}
+              looping={c.id === loopId}
               autoEdit={c.id === newId}
               duration={duration}
               onNewDone={onNewDone}
@@ -206,9 +208,9 @@ interface CardProps {
   c: ChapterDto;
   video: VideoDto;
   /** Where this Chapter ends: the next Chapter's start, else the Video's end. */
-  endS: number;
   ctl: { current: PlayerCtl | null };
   cur: boolean;
+  looping: boolean;
   autoEdit: boolean;
   duration: number | null;
   onNewDone(): void;
@@ -229,33 +231,15 @@ const SongIcon = () => (
   </span>
 );
 
-function ChapterCard({ c, video, ctl, cur, endS, autoEdit, duration, onNewDone, run, keepFocus, afterDelete, pickSong, gate }: CardProps) {
+function ChapterCard({ c, video, ctl, cur, looping, autoEdit, duration, onNewDone, run, keepFocus, afterDelete, pickSong, gate }: CardProps) {
   const locked = gate !== "enabled";
   const lockTitle = gate === "disabled" ? EDIT_DISABLED_NOTICE : undefined;
   const [mode, setModeRaw] = useState<Mode>(autoEdit && !locked ? "title" : "view");
   // a locked card never leaves "view": no title, time or delete mode
   const setMode = (m: Mode) => setModeRaw(locked && m !== "view" ? "view" : m);
   const [err, setErr] = useState<string | null>(null);
-  // Repeat this Chapter: the Player's A-B loop set to [start, end). Any card or the `l` key can change the loop, so
-  // every card redraws on the Player's loop event.
-  const [, loopChanged] = useState(0);
-  useEffect(() => {
-    const on = () => loopChanged((n) => n + 1);
-    window.addEventListener(LOOP_EVENT, on);
-    return () => window.removeEventListener(LOOP_EVENT, on);
-  }, []);
-  const lp = ctl.current?.loop() ?? null;
-  const repeating = !!lp && Math.abs(lp.a - c.startS) < 0.05 && Math.abs(lp.b - endS) < 0.05;
-  const toggleRepeat = () => {
-    const p = ctl.current;
-    if (!p || !Number.isFinite(endS)) return;
-    if (repeating) p.setLoop(null, "Repeat Chapter: off");
-    else {
-      const t = p.time();
-      if (t < c.startS || t >= endS) p.seekTo(c.startS);
-      p.setLoop({ a: c.startS, b: endS }, `Repeat Chapter: ${c.title || formatStart(c.startS)}`);
-    }
-  };
+  // The repeat button is the Chapter loop (`L`) for this card's Chapter; the Player owns it and names the looped one.
+  const toggleRepeat = () => ctl.current?.setChapterLoop(looping ? null : c.id);
   const root = useRef<HTMLDivElement>(null);
   const fresh = useRef(autoEdit); // opened by `c`: Esc removes it, and focus returns to the Player afterwards
   const typedAhead = useRef(autoEdit ? takeSink() : ""); // what was typed between pressing `c` and the card appearing
@@ -383,7 +367,7 @@ function ChapterCard({ c, video, ctl, cur, endS, autoEdit, duration, onNewDone, 
   const label = `${formatStart(c.startS)} ${c.title || "untitled"}${c.suggested ? ", suggested" : ""}`;
   return (
     <div
-      class={`chcard${cur ? " cur" : ""}${c.suggested ? " sug" : ""}${mode !== "view" ? " editing" : ""}`}
+      class={`chcard${cur ? " cur" : ""}${looping ? " looping" : ""}${c.suggested ? " sug" : ""}${mode !== "view" ? " editing" : ""}`}
       ref={root}
       tabIndex={0}
       role="group"
@@ -415,12 +399,11 @@ function ChapterCard({ c, video, ctl, cur, endS, autoEdit, duration, onNewDone, 
           )}
           {c.suggested && <span class="sugmark" title={`Suggested from ${c.source}: confirm or reject`}>suggested</span>}
           <button
-            class={`chrep${repeating ? " on" : ""}`}
+            class={`chrep${looping ? " on" : ""}`}
             tabIndex={-1}
-            aria-pressed={repeating}
-            aria-label={repeating ? "Stop repeating this Chapter" : "Repeat this Chapter"}
-            title={repeating ? "Repeating this Chapter: click to stop (l clears the loop)" : "Repeat this Chapter (sets the A-B loop to it)"}
-            disabled={!Number.isFinite(endS)}
+            aria-pressed={looping}
+            aria-label={looping ? "Stop looping this Chapter" : "Loop this Chapter"}
+            title={looping ? "Looping this Chapter: click to stop (L)" : "Loop this Chapter (L loops the one playing)"}
             onClick={toggleRepeat}
           >
             {REPEAT_ICON}

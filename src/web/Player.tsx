@@ -2,13 +2,13 @@
 // that owns the mpv-style keys. State machine of what is on screen: loading -> (preparing) -> ready, or unavailable.
 // Seeks (spec 4.1): the bar and the plain arrows snap to the playing Copy's keyframes once its index has arrived
 // (one decoded frame instead of a GOP); Shift-arrows, frame steps, Chapters, `?t=` and Resume are exact.
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { createPortal } from "preact/compat";
 import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
-  AB_OFF, FALLBACK_FPS, abInside, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop, type StoredLoop,
+  AB_OFF, FALLBACK_FPS, abInside, chapterAtTime, chapterLoopSpan, abLoopTarget, abToggle, chapterStepTarget, clampTime, fmtClock, frameNumber, frameStepTarget, keyframeSeekTarget, speedBy, storedLoop, volumeBy, type AbLoop,
 } from "../shared/playerMath";
 import { RESUME_INTERVAL_MS, ResumeClock, ResumeOwner, adoptResume, startPosition, storedResume } from "../shared/resume";
 import { SeekThrottle } from "../shared/seekThrottle";
@@ -18,6 +18,7 @@ import { CopyPicker, copyLabel } from "./CopyPicker";
 import { StripFrame, Timeline, type ChapterMark } from "./Timeline";
 import { StudioBar, type StudioCtl } from "./Studio";
 import { StatePanel } from "./StatePanel";
+import { REPEAT_ICON } from "./ui";
 import { useUnseenShelved } from "./History";
 import { hasUnseenShelved } from "../shared/editHistory";
 import { AudioEngine } from "./audioEngine";
@@ -28,6 +29,9 @@ import { ENDED_LABEL, openAt, reachedEnd, repeatIcon, resumeAllowed, seekWidens,
 
 export type { ChapterMark } from "./Timeline";
 
+/** A Chapter's key for the Chapter loop: its id, else its start (a mark built without one). */
+export const chapterKey = (c: ChapterMark): string => c.id ?? `@${c.startS}`;
+
 export interface PlayerCtl {
   time(): number;
   seekTo(t: number): void;
@@ -35,10 +39,8 @@ export interface PlayerCtl {
   focus(): void;
   /** The <video> element, for the Audio panel's meters. */
   video(): HTMLVideoElement | null;
-  /** The complete A-B loop, or null. */
-  loop(): StoredLoop | null;
-  /** Set the A-B loop to a range (a Chapter's "repeat" button), or clear it; persisted like `l`. */
-  setLoop(l: StoredLoop | null, label: string): void;
+  /** The Chapter loop (`L`) from a Chapter card: loop the Chapter with this id (seeking to it when the playhead is elsewhere), or null for off. */
+  setChapterLoop(id: string | null): void;
 }
 
 type Phase = "loading" | "preparing" | "ready" | "unavailable" | "failed";
@@ -51,6 +53,8 @@ interface Props {
   chapters: ChapterMark[];
   /** `c`: add a Chapter at the playhead. */
   onAddChapter?(t: number): void;
+  /** `L`: the Chapter being looped changed (its `ChapterMark.id`, null when off); the card shows it. */
+  onChapterLoop?(id: string | null): void;
   /** The playhead, whenever it moves (the page derives the current Chapter from it). */
   onTime?(t: number): void;
   /** Filled with a handle on the Player so the Chapter cards can read the playhead, seek, flash the OSD and take focus back. */
@@ -131,15 +135,6 @@ const SHUFFLE_ICON = (
     <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
   </svg>
 );
-/** Fired on window whenever the A-B loop changes (the Chapter cards' repeat buttons redraw on it). */
-export const LOOP_EVENT = "tuva:loop";
-export const REPEAT_ICON = (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="m17 2 4 4-4 4" />
-    <path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4" />
-    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-  </svg>
-);
 const PLAY_ICON = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
     <path d="M8 5v14l11-7z" />
@@ -151,7 +146,7 @@ const PAUSE_ICON = (
   </svg>
 );
 
-export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistEnded, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
+export function Player({ video, startT, chapters, onStep, onAddChapter, onChapterLoop, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistEnded, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
 
@@ -167,6 +162,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const [buffering, setBuffering] = useState(false);
   const [fs, setFs] = useState(false);
   const [ab, setAb] = useState<AbLoop>(() => storedLoop(video.loop) ?? AB_OFF); // a loop left set last time comes back (spec 4.3)
+  const [chLoop, setChLoop] = useState<string | null>(null); // `L`: the looped Chapter's key; apart from the A-B loop and never kept
   const [aspect, setAspect] = useState<number | null>(null);
   const [scrub, setScrub] = useState<number | null>(null); // the bar is being dragged: the strip frame at this time covers the stage
   const [osd, setOsd] = useState<{ text: string; n: number } | null>(null);
@@ -205,6 +201,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     wasPlaying: true,
     ab: (storedLoop(video.loop) ?? AB_OFF) as AbLoop,
     abArmed: false, // the playhead has been inside the A-B loop since the last user seek: reaching B jumps back to A
+    cl: AB_OFF as AbLoop, // the Chapter loop's span, as an A-B pair; it applies only while the A-B loop does not
+    clArmed: false, // as abArmed, for the Chapter loop
     phase: "loading" as Phase,
     osdN: 0,
     osdTimer: 0 as unknown as ReturnType<typeof setTimeout>,
@@ -230,6 +228,15 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
   const duration = (vid.current && Number.isFinite(vid.current.duration) ? vid.current.duration : null) ?? copy?.durationS ?? video.durationS;
 
   const refocus = () => box.current?.focus({ preventScroll: true });
+
+  // ---- Chapter loop (`L`): follows the Chapter's edits; its deletion ends it ----
+  const clSpan = useMemo(() => (chLoop ? chapterLoopSpan(chapters, chapterKey, chLoop, duration) : null), [chLoop, chapters, duration]);
+  R.current.cl = clSpan ? { a: clSpan.a, b: clSpan.b } : AB_OFF;
+  useEffect(() => {
+    if (chLoop && !clSpan) (setChLoop(null), say("Chapter loop: off"));
+    onChapterLoop?.(clSpan ? chLoop : null);
+  }, [chLoop, !!clSpan]);
+  useEffect(() => () => onChapterLoop?.(null), []);
 
   // ---- OSD ----
   const say = (text: string, ms = 1400) => {
@@ -451,6 +458,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
     if (!internal) {
       owner.current.produced(); // the user's seek: written
       R.current.abArmed = abInside(R.current.ab, c); // a seek out of the A-B loop plays on from there
+      R.current.clArmed = abInside(R.current.cl, c); // and so out of the Chapter loop
     }
     throttle.current.request(c, throttled);
     setTime(c);
@@ -464,16 +472,20 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       say: (text) => say(text, 2200),
       focus: refocus,
       video: () => vid.current,
-      loop: () => storedLoop(R.current.ab),
-      setLoop: (l, label) => {
-        const was = storedLoop(R.current.ab);
-        const next: AbLoop = l ?? AB_OFF;
-        R.current.ab = next;
-        R.current.abArmed = abInside(next, vid.current?.currentTime ?? 0);
-        setAb(next);
-        window.dispatchEvent(new Event(LOOP_EVENT));
-        say(label, 2200);
-        if (l || was) void api.setLoop(V.current.id, l).catch(() => {});
+      setChapterLoop: (id) => {
+        if (!id) {
+          setChLoop(null);
+          R.current.clArmed = false;
+          return say("Chapter loop: off");
+        }
+        const span = chapterLoopSpan(chapters, chapterKey, id, duration);
+        if (!span) return;
+        const cl: AbLoop = { a: span.a, b: span.b };
+        if (!abInside(cl, vid.current?.currentTime ?? 0)) seekTo(span.a);
+        setChLoop(id);
+        R.current.cl = cl;
+        R.current.clArmed = true;
+        say(`Chapter loop: ${span.chapter.title}`);
       },
     };
 
@@ -556,6 +568,11 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       setVol({ volume: v.volume, muted: v.muted });
     });
     on("ended", () => {
+      if (r.clArmed && r.cl.a != null) {
+        // the Chapter loop's last Chapter runs to the Video's end: back to its start (an A-B loop inside it wins)
+        v.currentTime = abLoopTarget(r.ab, v.currentTime, true, r.abArmed) ?? r.cl.a;
+        return void v.play().catch(() => {});
+      }
       if (PL.current.playlist) return void entryEnded();
       // loop by default (as mpv's --loop-file): back to A with an A-B loop set, else to the start
       const t = abLoopTarget(r.ab, v.currentTime, true, r.abArmed) ?? 0;
@@ -582,10 +599,12 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       r.lastPos = t;
       if (!v.paused) {
         if (!v.seeking && !throttle.current.busy && abInside(r.ab, t)) r.abArmed = true; // back inside the loop: it applies
-        const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : abLoopTarget(r.ab, t, false, r.abArmed);
+        if (!v.seeking && !throttle.current.busy && abInside(r.cl, t)) r.clArmed = true;
+        // the A-B loop first: one inside the Chapter loops that part, one elsewhere is not armed while the Chapter plays
+        const tgt = AudioEngine.has(v) && AudioEngine.for(v).measuring ? null : (abLoopTarget(r.ab, t, false, r.abArmed) ?? abLoopTarget(r.cl, t, false, r.clArmed));
         if (tgt != null) seekTo(tgt, "exact", undefined, false, true);
         const pl = PL.current;
-        if (pl.playlist && pl.entry?.end != null) {
+        if (tgt == null && !(r.clArmed && r.cl.a != null) && pl.playlist && pl.entry?.end != null) {
           if (reachedEnd(pl.entry, t)) {
             if (!r.entryDone && !v.seeking) entryEnded();
           } else if (t < pl.entry.end - 0.5) r.entryDone = false;
@@ -804,11 +823,24 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
         R.current.ab = s.ab;
         R.current.abArmed = abInside(s.ab, v.currentTime); // B set here: the playhead is at the loop's end
         setAb(s.ab);
-        window.dispatchEvent(new Event(LOOP_EVENT));
         say(s.label);
         // persist a complete loop, and its clearing; a half-set A is not kept (spec 4.3)
         const now = storedLoop(s.ab);
         if (now || was) void api.setLoop(V.current.id, now).catch(() => {});
+        break;
+      }
+      case "chapterLoop": {
+        if (clSpan) {
+          setChLoop(null);
+          R.current.clArmed = false;
+          return say("Chapter loop: off");
+        }
+        if (!chapters.length) return say("no chapters");
+        const at = chapterAtTime(chapters, v.currentTime);
+        if (!at) return say("Chapter loop: not in a Chapter yet");
+        setChLoop(chapterKey(at));
+        R.current.clArmed = true;
+        say(`Chapter loop: ${at.title}`);
         break;
       }
       case "chapter": {
@@ -956,7 +988,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
           </div>
         )}
       </div>
-      <Timeline video={video} time={time} duration={duration} bufferedEnd={bufEnd} chapters={chapters} ab={ab} onSeek={(t) => seekTo(t, "keyframe")} onScrub={setScrub} />
+      <Timeline video={video} time={time} duration={duration} bufferedEnd={bufEnd} chapters={chapters} ab={ab} chapterLoop={clSpan} onSeek={(t) => seekTo(t, "keyframe")} onScrub={setScrub} />
       <div class="ctl" data-keep-focus="">
         <button class="ib" tabIndex={-1} title="Play / pause (space)" onClick={() => (togglePause(), refocus())}>
           {paused ? PLAY_ICON : PAUSE_ICON}
@@ -1016,7 +1048,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onTime, 
       </div>
       {studio && <StudioBar key={studio.songId} songId={studio.songId} initial={studio.data} say={(t, ms) => say(t, ms)} onClose={() => (setStudio(null), refocus())} ctl={studioCtl} />}
       {showState && (() => {
-        const panel = <StatePanel vid={vid} box={box} video={video} copy={copy} fps={fps} ab={ab} chapters={chapters} onClose={() => (onStateToggle?.(), refocus())} />;
+        const panel = <StatePanel vid={vid} box={box} video={video} copy={copy} fps={fps} ab={ab} chapterLoop={clSpan} chapters={chapters} onClose={() => (onStateToggle?.(), refocus())} />;
         return stateHost?.current ? createPortal(panel, stateHost.current) : panel;
       })()}
     </div>

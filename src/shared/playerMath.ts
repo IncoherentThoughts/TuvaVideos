@@ -172,3 +172,22 @@ export function keyframeSeekTarget(target: number, keyframes: readonly number[],
   }
   return k + KEYFRAME_LEAD;
 }
+
+/**
+ * The Chapter loop's span (`L`): the Chapter keyed `key` from its start to the next Chapter's start, or to the Video's
+ * end (Infinity while it is unknown: the `ended` event closes the loop then). Null when that Chapter is gone.
+ */
+export function chapterLoopSpan<C extends { startS: number }>(chapters: C[], key: (c: C) => string, want: string, duration: number | null): { a: number; b: number; chapter: C } | null {
+  const sorted = [...chapters].sort((x, y) => x.startS - y.startS);
+  const i = sorted.findIndex((c) => key(c) === want);
+  if (i < 0) return null;
+  const next = sorted.slice(i + 1).find((c) => c.startS > sorted[i]!.startS);
+  return { a: sorted[i]!.startS, b: next?.startS ?? duration ?? Infinity, chapter: sorted[i]! };
+}
+
+/** The Chapter the playhead is in (the last one starting at or before `t`), or null before the first. */
+export function chapterAtTime<C extends { startS: number }>(chapters: C[], t: number): C | null {
+  let best: C | null = null;
+  for (const c of chapters) if (c.startS <= t + 0.001 && (!best || c.startS >= best.startS)) best = c;
+  return best;
+}

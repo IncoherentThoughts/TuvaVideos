@@ -7,6 +7,7 @@ export const BINDINGS: [string[], string][] = [
   [["{", "}"], "speed ½ / ×2"], [["⌫"], "speed 1.0"],
   [["9", "0"], "volume ±5"], [["m"], "mute"],
   [["f"], "fullscreen"], [["l"], "A-B loop (A, B, off)"],
+  [["L"], "Chapter loop: the Chapter playing, on / off"],
   [["!", "@"], "chapter prev / next"], [["PgUp", "PgDn"], "chapter prev / next"],
   [["<", ">"], "prev / next Video (Entry in a Playlist)"], [["r"], "random Video (works anywhere)"], [["s"], "screenshot"],
   [["o"], "OSD flash"], [["O"], "OSD always"],

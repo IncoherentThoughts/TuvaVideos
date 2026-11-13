@@ -268,8 +268,8 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 /* Repeat this Chapter: the same 20px box as the Favorite star beside it; filled while the A-B loop is this Chapter. */
 .chrep { --c: var(--fg3); margin-left: auto; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: calc(var(--r) * .5); color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
 .chrep svg { display: block; width: 12px; height: 12px; }
-.chrep:hover:not(:disabled) { --c: var(--t6); }
-.chrep.on { --c: var(--t6); background: color-mix(in srgb, var(--c) 18%, transparent); }
+.chrep:hover:not(:disabled) { --c: var(--fg); }
+.chrep.on { --c: var(--accent); background: color-mix(in srgb, var(--c) 18%, transparent); }
 .chrep:disabled { opacity: .4; cursor: default; }
 .chfav .fav { width: 20px; height: 20px; top: 0; margin: 0; }
 .stfav { display: inline-flex; align-items: center; gap: 6px; vertical-align: top; }
@@ -325,6 +325,7 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .tl-tick { top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--t3); }
 .tl-tick.sug { background: transparent; border-left: 2px dashed var(--t3); }
 .tl-ab { top: 0; bottom: 0; background: color-mix(in srgb, var(--t6) 55%, transparent); }
+.tl-cl { top: -5px; bottom: -5px; border: 2px solid var(--fg); border-radius: calc(var(--r) * .6); background: color-mix(in srgb, var(--fg) 10%, transparent); box-sizing: border-box; pointer-events: none; }
 .tl-abm { top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--t6); }
 .tl-hover { position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; z-index: 5; }
 .tl-sprite { background-repeat: no-repeat; background-color: var(--bg3); border-radius: 5px; box-shadow: 0 0 0 1px var(--line), 0 6px 18px rgba(0, 0, 0, .6); }

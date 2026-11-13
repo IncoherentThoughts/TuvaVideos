@@ -49,7 +49,7 @@ A pass to take the generic "AI-made" tells out of the UI while keeping Wall. Eac
 - **Top bar** buttons are ghost buttons; Library cards keep their tags on one line; Favorites rows are wider with two-line titles.
 - **Filter bars** (Library, Songs, Artists, Favorites): each set of chips is one joined control, sort and its direction arrow another, count and shuffle end the row; every control is 30px tall.
 - **Now playing header**: 28px controls 8px apart; "Type:" and "Artists:" are labelled rows on one left edge. Source links and Delete share one footer; Delete stays red.
-- **Chapter cards**: all one height with the actions on the bottom edge. The linked Song is a gold chip with the Song mark (lyric lines with a note), so it does not read as a repeated title. Versions are one scrolling row of pills. Actions are 30px: "change" and its clear x are one split control, the red trash sits alone on the right. A repeat button next to the Favorite star loops the Chapter (it sets the A-B loop).
+- **Chapter cards**: all one height with the actions on the bottom edge. The linked Song is a gold chip with the Song mark (lyric lines with a note), so it does not read as a repeated title. Versions are one scrolling row of pills. Actions are 30px: "change" and its clear x are one split control, the red trash sits alone on the right. A repeat button next to the Favorite star is the Chapter loop (`L`) for that card: accent when on, shown on the timeline as an outlined span, apart from the A-B loop and not kept.
 
 ## Parked
 

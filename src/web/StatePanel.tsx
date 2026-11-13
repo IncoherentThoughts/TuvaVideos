@@ -20,6 +20,8 @@ interface Props {
   copy: CopyDto | null;
   fps: number | null;
   ab: AbLoop;
+  /** `L`: the looped Chapter, null when off. */
+  chapterLoop: { a: number; b: number; chapter: ChapterMark } | null;
   chapters: ChapterMark[];
   onClose: () => void;
 }
@@ -112,7 +114,7 @@ function CopyRow({ c, playing, preferred }: { c: CopyDto; playing: boolean; pref
 /** The panel's tab: the live state, or the Video's edit history (§4.8). Kept across Videos for this tab. */
 let lastTab: "state" | "history" = "state";
 
-export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }: Props) {
+export function StatePanel({ vid, box, video, copy, fps, ab, chapterLoop, chapters, onClose }: Props) {
   const [, tick] = useState(0);
   const [tab, setTabState] = useState(lastTab);
   const setTab = (t: typeof tab) => ((lastTab = t), setTabState(t));
@@ -184,6 +186,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapters, onClose }
       { k: "rate", v: <span class={v.playbackRate === 1 ? "n" : "warn"}>{v.playbackRate.toFixed(2)}×</span> },
       { k: "volume", v: <><Num v={Math.round(v.volume * 100)} />{v.muted && <span class="bad"> muted</span>}</> },
       { k: "A-B", v: ab.a != null ? <Str v={`${fmtClock(ab.a)} – ${ab.b != null ? fmtClock(ab.b) : "…"}`} /> : <Nil v="off" /> },
+      { k: "chapter loop", v: chapterLoop ? <><Str v={chapterLoop.chapter.title} /><Dim> · {fmtClock(chapterLoop.a)} – {Number.isFinite(chapterLoop.b) ? fmtClock(chapterLoop.b) : "end"}</Dim></> : <Nil v="off" />, title: chapterLoop?.chapter.title },
       { k: "chapter", v: cur ? <><Str v={cur.title} /><Dim> · {curIdx + 1}/{sorted.length}</Dim></> : <Nil v={sorted.length ? "before first" : "none"} />, title: cur?.title },
       { k: "frame", v: fps ? <><Num v={`#${frameNumber(t, fps)}`} /><Dim> @ {fps.toFixed(2)} fps</Dim></> : <Nil v="fps unknown" /> },
       { k: "dropped", v: q ? <><span class={q.droppedVideoFrames > 0 ? "warn" : "n"}>{q.droppedVideoFrames}</span><Dim> of {q.totalVideoFrames}</Dim></> : <Nil /> },

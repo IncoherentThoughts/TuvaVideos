@@ -237,6 +237,7 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
   const [chapters, setChapters] = useState<ChapterDto[]>([]);
   const [newId, setNewId] = useState<string | null>(null);
   const [curId, setCurId] = useState<string | null>(null);
+  const [loopId, setLoopId] = useState<string | null>(null); // `L`: the Chapter the Player loops
   const ctl = useRef<PlayerCtl | null>(null);
   const chaptersRef = useRef<ChapterDto[]>([]);
   const playhead = useRef(0);
@@ -278,7 +279,7 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
       ctl.current?.focus();
     }
   };
-  const marks = useMemo(() => chapters.map((c) => ({ startS: c.startS, title: c.title || "untitled", suggested: c.suggested })), [chapters]);
+  const marks = useMemo(() => chapters.map((c) => ({ id: c.id, startS: c.startS, title: c.title || "untitled", suggested: c.suggested })), [chapters]);
   const curChapter = chapters.find((c) => c.id === curId) ?? null;
 
   // The State panel (`i`): in the drawer slot while no lyrics are shown, under the Player otherwise.
@@ -386,7 +387,7 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
   return (
     <div class="np">
       <div class="np-main">
-        {notHere ? <NotHerePanel video={v} /> : <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onAddChapter={gate === "enabled" ? (at) => void addChapter(at) : undefined} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />}
+        {notHere ? <NotHerePanel video={v} /> : <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onChapterLoop={setLoopId} onAddChapter={gate === "enabled" ? (at) => void addChapter(at) : undefined} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />}
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">
@@ -425,7 +426,7 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
           </fieldset>
           {gate === "disabled" && <p class="edit-notice dim">{EDIT_DISABLED_NOTICE}</p>}
         </div>
-        <ChapterStrip video={v} chapters={chapters} curId={curId} ctl={ctl} newId={newId} onList={acceptChapters} onAdd={() => void addChapter()} gate={gate} onNewDone={() => setNewId(null)} />
+        <ChapterStrip video={v} chapters={chapters} curId={curId} loopId={loopId} ctl={ctl} newId={newId} onList={acceptChapters} onAdd={() => void addChapter()} gate={gate} onNewDone={() => setNewId(null)} />
         {v.youtubeId && (
           <div class="np-source dim">
             YouTube:{" "}

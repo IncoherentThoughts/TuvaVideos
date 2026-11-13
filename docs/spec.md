@@ -168,6 +168,7 @@ Setting `currentTime` is always a frame-exact seek: Chromium decodes from the pr
 
 - Resume position is written every 5 s while playing and on pause, seek, Copy switch and leaving the page (`POST /api/videos/:id/resume`). A Video reopens at it without asking; within 30 s of the end counts as finished and is stored as 0. The Player's tick runs on a timer, not `requestAnimationFrame`, so a background tab keeps writing Resume and looping A-B (#24).
 - The A-B loop persists per Video (`POST /api/videos/:id/loop`, columns `video.loop_a_s/loop_b_s`): a complete loop left set when the Player closes comes back when the Video reopens, in this or a later session, until `l` turns it off. A half-set loop (A only) is not kept.
+- The **Chapter loop** (`L`) loops the Chapter the playhead is in, from its start to the next Chapter's start (or the Video's end), like an A-B loop but apart from it: the A-B loop is untouched, and while the playhead is inside a set A-B loop that loop wins, so an A-B loop can loop part of the Chapter and one elsewhere in the Video stays set. A seek out of the Chapter plays on from there; coming back in loops it again. It follows the Chapter's edits, ends when the Chapter is deleted or the Video closes, and is not kept. It shows as a band on the timeline, a ↻ on the Chapter's card and a line in the State panel; in a Playlist it holds a Chapter Entry instead of advancing.
 - Opening a Video autoplays; the poster shows until the first frame.
 
 ### 4.4 Playing from
@@ -192,6 +193,7 @@ Keys are handled only while the Player container has focus. No native `<video co
 | m | mute |
 | f | fullscreen the Player container (OSD and chapter strip stay, drawer hides) |
 | l | A-B loop: set A, set B, off |
+| L | Chapter loop: the Chapter playing, on / off |
 | ! @, PgUp PgDn | previous / next Chapter (no-op with OSD "no chapters" when the Video has none) |
 | < > | previous / next Video in Playing from |
 | r | random Available Video (also the top-bar **Random** button; global, not Player-only) |

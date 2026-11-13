@@ -92,6 +92,7 @@ Bare keys, handled while the Player has focus (`Esc` or `v` brings focus back). 
 | `m` | mute |
 | `f` | fullscreen |
 | `l` | A-B loop (A, B, off) |
+| `L` | Chapter loop: loop the Chapter the playhead is in, on / off (apart from the A-B loop, not kept) |
 | `!` `@`, `PgUp` `PgDn` | previous / next Chapter |
 | `<` `>` | previous / next Video (Entry in a Playlist) |
 | `r` | random Video (works anywhere) |

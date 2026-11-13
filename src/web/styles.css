@@ -4,10 +4,10 @@
   --bg2: #262624;
   --bg3: #30302e;
   --line: #3d3c3a;
-  --fg: #d9d8d5;
-  --fg2: #93918c;
+  --fg: #ebe9e4;
+  --fg2: #b1aea7;
   --fg3: #908d87; /* ≥ 4.5:1 on --bg and --bg2 (WCAG AA body text): .dim carries whole sentences and warnings */
-  --accent: #d97757;
+  --accent: #c9963a;
   --accent-fg: #1a0f0a;
   /* tag palette: gruvbox. Type uses a fixed slot; Artists hash to a slot. */
   --t1: #fb4934; --t2: #fe8019; --t3: #fabd2f; --t4: #b8bb26;
@@ -18,7 +18,7 @@
   --font-lyrics: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --fs: 16px;
-  --r: 10px;
+  --r: 3px;
   --pad: 8px;
   --bar-h: 52px;
   /* the one select chevron (downloader-spec §7.4): select.btn and select.chip */
@@ -128,6 +128,10 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 /* ---- library ---- */
 .page { padding: 16px 20px 40px; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+/* Group hooks: a set of chips that belong together, and the count + shuffle at the row's end. Boxes of their own only
+   when a look asks for it; by default the children lay out as the row's own. */
+.controls .chip.dir { display: inline-grid; place-items: center; padding-left: 9px; padding-right: 9px; }
+.controls .chip.dir svg { display: block; }
 .controls .sep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; }
 .controls .count { margin-left: auto; font-family: var(--font-mono); font-size: .85em; color: var(--fg3); }
 .qbox { position: relative; display: inline-flex; align-items: center; }
@@ -260,7 +264,13 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .chtime-in { width: 84px; background: var(--bg); border: 1px solid var(--accent); border-radius: 5px; padding: 1px 5px; outline: none; font-size: .9em; }
 .chtitle-in { width: 100%; background: var(--bg); border: 1px solid var(--accent); border-radius: 5px; padding: 3px 6px; outline: none; }
 .sugmark { font-size: .72em; letter-spacing: .04em; color: var(--t3); border: 1px dashed color-mix(in srgb, var(--t3) 70%, transparent); border-radius: 4px; padding: 0 5px; line-height: 1.5; }
-.chfav { margin-left: auto; line-height: 0; }
+.chfav { line-height: 0; }
+/* Repeat this Chapter: the same 20px box as the Favorite star beside it; filled while the A-B loop is this Chapter. */
+.chrep { --c: var(--fg3); margin-left: auto; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: calc(var(--r) * .5); color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+.chrep svg { display: block; width: 12px; height: 12px; }
+.chrep:hover:not(:disabled) { --c: var(--fg); }
+.chrep.on { --c: var(--accent); background: color-mix(in srgb, var(--c) 18%, transparent); }
+.chrep:disabled { opacity: .4; cursor: default; }
 .chfav .fav { width: 20px; height: 20px; top: 0; margin: 0; }
 .stfav { display: inline-flex; align-items: center; gap: 6px; vertical-align: top; }
 .stfav .fav { width: 15px; height: 15px; top: 0; margin: 0; border-radius: 4px; }
@@ -315,6 +325,7 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .tl-tick { top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--t3); }
 .tl-tick.sug { background: transparent; border-left: 2px dashed var(--t3); }
 .tl-ab { top: 0; bottom: 0; background: color-mix(in srgb, var(--t6) 55%, transparent); }
+.tl-cl { top: -5px; bottom: -5px; border: 2px solid var(--fg); border-radius: calc(var(--r) * .6); background: color-mix(in srgb, var(--fg) 10%, transparent); box-sizing: border-box; pointer-events: none; }
 .tl-abm { top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--t6); }
 .tl-hover { position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; z-index: 5; }
 .tl-sprite { background-repeat: no-repeat; background-color: var(--bg3); border-radius: 5px; box-shadow: 0 0 0 1px var(--line), 0 6px 18px rgba(0, 0, 0, .6); }
@@ -1071,3 +1082,119 @@ dialog.dl .btn.primary { font-weight: 600; }
 .cdl-panel-btn { display: inline-flex; align-items: center; gap: 6px; }
 .cdl-panel .cdl-pill { position: static; }
 .cdl-panel-err { font-size: .9em; }
+
+/* ======== UI audit pass (2026-11). Decided with the ?proto=audit prototype; see docs/design-direction.md. These rules
+   restyle what is above, so they stay last: three real grey levels, the accent kept for what is playing, a 5-step type
+   scale, mono for data only, one corner radius, tidier Now playing rows and Chapter cards, grouped filter bars. ======== */
+/* ---- quality tags ---- */
+.tags.spec .tag { background: none; border: 0; padding: 2px 0; }
+.tags.spec, .card .tags.spec { gap: 10px; }
+.card .meta, .card .meta:not(:has(> .avail)) { padding-left: 0; }
+/* ---- section boxes ---- */
+.stp-sec, .vsrc.local, .draft-note, .au-report { border-left: 1px solid var(--line); }
+/* ---- caps labels ---- */
+:is(.sugmark, .propmark) { text-transform: none !important; letter-spacing: 0 !important; font-style: italic !important; font-weight: 400 !important; border: 0; padding: 0; opacity: .75 !important; }
+.tag :is(.sugmark, .propmark) { display: none; }
+.tag:has(.propmark), .tag:has(.sugmark) { border-style: dashed; }
+:is(.dd h5, .stp-sec h5 .nm, .audio h5, .fnh, .frow .kindmark, .stpanel .flag, .stpanel .cp1 .root, .localmark, .st-tag, .tvmenu .tvhd) { text-transform: none; letter-spacing: 0; }
+:is(.dd h5, .stp-sec h5, .audio h5, .fnh) { font-size: .875em; }
+.stp-sec h5 .nm::first-letter, .dd h5::first-letter { text-transform: uppercase; }
+.stp-sec h5 .nm { text-transform: lowercase; }
+/* ---- type scale: 12 / 14 / 16 / 20 / 24 ---- */
+:is(.tag, .cbtn, .card .why, .card .meta, .controls .count, .np-titlerow .from, .ctl .clock, .ctl .rate, .ctl .ablbl, .chtime, .chsong, .chconfirm, .stpanel, .frow .right, .arow .cnt, .dd-head, .r .by, .r .sn, .pill, .relocate-pop .row, .edit-notice, .scan, .btn.small) { font-size: .875em; }
+:is(.tags.spec .tag, .thumb .dur, .chbtn, .r .typ, .dd h5, .stp-sec h5, .frow .kindmark, .chpills .pill, .lyr .ln) { font-size: .75em; }
+:is(.tag .sugmark, .tag .propmark, .cbtn kbd) { font-size: .857em; }
+:is(.np-meta, .arow .nm, .drawer .hd .ttl, .latin, .stpanel .kv, .stpanel .cp) { font-size: 1em; }
+.overlay h3 { font-size: 1.25em; }
+.np-titlerow h1 { font-size: 1.5em; }
+/* ---- monospace: data only ---- */
+:is(.controls .count, .np-titlerow .from, .arow .cnt, .card .why .k, .scan, .dd-head .n, .r .typ, .frow .kindmark, .tags.spec .tag, .ctl .repmode) { font-family: var(--font-ui) !important; }
+/* ---- radius ---- */
+:is(.cbtn, .ib, .chbtn, .stp-sec, .st-row, .st-main, .merge .opt, .tl-sprite, .arow .nm-in, .chtime-in, .chtitle-in, .brand, .brand img) { border-radius: calc(var(--r) * .6); }
+:is(kbd, .thumb .dur, .chtime, .sugmark, mark, .stpanel .tp) { border-radius: calc(var(--r) * .4); }
+:is(.pill, .fpill, .st-badge, .st-offer) { border-radius: calc(var(--r) * .6); }
+/* ---- accent use ---- */
+.player:focus { box-shadow: 0 0 0 1px var(--fg3); }
+:is(.card:hover, .card:focus-visible) { box-shadow: inset 0 0 0 1px var(--fg3); background: var(--bg2); }
+.chthumb:hover .thumb { box-shadow: 0 0 0 2px var(--fg2); }
+:is(.chip.on, .pill.on) { background: var(--bg3); color: var(--fg); border-color: var(--fg2); }
+:is(.search:focus-within, .qin:focus) { border-color: var(--fg2); }
+:focus-visible { outline-color: var(--fg); }
+/* ---- State panel ---- */
+.stpanel .kv b::before { display: none; }
+/* ---- Now playing: header rows. Every control is one 28px row height, 8px apart; Artists hang off their label. ---- */
+.np-meta { gap: 8px; margin-top: 14px; font-size: 1em; }
+.np-meta .avail { display: inline-grid; place-items: center; width: 28px; height: 28px; }
+.np-meta .avail svg { width: 22px; height: 22px; }
+.np-meta :is(.favtoggle .fav, .relocate .folder) { width: 28px; height: 28px; }
+.np-meta :is(.favtoggle .fav, .relocate .folder) svg { width: 16px; height: 16px; }
+.np-meta > .mono { font-size: .875em; margin: 0 4px; }
+.np-meta .lyricsbtn { height: 28px; padding: 0 12px; display: inline-flex; align-items: center; font-size: .875em; }
+.np-meta2 { gap: 8px; margin-top: 10px; font-size: 1em; align-items: flex-start; }
+.np-meta2 .tag { font-size: .875em; height: 24px; }
+.np-meta2 .tagbtn .tag { padding: 0 8px; }
+.np-meta2 > .field { flex: 1 1 100%; padding-left: 62px; gap: 6px; min-height: 24px; }
+.np-meta2 > .field > .lbl { position: absolute; left: 0; top: 0; line-height: 24px; font-size: .875em; }
+.achip .achip-main { padding: 0 2px 0 8px; align-self: stretch; }
+.achip .x { color: currentColor; opacity: .55; padding: 0 7px 0 5px; margin-left: 0; }
+.achip .x:hover { color: var(--no); opacity: 1; }
+.np-meta2 > .field > :is(button, .picker, .linkbtn):not(.x, .tagbtn) { line-height: 24px; font-size: .875em; }
+.edit-notice { margin-top: 8px; }
+.chapter-strip { margin-top: 26px; }
+.chs-head { margin-bottom: 10px; }
+/* ---- Now playing: chapter cards. Same height in a row, actions pinned to the bottom edge. ---- */
+.chs-scroll { align-items: stretch; gap: 12px; padding: 2px 2px 12px; }
+.chs-empty { align-self: center; }
+.chcard { width: 196px; padding: 8px; gap: 8px; }
+.chbody { flex: 1; gap: 6px; }
+.chline { min-height: 22px; }
+.chtime { padding: 0; }
+.chtitle { min-height: 0; }
+.chsong { width: fit-content; max-width: 100%; padding: 2px 8px; border-radius: 4px; background: color-mix(in srgb, var(--t3) 14%, transparent); border: 1px solid color-mix(in srgb, var(--t3) 40%, transparent); }
+.songic svg { display: inline-block; vertical-align: -2px; }
+.chnote .songic svg { width: 17px; height: 17px; filter: drop-shadow(0 1px 1px #000) drop-shadow(0 0 2px #000); }
+.chpills { display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.chpills .pill { flex: none; }
+fieldset.chact { margin-top: auto; padding-top: 6px; border: 0; border-top: 1px solid var(--line); gap: 6px; min-width: 0; }
+.chact .chbtn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; min-width: 30px; padding: 0 11px; font-size: 1em; }
+.chact .chbtn.no { margin-left: auto; }
+.chact .chbtn.no svg, .chact .chbtn .songic svg { width: 18px; height: 18px; }
+.chbtn.no:not(:hover) { background: none; }
+.chact .chbtn:not(:hover) { border-color: transparent; }
+/* "change" and the clear x are one split control, so the x is not read as a second delete next to the trash. */
+.chact .chbtn:has(+ .chclear) { border-color: var(--line); border-radius: calc(var(--r) * .6) 0 0 calc(var(--r) * .6); }
+.chact .chbtn.chclear { border-color: var(--line); border-radius: 0 calc(var(--r) * .6) calc(var(--r) * .6) 0; margin-left: -7px; padding: 0; color: var(--fg3); }
+.chact .chclear svg { width: 16px; height: 16px; }
+.chact .chbtn:has(+ .chclear):hover, .chact .chbtn.chclear:hover { background: var(--bg3); color: var(--fg); }
+/* ---- Now playing: source links and delete are one footer ---- */
+.np-source { margin-top: 4px; font-size: .875em; }
+.chapter-strip + .np-source, .np-head + .np-source { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
+.np-delete { margin-top: 12px; padding-top: 0; border-top: 0; }
+/* ---- top bar, Library cards, download tiles ---- */
+.topright > .btn:not(.primary), .topright > :not(.sbox) > .btn:not(.primary) { background: none; border-color: transparent; color: var(--fg2); padding-left: 9px; padding-right: 9px; }
+.topright > .btn:not(.primary):hover:not(:disabled), .topright > :not(.sbox) > .btn:not(.primary):hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
+.topright { gap: 4px; }
+.topright .sbox { margin-right: 8px; }
+.card .tags:not(.spec) { flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.card .tags:not(.spec) .tag { flex: none; max-width: 70%; }
+.dl-tile { --h: var(--fg3) !important; }
+.dl-tile.on { --h: var(--accent) !important; box-shadow: inset 0 0 0 1px var(--h); }
+/* ---- filter and sort bar: each set of chips is one joined control, sort + direction another, count + shuffle end the row ---- */
+.controls { gap: 8px 14px; }
+.controls .sep { display: none; }
+.controls .cgroup { display: inline-flex; }
+.controls .cgroup > .chip { position: relative; margin-left: -1px; border-radius: 0; }
+.controls .cgroup > .chip:first-child { margin-left: 0; border-top-left-radius: calc(var(--r) * .6); border-bottom-left-radius: calc(var(--r) * .6); }
+.controls .cgroup > .chip:last-child { border-top-right-radius: calc(var(--r) * .6); border-bottom-right-radius: calc(var(--r) * .6); }
+.controls .cgroup > .chip:is(.on, :hover, :focus-visible) { z-index: 1; }
+.controls .cend { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; white-space: nowrap; }
+.controls .cend .count { margin-left: 0; }
+.controls .qin { width: 180px; }
+.controls :is(.chip, .btn.small) { height: 30px; padding-top: 0; padding-bottom: 0; line-height: 28px; }
+.controls .chip.dir { width: 32px; padding: 0; }
+.controls .chip.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border-color: var(--accent); }
+/* ---- Favorites rows, State dot ---- */
+.frow .ttl { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+.frow .body .tags { flex-wrap: nowrap; overflow: hidden; }
+.flist { grid-template-columns: repeat(auto-fill, minmax(600px, 1fr)); }
+.stp-head .live.on i { animation: none; box-shadow: none; }

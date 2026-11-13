@@ -320,6 +320,6 @@ describe("client shell", () => {
     expect(code.length).toBeGreaterThan(10_000);
     expect(code).not.toContain("UI build failed");
     const css = await fetch(url + "/app.css");
-    expect(await css.text()).toContain("--accent: #d97757");
+    expect(await css.text()).toContain("--accent: #c9963a");
   });
 });

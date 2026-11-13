@@ -11,6 +11,8 @@ export interface ChapterMark {
   startS: number;
   title: string;
   suggested: boolean;
+  /** The Chapter's id (the Chapter loop names it by this). */
+  id?: string;
 }
 
 interface Props {
@@ -20,6 +22,8 @@ interface Props {
   bufferedEnd: number;
   chapters: ChapterMark[];
   ab: { a: number | null; b: number | null };
+  /** `L`: the looped Chapter's span, shaded apart from the A-B band. */
+  chapterLoop?: { a: number; b: number } | null;
   /** The pointer released on the bar (after a drag or a plain press): one seek. */
   onSeek(t: number): void;
   /** The pointer is dragging over `t`; null when the drag ends. */
@@ -50,7 +54,7 @@ export function StripFrame({ video, t, width = `${PREVIEW_W}px` }: { video: Vide
   );
 }
 
-export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onSeek, onScrub }: Props) {
+export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, chapterLoop, onSeek, onScrub }: Props) {
   const bar = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{ x: number; t: number } | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -115,6 +119,7 @@ export function Timeline({ video, time, duration, bufferedEnd, chapters, ab, onS
       <div class="tl-track">
         <i class="tl-buf" style={{ width: pct(bufferedEnd) }} />
         <i class="tl-done" style={{ width: pct(shown) }} />
+        {chapterLoop && <i class="tl-cl" style={{ left: pct(chapterLoop.a), width: `calc(${pct(Math.min(chapterLoop.b, duration ?? chapterLoop.b))} - ${pct(chapterLoop.a)})` }} title={`Chapter loop ${fmtClock(chapterLoop.a)} – ${Number.isFinite(chapterLoop.b) ? fmtClock(chapterLoop.b) : "end"}`} />}
         {ab.a != null && ab.b != null && <i class="tl-ab" style={{ left: pct(ab.a), width: `calc(${pct(ab.b)} - ${pct(ab.a)})` }} />}
         {ab.a != null && <i class="tl-abm" style={{ left: pct(ab.a) }} title={`A ${fmtClock(ab.a)}`} />}
         {ab.b != null && <i class="tl-abm" style={{ left: pct(ab.b) }} title={`B ${fmtClock(ab.b)}`} />}

@@ -120,17 +120,21 @@ export function Favorites({ search }: { search: string }) {
   return (
     <div class="page">
       <div class="controls" role="toolbar" aria-label="Favorite filters">
-        {FAV_SHOWS.map((s) => (
-          <button key={s} class={`chip${st.show === s ? " on" : ""}`} aria-pressed={st.show === s} onClick={() => go({ show: s })}>
-            {SHOW_LABEL[s]}
-          </button>
-        ))}
+        <span class="cgroup" role="group">
+          {FAV_SHOWS.map((s) => (
+            <button key={s} class={`chip${st.show === s ? " on" : ""}`} aria-pressed={st.show === s} onClick={() => go({ show: s })}>
+              {SHOW_LABEL[s]}
+            </button>
+          ))}
+        </span>
         <span class="sep" />
-        {TYPES.map((t) => (
-          <button key={t} class={`chip${st.types.includes(t) ? " on" : ""}`} aria-pressed={st.types.includes(t)} onClick={() => toggleType(t)}>
-            {t}
-          </button>
-        ))}
+        <span class="cgroup" role="group">
+          {TYPES.map((t) => (
+            <button key={t} class={`chip${st.types.includes(t) ? " on" : ""}`} aria-pressed={st.types.includes(t)} onClick={() => toggleType(t)}>
+              {t}
+            </button>
+          ))}
+        </span>
         <span class="sep" />
         {showOnThisMachineChip(items?.map((i) => i.video), st.availableOnly) && (
           <button class={`chip${st.availableOnly ? " on" : ""}`} aria-pressed={st.availableOnly} title="Only Favorites with a Copy that plays now" onClick={() => go({ availableOnly: !st.availableOnly })}>
@@ -140,10 +144,12 @@ export function Favorites({ search }: { search: string }) {
         <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by title…" label="Filter Favorites by title" />
         <span class="sep" />
         <SortControls sorts={FAV_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />
-        <span class="count">{items ? `${shown.length} of ${items.length} Favorite${items.length === 1 ? "" : "s"}` : "loading…"}</span>
-        <button class="chip shuffle" disabled={shown.length === 0} title="Play the Favorites shown, in a random order" onClick={shuffleFavorites}>
-          shuffle favorites
-        </button>
+        <span class="cend">
+          <span class="count">{items ? `${shown.length} of ${items.length} Favorite${items.length === 1 ? "" : "s"}` : "loading…"}</span>
+          <button class="chip shuffle" disabled={shown.length === 0} title="Play the Favorites shown, in a random order" onClick={shuffleFavorites}>
+            shuffle favorites
+          </button>
+        </span>
       </div>
       {err && <div class="empty-state">Could not load Favorites: {err}</div>}
       {items && items.length === 0 && <div class="empty-state">Nothing starred yet. Press <kbd>f</kbd> on a Video in the Library to add one.</div>}

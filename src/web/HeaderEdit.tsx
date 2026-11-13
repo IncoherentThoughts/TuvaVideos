@@ -290,7 +290,8 @@ function TypeField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
     return () => document.removeEventListener("mousedown", on);
   }, [open]);
   return (
-    <span class="field" ref={box}>
+    <span class="field typerow" ref={box}>
+      <span class="lbl">Type:</span>
       <button class="tagbtn" title={v.typeSuggested ? "Suggested Type: click to change" : "Click to change the Type"} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         <TypeTag type={v.type} suggested={v.typeSuggested} />
       </button>

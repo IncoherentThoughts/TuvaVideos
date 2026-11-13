@@ -10,6 +10,7 @@ export type PlayerAction =
   | { type: "mute" }
   | { type: "fullscreen" }
   | { type: "abLoop" }
+  | { type: "chapterLoop" }
   | { type: "chapter"; dir: 1 | -1 }
   | { type: "chapterAdd" }
   | { type: "video"; dir: 1 | -1 }
@@ -79,6 +80,8 @@ export function keyAction(e: KeyLike): PlayerAction | null {
       return { type: "fullscreen" };
     case "l":
       return { type: "abLoop" };
+    case "L":
+      return { type: "chapterLoop" };
     case "!":
     case "PageUp":
       return { type: "chapter", dir: -1 };

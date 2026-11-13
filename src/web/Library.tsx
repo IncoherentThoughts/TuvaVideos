@@ -1,4 +1,5 @@
 import type { ComponentChildren } from "preact";
+import { SortArrow } from "./ListControls";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { TYPES } from "../shared/filters";
 import {
@@ -100,11 +101,13 @@ export function Library({ search }: { search: string }) {
   return (
     <div class="page">
       <div class="controls" role="toolbar" aria-label="Library filters">
-        {TYPES.map((t) => (
-          <button key={t} class={`chip${st.types.includes(t) ? " on" : ""}`} aria-pressed={st.types.includes(t)} onClick={() => toggleType(t)}>
-            {t}
-          </button>
-        ))}
+        <span class="cgroup" role="group">
+          {TYPES.map((t) => (
+            <button key={t} class={`chip${st.types.includes(t) ? " on" : ""}`} aria-pressed={st.types.includes(t)} onClick={() => toggleType(t)}>
+              {t}
+            </button>
+          ))}
+        </span>
         <span class="sep" />
         {showOnThisMachineChip(videos, st.availableOnly) && (
           <button class={`chip${st.availableOnly ? " on" : ""}`} aria-pressed={st.availableOnly} title="Only Videos with a Copy that plays now (#available)" onClick={() => go({ availableOnly: !st.availableOnly })}>
@@ -132,6 +135,7 @@ export function Library({ search }: { search: string }) {
           </span>
         )}
         <span class="sep" />
+        <span class="cgroup sortgrp">
         <select
           class="chip"
           aria-label="Sort"
@@ -147,13 +151,16 @@ export function Library({ search }: { search: string }) {
             </option>
           ))}
         </select>
-        <button class="chip" title="Reverse the order" aria-label={`Sorted ${st.dir === "asc" ? "ascending" : "descending"}; reverse`} onClick={() => go({ dir: st.dir === "asc" ? "desc" : "asc" })}>
-          {st.dir === "asc" ? "↑" : "↓"}
+        <button class="chip dir" title="Reverse the order" aria-label={`Sorted ${st.dir === "asc" ? "ascending" : "descending"}; reverse`} onClick={() => go({ dir: st.dir === "asc" ? "desc" : "asc" })}>
+          <SortArrow dir={st.dir} />
         </button>
-        <span class="count">{videos ? `${shown.length} of ${videos.length}` : "loading…"}</span>
-        <button class="chip shuffle" disabled={shown.length === 0} title="Play the Videos shown, in a random order" onClick={shuffleRandom}>
-          shuffle random
-        </button>
+        </span>
+        <span class="cend">
+          <span class="count">{videos ? `${shown.length} of ${videos.length}` : "loading…"}</span>
+          <button class="chip shuffle" disabled={shown.length === 0} title="Play the Videos shown, in a random order" onClick={shuffleRandom}>
+            shuffle random
+          </button>
+        </span>
       </div>
       {onboarding?.show === "bar" && <NoRootBar />}
       {onboarding?.show === "panel" && <FirstLaunchPanel signIn={session.record ? undefined : openSignIn} />}

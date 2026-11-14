@@ -18,7 +18,7 @@ import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { RelocateButton } from "./Relocate";
-import { AvailabilityIcon, FavoriteBadge, UnsharedMark, fmtDuration } from "./ui";
+import { AvailabilityIcon, FavoriteBadge, UnsharedMark, fmtDuration, CloseIcon } from "./ui";
 import { AudioPanel } from "./AudioPanel";
 import { DeleteVideoDialog } from "./DeleteVideo";
 import { RELOADED_EVENT, writeLink } from "./writeLink";
@@ -491,7 +491,7 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
               <LyricsReader key={target.fromChapter ? "chapter" : target.songId} songId={target.songId} versionId={target.versionId} fromChapter={target.fromChapter} onClose={closeDrawer} onPickVersion={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (versionId) => void writeLink(v, { kind: "video.update", patch: { versionId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} onChangeSong={gate === "enabled" && !target.fromChapter && !lyrics && v.songId === target.songId ? (songId) => void writeLink(v, { kind: "video.update", patch: { songId } }).then((fresh) => (replaceVideo(fresh), setV(fresh))).catch(() => {}) : undefined} autoFocus={focusDrawer} onFocused={() => setFocusDrawer(false)} shared={v.shared} onEditingChange={onEditing} />
             ) : (
               <aside class="drawer" tabIndex={-1} data-lyrics-drawer="" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), closeDrawer())}>
-                <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}>×</button></div></div>
+                <div class="hd"><div class="row"><span class="ttl">Lyrics</span><button class="ib" aria-label="Close lyrics" onClick={closeDrawer}><CloseIcon /></button></div></div>
                 <div class="body"><p class="empty">no lyrics: this Video has no Song. Set one with the Song row, or search for a Song.</p></div>
               </aside>
             ))}

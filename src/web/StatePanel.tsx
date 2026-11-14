@@ -8,7 +8,7 @@ import { fmtClock, frameNumber, type AbLoop } from "../shared/playerMath";
 import type { CopyDto, VideoDto } from "../shared/types";
 import type { ChapterMark } from "./Timeline";
 import { api } from "./data";
-import { FavoriteBadge, artistSlot, resolutionLabel } from "./ui";
+import { FavoriteBadge, artistSlot, resolutionLabel, CloseIcon } from "./ui";
 import { useUnseenShelved, VideoHistory } from "./History";
 import { hasUnseenShelved } from "../shared/editHistory";
 
@@ -206,7 +206,7 @@ export function StatePanel({ vid, box, video, copy, fps, ab, chapterLoop, chapte
         </div>
         {v && !v.paused && !v.ended ? <span class="live on"><i /> live</span> : <span class="live"><i /> {v?.ended ? "ended" : "paused"}</span>}
         <span class="dim">press <kbd>i</kbd> to hide</span>
-        <button class="ib" tabIndex={-1} aria-label="Close the State panel" onClick={onClose}>×</button>
+        <button class="ib" tabIndex={-1} aria-label="Close the State panel" onClick={onClose}><CloseIcon /></button>
       </div>
       {tab === "history" ? <VideoHistory videoId={video.id} shared={video.shared} /> : <div class="stp-cols">
         <Section name="video" color="t3">

@@ -7,7 +7,7 @@ import type { PlanOption, PlanResponse } from "../../server/downloadPlan";
 import { reasonWords } from "../../server/downloads/report";
 import type { Quality } from "../../shared/downloadEstimate";
 import type { VideoType } from "../../shared/filters";
-import { Poster } from "../ui";
+import { Poster, CloseIcon } from "../ui";
 import {
   colorLine, confirmBlock, confirmLabel, displayLine, fmtBytes, fmtDur, fmtLen, fmtSpeed, headline, heldStatus, isLive, paceOf, picked,
   ROW_MARK, rowGroup, selectAllState, sortRows, tileLine, videos as nVideos, BROWSER_LABEL, browserNote, hasInstagram, instagramStatus, INSTAGRAM_NOTICE,
@@ -57,7 +57,7 @@ function DownloadDialog() {
       </div>
       <div class="dl-right">
         <button class="dl-x" aria-label="Close" title="Close (the downloads keep going)" onClick={() => d.current?.close()}>
-          ×
+          <CloseIcon />
         </button>
         <ToolsRow />
         {s.view === "log" ? <Log /> : <Chooser />}
@@ -387,7 +387,7 @@ function Speed({ bps }: { bps: number }) {
 function Bar({ pct, thin }: { pct: number; thin?: boolean }) {
   return (
     <div class={`dl-bar${thin ? " thin" : ""}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-      <i style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+      <i style={{ "--p": Math.max(0, Math.min(100, pct)) / 100 }} />
     </div>
   );
 }
@@ -434,7 +434,7 @@ function Row({ it }: { it: ItemDto }) {
         {g === "running" && size ? <Bar pct={((it.doneBytes ?? 0) / size) * 100} thin /> : null}
         {isLive(it.state) && (
           <button class="dl-rx" aria-label={`Cancel ${it.title}`} title="Cancel this Video" onClick={() => void cancelItem(it.id)}>
-            ×
+            <CloseIcon />
           </button>
         )}
       </span>

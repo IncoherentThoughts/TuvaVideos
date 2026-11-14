@@ -7,7 +7,7 @@ import { ENDED_LABEL } from "../shared/playlistPlayer";
 import { panelWindow } from "../shared/playlistPanel";
 import type { ChapterDto, VideoDto } from "../shared/types";
 import { api } from "./data";
-import { Poster, Tags } from "./ui";
+import { Poster, Tags, CloseIcon } from "./ui";
 import { useWindowed } from "./windowed";
 
 export const PANEL_STEP = 25;
@@ -86,7 +86,7 @@ export function PlaylistPanel({ playlist: pl, gen, videos, showPlayed, ended, on
               <kbd>e</kbd>
             </button>
             <button class={`ib${showPlayed ? " on" : ""}`} aria-pressed={showPlayed} aria-label="Show played" title="Show played Entries above the current one" onClick={onShowPlayed}>{HISTORY}</button>
-            <button class="ib close" aria-label="Close Playlist (q)" title="Close (q, Esc); the Playlist keeps playing" onClick={onClose}>×</button>
+            <button class="ib close" aria-label="Close Playlist (q)" title="Close (q, Esc); the Playlist keeps playing" onClick={onClose}><CloseIcon /></button>
           </span>
         </div>
         <div class="count mono dim">{n} of {total}</div>

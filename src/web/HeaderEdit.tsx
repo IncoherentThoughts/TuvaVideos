@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { TYPES, type VideoType } from "../shared/filters";
 import type { ArtistRef, SearchRow, VideoDto, VideoPatch } from "../shared/types";
 import { api, apiError, loadArtists, replaceVideo } from "./data";
-import { TypeTag, artistSlot, artistTitle } from "./ui";
+import { TypeTag, artistSlot, artistTitle, CheckIcon } from "./ui";
 import { Link } from "./router";
 import { defaultLibraryState, libraryQuery } from "../shared/libraryView";
 import { writeLink, WriteLinkError } from "./writeLink";
@@ -200,7 +200,7 @@ export function AcceptAll({ video: v, onChange }: { video: VideoDto; onChange: C
   };
   return (
     <button class="btn small acceptall" disabled={busy} title="Confirm the Suggested Type, Song and Artists" onClick={() => void run()}>
-      ✓ Accept all
+      <CheckIcon /> Accept all
     </button>
   );
 }
@@ -297,7 +297,7 @@ function TypeField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
       </button>
       {v.typeSuggested && (
         <button class="confirm" title="Confirm this Type" aria-label="Confirm Type" onClick={() => void patch({ type: v.type })}>
-          ✓
+          <CheckIcon />
         </button>
       )}
       {open && (
@@ -338,7 +338,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
       )}
       {s && v.songSuggested && (
         <button class="confirm" title="Confirm this Song" aria-label="Confirm Song" onClick={() => void patch({ songId: v.songId })}>
-          ✓
+          <CheckIcon />
         </button>
       )}
       {!s && !picking && (
@@ -355,7 +355,7 @@ function SongField({ v, patch }: { v: VideoDto; patch: (p: VideoPatch) => Promis
 export function SongPicker({ onPick, onClose, shared = false }: { onPick: (songId: string) => void; onClose: () => void; shared?: boolean }) {
   return (
     <Picker<SongRow>
-      placeholder="Search Songs…"
+      placeholder="Search Songs"
       search={async (q) => (await rowsOf("song")(q)).filter((r) => !shared || !r.local)}
       row={songPickerRow}
       onPick={(r) => onPick(r.id)}
@@ -390,7 +390,7 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
       ))}
       {anySuggested && (
         <button class="confirm" title="Confirm the Suggested Artists" aria-label="Confirm Artists" onClick={() => void apply(() => writeLink(v, { kind: "artists.confirm" })).then((ok) => ok && void loadArtists())}>
-          ✓
+          <CheckIcon />
         </button>
       )}
       {!adding && (
@@ -400,7 +400,7 @@ function ArtistField({ v, apply }: { v: VideoDto; apply: (p: () => Promise<Video
       )}
       {adding && (
         <Picker<ArtistRow>
-          placeholder="Search Artists…"
+          placeholder="Search Artists"
           search={async (q) => (await rowsOf("artist")(q)).filter((r) => !ids.includes(r.id) && !(v.shared && r.local))}
           row={(r) => (
             <>

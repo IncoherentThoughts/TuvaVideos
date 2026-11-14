@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatStart, nudgeStart, parseTimeField } from "../shared/timestamps";
 import type { ChapterDto, ChapterPatch, VideoDto } from "../shared/types";
 import { Picker, createSongRow, rowsOf, songPickerRow, type SongRow } from "./HeaderEdit";
-import { TRASH } from "./ui";
+import { TRASH, CheckIcon, CloseIcon } from "./ui";
 import type { PlayerCtl } from "./Player";
 import { api, apiError, toggleFavorite } from "./data";
 import { RELOADED_EVENT, writeLink, WriteLinkError } from "./writeLink";
@@ -177,7 +177,7 @@ export function ChapterStrip({ video, chapters, curId, loopId = null, ctl, newId
           <div class="chs-pick" ref={pickBox} style={{ left: `${pickLeft}px` }}>
             <div class="dim chs-picklbl">Song for {formatStart(picking.startS)} {picking.title}</div>
             <Picker<SongRow>
-              placeholder="Search Songs…"
+              placeholder="Search Songs"
               search={rowsOf("song")}
               row={songPickerRow}
               onPick={(r) => {
@@ -420,7 +420,7 @@ function ChapterCard({ c, video, ctl, cur, looping, autoEdit, duration, onNewDon
           </button>
         </div>
         {mode === "title" ? (
-          <InlineInput class="chtitle-in" label="Chapter title" initial={typedAhead.current || c.title} caretEnd={!!typedAhead.current} placeholder="Title…" onSave={saveTitle} onCancel={cancelTitle} />
+          <InlineInput class="chtitle-in" label="Chapter title" initial={typedAhead.current || c.title} caretEnd={!!typedAhead.current} placeholder="Title" onSave={saveTitle} onCancel={cancelTitle} />
         ) : (
           <div class={`chtitle${c.title ? "" : " dim"}`} title={c.title || (locked ? "Untitled" : "Untitled: press Enter to name it")} onDblClick={() => setMode("title")}>
             {c.title || "untitled"}
@@ -459,10 +459,10 @@ function ChapterCard({ c, video, ctl, cur, looping, autoEdit, duration, onNewDon
             {c.suggested && (
               <>
                 <button class="chbtn ok" tabIndex={-1} title="Confirm this Chapter (y)" onClick={() => (keepFocus(c.id), void run(() => writeLink(video, { kind: "chapter.confirm", chapter: c })))}>
-                  ✓ confirm
+                  <CheckIcon /> confirm
                 </button>
                 <button class="chbtn no" tabIndex={-1} title="Reject this suggestion (x); it will not come back" onClick={() => void remove()}>
-                  ✕ reject
+                  <CloseIcon /> reject
                 </button>
               </>
             )}

@@ -7,6 +7,7 @@ import { AB_OFF, abInside, abLoopTarget, abToggle, fmtClock, type AbLoop } from 
 import { SeekThrottle } from "../shared/seekThrottle";
 import { clampStudioSeek, type DumpHitDto, type SongStudioDto, type StudioEntryDto, type StudioStateDto } from "../shared/studio";
 import { api, apiError } from "./data";
+import { CloseIcon, CheckIcon, PauseIcon, PlayIcon, NoteIcon } from "./ui";
 
 export const REFUSED = "Music.app refused — check System Settings › Automation";
 
@@ -328,7 +329,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
         )}
         {active && (
           <span class="mono clock">
-            {st?.state === "paused" ? "⏸ " : ""}
+            {st?.state === "paused" ? <PauseIcon /> : null}
             {fmtClock(pos)} <span class="dim">/ {fmtClock(dur)}</span>
           </span>
         )}
@@ -336,7 +337,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
           Tracks{data.tracks.length + data.missing.length ? ` (${data.tracks.length}/${data.tracks.length + data.missing.length})` : ""}
         </button>
         <button class="ib" tabIndex={-1} title="Back to the Video (t, Esc)" aria-label="Close Studio" onClick={() => close.current()}>
-          ×
+          <CloseIcon />
         </button>
       </div>
       <Scrub pos={pos} dur={dur} ab={ab} onSeek={seekTo} />
@@ -345,7 +346,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
           {data.tracks.map((t) => (
             <div key={t.id} class={`st-row ${t.state}${t.id === st?.studioTrackId && active ? " cur" : ""}`}>
               <button class="st-main" tabIndex={-1} onClick={() => void play(t.id)} title="Play this one">
-                <span class="st-mark" aria-hidden="true">{t.id === st?.studioTrackId && active ? "▶" : "♪"}</span>
+                <span class="st-mark" aria-hidden="true">{t.id === st?.studioTrackId && active ? <PlayIcon /> : <NoteIcon />}</span>
                 <span class="st-tn">{t.name}</span>
                 <span class="muted st-ta">{subtitle(t)}</span>
                 {t.durationS ? <span class="mono dim">{fmtClock(t.durationS)}</span> : null}
@@ -356,7 +357,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
               </span>
               {t.state === "suggested" && (
                 <button class="ib" tabIndex={-1} title="Confirm this match" aria-label="Confirm match" onClick={() => void act(() => api.confirmStudio(t.id))}>
-                  ✓
+                  <CheckIcon />
                 </button>
               )}
               {t.mirrorTrackId && (
@@ -365,7 +366,7 @@ export function StudioBar({ songId, initial, say, onClose, ctl }: Props) {
                 </button>
               )}
               <button class="ib" tabIndex={-1} title={t.kind === "local" ? "Remove from the Song" : t.state === "suggested" ? "Reject this match" : "Remove this match"} aria-label="Remove" onClick={() => void act(() => api.removeStudio(t.id))}>
-                ×
+                <CloseIcon />
               </button>
             </div>
           ))}

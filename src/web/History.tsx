@@ -10,6 +10,7 @@ import { Link, playHref } from "./router";
 import { useSession } from "./session";
 import { dismissToast, RELOADED_EVENT, undoFromToast, undoWrite, useUndoToast, writeLink } from "./writeLink";
 import { copyBackOp, undoBlock } from "./writeOps";
+import { CloseIcon } from "./ui";
 
 const when = (iso: string) => {
   const d = new Date(iso);
@@ -216,7 +217,7 @@ export function UndoToastView() {
         </button>
       )}
       <button class="ib" aria-label="Dismiss" onClick={dismissToast}>
-        ×
+        <CloseIcon />
       </button>
     </div>
   );

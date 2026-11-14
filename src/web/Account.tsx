@@ -14,6 +14,7 @@ import type { VideoDiff } from "../shared/shelvedDiff";
 import { useStore } from "./data";
 import { anyDownloadable } from "./downloader/model";
 import { openDownloads, openLastDownload, refresh as refreshDownloads, useDownloads } from "./downloader/store";
+import { CloseIcon } from "./ui";
 
 // One dialog for the whole app: the chip's "Sign in", the banner's and the first-launch panel's all open it.
 let dialogOpen = false;
@@ -452,7 +453,7 @@ export function EndedBanner() {
         Sign in
       </button>
       <button class="root-bar-x" aria-label="Dismiss" title="Dismiss" onClick={() => s.dismissEnded()}>
-        ×
+        <CloseIcon />
       </button>
     </div>
   );

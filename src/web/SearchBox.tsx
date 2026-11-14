@@ -11,7 +11,7 @@ import { SEARCH_ID, releaseSearch } from "./keys";
 import { savePlayingFrom } from "./playingFrom";
 import { openLyrics } from "./lyricsNav";
 import { navigate, playHref, searchHref } from "./router";
-import { artistSlot, fmtDuration } from "./ui";
+import { artistSlot, fmtDuration, CloseIcon, NoteIcon } from "./ui";
 
 const pillLabel = (token: string) => {
   const a = parseQuery(token).artists[0];
@@ -34,7 +34,7 @@ function RowView({ row, needle, on, idx, pick }: { row: SearchRow; needle: strin
         <div {...common}>
           <span class="nm" {...H(row.title, needle)} />
           <span class="typ video">video{row.durationS != null ? ` · ${fmtDuration(row.durationS)}` : ""}{row.available ? "" : " · unavailable"}</span>
-          {row.songs.length > 0 && <span class={`by${row.songSuggested ? " sug" : ""}`}>♪ {row.songs.join(", ")}{row.songSuggested && <i class="sugmark">suggested</i>}</span>}
+          {row.songs.length > 0 && <span class={`by${row.songSuggested ? " sug" : ""}`}><NoteIcon /> {row.songs.join(", ")}{row.songSuggested && <i class="sugmark">suggested</i>}</span>}
         </div>
       );
     case "chapter":
@@ -258,7 +258,7 @@ export function SearchBox() {
           <span class="fpill" key={t} style={{ "--c": `var(--t${pillSlot(t)})` }}>
             {pillLabel(t)}
             <button aria-label={`Remove ${pillLabel(t)}`} tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => removePill(t)}>
-              ×
+              <CloseIcon />
             </button>
           </span>
         ))}
@@ -267,7 +267,7 @@ export function SearchBox() {
           type="search"
           autocomplete="off"
           spellcheck={false}
-          placeholder={pills.length ? "" : "Search titles, artists, lyrics…  #fav #available"}
+          placeholder={pills.length ? "" : "Search titles, artists, lyrics"}
           value={text}
           aria-controls="results"
           onInput={(e) => onInput(e.target as HTMLInputElement)}

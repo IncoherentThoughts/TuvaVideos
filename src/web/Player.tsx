@@ -18,7 +18,7 @@ import { CopyPicker, copyLabel } from "./CopyPicker";
 import { StripFrame, Timeline, type ChapterMark } from "./Timeline";
 import { StudioBar, type StudioCtl } from "./Studio";
 import { StatePanel } from "./StatePanel";
-import { REPEAT_ICON } from "./ui";
+import { REPEAT_ICON, PauseIcon, PlayIcon } from "./ui";
 import { useUnseenShelved } from "./History";
 import { hasUnseenShelved } from "../shared/editHistory";
 import { AudioEngine } from "./audioEngine";
@@ -947,7 +947,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
             {osd && <div class="m">{osd.text}</div>}
             {showStatus && (
               <div class="s">
-                {paused ? "⏸" : "▶"} {fmtClock(time)} / {fmtClock(duration)}
+                {paused ? <PauseIcon /> : <PlayIcon />} {fmtClock(time)} / {fmtClock(duration)}
                 {rate !== 1 && `  ${rate.toFixed(2)}×`}
                 {vol.muted && "  muted"}
                 {paused && fps != null && `  #${frameNumber(time, fps)}`}
@@ -968,7 +968,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
               <h3>Preparing this Copy…</h3>
               <p>The browser cannot play the file as it is. A one-time conversion is running; playback starts when it lands.</p>
               <div class="pbar">
-                <i style={prep != null ? { width: `${Math.round(prep * 100)}%` } : { width: "35%" }} class={prep == null ? "ind" : ""} />
+                <i style={prep != null ? { "--p": prep } : undefined} class={prep == null ? "ind" : ""} />
               </div>
               <span class="mono dim">{prep != null ? `${Math.round(prep * 100)}%` : "working…"}</span>
             </div>

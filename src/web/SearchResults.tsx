@@ -15,7 +15,7 @@ import { searchEntries } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref, searchHref } from "./router";
-import { fmtDuration } from "./ui";
+import { fmtDuration, NoteIcon } from "./ui";
 import { useWindowed } from "./windowed";
 
 const LIMIT = 500;
@@ -94,7 +94,7 @@ function Why({ m, needle }: { m: ResultMatch; needle: string }) {
     const name = highlightHtml(s.name, needle) + (s.englishName ? ` <span class="en">· ${highlightHtml(s.englishName, needle)}</span>` : "");
     lines.push(
       <div class="why" key={`s${s.id}`}>
-        <span class="k">♪</span> <span dangerouslySetInnerHTML={{ __html: name }} />
+        <span class="k"><NoteIcon /></span> <span dangerouslySetInnerHTML={{ __html: name }} />
       </div>,
     );
     if (s.lyric)

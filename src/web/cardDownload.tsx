@@ -158,7 +158,7 @@ export function CardDownload({ video }: { video: Pick<VideoDto, "id" | "title"> 
       )}
       {(st.kind === "running" || st.kind === "merging" || st.kind === "adding") && (
         <div class="cdl-strip" aria-hidden="true">
-          <i style={{ width: `${st.kind === "running" ? Math.round((st.fraction ?? 0) * 100) : 100}%` }} />
+          <i style={{ "--p": st.kind === "running" ? Math.min(1, Math.max(0, st.fraction ?? 0)) : 1 }} />
         </div>
       )}
     </div>

@@ -101,7 +101,7 @@ export function Songs({ search }: { search: string }) {
   return (
     <div class="page">
       <div class="controls" role="toolbar" aria-label="Song filters">
-        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name…" label="Filter Songs by name" />
+        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name" label="Filter Songs by name" />
         <span class="sep" />
         <button class={`chip${st.lyricsOnly ? " on" : ""}`} aria-pressed={st.lyricsOnly} onClick={() => go({ lyricsOnly: !st.lyricsOnly })} title="Only Songs with lyrics in the archive">
           With lyrics

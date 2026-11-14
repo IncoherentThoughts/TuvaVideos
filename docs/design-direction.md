@@ -51,6 +51,10 @@ A pass to take the generic "AI-made" tells out of the UI while keeping Wall. Eac
 - **Now playing header**: 28px controls 8px apart; "Type:" and "Artists:" are labelled rows on one left edge. Source links and Delete share one footer; Delete stays red.
 - **Chapter cards**: all one height with the actions on the bottom edge. The linked Song is a gold chip with the Song mark (lyric lines with a note), so it does not read as a repeated title. Versions are one scrolling row of pills. Actions are 30px: "change" and its clear x are one split control, the red trash sits alone on the right. A repeat button next to the Favorite star is the Chapter loop (`L`) for that card: accent when on, shown on the timeline as an outlined span, apart from the A-B loop and not kept.
 
+## Edit history entries (2026-11, #223)
+
+The Edits page and a Video's History tab share one entry pattern. Writes sit under a **day heading**; an entry is three columns: the time (mono), what changed, then who and Undo. On the Edits page the Video title is the first line (medium weight, the only bright text) and the change lines under it are grey; in the History tab the change lines are the bright text. Entries are split by one hairline, with no side rail and no bullets. An ordinary edit carries no mark. Other actions (confirm, create, Repoint, share, …) are a 12px bordered word in the one radius; only delete and reject are coloured, and Suggested is dashed as on tags. An undone write is greyed and struck, with an "undone" mark. The Editor and Type filters are the list screens' joined control: a caption joined to its select.
+
 ## Parked
 
 - The Ledger variant's command-style filter prompt (`:fav`, `:type=concert`, `:artist=alash`, `:lyrics=…`) was liked. Revisit well after v1.

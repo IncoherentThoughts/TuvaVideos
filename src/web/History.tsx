@@ -19,6 +19,17 @@ const when = (iso: string) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+const asDate = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+/** The day an entry falls on, as its heading reads; an unreadable stamp is its own heading. */
+const dayLabel = (iso: string) => asDate(iso)?.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) ?? iso;
+const clock = (iso: string) => {
+  const d = asDate(iso);
+  return d ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` : "";
+};
+
 function change(e: HistoryEntry): string | null {
   if (!e.fieldName || (e.oldValue == null && e.newValue == null) || e.description.includes("→")) return null;
   if (e.fieldName === "song_id" || e.fieldName === "version_id" || e.fieldName === "artist_id") return null; // ids say nothing
@@ -28,8 +39,13 @@ function change(e: HistoryEntry): string | null {
   return `${before} → ${after}`;
 }
 
-/** A write's coloured action pills (#159): edit, create, soft delete, undo, Repoint, share, Elevate, expose, … */
+/**
+ * A write's action marks (#159, #223): create, soft delete, undo, Repoint, share, Elevate, expose, … An ordinary edit
+ * carries none: its line already says what changed.
+ */
 export function ActionPills({ pills }: { pills: ActionPill[] }) {
+  pills = pills.filter((p) => p.kind !== "edit");
+  if (!pills.length) return null;
   return (
     <span class="apills">
       {pills.map((p) => (
@@ -60,42 +76,67 @@ export function WriteList({ groups, showVideo, onChanged }: { groups: WriteGroup
     setBusy(null);
   };
   if (!groups.length) return <p class="nil hist-empty">No edits yet.</p>;
+  // Newest first, so a day's writes are one run: each run goes under its day, and an entry shows only its time.
+  const days: { label: string; groups: WriteGroup[] }[] = [];
+  for (const g of groups) {
+    const label = dayLabel(g.createdAt);
+    if (days.at(-1)?.label === label) days.at(-1)!.groups.push(g);
+    else days.push({ label, groups: [g] });
+  }
   return (
-    <ol class="hist">
-      {groups.map((g) => {
-        const block = undoBlock(g.entries);
-        const undone = g.entries.some((e) => e.reversedBy || reversed.has(e.id));
-        return (
-          <li key={g.key} class={undone ? "undone" : ""}>
-            <div class="hist-head">
-              <ActionPills pills={writePills(g.entries)} />
-              <span class="hist-when">{when(g.createdAt)}</span>
-              <span class="hist-who">{editorLabel(g.editorId, me)}</span>
-              {showVideo && g.videoId && (
-                <Link class="hist-video" href={playHref(g.videoId)}>
-                  {g.videoTitle ?? "(gone)"}
-                </Link>
-              )}
-              {undone && <span class="hist-tag">undone</span>}
-              {s.canEdit && !undone && !block && (
-                <button class="btn small hist-undo" disabled={busy != null} onClick={() => void undo(g)}>
-                  {busy === g.key ? "Undoing…" : "Undo"}
-                </button>
-              )}
-            </div>
-            <ul>
-              {g.entries.map((e) => (
-                <li key={e.id} title={e.eventType}>
-                  {e.description}
-                  {change(e) && <span class="dim"> · {change(e)}</span>}
+    <>
+      {days.map((day) => (
+        <section key={day.label} class="hist-group">
+          <h3 class="hist-day">{day.label}</h3>
+          <ol class="hist">
+            {day.groups.map((g) => {
+              const block = undoBlock(g.entries);
+              const undone = g.entries.some((e) => e.reversedBy || reversed.has(e.id));
+              return (
+                <li key={g.key} class={undone ? "undone" : ""}>
+                  <time class="hist-when" dateTime={g.createdAt} title={when(g.createdAt)}>
+                    {clock(g.createdAt)}
+                  </time>
+                  <div class="hist-main">
+                    {showVideo && g.videoId && (
+                      <Link class="hist-video" href={playHref(g.videoId)}>
+                        {g.videoTitle ?? "(gone)"}
+                      </Link>
+                    )}
+                    <ul class="hist-lines">
+                      {g.entries.map((e) => {
+                        const c = change(e);
+                        return (
+                          <li key={e.id} title={e.eventType}>
+                            {e.description}
+                            {c && <span class="hist-change"> · {c}</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {err?.key === g.key && (
+                      <p class="err" role="alert">
+                        {err.line}
+                      </p>
+                    )}
+                  </div>
+                  <div class="hist-aside">
+                    <ActionPills pills={writePills(g.entries)} />
+                    {undone && <span class="apill">undone</span>}
+                    <span class="hist-who">{editorLabel(g.editorId, me)}</span>
+                    {s.canEdit && !undone && !block && (
+                      <button class="btn small hist-undo" disabled={busy != null} onClick={() => void undo(g)}>
+                        {busy === g.key ? "Undoing…" : "Undo"}
+                      </button>
+                    )}
+                  </div>
                 </li>
-              ))}
-            </ul>
-            {err?.key === g.key && <p class="err">{err.line}</p>}
-          </li>
-        );
-      })}
-    </ol>
+              );
+            })}
+          </ol>
+        </section>
+      ))}
+    </>
   );
 }
 
@@ -165,10 +206,10 @@ export function EditsView() {
   return (
     <section class="page edits-view">
       <h2>Edits</h2>
-      <div class="edits-filters">
-        <label>
-          Editor{" "}
-          <select value={editor} onChange={(e) => setEditor((e.target as HTMLSelectElement).value)}>
+      <div class="controls edits-filters" role="toolbar" aria-label="Edit filters">
+        <label class="cgroup">
+          <span class="cap">Editor</span>
+          <select class="chip" value={editor} onChange={(e) => setEditor((e.target as HTMLSelectElement).value)}>
             <option value="">Everyone</option>
             {(page?.editors ?? []).map((id) => (
               <option key={id} value={id}>
@@ -177,9 +218,9 @@ export function EditsView() {
             ))}
           </select>
         </label>
-        <label>
-          Type{" "}
-          <select value={type} onChange={(e) => setType((e.target as HTMLSelectElement).value)}>
+        <label class="cgroup">
+          <span class="cap">Type</span>
+          <select class="chip" value={type} onChange={(e) => setType((e.target as HTMLSelectElement).value)}>
             {EVENT_FILTERS.map((f) => (
               <option key={f.value} value={f.value}>
                 {f.label}
@@ -188,10 +229,14 @@ export function EditsView() {
           </select>
         </label>
       </div>
-      {err && <p class="err">{err}</p>}
+      {err && (
+        <p class="err" role="alert">
+          {err}
+        </p>
+      )}
       {page && <WriteList groups={groupWrites(entries)} showVideo onChanged={load} />}
       {next && (
-        <button class="btn small" onClick={() => void query(next).then((p) => setMore(p.entries))}>
+        <button class="btn edits-more" onClick={() => void query(next).then((p) => setMore(p.entries))}>
           Older edits
         </button>
       )}

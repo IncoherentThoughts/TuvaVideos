@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { AudioEngine } from "./audioEngine";
 import { HP_MAX, HP_MIN, LP_MAX, LP_MIN, NOTCH_DEPTH_MAX, NOTCH_HZ_MAX, NOTCH_HZ_MIN, NOTCH_MAX, NOTCH_Q_MAX, NOTCH_Q_MIN, fmtHz, hzToPos, posToHz, type AudioState, type Notch } from "../shared/audio";
+import { CloseIcon } from "./ui";
 
 const SPEC_LO = NOTCH_HZ_MIN, SPEC_HI = NOTCH_HZ_MAX;
 const xOf = (hz: number, w: number) => hzToPos(hz, SPEC_LO, SPEC_HI) * w;
@@ -134,7 +135,7 @@ export function CleanupSection({ vid, state: c, onChange }: Props) {
           <div class="row">
             <b class="mono">notch {i + 1}</b>
             <label class="au-mini" title="also cut 2× and 3× (hum has harmonics)"><input type="checkbox" checked={n.harmonics} onChange={(e) => setNotch(i, { harmonics: e.currentTarget.checked })} /> harmonics</label>
-            <button class="ib" aria-label="Remove notch" onClick={() => dropNotch(i)}>×</button>
+            <button class="ib" aria-label="Remove notch" onClick={() => dropNotch(i)}><CloseIcon /></button>
           </div>
           <label class="au-row">
             <span>Freq</span>

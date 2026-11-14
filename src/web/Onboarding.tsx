@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { OnboardingDto } from "../shared/types";
 import { api, apiError, reloadAll } from "./data";
+import { CloseIcon } from "./ui";
 
 let current: OnboardingDto | null = null;
 const subs = new Set<(o: OnboardingDto) => void>();
@@ -123,7 +124,7 @@ export function NoRootBar() {
         </button>
       )}
       <button class="root-bar-x" aria-label="Dismiss" title="Dismiss on this machine" onClick={dismiss}>
-        ×
+        <CloseIcon />
       </button>
     </div>
   );

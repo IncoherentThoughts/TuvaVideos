@@ -141,7 +141,7 @@ export function Favorites({ search }: { search: string }) {
             On this machine
           </button>
         )}
-        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by title…" label="Filter Favorites by title" />
+        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by title" label="Filter Favorites by title" />
         <span class="sep" />
         <SortControls sorts={FAV_SORTS} labels={SORT_LABEL} sort={st.sort} dir={st.dir} onSort={(sort) => go({ sort, dir: naturalDir(sort) })} onDir={(dir) => go({ dir })} />
         <span class="cend">

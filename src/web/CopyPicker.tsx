@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { bestCopy } from "../shared/copies";
 import type { CopyDto } from "../shared/types";
-import { DriveIcon, LaptopIcon, resolutionLabel } from "./ui";
+import { DriveIcon, LaptopIcon, resolutionLabel, ChevronDownIcon } from "./ui";
 
 export const copyLabel = (c: Pick<CopyDto, "container" | "height">) => [c.container, resolutionLabel(c.height)].filter(Boolean).join(" · ") || "Copy";
 
@@ -86,7 +86,7 @@ export function CopyPicker({ copies, playingId, onPick, refocus }: Props) {
           <span class="mono">no Copy</span>
         )}
         {copies.length > 1 && <span class="dim mono">{copies.length}</span>}
-        <span class="caret">▾</span>
+        <span class="caret"><ChevronDownIcon /></span>
       </button>
       {open && (
         <div class="cmenu" role="menu">

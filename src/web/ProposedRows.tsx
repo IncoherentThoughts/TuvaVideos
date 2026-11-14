@@ -11,7 +11,7 @@ import type { SearchRow } from "../shared/types";
 import { api, apiError } from "./data";
 import { Picker, rowsOf } from "./HeaderEdit";
 import { useSession } from "./session";
-import { ProposedMark } from "./ui";
+import { ProposedMark, CheckIcon } from "./ui";
 import { readRow, repointRow, writeRow, WriteLinkError } from "./writeLink";
 import {
   candidateRows, CONFIRM_PUBLIC_LINE, duplicatePrompt, inUseLine, rowRoles, TABLE_WORD, useCount,
@@ -164,7 +164,7 @@ function PickBody({ p }: { p: Extract<Prompt, { kind: "pick" }> }) {
         )
       ) : p.table === "song" ? (
         <Picker<Extract<SearchRow, { kind: "song" }>>
-          placeholder="Search Songs…"
+          placeholder="Search Songs"
           search={async (q) => (await rowsOf("song")(q)).filter((r) => r.id !== p.exclude)}
           row={(r) => (
             <>
@@ -177,7 +177,7 @@ function PickBody({ p }: { p: Extract<Prompt, { kind: "pick" }> }) {
         />
       ) : (
         <Picker<Extract<SearchRow, { kind: "artist" }>>
-          placeholder="Search Artists…"
+          placeholder="Search Artists"
           search={async (q) => (await rowsOf("artist")(q)).filter((r) => r.id !== p.exclude)}
           row={(r) => (
             <>
@@ -403,7 +403,7 @@ export function RowActions({ table, id, onChanged, compact }: { table: RowTable;
       )}
       {canExpose && (
         <button class={`btn small${info.exposed ? " on" : ""}`} disabled={dis} aria-pressed={info.exposed} title={info.exposed ? "Members can read this hidden row; click to stop" : "Let Members read this hidden row"} onClick={() => void run(() => exposureFlow(table as "song" | "artist", info))}>
-          {info.exposed ? "Exposed ✓" : "Expose"}
+          {info.exposed ? <>Exposed <CheckIcon /></> : "Expose"}
         </button>
       )}
       {err && <span class="edit-err" role="alert">{err}</span>}

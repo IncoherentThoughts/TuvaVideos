@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { TvStateDto } from "../shared/types";
 import { api, apiError } from "./data";
+import { ChevronDownIcon } from "./ui";
 
 /** The indicator's text: one of the four states of the spec's table. */
 export function tvLabel(s: TvStateDto): string {
@@ -104,7 +105,7 @@ export function TvButton() {
       )}
       {on && first && (
         <button class="btn small" aria-label="TV menu" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
-          ▾
+          <ChevronDownIcon />
         </button>
       )}
       {on && menu && (

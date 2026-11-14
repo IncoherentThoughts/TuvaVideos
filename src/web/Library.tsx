@@ -11,7 +11,7 @@ import { libraryFiltered, libraryStart } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
-import { AvailabilityIcon, FavoriteBadge, NotHereMark, Poster, SpecTags, Tags, UnsharedMark } from "./ui";
+import { AvailabilityIcon, FavoriteBadge, NotHereMark, Poster, SpecTags, Tags, UnsharedMark, CloseIcon, StarIcon } from "./ui";
 import { isNotHere, sharingMark, showOnThisMachineChip } from "../shared/presence";
 import { useWindowed } from "./windowed";
 import { CardDownload } from "./cardDownload";
@@ -115,13 +115,13 @@ export function Library({ search }: { search: string }) {
           </button>
         )}
         <button class={`chip${st.fav ? " on" : ""}`} aria-pressed={st.fav} onClick={() => go({ fav: !st.fav })}>
-          ★ Favorites
+          <StarIcon /> Favorites
         </button>
         {st.artist && (
           <span class="chip on artist">
             Artist: {st.artist}
             <button aria-label="Clear the Artist filter" onClick={() => go({ artist: null })}>
-              ×
+              <CloseIcon />
             </button>
           </span>
         )}
@@ -130,7 +130,7 @@ export function Library({ search }: { search: string }) {
             Song: {song ? song.name : song === null ? "unknown song" : "…"}
             {song?.proposed && <> · proposed</>}
             <button aria-label="Clear the Song filter" onClick={() => go({ song: null })}>
-              ×
+              <CloseIcon />
             </button>
           </span>
         )}

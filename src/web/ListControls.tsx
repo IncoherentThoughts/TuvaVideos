@@ -1,5 +1,6 @@
 // The filter bar pieces the list screens share: a name filter box, the sort select with its direction toggle.
 import type { Dir } from "../shared/listView";
+import { CloseIcon } from "./ui";
 
 export function NameFilter({ value, onChange, placeholder, label }: { value: string; onChange: (q: string) => void; placeholder: string; label: string }) {
   return (
@@ -18,7 +19,7 @@ export function NameFilter({ value, onChange, placeholder, label }: { value: str
       />
       {value && (
         <button class="qclear" aria-label="Clear the name filter" onClick={() => onChange("")}>
-          ×
+          <CloseIcon />
         </button>
       )}
     </span>

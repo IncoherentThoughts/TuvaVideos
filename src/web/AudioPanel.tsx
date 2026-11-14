@@ -12,6 +12,7 @@ import type { CopyDto } from "../shared/types";
 import { AudioEngine, type Levels } from "./audioEngine";
 import { analyzeFull, analyzeSampled } from "./audioAnalyze";
 import { CleanupSection } from "./CleanupSection";
+import { CloseIcon } from "./ui";
 
 interface Props {
   vid: { current: HTMLVideoElement | null };
@@ -177,7 +178,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <span class="ttl">Audio</span>
           {auto.phase === "busy" ? (
             <button class="btn small wand" onClick={cancelAuto} title="Stop">
-              <WandIcon /> {auto.label} <span class="dim">×</span>
+              <WandIcon /> {auto.label} <CloseIcon />
             </button>
           ) : (
             <button class="btn small wand" disabled={auto.phase === "ask"} onClick={startAuto} title="Auto: measure the recording, then set channels, clean up, EQ and level to suit it">
@@ -185,13 +186,13 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
             </button>
           )}
           {!isDefaultAudio(s) && <button class="btn small" onClick={onReset} title="Back to the sound as recorded">Reset</button>}
-          <button class="ib" aria-label="Close audio" title="Close (a while the Player has focus)" onClick={onClose}>×</button>
+          <button class="ib" aria-label="Close audio" title="Close (a while the Player has focus)" onClick={onClose}><CloseIcon /></button>
         </div>
       </div>
       <div class="body">
         {auto.phase === "ask" && (
           <div class="au-report stpanel au-ask">
-            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">large Copy</span><button class="ib" aria-label="Cancel" onClick={cancelAuto}>×</button></div>
+            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">large Copy</span><button class="ib" aria-label="Cancel" onClick={cancelAuto}><CloseIcon /></button></div>
             <p>This Copy is <span class="n">{fmtBytes(auto.copy.size)}</span>{auto.copy.durationS ? <> · <span class="n">{Math.round(auto.copy.durationS / 60)}</span><span class="u"> min</span></> : null}. Decoding the whole file reads all of it, which can take a while.</p>
             <div class="au-chips">
               <button class="tag save" onClick={() => void runAuto("sampled")}>Sample 5 places <span class="dim">~8 s</span></button>
@@ -201,7 +202,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
         )}
         {autoReport && (
           <div class="au-report stpanel">
-            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">{autoReport.length} change{autoReport.length === 1 ? "" : "s"}</span><button class="ib" aria-label="Dismiss" onClick={() => setAutoReport(null)}>×</button></div>
+            <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">{autoReport.length} change{autoReport.length === 1 ? "" : "s"}</span><button class="ib" aria-label="Dismiss" onClick={() => setAutoReport(null)}><CloseIcon /></button></div>
             <div class="kv">
               {autoReport.map((r) => (
                 <>
@@ -247,7 +248,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           {presets.map((p) => (
             <span key={p.name} class={`tag${preset?.name === p.name ? " on" : ""}${p.builtIn ? "" : " custom"}`} title={p.blurb ?? `custom: ${p.eq.map(signed).join(" ")}`}>
               <button onClick={() => onChange({ eq: [...p.eq] })}>{p.name}</button>
-              {!p.builtIn && <button class="x" aria-label={`Delete preset ${p.name}`} title="Delete this preset" onClick={() => void onDeletePreset(p.name)}>×</button>}
+              {!p.builtIn && <button class="x" aria-label={`Delete preset ${p.name}`} title="Delete this preset" onClick={() => void onDeletePreset(p.name)}><CloseIcon /></button>}
             </span>
           ))}
           {!naming && (

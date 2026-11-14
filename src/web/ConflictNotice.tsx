@@ -7,6 +7,7 @@ import { useSession } from "./session";
 import { reloadAll } from "./data";
 import { applyMine, keepTheirs, useConflict, writeLink } from "./writeLink";
 import { conflictLines } from "./writeOps";
+import { CloseIcon } from "./ui";
 
 export function ConflictNotice() {
   const c = useConflict();
@@ -107,7 +108,7 @@ export function DeletedMatchNotice() {
         {err && <p class="err">{err}</p>}
       </div>
       <button class="root-bar-x" aria-label="Dismiss" title="Dismiss" onClick={() => ((dismissed = true), bump((n) => n + 1))}>
-        ×
+        <CloseIcon />
       </button>
     </div>
   );

@@ -145,7 +145,7 @@ export function Artists({ search }: { search: string }) {
   return (
     <div class="page">
       <div class="controls" role="toolbar" aria-label="Artist filters">
-        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name…" label="Filter Artists by name" />
+        <NameFilter value={st.q} onChange={(q) => go({ q })} placeholder="Filter by name" label="Filter Artists by name" />
         <span class="sep" />
         <span class="cgroup" role="group">
           {ARTIST_KINDS.map((k) => (

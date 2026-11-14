@@ -865,21 +865,36 @@ dialog.rowprompt .picker { position: relative; }
 .stp-tabs button { display: inline-flex; align-items: center; white-space: nowrap; background: none; border: 1px solid transparent; border-radius: var(--r); padding: 1px 8px; color: var(--fg3); font: inherit; font-weight: 500; cursor: pointer; }
 .stp-tabs button.on { color: var(--fg); border-color: var(--line); background: var(--bg3); }
 .vhist { font-family: var(--font-ui); max-height: 420px; overflow: auto; }
-.hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.hist > li { border-left: 2px solid var(--line); padding: 2px 0 2px 10px; }
-.hist > li.undone { opacity: .6; }
-.hist ul { margin: 2px 0 0; padding: 0 0 0 16px; font-size: var(--fs-sm); }
-.hist-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: var(--fs-sm); }
-.hist-when { color: var(--fg3); font-family: var(--font-mono); }
-.hist-who { color: var(--t5); }
-.hist-video { color: var(--fg); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40ch; }
-.hist-tag { font-size: var(--fs-xs); padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-pill); color: var(--fg3); }
-.hist-undo { margin-left: auto; }
-.hist-empty { margin: 6px 0; }
-.shelf-mark { display: inline-block; margin: 0 0 8px; padding: 1px 8px; border-radius: var(--r-pill); border: 1px dashed var(--t3); color: var(--t3); background: none; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+/* Entries (#223): grouped under a day heading, one hairline between entries, no rail. Each is time | what changed |
+   who and Undo. Sizes are rem so they hold inside the State panel's smaller mono box. */
+.hist-day { margin: 20px 0 4px; font-size: .875rem; font-weight: 500; color: var(--fg2); }
+.hist-day:first-child { margin-top: 0; }
+.hist { list-style: none; margin: 0; padding: 0; font-size: .875rem; }
+.hist > li { display: grid; grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 0 12px; align-items: start; padding: 8px 0; border-top: 1px solid var(--line); }
+.hist-when { color: var(--fg3); font-family: var(--font-mono); font-variant-numeric: tabular-nums; line-height: 1.4; }
+.hist-main { min-width: 0; }
+.hist-video { display: block; color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }
+.hist-video:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--fg3); }
+.hist-lines { list-style: none; margin: 0; padding: 0; color: var(--fg); overflow-wrap: anywhere; }
+.hist-video + .hist-lines { color: var(--fg2); }
+.hist-change { color: var(--fg2); }
+.hist-video + .hist-lines .hist-change { color: var(--fg3); }
+.hist-aside { display: flex; align-items: center; gap: 8px; min-height: 28px; margin: -4px 0; white-space: nowrap; }
+.hist-who { color: var(--fg3); }
+.hist-undo.btn.small { height: 28px; padding: 0 8px; background: none; }
+.hist-undo.btn.small:hover:not(:disabled) { background: var(--bg3); }
+.hist > li.undone :is(.hist-video, .hist-lines, .hist-change) { color: var(--fg3); }
+.hist > li.undone .hist-lines { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--fg3) 60%, transparent); }
+.hist .err { margin-top: 4px; color: var(--no); }
+.hist-empty { margin: 8px 0; }
+.shelf-mark { display: inline-flex; align-items: center; height: 28px; margin: 0 0 12px; padding: 0 8px; border-radius: var(--r); border: 1px dashed color-mix(in srgb, var(--t3) 60%, var(--line)); color: var(--t3); background: none; font: inherit; font-size: .875rem; cursor: pointer; }
+.shelf-mark:hover { background: color-mix(in srgb, var(--t3) 10%, transparent); }
 .edits-view { max-width: 900px; margin: 0 auto; padding: 16px; }
-.edits-view h2 { margin: 0 0 10px; }
-.edits-filters { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; font-size: var(--fs-sm); }
+.edits-view h2 { margin: 0 0 12px; }
+/* The Edits filters: a caption joined to its select, the same joined control as the list screens' filter bars. */
+.edits-filters .cap { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: calc(var(--r) * .6) 0 0 calc(var(--r) * .6); color: var(--fg3); font-size: var(--fs-sm); }
+.edits-filters select.chip { font-size: var(--fs-sm); color: var(--fg); }
+.edits-more { height: 32px; padding: 0 12px; margin-top: 16px; }
 .undo-toast { display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); }
 .undo-toast.bad span { color: var(--t1); }
 dialog.shelf { width: min(640px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; }
@@ -926,27 +941,17 @@ dialog.shelf .sd-row .btn { margin-left: auto; }
    card corners are §7.1's Not on this machine and #158's Unshared). Palette tokens only, so a theme that redefines
    --t1..--t8 recolours them. */
 .shelf-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--t3); vertical-align: middle; margin-inline: 0 6px; }
-.shelf-mark.unseen { border-style: solid; background: color-mix(in srgb, var(--t3) 16%, transparent); font-weight: 500; }
+.shelf-mark.unseen { border-style: solid; border-color: color-mix(in srgb, var(--t3) 55%, transparent); background: color-mix(in srgb, var(--t3) 14%, transparent); font-weight: 500; }
 .cbtn.statebtn.shelf-new { border-color: color-mix(in srgb, var(--t3) 70%, var(--line)); }
 .cbtn.statebtn .shelf-dot { margin: 0; }
 .stp-tabs button.shelf-new { color: var(--t3); background: color-mix(in srgb, var(--t3) 14%, transparent); border-color: color-mix(in srgb, var(--t3) 55%, transparent); }
 .card .ttl .shelf-dot { margin-right: 4px; }
 .apills { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.apill { --c: var(--fg2); display: inline-flex; align-items: center; font-size: var(--fs-2xs); font-weight: 500; line-height: 1; padding: .12em .6em .32em; border-radius: var(--r-pill); white-space: nowrap; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
-/* Extra bottom padding lifts lowercase labels ("new") to the optical centre; text-box trim does not apply to a flex box. */
-.apill.edit { --c: var(--t6); }
-.apill.create { --c: var(--t4); }
-.apill.delete { --c: var(--t1); }
-.apill.restore { --c: var(--t5); }
-.apill.undo { --c: var(--t7); }
-.apill.repoint { --c: var(--t2); }
-.apill.share { --c: var(--t3); }
-.apill.elevate { --c: var(--accent); }
-.apill.expose { --c: var(--t8); }
-.apill.suggest { --c: var(--fg3); border-style: dashed; }
-.apill.confirm { --c: var(--ok); }
-.apill.reject { --c: var(--no); }
-.apill.migrate { --c: var(--fg2); }
+/* Action marks (#223): plain bordered text. An ordinary edit carries no mark; colour is kept for a delete or a reject,
+   and a dashed border means Suggested as it does on tags. */
+.apill { --c: var(--fg2); display: inline-flex; align-items: center; height: 20px; padding: 0 6px; font-size: .75rem; line-height: 1; border-radius: var(--r); white-space: nowrap; color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 35%, var(--line)); }
+.apill:is(.delete, .reject) { --c: var(--no); }
+.apill.suggest { border-style: dashed; }
 .apill.new { --c: var(--t3); }
 
 /* === download dialog (#203) === */

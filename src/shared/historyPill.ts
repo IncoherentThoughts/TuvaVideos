@@ -1,6 +1,6 @@
-// The coloured action pills on history entries (ticket #159): the Video's History tab and the Edits view both label
-// each write with what it did, one pill per distinct action. Pure; the pill is drawn by `ActionPills` in
-// src/web/History.tsx and coloured by `.apill.<kind>` in styles.css (palette tokens only).
+// The action marks on history entries (tickets #159, #223): the Video's History tab and the Edits view both label
+// each write with what it did, one mark per distinct action. Pure; the mark is drawn by `ActionPills` in
+// src/web/History.tsx (which leaves out the plain `edit`) and styled by `.apill` in styles.css.
 
 /** What a history row did. `undo` wins over everything else: a row that reverses another is an undo first. */
 export type ActionKind =

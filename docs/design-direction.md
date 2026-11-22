@@ -55,6 +55,10 @@ A pass to take the generic "AI-made" tells out of the UI while keeping Wall. Eac
 
 The Edits page and a Video's History tab share one entry pattern. Writes sit under a **day heading**; an entry is three columns: the time (mono), what changed, then who and Undo. On the Edits page the Video title is the first line (medium weight, the only bright text) and the change lines under it are grey; in the History tab the change lines are the bright text. Entries are split by one hairline, with no side rail and no bullets. An ordinary edit carries no mark. Other actions (confirm, create, Repoint, share, …) are a 12px bordered word in the one radius; only delete and reject are coloured, and Suggested is dashed as on tags. An undone write is greyed and struck, with an "undone" mark. The Editor and Type filters are the list screens' joined control: a caption joined to its select.
 
+## TV UI (2026-11)
+
+`src/tv/styles.css` follows the audit and polish passes at TV size (28 px base): the same greys and ochre accent, neutral focus (a bright `--fg` ring on cards, a bright fill on tiles), one radius (5 px, `--r-sm` 3, `--r-lg` 10), six `--fs-*` sizes (18 / 22 / 28 / 34 / 44 / 64), mono for times only, sentence-case search headings, the browser's Type colours, the Song tag in `--t7` with the Song mark, the outline Favorite star in its tinted square, SVG marks instead of ⤮ › ♪, the grid's chips as two joined controls with the active one in the accent tint, progress moved by transform. The filled menu tiles stay (the Samsung look, tv-spec §5); the header's buttons are ghost buttons.
+
 ## Parked
 
 - The Ledger variant's command-style filter prompt (`:fav`, `:type=concert`, `:artist=alash`, `:lyrics=…`) was liked. Revisit well after v1.

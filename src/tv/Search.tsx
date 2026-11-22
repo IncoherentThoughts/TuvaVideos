@@ -11,6 +11,7 @@ import { useKeyHandler } from "./input"
 import { LAYERS, layerKeys, pressKey, typeChar, KEY_COLUMNS, type KbKey, type KbState } from "./keyboard"
 import { playingFromRows, resultRows, startPlaylistOf, type ResultRow } from "./searchRows"
 import { useScreen, type Nav } from "./screen"
+import { SHUFFLE, SongMark } from "./ui"
 
 const DEBOUNCE_MS = 220
 
@@ -235,7 +236,10 @@ function ResultRowView({ row, needle, open }: { row: ResultRow; needle: string; 
     case "shuffle":
       return (
         <div {...props} class="rr shuffle">
-          <div class="t">⤮ Shuffle these results</div>
+          <div class="t">
+            {SHUFFLE}
+            <span>Shuffle these results</span>
+          </div>
         </div>
       )
     case "song":
@@ -263,13 +267,18 @@ function ResultRowView({ row, needle, open }: { row: ResultRow; needle: string; 
           <div class="s">
             {row.chapterTitle != null ? (
               <>
-                <span class="k">› {fmtDuration(row.startS)}</span> <span dangerouslySetInnerHTML={html(row.chapterTitle, needle)} />
+                <span class="k mono">{fmtDuration(row.startS)}</span> <span dangerouslySetInnerHTML={html(row.chapterTitle, needle)} />
               </>
             ) : (
               <>
                 <span class="k">{row.type}</span>
                 {row.durationS != null ? ` · ${fmtDuration(row.durationS)}` : ""}
-                {row.songs.length ? ` · ♪ ${row.songs.join(", ")}` : ""}
+                {row.songs.length > 0 && (
+                  <>
+                    {" · "}
+                    <SongMark /> {row.songs.join(", ")}
+                  </>
+                )}
               </>
             )}
           </div>

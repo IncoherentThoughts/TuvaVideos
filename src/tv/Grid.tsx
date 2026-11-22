@@ -6,7 +6,7 @@ import { api } from "./data"
 import { findByKey, focusEl, itemsIn, keyOf, moveFocus, zoneOf } from "./focus"
 import { COLS, ROW_H, pageTarget, rowOf, scrollForRow, windowRange, windowRows } from "./gridMath"
 import { useKeyHandler } from "./input"
-import { CHIPS, chipLabel, cycleChip } from "./libchips"
+import { CHIP_GROUPS, chipLabel, cycleChip } from "./libchips"
 import { openTile } from "./open"
 import { gridTiles, gridTitle, isVideoGrid, shuffleStart, type GridSpec, type SongVideo, type Tile } from "./rails"
 import { Header, useScreen, type Nav } from "./screen"
@@ -162,10 +162,15 @@ export function Grid({ spec, nav, active }: { spec: GridSpec; nav: Nav; active: 
       <Header title={gridTitle(spec)} count={count} nav={nav} />
       {spec.kind === "library" && (
         <div class="chips" data-zone="chips">
-          {CHIPS.map((id) => {
-            const c = chipLabel(id, nav.lib)
-            return <Chip key={id} itemKey={`chip-${id}`} zone="chips" name={c.name} value={c.value} on={c.on} onPress={() => nav.setLib(cycleChip(id, nav.lib))} />
-          })}
+          {CHIP_GROUPS.map((group) => (
+            // the filters are one joined control, sort and its order another (the browser's filter bar)
+            <span key={group.join()} class="cgroup">
+              {group.map((id) => {
+                const c = chipLabel(id, nav.lib)
+                return <Chip key={id} itemKey={`chip-${id}`} zone="chips" name={c.name} value={c.value} on={c.on} onPress={() => nav.setLib(cycleChip(id, nav.lib))} />
+              })}
+            </span>
+          ))}
         </div>
       )}
       <div class="gridscroll" ref={scroller}>

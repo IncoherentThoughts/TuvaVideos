@@ -7,6 +7,7 @@ import { url } from "./data"
 import { Glow } from "./glow"
 import { LYR_SIZE, LYR_SIZE_MIN, clampPage, fitLyrics, pageLabel, paginate, type LyricsView } from "./lyrics"
 import { listOffset } from "./osd"
+import { SongMark } from "./ui"
 
 export interface LyricsCtl {
   page(dir: 1 | -1): void
@@ -145,6 +146,8 @@ export interface ListRow {
   /** Left column (time, or the Root). */
   lead: string
   title: string
+  /** The title carries the Song mark (a Chapter linked to a Song). */
+  song?: boolean
   /** After the title: a note, or the dashed "suggested" mark, or "via remux". */
   marks: { text: string; cls: string }[]
   current: boolean
@@ -166,7 +169,10 @@ export function PlList({ title, rows, focus }: { title: string; rows: ListRow[];
           {rows.map((r) => (
             <div key={r.key} class={`cr${r.current ? " cur" : ""}${r.focused ? " f" : ""}${r.dim ? " dim" : ""}`}>
               <span class="mono">{r.lead}</span>
-              <span class="ct">{r.title}</span>
+              <span class="ct">
+                <span>{r.title}</span>
+                {r.song && <SongMark />}
+              </span>
               {r.marks.map((m) => (
                 <span key={m.text} class={m.cls}>
                   {m.text}

@@ -28,6 +28,7 @@ import { LyricsColumn, PlList, type ListRow, type LyricsCtl } from "./PlayerPart
 import { activePlaylist, buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen, setActivePlaylist } from "./playlistOps"
 import { libraryOrder } from "./rails"
 import type { Nav } from "./screen"
+import { REPEAT, SHUFFLE, SongMark } from "./ui"
 import { REW_FF_S, heldSeekStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "./seekStep"
 import { focusableTags, infoTexts, playingFromText } from "./tags"
 import { BUTTONS, initialZone, reduceZone, type Fx, type ZoneCtx, type ZoneState } from "./zones"
@@ -762,7 +763,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const chapterRows: ListRow[] = chapters.map((c, i) => ({
     key: c.id,
     lead: fmtClock(c.startS),
-    title: `${c.title || "untitled"}${c.songId ? "  ♪" : ""}`,
+    title: c.title || "untitled",
+    song: !!c.songId,
     marks: c.suggested ? [{ text: "suggested", cls: "sug" }] : [],
     current: i === chIdx,
     focused: z === "chapters" && i === zs.row,
@@ -801,10 +803,17 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
             {tags.map((tg, i) => (
               <span
                 key={tg.label}
-                class={`tag${tg.kind === "type" ? ` type-${tg.type}` : ""}${tg.kind !== "type" && tg.suggested ? " sug" : ""}${z === "tags" && zs.tag === i ? " f" : ""}`}
-                style={tg.kind === "artist" ? { "--c": `var(--t${artistSlot(tg.name)})` } : tg.kind === "song" ? { "--c": "var(--accent)" } : undefined}
+                class={`tag${tg.kind === "type" ? ` type-${tg.type}` : tg.kind === "song" ? " song" : ""}${tg.kind !== "type" && tg.suggested ? " sug" : ""}${z === "tags" && zs.tag === i ? " f" : ""}`}
+                style={tg.kind === "artist" ? { "--c": `var(--t${artistSlot(tg.name)})` } : undefined}
               >
-                {tg.label}
+                {tg.kind === "song" ? (
+                  <>
+                    <SongMark />
+                    {tg.name}
+                  </>
+                ) : (
+                  tg.label
+                )}
               </span>
             ))}
             {tagLine.map((x) => (
@@ -841,7 +850,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
                 <i key={c.id} class="tick" style={{ left: `${pct(c.startS, duration)}%` }} />
               ))}
               {resumeMark != null && <i class="rmark" style={{ left: `${pct(resumeMark, duration)}%` }} title="Resume" />}
-              <i class="fill" style={{ width: `${pct(t, duration)}%` }} />
+              <i class="fill" style={{ "--p": pct(t, duration) / 100 }} />
             </div>
             <span class="mono">{fmtClock(duration)}</span>
           </div>
@@ -850,6 +859,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
               const face = b === "shuffle" ? faces.shuffle : b === "repeat" ? faces.repeat : { text: "Copy", on: false, disabled: false }
               return (
                 <span key={b} class={`pbtn${z === "buttons" && zs.button === i ? " f" : ""}${face.on ? " lit" : ""}${face.disabled ? " off" : ""}`}>
+                  {b === "shuffle" ? SHUFFLE : b === "repeat" ? REPEAT : null}
                   {b === "copy" ? `Copy${copy ? ` · ${[copy.container, copy.height ? `${copy.height}p` : ""].filter(Boolean).join(" ")}` : ""}` : face.text}
                 </span>
               )

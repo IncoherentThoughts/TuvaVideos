@@ -5,6 +5,8 @@ import { SORTS, defaultDir, type LibraryState } from "../shared/libraryView"
 
 export type ChipId = "type" | "fav" | "sort" | "dir"
 export const CHIPS: readonly ChipId[] = ["type", "fav", "sort", "dir"]
+/** The grid's chip row in its joined controls: the filters, then sort and its order. */
+export const CHIP_GROUPS: readonly (readonly ChipId[])[] = [["type", "fav"], ["sort", "dir"]]
 
 export const SORT_LABEL: Record<(typeof SORTS)[number], string> = { views: "Most watched", added: "Date added", title: "Title", duration: "Duration", played: "Last played" }
 

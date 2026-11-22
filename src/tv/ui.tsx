@@ -34,11 +34,19 @@ export function StripFrame({ video, t }: { video: VideoDto; t: number }) {
   )
 }
 
-export const STAR = (
-  <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
-    <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z" />
+// The browser's marks (src/web/ui.tsx, Chapters.tsx, Player.tsx), drawn as SVG instead of text glyphs; CSS sizes them.
+const ico = (d: string) => (
+  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d={d} />
   </svg>
 )
+/** The Favorite: an outline star with rounded joins (inside its tinted square). */
+export const STAR = ico("M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z")
+export const SHUFFLE = ico("M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5")
+export const REPEAT = ico("m17 2 4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3")
+export const CHEVRON_RIGHT = ico("M9 6l6 6-6 6")
+/** The Song mark: lyric lines with a note, wherever a linked Song shows. */
+export const SongMark = () => <span class="songic">{ico("M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3")}</span>
 
 export function Tags({ video }: { video: Pick<VideoDto, "type" | "artists" | "song" | "songSuggested"> }) {
   // Suggested Artists show too, dashed, as on the browser's card (tv-spec 5.1: a card is the browser's card)
@@ -75,7 +83,7 @@ function Card({ tileKey, zone, onOpen, class: cls, children }: CardProps) {
 
 function ResumeLine({ video }: { video: Pick<VideoDto, "resumeS" | "durationS"> }) {
   if (!video.resumeS || !video.durationS) return null
-  return <i class="prog" style={{ width: `${Math.min(100, (video.resumeS / video.durationS) * 100)}%` }} />
+  return <i class="prog" style={{ "--p": Math.min(1, video.resumeS / video.durationS) }} />
 }
 
 export function VideoCard({ tileKey, zone, video, onOpen }: { tileKey: string; zone: string; video: VideoDto; onOpen: () => void }) {
@@ -126,7 +134,11 @@ export function SongCard({ tileKey, zone, song, onOpen }: { tileKey: string; zon
   return (
     <Card tileKey={tileKey} zone={zone} onOpen={onOpen} class="song">
       <Poster video={{ id: song.posterVideoId ?? song.id, thumbnail: null, available: true }} posterOf={song.posterVideoId ?? undefined}>
-        {song.versionCount > 0 && <span class="lyr">lyrics</span>}
+        {song.versionCount > 0 && (
+          <span class="lyr">
+            <SongMark /> lyrics
+          </span>
+        )}
       </Poster>
       <div class="ttl">
         {song.name}
@@ -144,7 +156,7 @@ export function ShuffleCard({ zone, count, onOpen }: { zone: string; count: numb
   return (
     <Card tileKey="shuffle" zone={zone} onOpen={onOpen} class="more shuffle">
       <div class="po">
-        <span class="glyph">⤮</span>
+        {SHUFFLE}
       </div>
       <div class="ttl">Shuffle</div>
       <div class="sub">
@@ -158,7 +170,7 @@ export function SeeAllCard({ tileKey, zone, label, onOpen }: { tileKey: string; 
   return (
     <Card tileKey={tileKey} zone={zone} onOpen={onOpen} class="more">
       <div class="po">
-        <span class="glyph">›</span>
+        {CHEVRON_RIGHT}
       </div>
       <div class="ttl">{label}</div>
     </Card>

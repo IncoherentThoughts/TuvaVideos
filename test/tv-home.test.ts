@@ -432,7 +432,7 @@ describe("TV bundle", () => {
     expect(js).not.toContain("TV UI build failed")
     expect(js).toContain("tuvaTv") // reads the shell base
     const css = await b.serve("/tv.css").text()
-    expect(css).toContain("--accent: #d97757")
+    expect(css).toContain("--accent: #c9963a") // the browser's ochre (design-direction audit pass)
     expect(css).toContain("width: 1920px")
   })
 })

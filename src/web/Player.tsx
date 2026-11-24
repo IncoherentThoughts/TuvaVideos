@@ -23,7 +23,8 @@ import { useUnseenShelved } from "./History";
 import { hasUnseenShelved } from "../shared/editHistory";
 import { AudioEngine } from "./audioEngine";
 import { isDefaultAudio, type AudioState } from "../shared/audio";
-import { api, apiError, replaceVideo } from "./data";
+import { api, apiError, currentVideos, replaceVideo } from "./data";
+import { holdSortKeys } from "./sortHold";
 import type { Playlist } from "../shared/playlist";
 import { ENDED_LABEL, openAt, reachedEnd, repeatIcon, resumeAllowed, seekWidens, type EntryRange, type Move } from "../shared/playlistPlayer";
 
@@ -630,7 +631,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     };
   }, []);
 
-  const countView = () => void api.recordView(V.current.id).then((fresh) => (replaceVideo(fresh), onVideo?.(fresh))).catch(() => {});
+  const countView = () => {
+    holdSortKeys(currentVideos()?.find((x) => x.id === V.current.id) ?? V.current);
+    void api.recordView(V.current.id).then((fresh) => (replaceVideo(fresh), onVideo?.(fresh))).catch(() => {});
+  };
 
   /** The current Entry is over (the Video ended, or a Chapter Entry reached the next Chapter): Repeat one restarts it, else the Playlist advances (spec 4.8). */
   const entryEnded = () => {

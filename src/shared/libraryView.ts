@@ -85,7 +85,11 @@ export function filterVideos(videos: VideoDto[], st: LibraryState): VideoDto[] {
 
 const cmpStr = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
 
-export function sortVideos(videos: VideoDto[], st: LibraryState): VideoDto[] {
+/** The play-driven values a sort reads. A caller can hold them steady while the shown values move (web/sortHold.ts). */
+export type SortKeys = Pick<VideoDto, "viewCount" | "lastPlayedAt">;
+const liveKeys = (v: VideoDto): SortKeys => v;
+
+export function sortVideos(videos: VideoDto[], st: LibraryState, keys: (v: VideoDto) => SortKeys = liveKeys): VideoDto[] {
   const sign = st.dir === "asc" ? 1 : -1;
   const nullsLast = (a: number | string | null, b: number | string | null, cmp: (x: any, y: any) => number) => {
     if (a == null && b == null) return 0;
@@ -99,13 +103,13 @@ export function sortVideos(videos: VideoDto[], st: LibraryState): VideoDto[] {
     let c = 0;
     if (st.sort === "title") c = sign * cmpStr(x.title, y.title);
     else if (st.sort === "duration") c = nullsLast(x.durationS, y.durationS, (a, b) => a - b);
-    else if (st.sort === "played") c = nullsLast(x.lastPlayedAt, y.lastPlayedAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    else if (st.sort === "played") c = nullsLast(keys(x).lastPlayedAt, keys(y).lastPlayedAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
     // Views (the default): most watched first; the many unwatched Videos keep the date-added order, newest first.
-    else if (st.sort === "views") c = sign * (x.viewCount - y.viewCount) || newestFirst(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt);
+    else if (st.sort === "views") c = sign * (keys(x).viewCount - keys(y).viewCount) || newestFirst(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt);
     else c = nullsLast(x.addedAt ?? x.createdAt, y.addedAt ?? y.createdAt, (a, b) => (a < b ? -1 : a > b ? 1 : 0));
     return c || newestFirst(x.createdAt, y.createdAt) || (x.id < y.id ? 1 : x.id > y.id ? -1 : 0);
   });
   return out;
 }
 
-export const viewVideos = (videos: VideoDto[], st: LibraryState) => sortVideos(filterVideos(videos, st), st);
+export const viewVideos = (videos: VideoDto[], st: LibraryState, keys?: (v: VideoDto) => SortKeys) => sortVideos(filterVideos(videos, st), st, keys);

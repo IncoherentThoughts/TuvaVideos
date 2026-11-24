@@ -7,6 +7,7 @@ import {
 } from "../shared/libraryView";
 import type { SongDto, VideoDto } from "../shared/types";
 import { api, useStore } from "./data";
+import { sortKeysOf } from "./sortHold";
 import { libraryFiltered, libraryStart } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
@@ -80,7 +81,7 @@ export function Library({ search }: { search: string }) {
   const songVideos = useMemo(() => (song ? new Map(song.videos.map((x) => [x.id, x])) : null), [song]);
   const shown = useMemo(() => {
     if (!videos) return [];
-    const all = viewVideos(videos, st);
+    const all = viewVideos(videos, st, sortKeysOf);
     if (!st.song) return all;
     return songVideos ? all.filter((v) => songVideos.has(v.id)) : [];
   }, [videos, st, songVideos]);

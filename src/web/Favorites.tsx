@@ -3,11 +3,13 @@ import { TYPES } from "../shared/filters";
 import {
   FAV_SHOWS, FAV_SORTS, cmpNullsLast, cmpText, favoritesQuery, nameMatches, naturalDir, parseFavoritesSearch, type FavSort, type FavoritesState,
 } from "../shared/listView";
-import type { FavoriteItem } from "../shared/types";
+import type { SortKeys } from "../shared/libraryView";
+import type { FavoriteItem, VideoDto } from "../shared/types";
 import { NameFilter, SortControls } from "./ListControls";
 import { api, useStore } from "./data";
 import { favoriteEntries, favoriteStartS, type FavoriteRow } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
+import { sortKeysOf } from "./sortHold";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
 import { AvailabilityIcon, FavoriteBadge, Poster, StripFrame, Tags, fmtDuration } from "./ui";
@@ -20,7 +22,7 @@ const titleOf = (i: FavoriteItem) => (i.kind === "video" ? i.video.title : i.cha
 const latinOf = (i: FavoriteItem) => (i.kind === "video" ? i.video.titleLatin : i.chapter.titleLatin);
 
 /** Filter and order the Favorites for the page. A Chapter's duration is its Video's; its title is its own. */
-export function viewFavorites(items: FavoriteItem[], st: FavoritesState): FavoriteItem[] {
+export function viewFavorites(items: FavoriteItem[], st: FavoritesState, keys: (v: VideoDto) => SortKeys = (v) => v): FavoriteItem[] {
   const sign = st.dir === "asc" ? 1 : -1;
   const out = items.filter(
     (i) =>
@@ -34,7 +36,7 @@ export function viewFavorites(items: FavoriteItem[], st: FavoritesState): Favori
     if (st.sort === "title") c = sign * cmpText(titleOf(x), titleOf(y));
     else if (st.sort === "duration") c = cmpNullsLast(x.video.durationS, y.video.durationS, sign);
     else if (st.sort === "added") c = cmpNullsLast(x.video.addedAt ?? x.video.createdAt, y.video.addedAt ?? y.video.createdAt, sign);
-    else if (st.sort === "views") c = sign * (x.video.viewCount - y.video.viewCount);
+    else if (st.sort === "views") c = sign * (keys(x.video).viewCount - keys(y.video).viewCount);
     else c = cmpNullsLast(x.favoritedAt, y.favoritedAt, sign);
     return c || cmpNullsLast(x.favoritedAt, y.favoritedAt, -1);
   });
@@ -107,7 +109,7 @@ export function Favorites({ search }: { search: string }) {
 
   const go = (patch: Partial<FavoritesState>) => navigate(`/favorites${favoritesQuery({ ...st, ...patch })}`, { replace: true });
   const toggleType = (t: (typeof TYPES)[number]) => go({ types: st.types.includes(t) ? st.types.filter((x) => x !== t) : [...st.types, t] });
-  const shown = useMemo(() => (items ? viewFavorites(items, st) : []), [items, st]);
+  const shown = useMemo(() => (items ? viewFavorites(items, st, sortKeysOf) : []), [items, st]);
   const snapshot = () => savePlayingFrom("favorites", shown.map((i) => i.video.id));
   // "shuffle favorites" (spec 4.8): every row as shown; a Chapter row is a Chapter Entry that opens at its Chapter's start.
   const shuffleFavorites = () => {

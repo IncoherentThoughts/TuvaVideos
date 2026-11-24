@@ -169,6 +169,15 @@ describe("library view state", () => {
     expect(viewVideos(seen, { ...defaultLibraryState(), sort: "views", dir: "desc" }).map(num)).toEqual([3, 1, 2]);
     expect(viewVideos(vs, { ...defaultLibraryState(), sort: "played", dir: "asc" }).map(num)).toEqual([1, 3, 2]);
   });
+  test("held sort keys: a Video just played keeps its place though its shown count moved", () => {
+    // V1 was at 2 views when it was opened; playing it took it to 9. Sorting by the held value keeps it second.
+    const vs = [vid(1, { viewCount: 9, lastPlayedAt: "2026-07-01" }), vid(2, { viewCount: 0 }), vid(3, { viewCount: 5, lastPlayedAt: "2026-06-01" })];
+    const held = (v: VideoDto) => (v.id === V(1) ? { viewCount: 2, lastPlayedAt: "2026-05-01" } : v);
+    expect(viewVideos(vs, defaultLibraryState()).map(num)).toEqual([1, 3, 2]);
+    expect(viewVideos(vs, defaultLibraryState(), held).map(num)).toEqual([3, 1, 2]);
+    expect(viewVideos(vs, { ...defaultLibraryState(), sort: "played" }, held).map(num)).toEqual([3, 1, 2]);
+    expect(viewVideos(vs, defaultLibraryState(), held)[1]!.viewCount).toBe(9); // shown value stays live
+  });
 });
 
 describe("search results: where a card opens", () => {

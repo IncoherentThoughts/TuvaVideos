@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { VideoDto } from "../shared/types";
 import { api, replaceVideo, useStore } from "./data";
+import { releaseSortKeys } from "./sortHold";
 import { DeleteVideoDialog } from "./DeleteVideo";
 import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
 import { useSession } from "./session";
@@ -70,7 +71,9 @@ export function VideoMenu() {
   const reset = async () => {
     setBusy(true);
     try {
-      replaceVideo(await api.resetViews(v.id));
+      const fresh = await api.resetViews(v.id);
+      releaseSortKeys(v.id);
+      replaceVideo(fresh);
       setOpen(null);
     } catch (e) {
       setErr(String((e as Error).message ?? e));

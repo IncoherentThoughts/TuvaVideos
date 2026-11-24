@@ -11,6 +11,7 @@ import type { SearchResponse, SearchRow, VideoDto } from "../shared/types";
 import { hasArtistNamed } from "../shared/libraryView";
 import { Card } from "./Library";
 import { api, useStore } from "./data";
+import { sortKeysOf } from "./sortHold";
 import { searchEntries } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
@@ -146,7 +147,7 @@ export function SearchResults({ q, sort }: { q: string; sort: "rank" | "views" }
     });
   }, [res, videos, q]);
   // "views" keeps the ranking as the tie-break: equally watched Videos stay in match order.
-  const ordered = useMemo(() => (sort === "views" ? [...shown].sort((a, b) => b.v.viewCount - a.v.viewCount) : shown), [shown, sort]);
+  const ordered = useMemo(() => (sort === "views" ? [...shown].sort((a, b) => sortKeysOf(b.v).viewCount - sortKeysOf(a.v).viewCount) : shown), [shown, sort]);
   const ids = useMemo(() => ordered.map((x) => x.v.id), [ordered]);
   const { limit, sentinel } = useWindowed(`${q}|${sort}`, shown.length);
   const loading = !failed && (!res || !videos) && q.trim() !== "";

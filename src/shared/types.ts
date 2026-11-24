@@ -250,7 +250,7 @@ export interface SongDto {
   /** Every name with its kind (name, english, alternate_title, alternate_spelling). */
   names: { text: string; kind: "name" | "english" | "alternate_title" | "alternate_spelling" }[];
   versions: VersionDto[];
-  /** Videos performing the Song (its Song pointer or a Performance with the Video YouTube id): playable ones first. */
+  /** Videos performing the Song (its Song pointer, a Chapter pointing at it, or a Performance with the Video YouTube id): playable ones first. */
   videos: { id: string; title: string; available: boolean; pointed: boolean; startS: number | null }[];
 }
 

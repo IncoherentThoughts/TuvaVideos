@@ -62,19 +62,26 @@ export function songRef(db: Db, id: string | null): SongRef | null {
 }
 
 /**
- * Video ids that perform a Song: the Video's Song pointer, or a Performance of the Song carrying the Video's YouTube
- * or Rutube id (§4.3).
+ * Video ids that perform a Song: the Video's Song pointer (whatever its Type: a concert, an interview, a documentary),
+ * a Chapter pointing at the Song, or a Performance of the Song carrying the Video's YouTube or Rutube id (§4.3).
+ * `startS` is the earliest Chapter or Performance start; `pointed` says the Video's own Song pointer names the Song.
  */
 export function videosPerforming(db: Db, songId: string): { videoId: string; startS: number | null; pointed: boolean }[] {
   const rows = db
     .query(
-      `SELECT v.id AS videoId, MIN(p.start_s) AS startS, MAX(v.song_id = ?) AS pointed
-         FROM video_full v LEFT JOIN archive_performance p
-           ON p.song_id = ? AND ((v.youtube_id IS NOT NULL AND p.youtube_id = v.youtube_id) OR (v.rutube_id IS NOT NULL AND p.rutube_id = v.rutube_id))
-        WHERE v.song_id = ? OR p.id IS NOT NULL
+      `WITH hit AS (
+         SELECT id AS video_id, NULL AS start_s, 1 AS pointed FROM video_full WHERE song_id = ?1
+         UNION ALL
+         SELECT video_id, start_s, 0 FROM chapter_full WHERE song_id = ?1
+         UNION ALL
+         SELECT v.id, p.start_s, 0 FROM video_full v JOIN archive_performance p
+           ON p.song_id = ?1 AND ((v.youtube_id IS NOT NULL AND p.youtube_id = v.youtube_id) OR (v.rutube_id IS NOT NULL AND p.rutube_id = v.rutube_id))
+       )
+       SELECT v.id AS videoId, MIN(h.start_s) AS startS, MAX(h.pointed) AS pointed
+         FROM hit h JOIN video_full v ON v.id = h.video_id
         GROUP BY v.id ORDER BY v.created_at, v.id`,
     )
-    .all(songId, songId, songId) as { videoId: string; startS: number | null; pointed: number | null }[];
+    .all(songId) as { videoId: string; startS: number | null; pointed: number | null }[];
   return rows.map((r) => ({ videoId: r.videoId, startS: r.startS, pointed: !!r.pointed }));
 }
 

@@ -335,6 +335,18 @@ describe("editing endpoints", () => {
     expect((await call("GET", "/api/songs/00000000-0000-4000-8000-0000000000ff")).status).toBe(404);
   });
 
+  test("GET /api/songs/:id: a Video whose Chapter points at the Song performs it, opening at that Chapter", async () => {
+    const ch = insertChapter(app.db, { video_id: 3, start_s: 42, title: "Aa-shuu", song_id: S(1) });
+    try {
+      const r = await call("GET", `/api/songs/${S(1)}`);
+      expect(r.body.videos.map((v: any) => v.id).sort()).toEqual([V(1), V(2), V(3)].sort());
+      expect(r.body.videos.find((v: any) => v.id === V(3))).toMatchObject({ pointed: false, startS: 42 });
+      expect(r.body.videos.find((v: any) => v.id === V(1))).toMatchObject({ pointed: true });
+    } finally {
+      app.db.query("DELETE FROM video_chapters WHERE id = ?").run(ch);
+    }
+  });
+
   test("PATCH title: trimmed, Latin title regenerated, index updated; empty refused", async () => {
     expect((await call("PATCH", `/api/videos/${V(3)}`, { title: "   " })).status).toBe(400);
     const r = await call("PATCH", `/api/videos/${V(3)}`, { title: "  Алаш   концерт " });

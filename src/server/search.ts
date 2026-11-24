@@ -1,5 +1,6 @@
 import type { Db } from "./db";
 import { log } from "./log";
+import { videosPerforming } from "./songs";
 import { splitAlternates } from "../shared/songNames";
 import { foldQuery, foldSegments, foldText } from "../shared/fold";
 import {
@@ -340,12 +341,8 @@ export function runSearch(db: Db, env: SearchEnv, q: string, opts: { cap?: numbe
       return [];
     }
   };
-  /** Videos performing a Song: by their Song pointer (startS null) or through a Chapter (its first start). */
-  const songVideos = (songId: string) =>
-    many<{ id: string; startS: number | null }>(
-      `SELECT id, NULL AS startS FROM video_full WHERE song_id = ?
-       UNION ALL SELECT video_id AS id, MIN(start_s) AS startS FROM chapter_full WHERE song_id = ? AND video_id NOT IN (SELECT id FROM video_full WHERE song_id = ?) GROUP BY video_id
-       ORDER BY id`, songId, songId, songId);
+  /** Videos performing a Song (songs.ts videosPerforming): its Song pointer opens at the start, a Chapter or Performance at its time. */
+  const songVideos = (songId: string) => videosPerforming(db, songId).map((x) => ({ id: x.videoId, startS: x.pointed ? null : x.startS }));
   const build = (g: Group, b: Scored): SearchRow | null => {
     const c = b.c;
     if (g === "videos") {

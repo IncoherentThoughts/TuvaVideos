@@ -3,16 +3,40 @@
 // frames) is sampled once (hues.ts); every RETARGET_MS the colours at the playhead are blended from the frames around
 // it, and every frame the shown colours ease towards them (TAU_S), so neither playing, scrubbing nor reopening the
 // column ever cuts. The cost is a few gradients on a few thousand pixels about 30 times a second; no frame is shown.
+// Frames are drawn every n-th display refresh (Cadence), not on a millisecond gate: a 33 ms gate against 60 Hz refreshes
+// 33.3 ms apart let any timestamp jitter push a frame to the next refresh, alternating 33 and 50 ms frames (a judder).
 import type { StripDto } from "../shared/types"
 import { ORBS, SAMPLE_N, colorsAt, ease, frameColors, groundColor, orbColor, samplePixels, stripColors, type FrameColors, type Rgb } from "./hues"
 
 /** The canvas, in pixels: stretched over the column, the gradients stay smooth. */
 export const W = 90
 export const H = 120
-/** Time constant of the colours easing towards the playhead's (seconds), how often those are re-blended, the frame budget. */
+/** Time constant of the colours easing towards the playhead's (seconds), how often those are re-blended, the frame interval aimed at. */
 export const TAU_S = 6
 export const RETARGET_MS = 500
 export const FRAME_MS = 33
+
+/**
+ * Which display refreshes to draw on: every n-th, n the refreshes nearest FRAME_MS (2 at 60 Hz, 4 at 120 Hz, 1 when the
+ * page only gets 30), so the frames are evenly spaced. The refresh interval is a running average of the rAF steps.
+ */
+export class Cadence {
+  private refreshMs = 1000 / 60
+  private prev = 0
+  private count = 0
+
+  constructor(private frameMs = FRAME_MS) {}
+
+  /** Called on every rAF with its timestamp: true when this one is drawn. */
+  due(now: number): boolean {
+    const d = now - this.prev
+    this.prev = now
+    if (d > 0 && d < 100) this.refreshMs += (d - this.refreshMs) * 0.05 // a stall (hidden page, GC) is not a refresh rate
+    if (++this.count < Math.max(1, Math.round(this.frameMs / this.refreshMs))) return false
+    this.count = 0
+    return true
+  }
+}
 
 /** Where each orb (in REGIONS order: top row of the frame, then bottom) wanders, as fractions of the canvas; seconds a cycle. */
 const PATHS = [
@@ -48,6 +72,7 @@ export class Glow {
   private last = 0
   private retargetAt = 0
   private img: HTMLImageElement | null = null
+  private cadence = new Cadence()
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -100,7 +125,7 @@ export class Glow {
 
   private tick = (now: number) => {
     this.raf = requestAnimationFrame(this.tick)
-    if (now - this.last < FRAME_MS) return
+    if (!this.cadence.due(now)) return
     const dt = this.last ? Math.min(0.25, (now - this.last) / 1000) : 0
     this.last = now
     if (this.frames && now >= this.retargetAt) {

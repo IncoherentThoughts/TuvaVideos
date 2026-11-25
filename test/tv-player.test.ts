@@ -11,6 +11,7 @@ import type { CopyDto, SongDto, VideoDto } from "../src/shared/types"
 import { AudioChain, audioTag, type ChainDeps } from "../src/tv/audioChain"
 import { pickPlayable, failedMessage } from "../src/tv/copies"
 import { copyRows, fmtSize } from "../src/tv/copyList"
+import { Cadence } from "../src/tv/glow"
 import { ORBS, SAMPLE_N, colorsAt, ease, frameColors, groundColor, orbColor, rgbToHsl, stripColors, type FrameColors, type Rgb } from "../src/tv/hues"
 import { actionFor, type TvAction } from "../src/tv/keys"
 import { LYR_W_MAX, LYR_W_MIN, clampPage, fitLyrics, lyricsView, nextScript, noLyricsReason, pageLabel, paginate, stripMarkers } from "../src/tv/lyrics"
@@ -651,6 +652,31 @@ describe("backdrop colours (spec 6.2)", () => {
 })
 
 // ---- OSD ----
+
+describe("backdrop frame cadence (spec 6.2)", () => {
+  /** Drawn-frame intervals, in refreshes, over `n` rAF steps at `hz` with timestamps off by up to `jitterMs`. */
+  const intervals = (hz: number, jitterMs: number, n = 3000) => {
+    const cadence = new Cadence()
+    let seed = 7
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    const seen = new Set<number>()
+    let last = -1
+    for (let i = 1; i <= n; i++) {
+      if (!cadence.due((i * 1000) / hz + (rnd() - 0.5) * 2 * jitterMs)) continue
+      if (last >= 0 && i > 200) seen.add(i - last) // past the warm-up of the refresh estimate
+      last = i
+    }
+    return [...seen]
+  }
+  test("every second refresh at 60 Hz, however the timestamps jitter", () => {
+    expect(intervals(60, 0)).toEqual([2])
+    expect(intervals(60, 2)).toEqual([2])
+  })
+  test("every fourth at 120 Hz, every one when the page only gets 30", () => {
+    expect(intervals(120, 1)).toEqual([4])
+    expect(intervals(30, 2)).toEqual([1])
+  })
+})
 
 describe("OSD (spec 6.6)", () => {
   const chapters = [{ id: "1", startS: 0, title: "Intro" }, { id: "2", startS: 100, title: "Song two" }, { id: "3", startS: 300, title: "" }]

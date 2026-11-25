@@ -32,7 +32,7 @@ ${rows}
 `
 }
 
-export type TvConfig = { ip: string; target: string; duid: string; mac: string }
+export type TvConfig = { ip: string; target: string; duid: string; mac: string; profile?: string }
 
 type Step = { label: string; cmd: string[]; ok?: (out: string) => boolean; after?: () => void }
 
@@ -41,7 +41,7 @@ export function planSteps(tv: TvConfig, opts: { permit: boolean; tizen: string; 
   const steps: Step[] = [
     { label: "connect", cmd: [sdb, "connect", tv.ip], ok: (o) => /connected to|already connected/i.test(o) && !/fail|unable/i.test(o) },
   ]
-  if (opts.permit) steps.push({ label: "install-permit", cmd: [tizen, "install-permit", "-t", tv.target] })
+  if (opts.permit) steps.push({ label: "install-permit", cmd: [tizen, "install-permit", "-t", tv.target], ok: (o) => !/no duid|not found|retry/i.test(o) })
   steps.push(
     {
       label: "build-web",
@@ -49,7 +49,7 @@ export function planSteps(tv: TvConfig, opts: { permit: boolean; tizen: string; 
     },
     {
       label: "package",
-      cmd: [tizen, "package", "-t", "wgt", "-s", "TuvaVideos", "-o", ".", "--", ".buildResult"],
+      cmd: [tizen, "package", "-t", "wgt", "-s", tv.profile ?? "TuvaVideos", "-o", ".", "--", ".buildResult"],
       after: () => {
         const made = readdirSync(SHELL_DIR).find((f) => f.endsWith(".wgt") && f !== "TuvaTV.wgt")
         if (made) renameSync(join(SHELL_DIR, made), join(SHELL_DIR, "TuvaTV.wgt"))

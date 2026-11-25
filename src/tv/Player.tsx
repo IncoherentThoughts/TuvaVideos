@@ -23,6 +23,7 @@ import { useKeyHandler } from "./input"
 import { lyricsView, nextScript, noLyricsReason, songTarget } from "./lyrics"
 import { openTag } from "./open"
 import { onPlayError } from "./playRetry"
+import { holdScreenSaver } from "./screenSaver"
 import { OSD_FADE_MS, chapterLine, nextUp, osdVisible, pct } from "./osd"
 import { LyricsColumn, PlList, type ListRow, type LyricsCtl } from "./PlayerParts"
 import { activePlaylist, buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen, setActivePlaylist } from "./playlistOps"
@@ -743,6 +744,14 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
       alive = false
     }
   }, [targetId])
+
+  // the TV's screensaver stays off only while the Video plays (paused, failed or left: it may come on)
+  const playing = !paused && phase === "ready"
+  useEffect(() => {
+    if (!playing) return
+    holdScreenSaver(true)
+    return () => holdScreenSaver(false)
+  }, [playing])
 
   // ---- render ----
   const z = zs.zone

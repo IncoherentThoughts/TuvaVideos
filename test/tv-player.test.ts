@@ -830,3 +830,26 @@ describe("Audio settings on the TV (spec 6.8)", () => {
     expect(probes).toBe(2) // the post-build check
   })
 })
+
+// ---- the TV's screensaver ----
+
+describe("screensaver hold (Samsung webapis.appcommon)", () => {
+  test("off while playing, on again after; a missing webapis is a no-op", async () => {
+    const { holdScreenSaver } = await import("../src/tv/screenSaver")
+    const w = globalThis as unknown as { window?: unknown }
+    const had = "window" in w
+    const prev = w.window
+    const calls: number[] = []
+    try {
+      w.window = {}
+      holdScreenSaver(true) // no webapis (desktop, LG): nothing thrown
+      w.window = { webapis: { appcommon: { AppCommonScreenSaverState: { SCREEN_SAVER_OFF: 0, SCREEN_SAVER_ON: 1 }, setScreenSaver: (s: number) => calls.push(s) } } }
+      holdScreenSaver(true)
+      holdScreenSaver(false)
+      expect(calls).toEqual([0, 1])
+    } finally {
+      if (had) w.window = prev
+      else delete w.window
+    }
+  })
+})

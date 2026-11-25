@@ -16,7 +16,7 @@ import { actionFor, type TvAction } from "../src/tv/keys"
 import { LYR_W_MAX, LYR_W_MIN, clampPage, fitLyrics, lyricsView, nextScript, noLyricsReason, pageLabel, paginate, stripMarkers } from "../src/tv/lyrics"
 import { chapterLine, listOffset, nextUp, osdVisible, pct } from "../src/tv/osd"
 import { buttonFaces, entryStart, pressRepeat, pressShuffle, resolveOpen } from "../src/tv/playlistOps"
-import { HOLD_REPEAT_MS, RAMP_S, REW_FF_S, heldSeekStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "../src/tv/seekStep"
+import { HOLD_REPEAT_MS, HOLD_TIERS, RAMP_S, REW_FF_S, heldSeekStep, holdStep, nextSeekStep, repeatDue, stepLabel, type SeekRamp } from "../src/tv/seekStep"
 import { HELD_GAP_MS, HeldKeys } from "../src/tv/input"
 import { DECODE_RETRY_MS, MEDIA_ERR_NETWORK, NET_TRIES_WITH_SERVER, onPlayError, retryDelayMs, type PlayErrorFacts } from "../src/tv/playRetry"
 import { focusableTags, infoTexts, playingFromText, tagGrid } from "../src/tv/tags"
@@ -87,14 +87,28 @@ describe("seek acceleration (spec 6.3)", () => {
     return { moved, steps: [...steps], ramp }
   }
 
-  test("holding an arrow never climbs the ramp and moves at a bounded pace (audit TV-3)", () => {
+  test("a held arrow's step grows with time held: 10, 20 after 1.5 s, 30 after 3 s, 60 after 5 s", () => {
+    expect(HOLD_TIERS.map(([at, s]) => [at, s])).toEqual([[0, 10], [1500, 20], [3000, 30], [5000, 60]])
+    expect([0, 1499, 1500, 2999, 3000, 4999, 5000, 60_000].map(holdStep)).toEqual([10, 10, 20, 20, 30, 30, 60, 60])
+    expect(hold(1400).steps).toEqual([10])
+    expect(hold(6000).steps).toEqual([10, 20, 30, 60])
+  })
+
+  test("a hold moves at a bounded pace: never the runaway of counting repeats as presses (audit TV-3)", () => {
     const a = hold(1500)
-    expect(a.steps).toEqual([10])
-    expect(a.moved).toBe(10 + 5 * 10) // 500, 750, 1000, 1250, 1500 ms
+    expect(a.moved).toBe(10 + 4 * 10 + 20) // 500, 750, 1000, 1250 ms at 10, then 1500 ms at 20
+    expect(hold(5000).moved).toBeLessThan(8 * 60) // a 5 s hold: about 7 minutes
     const b = hold(10_000)
-    expect(b.steps).toEqual([10])
-    expect(b.moved).toBeLessThanOrEqual(10 + (10_000 / HOLD_REPEAT_MS) * 10) // 40 s per second of holding, at most
+    expect(b.moved).toBeLessThanOrEqual(10 + (10_000 / HOLD_REPEAT_MS) * 60) // 240 s per second held, at most
     expect(b.ramp.count).toBe(1) // the repeats were not counted as presses
+    expect(b.ramp.pressAt).toBe(0)
+  })
+
+  test("letting go and pressing again starts the hold tiers over", () => {
+    const a = hold(6000)
+    const p = nextSeekStep(a.ramp, 1, 6100) // a fresh press soon after: the press ramp carries on, the tiers start over
+    expect(p.ramp.pressAt).toBe(6100)
+    expect(heldSeekStep(p.ramp, 1, 6100 + HOLD_REPEAT_MS)!.step).toBe(10)
   })
 
   test("a hold keeps the rung the presses before it reached", () => {

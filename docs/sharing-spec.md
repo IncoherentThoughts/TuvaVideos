@@ -47,7 +47,7 @@ Two more capabilities ride on the archive's own roles and are shown only to acco
 
 ### 2.1 The mode is a fact about the machine
 
-A machine is in one mode, owned by the companion's data directory: **Session record present or not** (§5.2), and if present, **grant or not**. Every browser tab and the TV Server reflect it; the browser performs the sign-in and the writes. No "work locally" toggle: three modes plus the offline condition, nothing else. Signing in as someone else is Sign out then Sign in.
+A machine is in one mode, owned by the companion's data directory: **Session record present or not** (§5.2), and if present, **grant or not**. Every browser tab and the Library Server reflect it; the browser performs the sign-in and the writes. No "work locally" toggle: three modes plus the offline condition, nothing else. Signing in as someone else is Sign out then Sign in.
 
 ### 2.2 The chip
 
@@ -257,7 +257,7 @@ Flow: credentials → `signInWithPassword` → the companion reads the Session r
 
 ### 5.2 The Session record and the token path
 
-- **Session record**: the companion's token-free note in SQLite of who this machine is signed in as: user id, email, display name, avatar URL, grant level, archive role, `last_verified_at`, `last_sync_at`, `watermark`. Written at each Sync, read by the chip, every tab and the TV Server, cleared only by Sign out, a `SIGNED_OUT` event or a cancelled reconciliation. This is the machine fact of §2.1; it grants nothing on its own.
+- **Session record**: the companion's token-free note in SQLite of who this machine is signed in as: user id, email, display name, avatar URL, grant level, archive role, `last_verified_at`, `last_sync_at`, `watermark`. Written at each Sync, read by the chip, every tab and the Library Server, cleared only by Sign out, a `SIGNED_OUT` event or a cancelled reconciliation. This is the machine fact of §2.1; it grants nothing on its own.
 - **The token rides with each Sync call only.** The browser calls `/api/sync` with its access token (never the refresh token); the companion uses it for that Sync (pull, `video_whoami()`, the poster half, §6.5) and forgets it when the job ends or the token's `exp` passes. No `/api/session` push, nothing long-lived on the server, no JWKS verification (#84's server-side verification is superseded; Supabase verifies the token when it is used). Origin and Host checks on every `/api` route that takes a token; the token is never logged.
 - Routes (#130): `GET /api/session` → `{record, archive: {url, key}, syncing}` (Host check only: it carries no token, and a same-origin GET sends no Origin); `DELETE /api/session` clears the record (Sign out, a dropped session, a cancelled sign-in; Origin and Host); `POST /api/sync` takes exactly `{access_token}` (Origin and Host; a body with any other key, a refresh token included, is refused) and **the companion calls `video_whoami()` itself** with that token, rather than trusting a whoami result the browser hands over: the record is then what the archive said, not what a page claimed. A token whose unverified `exp` has passed is refused before any call. On an unreachable or refusing archive the record is left as it was. `must_change_password` is not kept in the record; the Sync's answer carries it for the dialog's notice.
 - The session persists in supabase-js's `localStorage` on the canonical origin `http://localhost:4400`; the browser is the only thing that refreshes it (rotating single-use refresh tokens forbid a second refresher). A server started with no tab open never Syncs; a TV-only evening uses the last Sync's copy.
@@ -373,11 +373,11 @@ Proposed Songs, Versions and Artists carry the Proposed mark wherever their name
 - `GET /api/rows/:table/:id` (`table` song, version or artist) gives the controls the row's kind, a Proposed row's stamp and columns, hidden / Exposed, a Version's parent, and every Video, Chapter and Artist link using it.
 - The Artists page's "merge into…" is now "repoint…" (Local) or "actions…" (Video Editors and admins).
 
-### 7.6 The TV Server as a Member
+### 7.6 The Library Server as a Member
 
-The TV Server reads the Local copy unchanged through the same handle; its video lists exclude Not on this machine Videos and keep Unmounted ones as today. Nothing else in the TV spec changes.
+The Library Server reads the Local copy unchanged through the same handle; its video lists exclude Not on this machine Videos and keep Unmounted ones as today. Nothing else in the TV spec changes.
 
-As built (#148, `tvRoutes.ts`): the localhost handler is unchanged; the TV Server filters the answers of `/api/videos`, `/api/favorites`, `/api/search` (Video and Chapter rows, a Song row's Video list; the group total drops by the rows removed) and `/api/songs/:id` (its Video list) against one query, Videos with no Copy whose `missing_since` is null. `/api/artists`' Video counts are not adjusted.
+As built (#148, `tvRoutes.ts`): the localhost handler is unchanged; the Library Server filters the answers of `/api/videos`, `/api/favorites`, `/api/search` (Video and Chapter rows, a Song row's Video list; the group total drops by the rows removed) and `/api/songs/:id` (its Video list) against one query, Videos with no Copy whose `missing_since` is null. `/api/artists`' Video counts are not adjusted.
 
 ---
 

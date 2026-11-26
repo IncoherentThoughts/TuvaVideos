@@ -157,7 +157,7 @@ describe("a media error: retry the network, fail only a real decode error", () =
   const DECODE = 3
   const SRC = 4
 
-  test("the TV Server not answering retries with backoff for as long as it takes, whatever the element says", () => {
+  test("the Library Server not answering retries with backoff for as long as it takes, whatever the element says", () => {
     for (const code of [SRC, MEDIA_ERR_NETWORK, DECODE, null]) {
       expect(onPlayError(f({ serverAnswered: false, code }))).toEqual({ t: "retry", ms: 1500, net: true, outage: true })
     }

@@ -46,7 +46,7 @@ describe("localGuard (pure)", () => {
     expect(localGuard(blob, 4400)).toMatchObject({ status: 415 });  });
 });
 
-describe("TV Server helpers (pure)", () => {
+describe("Library Server helpers (pure)", () => {
   test("this machine's own addresses", () => {
     for (const ip of ["127.0.0.1", "127.1.2.3", "::1", "::ffff:127.0.0.1", "0.0.0.0", " 127.0.0.1 "]) expect(isOwnAddress(ip, [])).toBe(true);
     expect(isOwnAddress("192.168.1.5", ["192.168.1.5"])).toBe(true);
@@ -103,7 +103,7 @@ const cross = { origin: EVIL, "content-type": "text/plain;charset=UTF-8" };
 const rebind = () => ({ host: `rebind.evil.example:${port}`, origin: `http://rebind.evil.example:${port}` });
 
 describe("the localhost listener refuses other sites (SEC-1, SEC-2, SEC-3)", () => {
-  test("a cross-site simple POST cannot turn the TV Server on, approve an IP, plant an Artist or quit", async () => {
+  test("a cross-site simple POST cannot turn the Library Server on, approve an IP, plant an Artist or quit", async () => {
     expect((await fetch(`${local}/api/tv/on`, { method: "POST", headers: cross, body: "" })).status).toBe(403);
     expect(app.tv.on).toBe(false);
     expect((await fetch(`${local}/api/tv/approve`, { method: "POST", headers: cross, body: '{"ip":"192.0.2.66"}' })).status).toBe(403);
@@ -145,7 +145,7 @@ describe("the localhost listener refuses other sites (SEC-1, SEC-2, SEC-3)", () 
   });
 });
 
-describe("the TV Server (SEC-1, SEC-4, SEC-6)", () => {
+describe("the Library Server (SEC-1, SEC-4, SEC-6)", () => {
   const post = (p: string, body?: unknown) => fetch(local + p, { method: "POST", headers: { origin: local, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 
   test("this machine's own addresses are never approved, and raise no prompt", async () => {
@@ -160,9 +160,9 @@ describe("the TV Server (SEC-1, SEC-4, SEC-6)", () => {
     expect(r.status).toBe(403);
     expect(app.tv.state().pending).toEqual([]);
     // a row stored before the fix is listed (so it can be Removed) but not served
-    app.db.query("INSERT INTO approved_tv (ip, model, approved_at) VALUES ('127.0.0.1', NULL, ?)").run(new Date().toISOString());
+    app.db.query("INSERT INTO approved_device (ip, kind, via, model, approved_at) VALUES ('127.0.0.1', 'tv', 'click', NULL, ?)").run(new Date().toISOString());
     expect((await fetch(`http://127.0.0.1:${tvPort}/api/videos`)).status).toBe(403);
-    app.db.query("DELETE FROM approved_tv").run();
+    app.db.query("DELETE FROM approved_device").run();
   });
 
   test("CORS answers only the TV app's origins; another site's page gets a 403 and no CORS headers", async () => {

@@ -1,4 +1,4 @@
-// Which listener a request came through (docs/tv-spec.md 3.2): the TV Server marks every request it forwards to the
+// Which listener a request came through (docs/tv-spec.md 3.2): the Library Server marks every request it forwards to the
 // shared localhost handler, so a route that depends on the player's Playback profile (`/copy/:id`) can tell the TV from
 // the browser. A WeakSet of the Request objects, not a header, so nothing a client sends can claim to be either.
 

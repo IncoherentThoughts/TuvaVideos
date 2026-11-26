@@ -15,10 +15,10 @@ export interface Config {
   /** Cached Music.app library dump (spec 7.2). */
   studioDumpPath: string;
   port: number;
-  /** The TV Server port (tv-spec 2.1); `TUVA_TV_PORT` overrides it, for tests only. */
+  /** The Library Server port (tv-spec 2.1); `TUVA_TV_PORT` overrides it, for tests only. */
   tvPort: number;
   /**
-   * The TV Server may approve this machine's own addresses (127.0.0.1, its LAN IPs), so the TV UI can be tried in a
+   * The Library Server may approve this machine's own addresses (127.0.0.1, its LAN IPs), so the TV UI can be tried in a
    * desktop browser here (`TUVA_TV_LOOPBACK=1`, tests and development only). Off: a page on this machine is never a TV.
    */
   tvLoopback?: boolean;
@@ -89,7 +89,7 @@ export function dataDirFor(platform: NodeJS.Platform, env: Record<string, string
   return join(env.XDG_DATA_HOME || join(home, ".local", "share"), "TuvaVideos");
 }
 
-export function loadConfig(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform): Config {
+export function loadConfig(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform, argv: readonly string[] = process.argv): Config {
   const dataDir = dataDirFor(platform, env, homedir());
   const port = Number(env.TUVA_PORT ?? DEFAULT_PORT);
   return {
@@ -111,7 +111,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ffprobe: findBin("ffprobe", env),
     cwebp: findBin("cwebp", env),
     trash: env.TUVA_TRASH ?? "/usr/bin/trash",
-    openTab: env.TUVA_NO_OPEN !== "1",
+    openTab: env.TUVA_NO_OPEN !== "1" && !argv.includes("--background"), // --background: the login start, no tab (home-server-spec §2.2)
     migrationsDir: join(import.meta.dir, "..", "..", "migrations"),
     webDir: join(import.meta.dir, "..", "web"),
     archive: archiveEndpoint(env),

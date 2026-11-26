@@ -1,6 +1,7 @@
 import { createHandler, type Services } from "./api";
 import { TvServer } from "./tv";
 import { LiveStreams } from "./live/streams";
+import { defaultLoginAgent, ServeOnLaunch } from "./serveOnLaunch";
 import { judgeStaleCopies } from "./tvJudge";
 import { judgeBrowserCopies } from "./browserJudge";
 import type { Config } from "./config";
@@ -67,14 +68,15 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
   const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
-  const tv = new TvServer({ cfg, db }); // off at every launch: only POST /api/tv/on binds the port
+  const tv = new TvServer({ cfg, db, roots }); // off at every launch: only POST /api/tv/on binds the port
   const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit };
   const handler = createHandler(services);
   tv.setHandler(handler);
   tv.setBundle(tvBundle);
-  const live = new LiveStreams({ db, roots, ffmpeg: cfg.ffmpeg }); // home-server-spec 7: off with the TV Server, gone at exit
+  const live = new LiveStreams({ db, roots, ffmpeg: cfg.ffmpeg }); // home-server-spec 7: off with the Library Server, gone at exit
   tv.setLive(live);
   tv.onStop(() => live.stopAll());
+  services.serveOnLaunch = new ServeOnLaunch({ db, tv, agent: defaultLoginAgent(cfg.dataDir), passive: cfg.passive });
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);
 
@@ -83,6 +85,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   await roots.pollAll(); // availability only: nothing is scanned at startup
   started = true;
   roots.start(10_000);
+  services.serveOnLaunch?.applyAtLaunch(); // Serve on launch: the Library Server is up before the first tab
 
   // The same object the handler reads (`quit` may be set later, e.g. by tests), not a copy.
   return Object.assign(services, {
@@ -96,6 +99,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
       await services.downloads?.shutdown(); // yt-dlp killed, partials kept; the items wait for the next launch
       tv.stop();
       live.stopAll();
+      services.serveOnLaunch?.stopAwake();
       studio.shutdown(); // kills the osascript child
       keyframes.shutdown();
       await Promise.race([Promise.all([fallback.shutdown(), thumbs.shutdown()]), new Promise((r) => setTimeout(r, 10_000))]);

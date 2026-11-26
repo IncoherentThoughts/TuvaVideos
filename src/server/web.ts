@@ -46,7 +46,7 @@ export class WebBundle {
 }
 
 /**
- * The TV UI bundle (docs/tv-spec.md 4.1): `src/tv/main.tsx` bundled next to the browser one, served by the TV Server as
+ * The TV UI bundle (docs/tv-spec.md 4.1): `src/tv/main.tsx` bundled next to the browser one, served by the Library Server as
  * `/tv.js`, with `src/tv/styles.css` as `/tv.css`. Built at start; a failed build serves a message instead of the UI.
  */
 export class TvBundle {

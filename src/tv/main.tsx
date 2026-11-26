@@ -1,4 +1,4 @@
-// TuvaVideos TV UI (docs/tv-spec.md 5, 7, 8). Loaded by the signed shell from the TV Server (/tv.js, /tv.css), or
+// TuvaVideos TV UI (docs/tv-spec.md 5, 7, 8). Loaded by the signed shell from the Library Server (/tv.js, /tv.css), or
 // standalone in a desktop browser at http://127.0.0.1:4401/ for development. A stack of screens (nav.ts), a pane
 // over them, one key dispatch (input.ts) and the geometry focus engine (focus.ts).
 import { render } from "preact"
@@ -19,9 +19,11 @@ import { makeEntry, pop, push, replaceTop, top, type Entry, type Route } from ".
 import { libraryOrder, libraryTiles, shuffleStart, type TvData } from "./rails"
 import type { Nav } from "./screen"
 
-type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: TvData }
+type Load = { state: "loading" } | { state: "no-drive" } | { state: "error"; message: string } | { state: "ready"; data: TvData }
 
-async function loadAll(): Promise<TvData> {
+/** The server's drive is not plugged in (health `drive: "unmounted"`, home-server-spec §2.2): null, so the TV says so instead of listing Videos it cannot play. */
+async function loadAll(): Promise<TvData | null> {
+  if ((await api.health().catch(() => null))?.drive === "unmounted") return null
   const [videos, artists, songs, favorites] = await Promise.all([api.videos(), api.artists(), api.songs(), api.favorites()])
   return { videos, artists, songs, favorites }
 }
@@ -48,8 +50,14 @@ function App() {
 
   const reload = () =>
     loadAll()
-      .then((data) => setLoad({ state: "ready", data }))
+      .then((data) => setLoad(data ? { state: "ready", data } : { state: "no-drive" }))
       .catch((e) => setLoad((l) => (l.state === "ready" ? l : { state: "error", message: String(e?.message ?? e) })))
+  // With the drive unplugged, look again every 10 s: plugging it back in brings the library back by itself.
+  useEffect(() => {
+    if (load.state !== "no-drive") return
+    const t = setInterval(() => void reload(), 10_000)
+    return () => clearInterval(t)
+  }, [load.state])
   useEffect(() => {
     void reload()
     fitStage()
@@ -155,6 +163,15 @@ function App() {
   }
 
   if (load.state === "loading") return <div class="loading">Loading the library…</div>
+  if (load.state === "no-drive")
+    return (
+      <div class="loading">
+        <div>
+          Server drive not connected
+          <small>Plug the drive into the server; the library comes back by itself.</small>
+        </div>
+      </div>
+    )
   if (load.state === "error")
     return (
       <div class="loading">

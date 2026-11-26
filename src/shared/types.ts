@@ -270,23 +270,29 @@ export interface LocalSongCreate {
   englishName?: string | null;
 }
 
-export interface ApprovedTvDto {
+/** A row of `approved_device` (docs/home-server-spec.md §3): a TV or a Mac the Library Server serves. */
+export interface ApprovedDeviceDto {
   ip: string;
+  kind: "tv" | "mac";
+  /** The Mac's computer name (a TV has only its model). */
+  name: string | null;
   model: string | null;
+  /** How it came in: an Allow click, or on sight through Tailscale. */
+  via: "tailscale" | "click";
   approvedAt: string;
   lastSeenAt: string | null;
 }
 
 /** `GET /api/tv` (localhost listener only). */
 export interface TvStateDto {
-  /** False on a passive server: the TV Server never starts there. */
+  /** False on a passive server: the Library Server never starts there. */
   available: boolean;
   on: boolean;
   port: number | null;
   /** The Mac's LAN IPv4 addresses. */
   addresses: string[];
   pending: { ip: string; model: string | null }[];
-  approved: ApprovedTvDto[];
+  approved: ApprovedDeviceDto[];
   /** An Approved TV that made a request in the last 60 s; `title` is the Video whose stream it asked for last. */
   playing: { ip: string; model: string | null; title: string | null } | null;
 }
@@ -297,4 +303,13 @@ export interface OnboardingDto {
   rootCount: number;
   /** "panel": the first-launch panel (folder field, Sign in); "bar": the dismissable "No videos folder yet" bar. */
   show: "panel" | "bar" | "none";
+}
+
+/** `GET /api/serve-on-launch` (docs/home-server-spec.md §2.2). */
+export interface ServeSettingsDto {
+  /** False off macOS and on a passive server: neither setting can be used there. */
+  available: boolean;
+  serveOnLaunch: boolean;
+  /** The LaunchAgent exists. Only offered while Serve on launch is on. */
+  openAtLogin: boolean;
 }

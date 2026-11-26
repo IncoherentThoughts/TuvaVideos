@@ -10,6 +10,7 @@ import type { Roots } from "./roots";
 import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import type { TvServer } from "./tv";
+import type { ServeOnLaunch } from "./serveOnLaunch";
 import { factsOfRow, parseDecision } from "./tvJudge";
 import { isTvRequest } from "./tvRequest";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
@@ -78,6 +79,8 @@ export interface Services {
   web: WebBundle;
   /** The second listener for the TV (docs/tv-spec.md 2): off until the TV button turns it on. */
   tv: TvServer;
+  /** Serve on launch / Open at login / keep-awake (home-server-spec §2.2); set by startApp. */
+  serveOnLaunch?: ServeOnLaunch;
   startedAt: number;
   /** Set by the launcher: stops the server (the power button). Absent under tests and the smoke runs. */
   quit?: () => void;
@@ -449,7 +452,7 @@ export function createHandler(s: Services) {
   }
 
   // The guard runs first, for every request (localOnly.ts): a loopback Host, and this companion's Origin on writes.
-  // `server` is the Bun listener (absent when the TV Server passes a request in, which `localGuard` lets through).
+  // `server` is the Bun listener (absent when the Library Server passes a request in, which `localGuard` lets through).
   return async (req: Request, server?: { port?: number }): Promise<Response> => {
     const refused = localGuard(req, server?.port ?? (s.cfg.port || null));
     if (refused) return json({ error: refused.error }, refused.status);
@@ -467,6 +470,7 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/thumbs\/([0-9a-fA-F-]{36})\/(poster|strip)\.webp$/))) return thumbRoute(req, m[1]!, m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
         if (p === "/api/tv") return json(s.tv.state());
+        if (p === "/api/serve-on-launch") return json(s.serveOnLaunch?.state() ?? { available: false, serveOnLaunch: false, openAtLogin: false });
         if (p === "/api/videos") return json(allVideos());
         // The client write seam's reads (sharing-spec §4.3, §4.5, §4.9; src/server/sharedWrites.ts).
         if (p === "/api/kinds") return json(kindsOf(s.db, url.searchParams));
@@ -574,6 +578,12 @@ export function createHandler(s: Services) {
         if (p === "/api/tv/on") {
           const r = s.tv.start();
           return r.ok ? json(s.tv.state()) : json({ error: r.error }, r.status);
+        }
+        if (p === "/api/serve-on-launch") {
+          const b = await readJson(req);
+          const r = s.serveOnLaunch?.set({ serveOnLaunch: typeof b?.serveOnLaunch === "boolean" ? b.serveOnLaunch : undefined, openAtLogin: typeof b?.openAtLogin === "boolean" ? b.openAtLogin : undefined });
+          if (!r) return json({ error: "not available" }, 409);
+          return r.ok ? json(r.state) : json({ error: r.error }, 422);
         }
         if (p === "/api/tv/off") {
           s.tv.stop();

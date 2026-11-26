@@ -11,7 +11,7 @@ describe("TV button (tv-spec 2.4)", () => {
 
   test("the label names the Mac's address while on and nobody is talking", () => {
     const s: TvStateDto = { available: true, on: true, port: 4401, addresses: ["192.168.4.83"], pending: [], approved: [], playing: null }
-    expect(tvLabel(s)).toBe("TV on · 192.168.4.83:4401")
-    expect(tvLabel({ ...s, on: false })).toBe("TV")
+    expect(tvLabel(s)).toBe("Library Server on · 192.168.4.83:4401")
+    expect(tvLabel({ ...s, on: false })).toBe("Library Server")
   })
 })

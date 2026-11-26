@@ -32,13 +32,14 @@ The TV Server of `docs/tv-spec.md` §2, renamed, serving Macs as well as TVs.
 ### 2.1 Listener and health
 
 - Same listener, port and route list as today, plus the Mac-only routes of §2.3.
-- `GET /api/health` keeps `app: "TuvaVideos TV Server"`, because installed TV shells match on that string (`tv/shell/discovery.js`, `HEALTH_MARK`) and a shell change costs a reinstall with the Samsung certificate. It gains `name` (the Mac's computer name), `home` (true on the Home Server), `drive` (`"mounted"` when any Root is mounted, else `"unmounted"`) and `version` (the app's commit). Code renames `TV_APP_NAME` and friends to Library Server names; the wire string stays.
+- `GET /api/health` keeps `app: "TuvaVideos TV Server"`, because installed TV shells match on that string (`tv/shell/discovery.js`, `HEALTH_MARK`) and a shell change costs a reinstall with the Samsung certificate. It gains `name` (the Mac's computer name), `home` (true on the Home Server), `drive` (`"mounted"` when any Root is mounted, else `"unmounted"`) and `version` (the app's commit). Code renames `TV_APP_NAME` and friends to Library Server names; the wire string stays. **As built (#237):** `version` is the short git commit of the checkout the app runs from (package.json's version when there is no git); `home` is false until the Home Server toggle exists (#240); the `TV_APP_NAME` constant is gone, the wire string lives in `src/server/libraryServerHealth.ts` (`HEALTH_APP`), and the TV page's `<title>` reads "TuvaVideos Library Server". The top bar button reads "Library Server" ("Library Server on · ip:port" while serving). The shell's own wording (`tv/shell`) still says "TV Server" until the shell is reinstalled (#245).
 
 ### 2.2 Serve on launch, login and sleep
 
 - A per-machine setting, **Serve on launch**, off by default (laptops keep today's behaviour: off at every launch, started from the top bar).
 - With it on, the app starts the Library Server at launch, and **Open at login** becomes available: the app installs a LaunchAgent in `~/Library/LaunchAgents` that starts the app bundle at login **without opening a browser tab** (`--background`). **[proposed]** LaunchAgent rather than a Login Item, since the app is a Bun process inside a bundle built by `scripts/make-app.ts`.
 - While the Library Server is on and Serve on launch is set, a `caffeinate -i -w <pid>` child keeps the Mac from idle-sleeping; it ends with the process.
+- **As built (#238):** the setting is `download_setting.serve_on_launch` (that table is the machine-local key/value store; no migration), shown as two checkboxes ("Serve on launch", "Open at login") in the Library Server menu of the top bar, `GET`/`POST /api/serve-on-launch`. Turning Serve on launch off also removes the LaunchAgent. The LaunchAgent (`com.incoherentthoughts.tuvavideos.plist`, `RunAtLoad`) runs `~/Applications/TuvaVideos.app/Contents/MacOS/TuvaVideos --background`; the bundle's launcher now forwards its arguments to `bun run start` (re-run `bun run app` to pick that up), and `--background` sets `openTab` false, also for a relaunch that finds the app running. It is only a file: nothing calls `launchctl`, macOS loads it at the next login. `TUVA_LAUNCH_AGENTS_DIR` moves the folder (tests, smoke). Caffeinate starts when the listener comes up with the setting on and stops when the Library Server stops. None of this is available on a passive server or off macOS. The TV page asks `/api/health` before loading the library; on `drive: "unmounted"` (no Root at all counts) it shows "Server drive not connected" and looks again every 10 s.
 - **Drive not plugged in**: the server keeps serving. Videos on unmounted Roots are Unmounted as today; health reports `drive: "unmounted"`, and the TV shows **"Server drive not connected"** instead of a grid of unplayable Videos. Macs show the Home Server's Videos as Unmounted, not On the Home Server.
 
 ### 2.3 Routes for Approved Macs
@@ -59,7 +60,7 @@ Macs never get anything the TV is denied (tv-spec §2.3, "Never exposed").
 
 ## 3. Approved devices
 
-Migration: `approved_tv` becomes **`approved_device`** (`ip`, `kind` `tv`|`mac`, `name`, `model`, `via` `tailscale`|`click`, `tailscale_login`, `approved_at`, `last_seen_at`); existing rows become `kind = 'tv', via = 'click'`.
+Migration: `approved_tv` becomes **`approved_device`** (`ip`, `kind` `tv`|`mac`, `name`, `model`, `via` `tailscale`|`click`, `tailscale_login`, `approved_at`, `last_seen_at`); existing rows become `kind = 'tv', via = 'click'`. Migration `0025_approved_device.sql` (table rebuilt, `kind` and `via` CHECK-constrained, defaults `'tv'` and `'click'`); `name` is a Mac's computer name and stays NULL for TVs, which have only `model`.
 
 ### 3.1 Tailscale devices, on sight
 

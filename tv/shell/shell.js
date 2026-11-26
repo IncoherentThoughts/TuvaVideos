@@ -1,7 +1,7 @@
-// The TV shell (docs/tv-spec.md §4): registers the remote keys, finds the TV Server (discovery.js), draws the
-// offline states, then loads /tv.css and /tv.js live from the server. Plain ES2020; runs on Samsung (Tizen), on LG
+// The TV shell (docs/tv-spec.md §4): registers the remote keys, finds the Library Servers (discovery.js), lets the
+// user pick one when several answer, draws the offline states, then loads /tv.css and /tv.js live from the server. Plain ES2020; runs on Samsung (Tizen), on LG
 // (webOS, packaged with appinfo.json) and in a desktop browser (neither there; add ?addr=<ip> to stand in for the
-// stored address).
+// stored address and ?ip=<ip> for the TV's own address).
 (function () {
   "use strict"
 
@@ -77,6 +77,7 @@
 
   function localIp() {
     if (webosIp) return webosIp
+    if (params.get("ip")) return params.get("ip") // desktop testing: stands in for the TV's own address (its /24 is swept)
     try {
       return webapi.network.getIp() || null
     } catch {
@@ -115,10 +116,32 @@
   const key = (label) => `<b>${label}</b>`
 
   const STEP_TEXT = {
-    last: (s) => `Trying the last address, ${esc(s.detail)}`,
-    sweep: (s) => `Looking across your network, ${esc(s.detail)}`,
-    typed: () => "Nothing answered yet. Is the TV Server switched on?",
-    access: (s) => `Found the Mac at ${esc(s.detail)}, asking for the library`,
+    pinned: (s) => `Trying ${esc(s.detail)}`,
+    sweep: (s) =>
+      s.found && s.found.length
+        ? `Found ${esc(s.found.join(", "))}, checking for others on ${esc(s.detail)}`
+        : `Looking across your network${s.detail ? `, ${esc(s.detail)}` : ""}`,
+    typed: () => "Nothing answered yet. Is the Library Server switched on?",
+    access: (s) => `Found ${s.name ? esc(s.name) : "the Mac"} at ${esc(s.detail)}, asking for the library`,
+  }
+  const serverName = (s) => (s && s.name) || "The Library Server"
+
+  // The server picker (home-server-spec §4.2): several answered at startup. Up/Down choose, Enter connects.
+  let pick = 0
+  function pickerHtml(s) {
+    const rows = s.servers
+      .map(
+        (v, i) =>
+          `<div class="row${i === pick ? " f" : ""}"><span class="nm">${esc(v.name || v.address)}</span>` +
+          (v.home ? `<span class="tag">Home Server</span>` : "") +
+          `<span class="ad">${esc(v.address)}</span></div>`,
+      )
+      .join("")
+    return (
+      `<h1>Choose a Library Server</h1><div class="step">More than one Mac is serving TuvaVideos on this network.</div>` +
+      `<div class="servers">${rows}</div>` +
+      `<div class="hint">${key("▲ ▼")} choose &nbsp; ${key("Enter")} connect &nbsp; ${key("Back")} exit</div>`
+    )
   }
 
   // The TV UI needs Chromium 94: its script uses ?? , ?. and ??= (85) and its stylesheet inset and aspect-ratio (88);
@@ -147,9 +170,11 @@
       el.innerHTML =
         `<h1>Approve this TV on the Mac</h1><div class="step">Click Allow in the TuvaVideos window on the Mac.</div>` +
         `<div class="hint">Trying again every 3 seconds &nbsp; ${key("Back")} exit</div>`
+    } else if (s.kind === "picker") {
+      el.innerHTML = pickerHtml(s)
     } else if (s.kind === "off") {
       el.innerHTML =
-        `<h1>TV Server turned off</h1><div class="step">Switch it back on in TuvaVideos on the Mac.</div>` +
+        `<h1>${esc(serverName(s))} stopped answering</h1><div class="step">Switch the Library Server back on in TuvaVideos on the Mac, or look for another one.</div>` +
         `<div class="hint">${key("Enter")} look again &nbsp; ${key("Back")} exit</div>`
     } else if (s.kind === "starting") {
       el.innerHTML = `<h1>Starting TuvaVideos…</h1><div class="step">Loading the app from ${esc(s.base)}</div><div class="hint">${key("Back")} exit</div>`
@@ -203,8 +228,26 @@
       base,
       keys: K,
       exit: exitApp,
-      // The UI calls this when a request comes back 403 or the stream dies: the shell reloads and finds its way again.
-      restart: () => location.reload(),
+      // The UI calls this when a request comes back 403 or the stream dies: the shell reloads and finds its way
+      // again, to the same server first (no picker unless it is gone).
+      restart: () => {
+        const c = disc.connected()
+        if (c) disc.pin(c.address)
+        location.reload()
+      },
+      // The server the UI runs from, for the side pane's "Server: ‹name›" (home-server-spec §4.2).
+      server: (() => {
+        const c = disc.connected()
+        return c ? { address: c.address, name: c.name || c.address, home: !!c.home } : null
+      })(),
+      // A fresh sweep for the side pane: [{ address, name, home, current }].
+      servers: () =>
+        disc.listServers().then((list) => list.map((v) => ({ address: v.address, name: v.name || v.address, home: v.home, current: v.current }))),
+      // Switch by hand: the UI has written Resume already; the shell reloads and loads the UI from that server.
+      switchTo: (address) => {
+        disc.pin(address)
+        location.reload()
+      },
       // The UI calls this once it has drawn its first screen.
       ready: uiStarted,
     }
@@ -235,6 +278,7 @@
   }
 
   let prevKind = null
+  let prevPicker = null
   const disc = D.create({
     fetch: (url, init) => window.fetch(url, init),
     clock: { setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window) },
@@ -246,6 +290,10 @@
       const entering = s.kind === "typing" && prevKind !== "typing"
       prevKind = s.kind
       if (s.kind === "ready") return loadUi(s.base)
+      if (s.kind === "picker" && prevPicker !== s) {
+        prevPicker = s
+        pick = s.focus || 0
+      }
       if (entering) {
         typed = s.prefix || ""
         pad = 0
@@ -291,6 +339,15 @@
           else typed += k
         }
         if (disc.state() && disc.state().kind === "typing") render({ kind: "typing", prefix: s.prefix })
+        return
+      }
+      if (s.kind === "picker") {
+        eat()
+        if (name === "Back" || name === "Exit" || e.key === "Backspace") return exitApp()
+        if (name === "ArrowUp" && pick > 0) pick--
+        else if (name === "ArrowDown" && pick < s.servers.length - 1) pick++
+        else if (name === "Enter") return disc.choose(s.servers[pick].address)
+        render(s)
         return
       }
       if (name === "Back" || name === "Exit") {

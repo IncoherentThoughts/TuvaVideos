@@ -1,4 +1,4 @@
-// The TV UI's way to the TV Server: every fetch and media URL goes through `base` (docs/tv-spec.md 4.1). In the
+// The TV UI's way to the Library Server: every fetch and media URL goes through `base` (docs/tv-spec.md 4.1). In the
 // shell `window.tuvaTv.base` names the Mac; standalone in a desktop browser it is the page origin.
 import type { AudioState } from "../shared/audio"
 import type { ArtistDto, ChapterDto, FavoriteItem, KeyframeStatusDto, SearchResponse, SongDto, SongListDto, VideoDto } from "../shared/types"

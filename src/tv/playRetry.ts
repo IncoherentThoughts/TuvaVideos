@@ -1,4 +1,4 @@
-// What the Player does when its <video> reports an error (docs/tv-spec.md 6.6, audit TV-2). A lost TV Server or a
+// What the Player does when its <video> reports an error (docs/tv-spec.md 6.6, audit TV-2). A lost Library Server or a
 // dropped stream is transient: retry the same Copy with backoff and play on once the server answers again. Only a Copy
 // that keeps failing while the server answers (a decode error, a format the TV cannot play) is marked failed, with the
 // "did not play (codecs)" message. Pure.
@@ -46,7 +46,7 @@ export type PlayErrorAction =
   | { t: "lose"; failed: boolean }
 
 export function onPlayError(f: PlayErrorFacts): PlayErrorAction {
-  if (!f.serverAnswered) return { t: "retry", ms: retryDelayMs(f.outageTries + 1), net: true, outage: true } // the TV Server is gone for now: keep trying
+  if (!f.serverAnswered) return { t: "retry", ms: retryDelayMs(f.outageTries + 1), net: true, outage: true } // the Library Server is gone for now: keep trying
   if (!f.intact) return { t: "lose", failed: false } // the Root unmounted or the file went Missing
   if (f.code === MEDIA_ERR_NETWORK || f.code === MEDIA_ERR_ABORTED) {
     return f.netTries < NET_TRIES_WITH_SERVER ? { t: "retry", ms: retryDelayMs(f.netTries + 1), net: true } : { t: "lose", failed: false }

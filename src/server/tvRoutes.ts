@@ -1,12 +1,12 @@
 import { UUID_PATTERN } from "../shared/ids";
 
-// The TV Server's fixed route list (docs/tv-spec.md 2.3, ADR 0004). It is the security boundary: a request that matches
+// The Library Server's fixed route list (docs/tv-spec.md 2.3, ADR 0004). It is the security boundary: a request that matches
 // nothing here is a 404 and never reaches the localhost handler. Data, so a test can walk it. Extend it deliberately.
 
 export type TvRouteKind =
-  | "health" // answered to anyone, by the TV Server itself
+  | "health" // answered to anyone, by the Library Server itself
   | "api" // a localhost handler, for Approved TVs
-  | "ui" // the TV app's UI files, served by the TV Server
+  | "ui" // the TV app's UI files, served by the Library Server
   | "live"; // the Live remux streams (tv-live-remux)
 
 export interface TvRoute {
@@ -58,8 +58,8 @@ export function matchTvRoute(method: string, pathname: string): TvRoute | null {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Not on this machine (sharing-spec §7.6): the TV Server's video lists leave out Videos with no Copy here (no Copy
-// row, or every Copy Missing) and keep Unmounted ones as today. The localhost handler is unchanged; the TV Server
+// Not on this machine (sharing-spec §7.6): the Library Server's video lists leave out Videos with no Copy here (no Copy
+// row, or every Copy Missing) and keep Unmounted ones as today. The localhost handler is unchanged; the Library Server
 // filters the answers of these list routes on the way out.
 // ---------------------------------------------------------------------------------------------------------------
 

@@ -449,7 +449,7 @@ export function createHandler(s: Services) {
   }
 
   // The guard runs first, for every request (localOnly.ts): a loopback Host, and this companion's Origin on writes.
-  // `server` is the Bun listener (absent when the TV Server passes a request in, which `localGuard` lets through).
+  // `server` is the Bun listener (absent when the Library Server passes a request in, which `localGuard` lets through).
   return async (req: Request, server?: { port?: number }): Promise<Response> => {
     const refused = localGuard(req, server?.port ?? (s.cfg.port || null));
     if (refused) return json({ error: refused.error }, refused.status);

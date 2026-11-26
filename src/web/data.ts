@@ -47,7 +47,7 @@ export const forgetSong = (id: string) => void songCache.delete(id);
 export const forgetAllSongs = () => songCache.clear();
 
 export const api = {
-  /** The TV Server (docs/tv-spec.md 2): state, turn on/off, and the Approved TVs prompt. */
+  /** The Library Server (docs/tv-spec.md 2): state, turn on/off, and the Approved TVs prompt. */
   tv: () => get<TvStateDto>("/api/tv"),
   tvOn: () => post<TvStateDto>("/api/tv/on"),
   tvOff: () => post<TvStateDto>("/api/tv/off"),

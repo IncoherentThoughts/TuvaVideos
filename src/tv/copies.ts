@@ -15,7 +15,7 @@ export function pickTvCopy<T extends TvCopy>(copies: readonly T[], skip: Readonl
   return ok[0]?.c ?? null
 }
 
-export const REMUX_MESSAGE = "This Copy needs the TV Server's remux (not built yet)"
+export const REMUX_MESSAGE = "This Copy needs the Library Server's remux (not built yet)"
 
 /**
  * The Copy the Player starts with or falls over to: the best Copy the TV plays as-is (a local Copy that needs the Live

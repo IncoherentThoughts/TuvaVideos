@@ -796,7 +796,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         {phase !== "ready" && phase !== "loading" && (
           <div class="plmsg">{!video ? "This Video is not in the library." : phase === "remux" ? REMUX_MESSAGE : phase === "failed" && failedCopy ? failedMessage(failedCopy) : "Copy unavailable"}</div>
         )}
-        {reconnecting && phase === "loading" && <div class="plmsg">Lost the TV Server · retrying…</div>}
+        {reconnecting && phase === "loading" && <div class="plmsg">Lost the Library Server · retrying…</div>}
         {needsEnter && <div class="plmsg over">Press Enter to play</div>}
         {badge && <div class="pl-badge">{badge}</div>}
         {flash && (

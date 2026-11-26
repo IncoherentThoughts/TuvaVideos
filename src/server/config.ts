@@ -15,10 +15,10 @@ export interface Config {
   /** Cached Music.app library dump (spec 7.2). */
   studioDumpPath: string;
   port: number;
-  /** The TV Server port (tv-spec 2.1); `TUVA_TV_PORT` overrides it, for tests only. */
+  /** The Library Server port (tv-spec 2.1); `TUVA_TV_PORT` overrides it, for tests only. */
   tvPort: number;
   /**
-   * The TV Server may approve this machine's own addresses (127.0.0.1, its LAN IPs), so the TV UI can be tried in a
+   * The Library Server may approve this machine's own addresses (127.0.0.1, its LAN IPs), so the TV UI can be tried in a
    * desktop browser here (`TUVA_TV_LOOPBACK=1`, tests and development only). Off: a page on this machine is never a TV.
    */
   tvLoopback?: boolean;

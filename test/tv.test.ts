@@ -1,4 +1,4 @@
-// The TV Server (docs/tv-spec.md 2, 3.1-3.3): the TV Playback profile's decision, scan-time judging and staleness,
+// The Library Server (docs/tv-spec.md 2, 3.1-3.3): the TV Playback profile's decision, scan-time judging and staleness,
 // the second listener, the route list and the Approved TV allowlist.
 // Story-style: the tests against the shared app run in file order and build on each other's state, so
 // `test.only`, `--randomize` and running one test alone are not supported here (audit BLD-8).
@@ -105,7 +105,7 @@ describe("route list", () => {
     expect(matchTvRoute("POST", `/api/videos/${V(1)}/chapters`)).toBeNull();
   });
 
-  test("a passive server never starts a TV Server", () => {
+  test("a passive server never starts a Library Server", () => {
     const tv = new TvServer({ cfg: { tvPort: 0, passive: true, webDir: "" }, db: null as never });
     expect(tv.start()).toMatchObject({ ok: false, status: 409 });
     expect(tv.on).toBe(false);
@@ -202,7 +202,7 @@ describe("scan-time judging", () => {
   });
 });
 
-describe("TV Server listener", () => {
+describe("Library Server listener", () => {
   test("off at launch; the control routes live on the localhost listener only", async () => {
     const s = await j("/api/tv");
     expect(s).toMatchObject({ available: true, on: false, port: null, pending: [], approved: [], playing: null });
@@ -216,7 +216,13 @@ describe("TV Server listener", () => {
     tvBase = `http://127.0.0.1:${s.port}`;
     const h = await tvReq("/api/health");
     expect(h.status).toBe(200);
-    expect(await h.json()).toEqual({ app: "TuvaVideos TV Server" });
+    const body = (await h.json()) as Record<string, unknown>;
+    expect(body.app).toBe("TuvaVideos TV Server"); // the wire string installed TV shells match (tv/shell/discovery.js)
+    expect(Object.keys(body).sort()).toEqual(["app", "drive", "home", "name", "version"]);
+    expect(typeof body.name).toBe("string");
+    expect(body.home).toBe(false);
+    expect(body.drive).toBe("mounted"); // the test library's Root is a readable directory
+    expect(typeof body.version).toBe("string");
     expect(await post("/api/tv/on")).toMatchObject({ on: true, port: s.port }); // idempotent
   });
 
@@ -258,7 +264,7 @@ describe("TV Server listener", () => {
     expect(s.pending).toEqual([]);
     expect(s.approved).toHaveLength(1);
     expect(s.approved[0]).toMatchObject({ ip: "127.0.0.1", model: "Samsung 85R85H" });
-    expect(app.db.query("SELECT model FROM approved_tv WHERE ip = '127.0.0.1'").get()).toEqual({ model: "Samsung 85R85H" });
+    expect(app.db.query("SELECT model FROM approved_device WHERE ip = '127.0.0.1'").get()).toEqual({ model: "Samsung 85R85H" });
 
     const videos = (await (await tvReq("/api/videos", { headers: tvModel })).json()) as any[];
     // Pick the plain mp4 explicitly: the list order ties on created_at, and the PCM Copy answers
@@ -277,7 +283,7 @@ describe("TV Server listener", () => {
       else expect(res.status).toBeLessThan(500); // some samples name nothing in the fixture library (a Song): still the handler's own answer
     }
     const ui = await (await tvReq("/", { headers: tvModel })).text();
-    expect(ui).toContain("TuvaVideos TV Server");
+    expect(ui).toContain("TuvaVideos Library Server"); // the page title is the new name
     expect(ui).toMatch(/\d+\.\d+\.\d+\.\d+:\d+|no network address/);
   });
 
@@ -338,7 +344,7 @@ describe("TV Server listener", () => {
     expect((await j("/api/tv")).playing).toMatchObject({ ip: "127.0.0.1", model: "Samsung 85R85H" }); // title: the stream asked for last (the route walk asked for one)
     await tvReq(`/copy/${v.copies[0].id}`, { headers: { ...tvModel, range: "bytes=0-9" } });
     expect((await j("/api/tv")).playing).toEqual({ ip: "127.0.0.1", model: "Samsung 85R85H", title: v.title });
-    expect((app.db.query("SELECT last_seen_at FROM approved_tv").get() as any).last_seen_at).not.toBeNull();
+    expect((app.db.query("SELECT last_seen_at FROM approved_device").get() as any).last_seen_at).not.toBeNull();
   });
 
   test("Remove puts the TV's next request back through the prompt", async () => {

@@ -32,8 +32,8 @@ Environment variables, all for tests, smoke runs and previews only (`src/server/
 
 | Variable | Default | Does |
 |---|---|---|
-| `TUVA_PORT` | `4400` | The browser app's port. Any other port on the default data dir (no `TUVA_DATA_DIR`) makes a **passive** server, a preview sharing the real library: it never scans on a remount (only on its own Rescan button) and never starts the TV Server |
-| `TUVA_TV_PORT` | `4401` | The TV Server's port |
+| `TUVA_PORT` | `4400` | The browser app's port. Any other port on the default data dir (no `TUVA_DATA_DIR`) makes a **passive** server, a preview sharing the real library: it never scans on a remount (only on its own Rescan button) and never starts the Library Server |
+| `TUVA_TV_PORT` | `4401` | The Library Server's port |
 | `TUVA_DATA_DIR` | per platform, above | The data dir |
 | `TUVA_LOCAL_ROOT` | unset | A videos folder added as a Root at every start (if not already there). Changing it adds a second Root rather than replacing the first, so it is not a way to move the library |
 | `TUVA_EXTERNAL_ROOT` | unset | An extra Root of kind `external` (a drive), added the same way |

@@ -32,7 +32,7 @@ The TV Server of `docs/tv-spec.md` §2, renamed, serving Macs as well as TVs.
 ### 2.1 Listener and health
 
 - Same listener, port and route list as today, plus the Mac-only routes of §2.3.
-- `GET /api/health` keeps `app: "TuvaVideos TV Server"`, because installed TV shells match on that string (`tv/shell/discovery.js`, `HEALTH_MARK`) and a shell change costs a reinstall with the Samsung certificate. It gains `name` (the Mac's computer name), `home` (true on the Home Server), `drive` (`"mounted"` when any Root is mounted, else `"unmounted"`) and `version` (the app's commit). Code renames `TV_APP_NAME` and friends to Library Server names; the wire string stays.
+- `GET /api/health` keeps `app: "TuvaVideos TV Server"`, because installed TV shells match on that string (`tv/shell/discovery.js`, `HEALTH_MARK`) and a shell change costs a reinstall with the Samsung certificate. It gains `name` (the Mac's computer name), `home` (true on the Home Server), `drive` (`"mounted"` when any Root is mounted, else `"unmounted"`) and `version` (the app's commit). Code renames `TV_APP_NAME` and friends to Library Server names; the wire string stays. **As built (#237):** `version` is the short git commit of the checkout the app runs from (package.json's version when there is no git); `home` is false until the Home Server toggle exists (#240); the `TV_APP_NAME` constant is gone, the wire string lives in `src/server/libraryServerHealth.ts` (`HEALTH_APP`), and the TV page's `<title>` reads "TuvaVideos Library Server". The top bar button reads "Library Server" ("Library Server on · ip:port" while serving). The shell's own wording (`tv/shell`) still says "TV Server" until the shell is reinstalled (#245).
 
 ### 2.2 Serve on launch, login and sleep
 
@@ -59,7 +59,7 @@ Macs never get anything the TV is denied (tv-spec §2.3, "Never exposed").
 
 ## 3. Approved devices
 
-Migration: `approved_tv` becomes **`approved_device`** (`ip`, `kind` `tv`|`mac`, `name`, `model`, `via` `tailscale`|`click`, `tailscale_login`, `approved_at`, `last_seen_at`); existing rows become `kind = 'tv', via = 'click'`.
+Migration: `approved_tv` becomes **`approved_device`** (`ip`, `kind` `tv`|`mac`, `name`, `model`, `via` `tailscale`|`click`, `tailscale_login`, `approved_at`, `last_seen_at`); existing rows become `kind = 'tv', via = 'click'`. Migration `0025_approved_device.sql` (table rebuilt, `kind` and `via` CHECK-constrained, defaults `'tv'` and `'click'`); `name` is a Mac's computer name and stays NULL for TVs, which have only `model`.
 
 ### 3.1 Tailscale devices, on sight
 

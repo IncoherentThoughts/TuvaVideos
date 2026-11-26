@@ -556,7 +556,7 @@ export function createHandler(s: Services) {
         if (p.startsWith("/home/") && !isTvRequest(req)) {
           // home-server-spec §5.4: a Home Server Copy, its Live stream, keyframe index, Fallback state or Audio settings
           const up = homeUpstream(p, url.search);
-          if (up) return proxyHome(req, s.home?.base() ?? null, up);
+          if (up) return proxyHome(req, s.home?.base() ?? null, up, fetch, () => s.home?.markUnreachable("The Home Server did not answer"));
         }
         if (p === "/api/serve-on-launch") return json(s.serveOnLaunch?.state() ?? { available: false, serveOnLaunch: false, openAtLogin: false });
         if (p === "/api/videos") return json(gridVideos(req));
@@ -748,7 +748,7 @@ export function createHandler(s: Services) {
         if (p === "/api/home/refresh") {
           if (!s.home) return json({ error: "no Home Server here" }, 404);
           const b = await readJson(req);
-          const st = await s.home.refresh({ force: b?.force === true });
+          const st = await s.home.refresh({ force: b?.force === true, health: b?.health === true }); // `health`: the Player's 30 s check (§9)
           await homeSync?.sync(); // §6.1: at connect and on each focus check
           return json(st);
         }

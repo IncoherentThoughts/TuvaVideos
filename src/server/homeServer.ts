@@ -253,17 +253,26 @@ export class HomeServer {
    * Check the connection and fetch the index (§4.1, §5.1). `force`: at connect and from the refresh button; otherwise
    * (window focus) health is asked again only after 60 s and the index only after 10 minutes. Never on a timer.
    */
-  refresh(o: { force?: boolean } = {}): Promise<HomeStatusDto> {
-    return (this.inflight ??= this.doRefresh(!!o.force).finally(() => (this.inflight = null)));
+  refresh(o: { force?: boolean; health?: boolean } = {}): Promise<HomeStatusDto> {
+    return (this.inflight ??= this.doRefresh(!!o.force, !!o.health).finally(() => (this.inflight = null)));
   }
 
-  private async doRefresh(force: boolean): Promise<HomeStatusDto> {
+  /**
+   * The proxy saw the Home Server not answer while a stream played (§9): the connection state goes to unreachable at
+   * once (the grid hides its Videos, the outbox holds, downloads wait) without waiting for the next check. The stored
+   * index is kept; the next successful check refetches it.
+   */
+  markUnreachable(error = "No answer"): void {
+    this.check = { at: this.now(), ok: false, server: this.check?.server ?? null, version: null, drive: null, error };
+  }
+
+  private async doRefresh(force: boolean, health = false): Promise<HomeStatusDto> {
     const base = this.base();
     if (!base) return this.status();
     const now = this.now();
     const at = Date.parse(getKey(this.deps.db, "home_index_at") ?? "");
     const indexStale = force || !Number.isFinite(at) || now - at >= HOME_INDEX_STALE_MS || !this.check?.ok;
-    const healthStale = force || !this.check || now - this.check.at >= HOME_HEALTH_STALE_MS;
+    const healthStale = force || health || !this.check || now - this.check.at >= HOME_HEALTH_STALE_MS;
     if (healthStale) {
       const t = await this.test(base);
       this.check = t.ok ? { at: now, ok: true, server: t.name, version: t.version, drive: t.drive, error: null } : { at: now, ok: false, server: this.check?.server ?? null, version: null, drive: null, error: t.error };

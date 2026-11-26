@@ -48,3 +48,13 @@ export function readPrepare(f: { state: string; progress?: number | null; error?
   if (f.state === "failed") return { kind: "failed", error: f.error };
   return { kind: "wait", progress: typeof f.progress === "number" ? f.progress : null };
 }
+
+/**
+ * A Home Server Copy stopped playing (home-server-spec §9). With the Home Server unreachable the play **pauses** and
+ * offers Retry, keeping its place, unless a usable Copy on this Mac exists (then it fails over as for a broken Copy).
+ * With the Home Server answering, the Copy itself is broken and the usual failover applies. Pure.
+ */
+export function homeDropAction<T extends PickableCopy>(ranked: readonly T[], lostId: number, failed: ReadonlySet<number>, reachable: boolean): "pause" | "failover" {
+  if (reachable || lostId >= 0) return "failover";
+  return ranked.some((c) => c.id > 0 && c.available && !failed.has(c.id)) ? "failover" : "pause";
+}

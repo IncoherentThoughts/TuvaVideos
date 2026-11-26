@@ -27,7 +27,7 @@ const HEADERS_TIMEOUT_MS = 15_000;
  * Pass one request through to the Home Server at `base`. The upstream request is cancelled when the tab's request goes
  * away (a seek, a Copy switch, leaving the Player), so the Home Server never streams to nobody.
  */
-export async function proxyHome(req: Request, base: string | null, upstream: string, doFetch: typeof fetch = fetch): Promise<Response> {
+export async function proxyHome(req: Request, base: string | null, upstream: string, doFetch: typeof fetch = fetch, onUnreachable?: () => void): Promise<Response> {
   const fail = (status: number, error: string) => new Response(JSON.stringify({ error }), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
   if (!base) return fail(404, "no Home Server");
   const ac = new AbortController();
@@ -52,6 +52,7 @@ export async function proxyHome(req: Request, base: string | null, upstream: str
   } catch {
     clearTimeout(timer);
     req.signal.removeEventListener("abort", onAbort);
+    if (!req.signal.aborted) onUnreachable?.(); // the tab did not give up: the Home Server did not answer (§9)
     return fail(502, "the Home Server did not answer");
   }
 }

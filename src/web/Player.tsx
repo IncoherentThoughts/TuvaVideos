@@ -4,7 +4,7 @@
 // (one decoded frame instead of a GOP); Shift-arrows, frame steps, Chapters, `?t=` and Resume are exact.
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { createPortal } from "preact/compat";
-import { bestCopy, copyRoutes, liveRoute, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
+import { bestCopy, copyRoutes, homeDropAction, liveRoute, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
 import { busyMessage, keepQuality, liveSegmentStarts, qualityLabel, readBusy, type LiveQuality } from "../shared/liveQuality";
 import { attachLive, type LiveSource } from "./hlsPlay";
 import { QualityPicker } from "./QualityPicker";
@@ -48,7 +48,7 @@ export interface PlayerCtl {
   setChapterLoop(id: string | null): void;
 }
 
-type Phase = "loading" | "preparing" | "ready" | "unavailable" | "failed";
+type Phase = "loading" | "preparing" | "ready" | "unavailable" | "failed" | "homedown";
 
 interface Props {
   video: VideoDto;
@@ -157,6 +157,8 @@ const playable = (v: Pick<VideoDto, "copies" | "homeCopies">): CopyDto[] => pref
 const routes = (id: number) => copyRoutes(id < 0 ? { id, homeId: -id } : { id });
 const liveOf = (id: number, q: LiveQuality) => liveRoute(id < 0 ? { id, homeId: -id } : { id }, q);
 /** Who a busy answer names as the server (home-server-spec 7.2). */
+/** The health check while a Home Server stream plays (home-server-spec 9). */
+const HOME_CHECK_MS = 30_000;
 const serverOf = (id: number) => (id < 0 ? "The Home Server" : "This Mac");
 
 export function Player({ video, startT, chapters, onStep, onAddChapter, onChapterLoop, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistEnded, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
@@ -165,6 +167,10 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
 
   // ---- what is on screen ----
   const [phase, setPhase] = useState<Phase>("loading");
+  const phaseRef = useRef<Phase>("loading");
+  phaseRef.current = phase;
+  const [retrying, setRetrying] = useState(false);
+  const [homeName, setHomeName] = useState<string | null>(null);
   const [prep, setPrep] = useState<number | null>(null);
   const [copyId, setCopyId] = useState<number | null>(null);
   const [quality, setQuality] = useState<LiveQuality>("orig"); // Original on every play, never remembered (home-server-spec 7.1)
@@ -319,6 +325,58 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     R.current.live = null;
   };
 
+  /**
+   * A Home Server Copy stopped (home-server-spec 9): ask the Home Server now. Unreachable and no usable Copy on this Mac:
+   * the play pauses on "Home Server unreachable" with Retry, its place kept, and no failover (true). Otherwise false and
+   * the caller goes on (a broken Copy fails over as before; a local Copy takes over when there is one).
+   */
+  const homeDropped = async (id: number, pos: number, play: boolean): Promise<boolean> => {
+    const st = await api.pingHome().catch(() => null);
+    if (st?.server) setHomeName(st.server);
+    if (R.current.copyId !== id) return true;
+    if (st?.connected) return false;
+    if (homeDropAction(playable(V.current), id, R.current.failed, false) === "failover") {
+      lose(id, false, pos, play);
+      return true;
+    }
+    holdHomeDown(pos, play);
+    return true;
+  };
+
+  const holdHomeDown = (pos: number, play: boolean) => {
+    const r = R.current;
+    const v = vid.current;
+    writeResume(); // goes to the outbox while the Home Server is away (home-server-spec 6.1)
+    r.token++;
+    r.hold = pos;
+    r.wasPlaying = play;
+    r.resumeOn = false;
+    r.started = false;
+    dropLive();
+    if (v) {
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+    }
+    setPaused(true);
+    setBuffering(false);
+    setPhase("homedown");
+  };
+
+  /** Retry on the "Home Server unreachable" overlay: ask again, and load the same Copy at the kept place when it answers. */
+  const retryHome = async () => {
+    const r = R.current;
+    const id = r.copyId;
+    if (id == null || retrying) return;
+    setRetrying(true);
+    const st = await api.pingHome().catch(() => null);
+    setRetrying(false);
+    if (R.current.copyId !== id || phaseRef.current !== "homedown") return;
+    if (!st?.connected) return say("Home Server unreachable", 2200);
+    r.resumeOn = resumeAllowed(!!PL.current.playlist);
+    void loadCopy(id, r.hold, r.wasPlaying);
+  };
+
   /** A Live stream failed: a busy server is said; either way the Copy plays on at Original from the same place. */
   const onLiveError = async (id: number, q: LiveQuality) => {
     const r = R.current;
@@ -326,6 +384,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     if (r.copyId !== id || r.quality !== q || !v) return;
     const pos = r.started ? v.currentTime : r.pending.at;
     const play = r.started ? !v.paused : r.pending.play;
+    if (id < 0 && (await homeDropped(id, pos, play))) return;
     const res = await fetch(liveOf(id, q)).catch(() => null);
     const holders = res ? readBusy(res.status, await res.json().catch(() => null)) : null;
     if (R.current.copyId !== id || R.current.quality !== q) return;
@@ -523,6 +582,26 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     }
     if (cur && (!cur.available || cur.missing)) lose(cur.id, false);
   }, [video, copyId, phase]);
+
+  // the Home Server health check while a Home Server Copy plays (home-server-spec 9): every 30 s
+  useEffect(() => {
+    if (copyId == null || copyId >= 0 || phase === "homedown" || phase === "unavailable" || phase === "failed") return;
+    const id = copyId;
+    const t = setInterval(() => {
+      void api.pingHome().then((st) => {
+        if (st.server) setHomeName(st.server);
+        const r = R.current;
+        if (st.connected || r.copyId !== id || phaseRef.current === "homedown") return;
+        const v = vid.current;
+        if (!v) return;
+        const pos = v.readyState > 0 ? v.currentTime : r.lastPos;
+        const play = !v.paused;
+        if (homeDropAction(playable(V.current), id, r.failed, false) === "failover") lose(id, false, pos, play);
+        else holdHomeDown(pos, play);
+      }, () => {});
+    }, HOME_CHECK_MS);
+    return () => clearInterval(t);
+  }, [copyId, phase === "homedown"]);
 
   // ---- seeking ----
   type SeekMode = "exact" | "keyframe";
@@ -748,6 +827,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     if (r.quality !== "orig") return void onLiveError(id, r.quality); // a native Live stream fails through the element
     const pos = r.started ? v.currentTime : r.pending.at;
     const play = r.started ? !v.paused : r.pending.play;
+    if (id < 0 && (await homeDropped(id, pos, play))) return;
     const res = await fetch(routes(id).file, { headers: { range: "bytes=0-0" } }).catch(() => null);
     if (R.current.copyId !== id) return;
     void res?.body?.cancel();
@@ -1059,6 +1139,19 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
                 <i style={prep != null ? { "--p": prep } : undefined} class={prep == null ? "ind" : ""} />
               </div>
               <span class="mono dim">{prep != null ? `${Math.round(prep * 100)}%` : "working…"}</span>
+            </div>
+          </div>
+        )}
+        {phase === "homedown" && (
+          <div class="overlay" role="alert">
+            <div class="card">
+              <h3>Home Server unreachable</h3>
+              <p>
+                {homeName ?? video.home?.server ?? "The Home Server"} does not answer (Tailscale up on both Macs?). Your place, <span class="mono">{fmtClock(R.current.hold)}</span>, is kept.
+              </p>
+              <button class="btn" data-keep-focus="" disabled={retrying} onClick={() => void retryHome()}>
+                {retrying ? "Trying…" : "Retry"}
+              </button>
             </div>
           </div>
         )}

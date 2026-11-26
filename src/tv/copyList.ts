@@ -1,5 +1,5 @@
 // The Copy list (docs/tv-spec.md 6.5): one row per Copy, the playing one marked, a Copy the TV cannot play without the
-// Live remux marked "via remux" and greyed until that is built. Pure: Copies in, rows out.
+// Live stream marked "via remux" (it plays as a Live stream when picked). Pure: Copies in, rows out.
 import type { CopyDto } from "../shared/types"
 
 type RowCopy = Pick<CopyDto, "id" | "rootKind" | "container" | "videoCodec" | "audioCodec" | "height" | "width" | "size" | "available" | "missing" | "tv">
@@ -13,7 +13,7 @@ export interface CopyRow {
   /** "local" / "external" */
   root: string
   playing: boolean
-  /** The TV profile needs the Live remux for it (`tv.order` is `live`): marked and greyed. */
+  /** The TV profile needs a Live stream for it (`tv.order` is `live`): marked. */
   viaRemux: boolean
   unavailable: boolean
   /** Enter may switch to it. */
@@ -41,7 +41,7 @@ export function copyRows(copies: readonly RowCopy[], playingId: number | null): 
       playing: c.id === playingId,
       viaRemux,
       unavailable,
-      switchable: !viaRemux && !unavailable,
+      switchable: !unavailable, // one needing a Live stream plays as one (home-server-spec 7.1)
     }
   })
 }

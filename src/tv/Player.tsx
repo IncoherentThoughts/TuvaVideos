@@ -16,7 +16,8 @@ import type { ChapterDto, CopyDto, SongDto, VideoDto } from "../shared/types"
 import { AudioEngine } from "../web/audioEngine"
 import { artistSlot } from "../web/ui"
 import { AudioChain, audioTag, type AudioMode } from "./audioChain"
-import { REMUX_MESSAGE, failedMessage, pickPlayable } from "./copies"
+import { REMUX_MESSAGE, busyMessage, failedMessage, liveUrl, pickPlayable } from "./copies"
+import { liveSegmentStarts } from "../shared/liveQuality"
 import { copyLabel, copyRows } from "./copyList"
 import { api, url, writes } from "./data"
 import { useKeyHandler } from "./input"
@@ -84,6 +85,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const [copyId, setCopyId] = useState<number | null>(null)
   const [phase, setPhase] = useState<Phase>("loading")
   const [failedCopy, setFailedCopy] = useState<CopyDto | null>(null)
+  const [busyText, setBusyText] = useState<string | null>(null) // the server's two Live streams are taken
   const [t, setT] = useState(0)
   const [paused, setPaused] = useState(true)
   const [needsEnter, setNeedsEnter] = useState(false)
@@ -253,9 +255,27 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     setCopyId(c.id)
     setPhase("loading")
     setNeedsEnter(false)
-    v.src = url(c.url)
-    v.load()
-    void fetchKeyframes(c.id, token)
+    setBusyText(null)
+    if (c.tv.order !== "live") {
+      v.src = url(c.url)
+      v.load()
+      void fetchKeyframes(c.id, token)
+      return
+    }
+    // a Live stream (home-server-spec 7.1): ask for its playlist first, so a busy server is said, not a broken Copy;
+    // seeks snap to segment starts, where every segment begins with a keyframe
+    void api.liveBusy(liveUrl(c.id)).then((holders) => {
+      if (token !== R.current.token) return
+      if (holders) {
+        r.hold = at
+        r.copyId = null
+        setBusyText(busyMessage(holders))
+        return setPhase("remux")
+      }
+      r.keyframes = liveSegmentStarts(c.durationS)
+      v.src = url(liveUrl(c.id))
+      v.load()
+    })
   }
 
   /** The playing Copy is gone (Root unmounted) or broken: next Available Copy at the same time, else "Copy unavailable" (spec 4.2). */
@@ -268,7 +288,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     writeResume()
     const skip = new Set([...r.failed, id])
     const n = pickPlayable(S.current.copies, skip)
-    if (n && !n.live) {
+    if (n) {
       say(`Switching to ${n.copy.rootKind} Copy · ${copyLabel(n.copy)}`, 3000)
       attach(n.copy, pos, wasPlaying)
       return
@@ -657,10 +677,6 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         r.hold = startS ?? fresh.resumeS ?? 0
         return setPhase("unavailable")
       }
-      if (picked.live) {
-        setCopyId(picked.copy.id)
-        return setPhase("remux")
-      }
       const inPl = !!PL.current
       const at = openAt({ t: startS, resumeS: fresh.resumeS, durationS: picked.copy.durationS ?? fresh.durationS }, inPl)
       const announce = startS == null && at > 0 && !inPl
@@ -724,8 +740,8 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     if (!video) return
     if (phase === "unavailable" || phase === "failed" || phase === "remux") {
       const b = pickPlayable(video.copies, r.failed)
-      if (b && !b.live && r.alive) {
-        say(`Copy available again · ${copyLabel(b.copy)}`, 2600)
+      if (b && r.alive) {
+        if (phase !== "remux") say(`Copy available again · ${copyLabel(b.copy)}`, 2600) // "remux": a busy server, asked again on each poll
         attach(b.copy, r.hold, !paused || r.pending.play)
       }
       return
@@ -783,7 +799,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     key: r.id,
     lead: r.root,
     title: `${r.label} · ${r.size}`,
-    marks: [...(r.playing ? [{ text: "playing", cls: "now" }] : []), ...(r.viaRemux ? [{ text: "via remux", cls: "sug" }] : []), ...(r.unavailable ? [{ text: "unavailable", cls: "sug" }] : [])],
+    marks: [...(r.playing ? [{ text: "playing", cls: "now" }] : []), ...(r.viaRemux ? [{ text: "live stream", cls: "sug" }] : []), ...(r.unavailable ? [{ text: "unavailable", cls: "sug" }] : [])],
     current: r.playing,
     focused: z === "copies" && i === zs.row,
     dim: !r.switchable,
@@ -794,7 +810,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
       <div class="pl-vid">
         <video key={gen} ref={vid} muted={muted()} playsInline preload="auto" />
         {phase !== "ready" && phase !== "loading" && (
-          <div class="plmsg">{!video ? "This Video is not in the library." : phase === "remux" ? REMUX_MESSAGE : phase === "failed" && failedCopy ? failedMessage(failedCopy) : "Copy unavailable"}</div>
+          <div class="plmsg">{!video ? "This Video is not in the library." : phase === "remux" ? (busyText ?? REMUX_MESSAGE) : phase === "failed" && failedCopy ? failedMessage(failedCopy) : "Copy unavailable"}</div>
         )}
         {reconnecting && phase === "loading" && <div class="plmsg">Lost the TV Server · retrying…</div>}
         {needsEnter && <div class="plmsg over">Press Enter to play</div>}

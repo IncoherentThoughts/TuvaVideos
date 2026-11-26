@@ -7,7 +7,7 @@ export type TvRouteKind =
   | "health" // answered to anyone, by the TV Server itself
   | "api" // a localhost handler, for Approved TVs
   | "ui" // the TV app's UI files, served by the TV Server
-  | "live"; // the Live remux streams (tv-live-remux)
+  | "live"; // the Live streams (home-server-spec 7)
 
 export interface TvRoute {
   method: "GET" | "POST";

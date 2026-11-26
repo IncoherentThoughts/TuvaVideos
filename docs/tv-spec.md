@@ -118,10 +118,10 @@ Decided in #52 from #45, #46 and #47, confirmed on the TV by #48.
   | mkv, mp4, mov, m4v | h264, hevc, vp9, av1 | aac, ac3, eac3, opus, vorbis, mp3 | long edge ≤ 4096, ≤ 60 fps for h264, ≤ 120 fps for hevc/av1, 10-bit allowed |
   | webm | vp9, av1 | opus, vorbis | as above |
 
-  Notes from the build (#97): the table gives no fps limit for vp9, so the profile uses 60 (as h264); the limit is skipped when ffprobe's `r_frame_rate` is above 240 (a time base, not a rate); 10-bit needs no rule because the profile allows it and the stored facts carry no pixel format. A video `copy` decision covers every reason the video is not played as-is (unlisted extension or codec, long edge or fps over the limit); the Live remux can only fix the container.
+  Notes from the build (#97): the table gives no fps limit for vp9, so the profile uses 60 (as h264); the limit is skipped when ffprobe's `r_frame_rate` is above 240 (a time base, not a rate); 10-bit needs no rule because the profile allows it and the stored facts carry no pixel format. A video `copy` decision covers every reason the video is not played as-is (unlisted extension or codec, long edge or fps over the limit); the Live remux can only fix the container. **Superseded by #243 (home-server-spec 7.1, profile version 2):** video `copy` now means only the container is wrong and the video is h264 or hevc within the limits (it can go into the Live stream's TS segments as it is); an unplayable or unknown codec, or a long edge or frame rate over the limit, is video `transcode`.
 
   Everything in the 2026-10-11 census direct-plays (the E-AC3 mkv included). A combination that fails on the TV later is fixed by editing this table and bumping the version, never by re-encoding video.
-- A **pure decision** `(copyFacts, profile) → { video: directplay | copy | transcode, audio: directplay | copy | transcode, reason }` in `src/shared/`, shaped like Plex's. Video `transcode` is never produced for the TV and is not supported; audio `transcode` means AAC.
+- A **pure decision** `(copyFacts, profile) → { video: directplay | copy | transcode, audio: directplay | copy | transcode, reason }` in `src/shared/`, shaped like Plex's. Video `transcode` means the Live stream re-encodes the video (ADR 0012, home-server-spec 7.1; before #243 it was never produced); audio `transcode` means AAC.
 - **When**: every Copy is judged against every profile **once, at scan time**, stored per Copy (`copy.tv_playback` and `copy.tv_profile_version`, migration), and judged again when a profile's version changes. The judging reads only the facts already stored (no re-probe), so it is cheap: it runs at the end of every scan (new and changed Copies have their result cleared when their row is written) and **at every startup**, which also fills the column after its migration and re-judges rows made under an older version at once (the build does not wait for a scan, as this section first said). Nothing is decided at play time except the order of §3.2, which is derived from the stored result and the Fallback file. `bun run index-keyframes`-style ahead-of-time runs are not needed.
 
 ### 3.2 Order on the TV
@@ -148,7 +148,7 @@ Specified here, built last and deferrable (§9): no Copy in the library needs it
 - **One at a time**: a new Live remux stops the previous one. It **bypasses the single ffmpeg queue** and the Thumbnail pool's gate, so nothing in the background delays the TV. It uses the arm64 ffmpeg.
 - **Leaves nothing cached**: segments live in a temp dir that is deleted when the stream stops, the TV Server turns off, or the process exits.
 - HLS through native `<video>` on Tizen is capped at 1080p (MSE is FHD-only); acceptable for the exception, another reason 4K stays on direct play.
-- Until it is built, the decision function still returns "live remux" for such a Copy and the Player shows "This Copy needs the TV Server's remux (not built yet)" (§6.6).
+- Built in #243 as the **Live stream** (home-server-spec 7, ADR 0012), which also re-encodes and allows two at a time, one per device. The TV Player plays such a Copy at `/live/:copyId/index.m3u8?q=orig` automatically (its Copy list marks it "live stream" and it is switchable); a busy server is shown as "The server is busy streaming to ‹devices›".
 
 ---
 
@@ -370,6 +370,6 @@ Decided out of the TV build, kept as the next tickets when wanted:
 - Streaming away from home; any access from outside the home network; auth beyond the IP allowlist.
 - Editing anything from the TV: Chapters, headers, Artists, Songs, lyrics, merges, Favorites, deletes, relocates.
 - Studio playback, Rescan, screenshots, the Audio panel's wand, the State panel's editing actions.
-- Video transcoding of any kind; tone-mapping; frame-rate conversion; AVPlay.
+- Video transcoding of any kind (reversed by ADR 0012: the Live stream re-encodes); tone-mapping; frame-rate conversion (except the Live stream's encode mode capping at 60 fps); AVPlay.
 - Voice search; a typed-letter jump list; Tracks and Albums in TV search.
 - Multiple TVs playing at once as a designed case (each Approved TV works; nothing arbitrates).

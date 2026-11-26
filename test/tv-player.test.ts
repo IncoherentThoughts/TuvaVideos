@@ -449,10 +449,10 @@ describe("Playlist on the TV (spec 6.7)", () => {
 describe("Copy list (spec 6.5)", () => {
   const copies = [copy({ id: 1 }), copy({ id: 2, rootKind: "external", container: "webm", tv: { decision: null, order: "live" } }), copy({ id: 3, available: false, container: "mp4", height: 720, size: 4e8 })]
 
-  test("one row per Copy, the playing one marked, via remux greyed and not switchable", () => {
+  test("one row per Copy, the playing one marked, one needing a Live stream marked and switchable", () => {
     const rows = copyRows(copies, 1)
     expect(rows.map((r) => r.playing)).toEqual([true, false, false])
-    expect(rows[1]).toMatchObject({ viaRemux: true, switchable: false, root: "external" })
+    expect(rows[1]).toMatchObject({ viaRemux: true, switchable: true, root: "external" }) // plays as a Live stream
     expect(rows[0]).toMatchObject({ viaRemux: false, switchable: true, label: "mkv · h264 aac · 1080p", size: "1.5 GB" })
     expect(rows[2]).toMatchObject({ unavailable: true, switchable: false, size: "400 MB" })
     expect(fmtSize(0)).toBe("1 MB")

@@ -10,6 +10,7 @@ import type { Roots } from "./roots";
 import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import type { TvServer } from "./tv";
+import { answerHomeApproval, homeApprovals, type HomeServerTarget } from "./homeApprovals";
 import type { ServeOnLaunch } from "./serveOnLaunch";
 import { factsOfRow, parseDecision } from "./tvJudge";
 import { isTvRequest } from "./tvRequest";
@@ -86,6 +87,8 @@ export interface Services {
   quit?: () => void;
   /** The Download queue (downloader-spec §4). Built on first use by `createHandler` when the caller did not supply one. */
   downloads?: DownloadQueue;
+  /** This Mac's Home Server (home-server-spec §3.2, §4.1), for its pending TV approvals; absent or null, none is set. */
+  homeServer?: HomeServerTarget;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -470,6 +473,7 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/thumbs\/([0-9a-fA-F-]{36})\/(poster|strip)\.webp$/))) return thumbRoute(req, m[1]!, m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
         if (p === "/api/tv") return json(s.tv.state());
+        if (p === "/api/home/approvals") return json(await homeApprovals(s.homeServer ?? (() => null)));
         if (p === "/api/serve-on-launch") return json(s.serveOnLaunch?.state() ?? { available: false, serveOnLaunch: false, openAtLogin: false });
         if (p === "/api/videos") return json(allVideos());
         // The client write seam's reads (sharing-spec §4.3, §4.5, §4.9; src/server/sharedWrites.ts).
@@ -596,6 +600,11 @@ export function createHandler(s: Services) {
             if (!s.tv.approve(b.ip)) return json({ error: "this machine's own address is never a TV" }, 422);
           } else s.tv.deny(b.ip);
           return json(s.tv.state());
+        }
+        if ((m = p.match(/^\/api\/home\/approvals\/([0-9A-Fa-f.:%]{2,64})$/))) {
+          const b = await readJson(req);
+          if (!b || typeof b.allow !== "boolean") return json({ error: "allow (true or false) is required" }, 400);
+          return json(await answerHomeApproval(s.homeServer ?? (() => null), decodeURIComponent(m[1]!), b.allow));
         }
         if ((m = p.match(/^\/api\/(videos|chapters)\/([0-9a-fA-F-]{36})\/favorite$/))) {
           const table = m[1] === "videos" ? "video" : "chapter";

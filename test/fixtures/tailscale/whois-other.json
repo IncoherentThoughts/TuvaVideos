@@ -1,0 +1,1 @@
+{"Node":{"ID":7002,"StableID":"nGuest","Name":"guest-mac.example-tailnet.ts.net.","ComputedName":"guest-mac","User":4002,"Addresses":["100.101.1.3/32"],"Hostinfo":{"OS":"macOS","Hostname":"Guest Mac"}},"UserProfile":{"ID":4002,"LoginName":"guest@example.com","DisplayName":"Guest"},"CapMap":{}}

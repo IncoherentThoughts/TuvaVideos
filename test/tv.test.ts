@@ -100,8 +100,9 @@ describe("route list", () => {
     }
   });
 
-  test("the writes are exactly resume and view; nothing editable is listed", () => {
-    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual([`/api/videos/${V(1)}/resume`, `/api/videos/${V(1)}/view`]);
+  test("the writes are exactly resume and view, plus the Approved Macs' Allow / Deny; nothing editable is listed", () => {
+    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual([`/api/videos/${V(1)}/resume`, `/api/videos/${V(1)}/view`, "/api/approvals/192.168.4.56"]);
+    expect(TV_ROUTES.filter((r) => r.kind === "approvals").map((r) => `${r.method} ${r.sample}`)).toEqual(["GET /api/approvals", "POST /api/approvals/192.168.4.56"]);
     for (const bad of ["/copy/1/pcm", "/api/studio/state", "/api/roots", "/api/scan", "/api/rescan", "/api/quit", "/app.js", "/api/tv", "/favorites", "/themes/a/b.css"]) {
       expect(matchTvRoute("GET", bad)).toBeNull();
     }
@@ -284,6 +285,7 @@ describe("Library Server listener", () => {
       const res = await tvReq(path, { method: r.method, headers: tvModel, body: r.method === "POST" ? JSON.stringify({ resumeS: 3 }) : undefined });
       expect([r.method, path, res.headers.get("x-tuva-route") ?? res.headers.get("x-tv-route")]).toEqual([r.method, path, null]);
       if (r.kind === "live") expect(res.status).toBe(200); // the playlist (home-server-spec 7.2)
+      else if (r.kind === "approvals") expect(res.status).toBe(403); // Approved Macs only (home-server-spec §3.2)
       else if (path.startsWith("/thumbs/")) expect(res.status).toBe(404); // no Thumbnail in a fixture library, still the handler's answer
       else expect(res.status).toBeLessThan(500); // some samples name nothing in the fixture library (a Song): still the handler's own answer
     }

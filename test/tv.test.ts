@@ -100,8 +100,9 @@ describe("route list", () => {
     }
   });
 
-  test("the writes are exactly resume and view, plus the Approved Macs' Allow / Deny; nothing editable is listed", () => {
-    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual([`/api/videos/${V(1)}/resume`, `/api/videos/${V(1)}/view`, "/api/approvals/192.168.4.56"]);
+  test("the writes are exactly resume and view, plus the Approved Macs' Allow / Deny and /api/me/*; nothing editable is listed", () => {
+    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual([`/api/videos/${V(1)}/resume`, `/api/videos/${V(1)}/view`, "/api/approvals/192.168.4.56", "/api/me/resume"]);
+    expect(TV_ROUTES.filter((r) => r.method === "PUT").every((r) => r.kind === "mac")).toBe(true);
     expect(TV_ROUTES.filter((r) => r.kind === "approvals").map((r) => `${r.method} ${r.sample}`)).toEqual(["GET /api/approvals", "POST /api/approvals/192.168.4.56"]);
     for (const bad of ["/copy/1/pcm", "/api/studio/state", "/api/roots", "/api/scan", "/api/rescan", "/api/quit", "/app.js", "/api/tv", "/favorites", "/themes/a/b.css"]) {
       expect(matchTvRoute("GET", bad)).toBeNull();

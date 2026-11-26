@@ -6,7 +6,7 @@ import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio
 import type { VersionInput } from "../shared/lyrics/types";
 import type { ArtistDto, HomeApprovalsDto, TvStateDto,ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { isUuid } from "../shared/ids";
-import type { HomeStatusDto, HomeTestDto, ServeSettingsDto } from "../shared/types";
+import type { HomeStatusDto, HomeSyncDto, HomeTestDto, ServeSettingsDto } from "../shared/types";
 import { navigate, PLAY_PATH, playHref } from "./router";
 import { syncLanded, withFavorite, type SyncSeen } from "../shared/clientCache";
 import { useSession } from "./session";
@@ -57,6 +57,12 @@ export const api = {
   setHome: (p: { address?: string | null; self?: boolean }) => post<HomeStatusDto>("/api/home", p),
   testHome: (address: string) => post<HomeTestDto>("/api/home/test", { address }),
   refreshHome: (force: boolean) => post<HomeStatusDto>("/api/home/refresh", { force }),
+  /** Resume and Favorites through the Home Server (home-server-spec §6). */
+  homeSync: () => get<HomeSyncDto | null>("/api/home/sync"),
+  /** §6.2 first connect: Export Favorites… (the save dialog), then this Mac's Favorites replace the Home Server's. */
+  firstSync: () => post<{ cancelled: true } | { ok: true; path: string; exported: number; replaced: { backup: string }; sync: HomeSyncDto }>("/api/home/first-sync", {}),
+  exportFavorites: () => post<{ cancelled: true } | { path: string; count: number }>("/api/favorites/export", {}),
+  importFavorites: () => post<{ cancelled: true } | { path: string; applied: number; older: number; unknown: number }>("/api/favorites/import", {}),
   tvOn: () => post<TvStateDto>("/api/tv/on"),
   tvOff: () => post<TvStateDto>("/api/tv/off"),
   tvApprove: (ip: string) => post<TvStateDto>("/api/tv/approve", { ip }),

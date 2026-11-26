@@ -378,6 +378,10 @@ select.chip { appearance: none; -webkit-appearance: none; background: var(--bg2)
 .copt .cnote b { color: var(--accent); font-weight: 500; }
 .copt .cnote b.pref { color: var(--t4); }
 .copt .cnote em { color: var(--fg3); font-style: normal; }
+/* the quality pick (home-server-spec 7.1): two columns, a narrower menu */
+.qpick .cmenu { min-width: 300px; }
+.qpick .copt { grid-template-columns: 64px 1fr; }
+.qpick .cbtn.on { color: var(--accent); }
 
 .player:fullscreen { display: flex; flex-direction: column; border-radius: 0; box-shadow: none; }
 .player:fullscreen .stage { flex: 1; width: 100%; aspect-ratio: auto !important; border-radius: 0; }

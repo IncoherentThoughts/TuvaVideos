@@ -3,9 +3,10 @@
 // holds the playback; this holds only where the focus is.
 import type { TvAction } from "./keys"
 
-export type Zone = "video" | "lyrics" | "tags" | "buttons" | "chapters" | "copies"
+export type Zone = "video" | "lyrics" | "tags" | "buttons" | "chapters" | "copies" | "qualities"
 
-export const BUTTONS = ["shuffle", "repeat", "copy"] as const
+/** The button row; Quality opens the quality pick (home-server-spec 7.1), Original first, for this play only. */
+export const BUTTONS = ["shuffle", "repeat", "copy", "quality"] as const
 export type ButtonId = (typeof BUTTONS)[number]
 
 export interface ZoneState {
@@ -35,6 +36,9 @@ export interface ZoneCtx {
   /** One flag per Copy row: can Enter switch to it (Available and not via remux)? */
   copySwitchable: readonly boolean[]
   currentCopy: number
+  /** Rows of the quality list (Original and each size below the Copy's); 1 or less, there is nothing to pick. */
+  qualityCount: number
+  currentQuality: number
 }
 
 export type Fx =
@@ -56,6 +60,8 @@ export type Fx =
   | { t: "copy"; index: number }
   /** Enter on a Copy row that cannot be switched to (via remux, unavailable). */
   | { t: "copyBlocked"; index: number }
+  /** A row of the quality list: 0 is Original. */
+  | { t: "quality"; index: number }
   | { t: "say"; text: string }
   | { t: "leave" }
 
@@ -104,7 +110,7 @@ export function reduceZone(s: ZoneState, k: TvAction, c: ZoneCtx): ZoneResult {
       return s.zone === "chapters" ? go(s, { zone: "video" }) : openChapters(s, c)
     case "rewind":
     case "forward":
-      if (s.zone === "chapters" || s.zone === "copies") return stay(s)
+      if (s.zone === "chapters" || s.zone === "copies" || s.zone === "qualities") return stay(s)
       return stay(s, { t: "seek", dir: k === "forward" ? 1 : -1, kind: "flat" })
   }
 
@@ -168,6 +174,10 @@ export function reduceZone(s: ZoneState, k: TvAction, c: ZoneCtx): ZoneResult {
         case "enter": {
           const id = BUTTONS[s.button]!
           if (id === "copy") return go(s, { zone: "copies", row: clamp(c.currentCopy, 0, Math.max(0, c.copySwitchable.length - 1)) })
+          if (id === "quality") {
+            if (c.qualityCount < 2) return stay(s, { t: "say", text: "Only Original for this Copy" })
+            return go(s, { zone: "qualities", row: clamp(c.currentQuality, 0, c.qualityCount - 1) })
+          }
           return stay(s, { t: "button", id })
         }
         case "up":
@@ -206,6 +216,23 @@ export function reduceZone(s: ZoneState, k: TvAction, c: ZoneCtx): ZoneResult {
           return go(s, { zone: "buttons", button: BUTTONS.indexOf("copy") })
       }
       break
+
+    case "qualities": {
+      const last = Math.max(0, c.qualityCount - 1)
+      switch (k) {
+        case "up":
+          return go(s, { row: clamp(s.row - 1, 0, last) })
+        case "down":
+          return go(s, { row: clamp(s.row + 1, 0, last) })
+        case "enter":
+          if (s.row === c.currentQuality) return go(s, { zone: "video" })
+          return go(s, { zone: "video" }, { t: "quality", index: clamp(s.row, 0, last) })
+        case "left":
+        case "back":
+          return go(s, { zone: "buttons", button: BUTTONS.indexOf("quality") })
+      }
+      break
+    }
   }
   // a key this zone has no use for: Back still leaves from anywhere unhandled above; the rest is the app's (Info, Exit)
   return { state: s, fx: [], handled: k !== "info" && k !== "exit" && k !== "char" && k !== "backspace" }

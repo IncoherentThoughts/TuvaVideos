@@ -10,6 +10,7 @@ import type { Roots } from "./roots";
 import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import type { TvServer } from "./tv";
+import type { LiveStreams } from "./live/streams";
 import { answerHomeApproval, homeApprovals, type HomeServerTarget } from "./homeApprovals";
 import type { HomeServer, HomeView } from "./homeServer";
 import { HomeSync } from "./homeSync";
@@ -98,6 +99,8 @@ export interface Services {
   homeServer?: HomeServerTarget;
   /** This Mac's Home Server setting, connection and home index (home-server-spec §4.1, §5.1); set by startApp. */
   home?: HomeServer;
+  /** This Mac's Live streams (home-server-spec 7), shared with the Library Server's `/live/...`; set by startApp. */
+  live?: Pick<LiveStreams, "serve">;
   /** Resume and Favorites through the Home Server (home-server-spec §6). Built by `createHandler` from `home`. */
   homeSync?: HomeSync;
 }
@@ -547,6 +550,9 @@ export function createHandler(s: Services) {
         if (p === "/api/home") return json(s.home?.status() ?? null);
         if (p === "/api/home/index") return homeIndexResponse(req);
         if ((m = p.match(/^\/home\/thumbs\/([0-9a-fA-F-]{36})\/poster\.webp$/))) return homeThumb(m[1]!, url.searchParams.get("v"));
+        // home-server-spec §7.1: the desktop Player's quality pick on one of this Mac's Copies. The localhost app is one
+        // device ("localhost"), named as this Mac, in the same two slots as the Library Server's TVs and Macs.
+        if (p.startsWith("/live/") && !isTvRequest(req)) return s.live ? s.live.serve(req, "localhost", computerName()) : json({ error: "Live streams are not set up" }, 404);
         if (p.startsWith("/home/") && !isTvRequest(req)) {
           // home-server-spec §5.4: a Home Server Copy, its Live stream, keyframe index, Fallback state or Audio settings
           const up = homeUpstream(p, url.search);

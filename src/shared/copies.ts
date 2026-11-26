@@ -25,6 +25,15 @@ export function copyRoutes(c: { id: number; homeId?: number }): { file: string; 
   return { file: `${pre}/copy/${id}`, info: `${pre}/api/copies/${id}`, keyframes: `${pre}/api/copies/${id}/keyframes` };
 }
 
+/**
+ * A Copy's Live stream playlist at quality `q` (home-server-spec 7.1, 7.2): this Mac's `/live/:id/index.m3u8?q=`, or
+ * the Home Server's through the companion's proxy, `/home/live/:homeId/index.m3u8?q=`. Its segment URIs are relative.
+ */
+export function liveRoute(c: { id: number; homeId?: number }, q: "orig" | "1080" | "720" | "480"): string {
+  const [pre, id] = c.homeId != null ? ["/home", c.homeId] : ["", c.id];
+  return `${pre}/live/${id}/index.m3u8?q=${q}`;
+}
+
 /** Does this Copy need the "preparing" state before it can be requested as a stream? */
 export function needsPrepare(c: { playback: string; fallback: { state: string } }): boolean {
   return c.playback !== "native" && c.fallback.state !== "ready";

@@ -2,6 +2,7 @@
 // browser; the TV re-orders them: local Root first, then one the TV profile plays (its own file or its Fallback),
 // then the browser's ranking (larger resolution, smaller size). Pure.
 import type { CopyDto } from "../shared/types"
+import { busyMessage as sharedBusyMessage, type LiveQuality } from "../shared/liveQuality"
 
 type TvCopy = Pick<CopyDto, "id" | "rootKind" | "available" | "tv">
 
@@ -17,14 +18,17 @@ export function pickTvCopy<T extends TvCopy>(copies: readonly T[], skip: Readonl
 
 export const REMUX_MESSAGE = "This Copy needs a Live stream the server cannot make right now"
 
-/** The Live stream of a Copy the TV profile does not play as-is (home-server-spec 7.1): Original, the server sizes it. */
-export const liveUrl = (copyId: number): string => `/live/${copyId}/index.m3u8?q=orig`
+/**
+ * The Live stream of a Copy (home-server-spec 7.1): at Original for a Copy the TV profile does not play as-is (the
+ * server sizes it), or at the quality picked in the button row.
+ */
+export const liveUrl = (copyId: number, q: LiveQuality = "orig"): string => `/live/${copyId}/index.m3u8?q=${q}`
+
+/** Does this play need a Live stream: a Copy the TV does not play as-is, or a quality below Original? */
+export const playsLive = (c: TvCopy, q: LiveQuality): boolean => q !== "orig" || !tvPlays(c)
 
 /** The 503 `busy` answer of `/live/...`: who holds the server's two Live streams. */
-export function busyMessage(streams: readonly { device: string; title: string }[] | null | undefined): string {
-  const who = (streams ?? []).map((s) => (s.title ? `${s.device} (${s.title})` : s.device)).join(" and ")
-  return who ? `The server is busy streaming to ${who}` : "The server is busy streaming to other devices"
-}
+export const busyMessage = (streams: readonly { device: string; title: string }[] | null | undefined): string => sharedBusyMessage(streams)
 
 /**
  * The Copy the Player starts with or falls over to: the best Copy the TV plays as-is (a local Copy that needs a Live

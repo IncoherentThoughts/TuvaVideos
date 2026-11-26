@@ -3,18 +3,23 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { bestCopy } from "../shared/copies";
 import type { CopyDto } from "../shared/types";
-import { DriveIcon, LaptopIcon, resolutionLabel, ChevronDownIcon } from "./ui";
+import { DriveIcon, HomeMark, LaptopIcon, resolutionLabel, ChevronDownIcon } from "./ui";
 
 export const copyLabel = (c: Pick<CopyDto, "container" | "height">) => [c.container, resolutionLabel(c.height)].filter(Boolean).join(" · ") || "Copy";
 
 const fmtSize = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 
-function RootIcon({ c }: { c: Pick<CopyDto, "rootKind" | "available"> }) {
+function RootIcon({ c }: { c: Pick<CopyDto, "rootKind" | "available" | "homeId"> }) {
+  if (c.homeId != null) return <HomeMark server={null} />;
   return <span class={`avail ${c.available ? c.rootKind : "none"}`}>{c.rootKind === "local" ? LaptopIcon : DriveIcon}</span>;
 }
 
+/** Where a Copy is, for its title: a Root kind here, or the Home Server (home-server-spec §5.3). */
+const whereOf = (c: Pick<CopyDto, "rootKind" | "homeId">) => (c.homeId != null ? "Home Server" : `${c.rootKind} Root`);
+
 function note(c: CopyDto): string {
   if (c.missing) return "file missing";
+  if (c.homeId != null) return c.playback === "native" ? "Home Server" : "Home Server · needs conversion there";
   if (!c.available) return "unavailable";
   if (c.playback === "native") return "";
   return c.fallback.state === "ready" ? "converted" : "needs conversion";
@@ -62,7 +67,7 @@ export function CopyPicker({ copies, playingId, onPick, refocus }: Props) {
         tabIndex={-1}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={playing ? `Playing this Copy (${playing.rootKind} Root). Click to switch Copy for this play.` : "Choose a Copy"}
+        title={playing ? `Playing this Copy (${whereOf(playing)}). Click to switch Copy for this play.` : "Choose a Copy"}
         onClick={() => {
           setOpen((o) => !o);
           if (open) refocus();

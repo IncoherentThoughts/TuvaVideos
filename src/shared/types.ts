@@ -304,3 +304,12 @@ export interface OnboardingDto {
   /** "panel": the first-launch panel (folder field, Sign in); "bar": the dismissable "No videos folder yet" bar. */
   show: "panel" | "bar" | "none";
 }
+
+/** `GET /api/serve-on-launch` (docs/home-server-spec.md §2.2). */
+export interface ServeSettingsDto {
+  /** False off macOS and on a passive server: neither setting can be used there. */
+  available: boolean;
+  serveOnLaunch: boolean;
+  /** The LaunchAgent exists. Only offered while Serve on launch is on. */
+  openAtLogin: boolean;
+}

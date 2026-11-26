@@ -104,6 +104,7 @@ export class TvServer {
   private refusedLogged = new Map<string, { at: number; more: number }>();
   private activity: Activity | null = null;
   private stopHooks: (() => void)[] = [];
+  private startHooks: (() => void)[] = [];
 
   constructor(
     private deps: {
@@ -135,6 +136,11 @@ export class TvServer {
     this.stopHooks.push(fn);
   }
 
+  /** Called after the listener is up (keep-awake, #238). */
+  onStart(fn: () => void) {
+    this.startHooks.push(fn);
+  }
+
   get on(): boolean {
     return this.server != null;
   }
@@ -161,6 +167,13 @@ export class TvServer {
     }
     const addrs = lanAddresses();
     log(`Library Server on, port ${this.server.port}, addresses ${addrs.length ? addrs.map((a) => `http://${a}:${this.server!.port}`).join(" ") : "(none)"}`);
+    for (const fn of this.startHooks) {
+      try {
+        fn();
+      } catch (e) {
+        log("Library Server start hook failed", String(e));
+      }
+    }
     return { ok: true };
   }
 

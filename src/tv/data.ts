@@ -70,6 +70,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 export const api = {
+  health: () => get<{ drive?: "mounted" | "unmounted" }>("/api/health"),
   videos: () => get<VideoDto[]>("/api/videos"),
   artists: () => get<ArtistDto[]>("/api/artists"),
   songs: () => get<SongListDto[]>("/api/songs"),

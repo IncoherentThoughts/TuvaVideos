@@ -14,6 +14,8 @@ import type { TvBundle } from "./web";
 import type { ApprovedDeviceDto, TvStateDto } from "../shared/types";
 import { appVersion, computerName, healthBody, LIBRARY_SERVER_NAME } from "./libraryServerHealth";
 import type { Roots } from "./roots";
+import { isTailscaleAddress, type TailscaleCheck } from "./tailscale";
+import type { RemoteApprovalsDto } from "../shared/types";
 
 type Handler = (req: Request) => Promise<Response>;
 
@@ -72,7 +74,9 @@ export function tvRequestError(req: Request, devLoopback = false): string | null
     } catch {
       return "bad Host header";
     }
-    if (hostname !== "localhost" && !/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && !/^\[[0-9a-f:.]+\]$/i.test(hostname)) return "Host is not an address of this machine";
+    // a MagicDNS name (`mini.tailnet.ts.net`) is how Macs reach the Home Server (home-server-spec §3.1, §4.1)
+    if (hostname !== "localhost" && !/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && !/^\[[0-9a-f:.]+\]$/i.test(hostname) && !/^[a-z0-9-]+\.[a-z0-9-]+\.ts\.net$/i.test(hostname))
+      return "Host is not an address of this machine";
   }
   const origin = req.headers.get("origin");
   if (tvCorsOrigin(origin, devLoopback)) return null;
@@ -113,6 +117,10 @@ export class TvServer {
       roots?: Pick<Roots, "list" | "isAvailable">;
       /** Health's `home`: true on the Home Server (the toggle arrives with #240). */
       home?: () => boolean;
+      /** Tailscale devices on sight (home-server-spec §3.1); absent, every device goes through the Allow prompt. */
+      tailscale?: Pick<TailscaleCheck, "check">;
+      /** Also look up loopback and this Mac's LAN addresses (needs `tvLoopback`): a stubbed CLI between two test machines. */
+      tailscaleOwn?: boolean;
     },
   ) {}
 
@@ -209,6 +217,33 @@ export class TvServer {
     return this.mayBeTv(ip) && this.deps.db.query("SELECT 1 FROM approved_device WHERE ip = ?").get(ip) != null;
   }
 
+  private kindOf(ip: string): "tv" | "mac" | null {
+    if (!this.mayBeTv(ip)) return null;
+    return (this.deps.db.query("SELECT kind FROM approved_device WHERE ip = ?").get(ip) as { kind: "tv" | "mac" } | null)?.kind ?? null;
+  }
+
+  /**
+   * §3.1: a Tailscale address of this Mac's own Tailscale user becomes an Approved device on sight (`via = 'tailscale'`).
+   * With `tailscaleOwn` under `TUVA_TV_LOOPBACK=1` (smoke runs with a stubbed CLI only) loopback and this Mac's LAN
+   * addresses are looked up too, so the stub can stand in for the tailnet between two test machines on one Mac.
+   */
+  private async approveOnSight(ip: string): Promise<boolean> {
+    const { tailscale: ts, tailscaleOwn, cfg } = this.deps;
+    if (!ts || !this.mayBeTv(ip) || !(isTailscaleAddress(ip) || (tailscaleOwn && cfg.tvLoopback && isOwnAddress(ip)))) return false;
+    const d = await ts.check(ip);
+    if (!d.approve) return false;
+    this.deps.db
+      .query("INSERT INTO approved_device (ip, kind, name, model, via, tailscale_login, approved_at, last_seen_at) VALUES (?, ?, ?, NULL, 'tailscale', ?, ?, NULL) ON CONFLICT(ip) DO NOTHING")
+      .run(ip, d.kind, d.name, d.login, new Date().toISOString());
+    this.pending.delete(ip);
+    return true;
+  }
+
+  /** `GET /api/approvals` (§3.2): what an Approved Mac shows as "Allow TV at ‹IP› on ‹name›?". */
+  remoteApprovals(): RemoteApprovalsDto {
+    return { server: computerName(), pending: [...this.pending].map(([ip, model]) => ({ ip, model })) };
+  }
+
   /** False, and nothing stored, for an empty address or this machine's own (`isOwnAddress`). */
   approve(ip: string): boolean {
     ip = normalizeIp(ip.trim());
@@ -287,6 +322,8 @@ export class TvServer {
       db.query("UPDATE approved_device SET last_seen_at = ?, model = COALESCE(?, model) WHERE ip = ?").run(new Date(now).toISOString(), model, ip);
       this.seenWritten.set(ip, now);
     }
+    // a Mac polling its approvals (every 5 s, §3.2) is seen, not "talking": the button keeps its own state
+    if (path === "/api/approvals" || path.startsWith("/api/approvals/")) return;
     let title = this.activity?.ip === ip ? this.activity.title : null;
     const m = path.match(/^\/(?:copy|live)\/(\d+)/);
     if (m) title = (db.query("SELECT v.title FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.id = ?").get(Number(m[1])) as { title: string } | null)?.title ?? title;
@@ -347,13 +384,14 @@ export class TvServer {
     if (route.kind === "health") return json(this.health());
 
     const model = req.headers.get("x-tuva-tv")?.trim().slice(0, 120) || null;
-    if (!this.isApproved(ip)) {
+    if (!this.isApproved(ip) && !(await this.approveOnSight(ip))) {
       // no prompt for this machine's own address: it could never be approved
       if (this.mayBeTv(ip) && !this.denied.has(ip)) this.pending.set(ip, model ?? this.pending.get(ip) ?? null);
       return json({ error: "approve" }, 403);
     }
     this.touch(ip, model, path);
 
+    if (route.kind === "approvals") return this.approvals(req, ip, path);
     if (route.kind === "ui") return this.ui(path);
     if (route.kind === "live") return json({ error: "the Live remux is not built yet" }, 404);
     if (!this.handler) return json({ error: "not ready" }, 503);
@@ -370,6 +408,25 @@ export class TvServer {
       return new Response(req.method === "HEAD" ? null : JSON.stringify(body), { status: res.status, headers });
     }
     return res; // CORS headers (which the poster-colour canvas also needs) are added by fetch()
+  }
+
+  /** §2.3, §3.2: pending approvals and Allow / Deny, for Approved Macs only (a TV never approves another). */
+  private async approvals(req: Request, ip: string, path: string): Promise<Response> {
+    if (this.kindOf(ip) !== "mac") return json({ error: "Approved Macs only" }, 403);
+    if (req.method === "POST") {
+      const target = normalizeIp(decodeURIComponent(path.slice("/api/approvals/".length)));
+      let allow: unknown;
+      try {
+        allow = ((await req.json()) as { allow?: unknown }).allow;
+      } catch {}
+      if (typeof allow !== "boolean") return json({ error: "allow (true or false) is required" }, 400);
+      if (!this.pending.has(target)) return json({ error: "no such pending approval" }, 404);
+      if (allow) {
+        if (!this.approve(target)) return json({ error: "this machine's own address is never a TV" }, 422);
+      } else this.deny(target);
+      log(`Library Server: ${allow ? "Allow" : "Deny"} for ${target}, from the Mac at ${ip}`);
+    }
+    return json(this.remoteApprovals());
   }
 
   /** The TV UI files: the bundle built at start (`TvBundle`), the olchey, and the page that loads them for a desktop browser. */

@@ -1,0 +1,1 @@
+{"Version":"1.90.0","BackendState":"Running","Self":{"ID":"nSelf","HostName":"mac-mini","DNSName":"mac-mini.example-tailnet.ts.net.","OS":"macOS","UserID":4001,"TailscaleIPs":["100.101.1.1"]},"User":{"4001":{"ID":4001,"LoginName":"owner@example.com","DisplayName":"Owner"}}}

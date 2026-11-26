@@ -4,7 +4,7 @@ import type { AudioPreset, AudioState } from "../shared/audio";
 import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { VersionInput } from "../shared/lyrics/types";
-import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
+import type { ArtistDto, HomeApprovalsDto, TvStateDto,ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { isUuid } from "../shared/ids";
 import { navigate, PLAY_PATH, playHref } from "./router";
 import { syncLanded, withFavorite, type SyncSeen } from "../shared/clientCache";
@@ -49,6 +49,8 @@ export const forgetAllSongs = () => songCache.clear();
 export const api = {
   /** The Library Server (docs/tv-spec.md 2): state, turn on/off, and the Approved TVs prompt. */
   tv: () => get<TvStateDto>("/api/tv"),
+  homeApprovals: () => get<HomeApprovalsDto>("/api/home/approvals"),
+  homeApprove: (ip: string, allow: boolean) => post<HomeApprovalsDto>(`/api/home/approvals/${encodeURIComponent(ip)}`, { allow }),
   tvOn: () => post<TvStateDto>("/api/tv/on"),
   tvOff: () => post<TvStateDto>("/api/tv/off"),
   tvApprove: (ip: string) => post<TvStateDto>("/api/tv/approve", { ip }),

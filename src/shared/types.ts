@@ -283,6 +283,23 @@ export interface ApprovedDeviceDto {
   lastSeenAt: string | null;
 }
 
+/** The Library Server's `GET /api/approvals` (home-server-spec §3.2), for Approved Macs. */
+export interface RemoteApprovalsDto {
+  /** The server Mac's computer name: "Allow TV at ‹IP› on ‹name›?". */
+  server: string;
+  pending: { ip: string; model: string | null }[];
+}
+
+/** `GET /api/home/approvals` (localhost): the Home Server's pending approvals, as this Mac sees them. */
+export interface HomeApprovalsDto {
+  /** False when no Home Server is set on this Mac: the top bar shows nothing and stops asking. */
+  configured: boolean;
+  /** False when the Home Server did not answer, or refused this Mac. */
+  connected: boolean;
+  server: string | null;
+  pending: { ip: string; model: string | null }[];
+}
+
 /** `GET /api/tv` (localhost listener only). */
 export interface TvStateDto {
   /** False on a passive server: the Library Server never starts there. */

@@ -1,5 +1,7 @@
 import { createHandler, type Services } from "./api";
 import { TvServer } from "./tv";
+import { cliRunner, TailscaleCheck, tailscaleCli } from "./tailscale";
+import { homeServerFromEnv } from "./homeApprovals";
 import { judgeStaleCopies } from "./tvJudge";
 import { judgeBrowserCopies } from "./browserJudge";
 import type { Config } from "./config";
@@ -65,8 +67,10 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
   const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
-  const tv = new TvServer({ cfg, db, roots }); // off at every launch: only POST /api/tv/on binds the port
-  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit };
+  // off at every launch: only POST /api/tv/on binds the port; Tailscale devices of this Mac's own user are approved on sight
+  // (`TUVA_TAILSCALE`, a stub CLI, with TUVA_TV_LOOPBACK=1 also checks this Mac's own addresses: smoke runs only)
+  const tv = new TvServer({ cfg, db, roots, tailscale: new TailscaleCheck(cliRunner(tailscaleCli())), tailscaleOwn: !!process.env.TUVA_TAILSCALE });
+  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit, homeServer: homeServerFromEnv() };
   const handler = createHandler(services);
   tv.setHandler(handler);
   tv.setBundle(tvBundle);

@@ -3,6 +3,7 @@ import type { ScanDto } from "../shared/types";
 import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { TvButton } from "./TvButton";
+import { HomeApprovals } from "./HomeApprovals";
 import { AccountChip } from "./Account";
 import { refreshDeletedMatches } from "./ConflictNotice";
 import { drainSharedSuggestions } from "./writeLink";
@@ -121,6 +122,7 @@ export function TopBar({ route }: { route: Route }) {
       <div class="topright">
         {scan && <ScanIndicator scan={scan} />}
         <SearchBox />
+        <HomeApprovals />
         <TvButton />
         <button class="btn" onClick={rescan} disabled={busy || !!scan?.running} title="Scan the Roots for new files">
           Rescan

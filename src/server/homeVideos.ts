@@ -66,7 +66,7 @@ export function homeOnlyDto(e: HomeView["homeOnly"][number], server: string | nu
     id: row.id, youtubeId: row.youtube_id, instagramId: null, rutubeId: null, shared: !!row.shared, updatedAt: row.created_at,
     title: row.title, titleLatin: row.title_latin, titleLatinSource: null, type: row.type as VideoDto["type"], typeSuggested: false,
     songId: null, versionId: null, song: null, songSuggested: false, suggestionSource: null,
-    favoritedAt: null, resumeS: null, lastPlayedAt: null, viewCount: 0, loop: null,
+    favoritedAt: row.me_favorited_at ?? null, resumeS: row.me_resume_s ?? null, lastPlayedAt: null, viewCount: 0, loop: null,
     createdAt: row.created_at, durationS: top.duration_s, available: false, preferredCopyId: null, width: top.width, height: top.height,
     addedAt: row.created_at, chapterCount: e.chapters.length, artists: [], availability: null,
     thumbnail: row.thumb ? { generatedAt: row.thumb, copyId: null, poster: homeThumbUrl(row.id, row.thumb), strip: null } : null,

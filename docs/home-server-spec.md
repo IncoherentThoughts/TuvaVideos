@@ -49,8 +49,9 @@ Everything Approved TVs get (tv-spec §2.3), plus:
 | Route | Purpose |
 |---|---|
 | `GET /api/home/index` | Every Video with its Copies, identity (`id`, `youtube_id`, `content_hash`), Copy facts and the **browser** Playback profile decision per Copy, and their title, Latin title, Type and Chapters (§5.1). `ETag` so an unchanged index costs nothing. **As built (#240):** titles, Type and Chapters go for **every** Video, not only never-Shared ones: a Mac that does not Sync (Standalone, signed out) has no Shared data for an unmatched Shared Video. Only Videos with a Copy that is not Missing are listed; each Copy carries `available` (its Root mounted there). Chapters are the confirmed ones (Suggested left out). Route kind `mac` on the route list (403 to anything but an Approved device of `kind = 'mac'`); the body is built by the localhost handler, ETag = hash of the JSON, `If-None-Match` → 304. |
-| `GET /api/me/state?since=<ts>` | Resume positions and Favorites changed since `ts` (§6). |
-| `PUT /api/me/resume`, `PUT /api/me/favorite` | Writes from another machine of the owner's (§6). |
+| `GET /api/me/state?since=<ts>` | Resume positions and Favorites changed since `ts` (§6). **As built (#242):** `ts` is the Home Server's own clock (the `now` of the previous answer), compared with `me_changed_at`, so a write that reaches it late from an outbox is still handed on. Answer `{ now, resume: [{ video, resumeS, resumeAt }], favorites: [{ video, startMs, favoritedAt, favoriteAt }] }`, `video` = `{ id, youtubeId, contentHash }`. |
+| `PUT /api/me/resume`, `PUT /api/me/favorite` | Writes from another machine of the owner's (§6). **As built (#242):** same row shapes as the state answer; `200 { result: "applied" \| "older" \| "unknown" }` (a Video or Chapter the Home Server does not have is `unknown` and dropped from the outbox). |
+| `PUT /api/me/favorites` | **Added (#242):** the first-connect replace (§6.2), `{ favorites: [{ video, startMs, favoritedAt }] }`; writes `favorites.before-home-sync-<date>.json` (`-2`, `-3`… when taken) into its data dir first; answers `{ starred, unstarred, unknown, backup }`. |
 | `GET /api/approvals`, `POST /api/approvals/:ip` | Pending TV approvals and Allow / Deny (§3.2). |
 | `GET /copy/:id` with `download=1` | The whole file for a Download from the Home Server (§8), Range-resumable. |
 
@@ -144,6 +145,11 @@ The selection rule gains one step: a **local** Copy that is usable (Root mounted
 - Keys between machines are the **Video identity** (`youtube_id` else `content_hash`), not `id`, so Unshared Videos match. Chapters are keyed by (Video identity, Chapter start in ms). **[proposed]** Chapter ids differ between machines for Unshared Videos.
 - The Home Server is the store. Every write on a connected Mac goes to its own `library.db` first, then to the mini; while unreachable it waits in a **`home_outbox`** table and is sent in order on reconnect.
 - **Newest wins** on both sides, by `resume_at` / `favorite_at`. At connect and on each focus check the laptop pulls `GET /api/me/state?since=<last pull>` and applies newer rows.
+- **As built (#242), corrections and additions:**
+  - Identity is matched as in §5.1: `id` first (every Shared Video), else `youtube_id`, else `content_hash` (the shared `matchHome`), not `youtube_id`/`content_hash` alone. A Chapter matches by its start rounded to whole ms among the Video's confirmed Chapters; a Chapter the other machine lacks is skipped (never created).
+  - Migration **0027** also adds `me_changed_at` to `video_local` and `chapter_local` (this machine's clock at the last Resume/Favorite change, local or applied), which `since` is compared with; and `home_me` (the Home Server's Resume and Favorite of its own Videos this Mac does not have, by their id there, so a star on a `home_video` row works and shows). An unstar now keeps the `chapter_local` row (with `favorite_at`) instead of deleting it.
+  - `home_outbox` is sent oldest first and only the last write per key (kind + Video id + Chapter ms) is sent; it stops at the first network failure or refusal (403/5xx) and keeps the rest; 400/404/422 drop the entry. After each local write the outbox is tried at once; a pull follows the outbox at connect and on focus (`POST /api/home`, `/api/home/refresh`).
+  - Settings in `download_setting`: `home_server_first_sync_at` with `home_first_sync_base` (first connect is per Home Server address: setting another one asks again), `home_state_since` / `home_state_base`, `home_state_pulled_at`. Before the first-connect replace only Resume syncs, both ways; local stars are not queued (the replace sends them all) and the Home Server's Favorites are not pulled.
 
 ### 6.2 First connect: back up, then the laptop replaces the mini
 
@@ -151,6 +157,7 @@ The selection rule gains one step: a **local** Copy that is usable (Root mounted
 2. After the export, the laptop's Favorites **replace** the mini's in one request; the mini's prior Favorites are written to `favorites.before-home-sync-<date>.json` in its data directory first.
 3. Resume positions at first connect are merged newest-wins (§6.1), no replace.
 4. **Import Favorites…** in the control center reads such a file back, newest-wins against what is there.
+5. **As built (#242):** no control center yet, so the first-connect dialog opens from the top bar's Home menu (once per connect: a new tab, or connected again after unreachable), and **Export Favorites…** / **Import Favorites…** sit at the bottom of that menu on every Mac, the Home Server included (to read its backup back). Export and the first-connect save use the Finder's "choose file name" dialog through `POST /api/home/first-sync` / `POST /api/favorites/export`; Import uses "choose file" (`POST /api/favorites/import`). The server writes the file itself, so "a saved file" is known before anything is sent. An imported entry's `favoriteAt` is its `favoritedAt`, so it loses to any later star or unstar. The replace stamps every changed row on the Home Server with the replace time, so it beats every earlier star on other Macs; Videos the mini has that the laptop lacks are unstarred too (they are in the backup).
 
 ### 6.3 Through a laptop's Library Server
 

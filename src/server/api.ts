@@ -168,7 +168,7 @@ export function createHandler(s: Services) {
   const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const reconcile = createReconcile(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const downloaderTools = createDownloaderTools({ dataDir: s.cfg.dataDir, db: s.db });
-  const downloads = (s.downloads ??= createDownloadService({ cfg: s.cfg, db: s.db, roots: s.roots, scanner: s.scanner, tools: downloaderTools }));
+  const downloads = (s.downloads ??= createDownloadService({ cfg: s.cfg, db: s.db, roots: s.roots, scanner: s.scanner, tools: downloaderTools, home: s.home }));
   // home-server-spec §6: Resume and Favorites follow you (the outbox and pull here, `/api/me/*` for the other Macs)
   const homeSync = (s.homeSync ??= s.home ? new HomeSync({ db: s.db, home: s.home, machine: computerName }) : undefined) ?? null;
   const meRoute = createMeRoutes({ db: s.db, dataDir: s.cfg.dataDir, machine: computerName, sync: () => homeSync });
@@ -353,7 +353,8 @@ export function createHandler(s: Services) {
       arr.push({ startS: c.start_s, title: c.title, titleLatin: c.title_latin });
       chapters.set(c.video_id, arr);
     }
-    const body = JSON.stringify(homeIndexBody(computerName(), allVideos(), hashes, chapters));
+    const relPaths = new Map((s.db.query("SELECT id, rel_path FROM copy").all() as { id: number; rel_path: string }[]).map((r) => [r.id, r.rel_path]));
+    const body = JSON.stringify(homeIndexBody(computerName(), allVideos(), hashes, chapters, relPaths));
     const etag = homeIndexEtag(body);
     const headers = { etag, "cache-control": "no-cache" };
     if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
@@ -420,6 +421,13 @@ export function createHandler(s: Services) {
     const c = s.db.query(`${COPY_SQL.replace("c.fallback_file, c.missing_since", "c.fallback_file, c.missing_since, r.path AS root_path")} WHERE c.id = ?`).get(id) as (CopyDbRow & { root_path: string }) | null;
     if (!c) return json({ error: "no such copy" }, 404);
     if (c.missing_since) return json({ error: "copy is missing", missingSince: c.missing_since }, 404);
+    // home-server-spec §2.3, §8: `?download=1` is the whole file as it is, whatever the Playback profile says, for a
+    // Download from the Home Server (Range-resumable). Macs only: a TV is Approved to play, not to take a Copy.
+    if (new URL(req.url).searchParams.get("download") === "1") {
+      if (isTvRequest(req) && !isMacRequest(req)) return json({ error: "Approved Macs only" }, 403);
+      if (!s.roots.isAvailable(c.root_id)) return json({ error: "the drive is not mounted" }, 503, { "retry-after": "30" });
+      return serveFile(req, join(c.root_path, c.rel_path));
+    }
     // home-server-spec §5.4: an Approved Mac (its companion proxying `/home/copy/:id`) takes the browser branch below.
     if (isTvRequest(req) && !isMacRequest(req)) {
       // The TV plays by its own Playback profile (tv-spec 3.2): the own file when it plays as-is, else an existing

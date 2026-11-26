@@ -45,7 +45,7 @@ export async function downloadRoutes(req: Request, url: URL, q: DownloadQueue): 
       }
       case "card": {
         const b = await body(req);
-        return json(q.addCard({ videoId: String(b.videoId ?? ""), quality: b.quality === undefined ? undefined : String(b.quality), destDir: b.destDir === undefined ? undefined : String(b.destDir) }), 201);
+        return json(q.addCard({ videoId: String(b.videoId ?? ""), quality: b.quality === undefined ? undefined : String(b.quality), destDir: b.destDir === undefined ? undefined : String(b.destDir), source: b.source === undefined ? undefined : String(b.source) }), 201);
       }
       case "pause":
         await q.pause();

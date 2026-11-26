@@ -3,6 +3,11 @@
 import { sep } from "node:path";
 import { findBin, type Config } from "../config";
 import type { Db } from "../db";
+import type { HomeServer } from "../homeServer";
+import { homeDownloadSnapshot, localIdentities } from "../homeVideos";
+import { newUuid } from "../localCopy/ids";
+import { rebuildSearchIndex } from "../search";
+import type { HomeSnapshot } from "./homeFetch";
 import type { Roots } from "../roots";
 import type { Scanner } from "../scan";
 import { createDownloadQueue, type DownloadQueue, type ToolSet } from "./queue";
@@ -21,7 +26,26 @@ export async function probeConnectivity(fetchFn: typeof fetch = fetch): Promise<
   }
 }
 
-export function createDownloadService(o: { cfg: Pick<Config, "dataDir" | "ffprobe">; db: Db; roots: Roots; scanner: Scanner; tools: DownloaderTools }): DownloadQueue {
+/**
+ * §8: the Video the scan just made out of a Home Server file takes the Home Server's titles, Type and Chapters as its
+ * Unshared data. Only a Video made during this run (`since`) that no Sync delivered; Song and Version pointers are not
+ * carried (the index does not list them: they were the Home Server's Local rows).
+ */
+export function applyHomeData(db: Db, videoId: string, snap: HomeSnapshot, since: string): boolean {
+  const v = db.query("SELECT v.created_at, COALESCE(l.shared, 0) AS shared FROM videos v LEFT JOIN video_local l ON l.video_id = v.id WHERE v.id = ?").get(videoId) as { created_at: string; shared: number } | null;
+  if (!v || v.shared || v.created_at < since) return false;
+  const now = new Date().toISOString();
+  const type = ["song", "concert", "interview", "other"].includes(snap.type) ? snap.type : "other";
+  db.transaction(() => {
+    db.prepare("UPDATE videos SET title = ?, title_latin = ?, title_latin_source = ?, type = ?, type_suggested = 0, updated_at = ? WHERE id = ?").run(snap.title, snap.titleLatin, snap.titleLatin ? "manual" : null, type, now, videoId);
+    const ins = db.prepare("INSERT OR IGNORE INTO video_chapters (id, video_id, start_s, title, title_latin, title_latin_source, suggested, source, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, 'manual', ?)");
+    for (const c of snap.chapters) ins.run(newUuid(), videoId, c.startS, c.title, c.titleLatin, c.titleLatin ? "manual" : null, now);
+  })();
+  rebuildSearchIndex(db);
+  return true;
+}
+
+export function createDownloadService(o: { cfg: Pick<Config, "dataDir" | "ffprobe">; db: Db; roots: Roots; scanner: Scanner; tools: DownloaderTools; home?: HomeServer }): DownloadQueue {
   let rtCache: { at: number; path: string | null } | null = null;
   const jsRuntime = async (): Promise<string | null> => {
     if (rtCache && Date.now() - rtCache.at < 60_000) return rtCache.path;
@@ -54,6 +78,13 @@ export function createDownloadService(o: { cfg: Pick<Config, "dataDir" | "ffprob
       return r ? { id: r.id, path: r.path } : null;
     },
     scanFile: (rootId, rel) => o.scanner.scanFile(rootId, rel),
+    homeBase: () => o.home?.base() ?? null,
+    homeResolve: (videoId) => {
+      if (!o.home) return null;
+      const local = o.db.query("SELECT title FROM video_full WHERE id = ?").get(videoId) as { title: string } | null;
+      return homeDownloadSnapshot(o.home.view(localIdentities(o.db)), videoId, local?.title ?? null);
+    },
+    applyHomeData: (videoId, snap, since) => void applyHomeData(o.db, videoId, snap, since),
     jsRuntimeAvailable: async () => {
       rtCache = null;
       return (await jsRuntime()) !== null;

@@ -3,17 +3,21 @@
 // the clock, the timers, the connectivity probe and the scan-in are injected, so the tests drive every branch with stubs
 // or with the fake yt-dlp (`test/fixtures/fake-yt-dlp.ts`) and never sleep.
 
-import { appendFileSync, closeSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { appendFileSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Db } from "../db";
 import { log } from "../log";
 import type { Cookies, Quality, Source } from "./args";
 import { normQuality, storedQuality, type StoredQuality } from "../../shared/downloadEstimate";
+import { sha256File } from "../hash";
 import type { FailureReason } from "./classify";
+import { checkFetched, fallbackRelPath, fetchHomeCopy, freeRelPath, retryDelayMs, safeRelPath, type HomeSnapshot } from "./homeFetch";
 import { failureReport, reportFileName, type ReportItem } from "./report";
 import { runItem, sizeItem, type ItemEvent, type ItemRun, type ItemSpec } from "./runItem";
 import { getSetting, setSetting } from "./toolsInstall";
 
+/** `home` is a Download from the Home Server (home-server-spec §8); the others are yt-dlp sites. */
+export type ItemSource = Source | "home";
 export type ItemState = "queued" | "sizing" | "downloading" | "merging" | "scanning" | "done" | "waiting" | "failed" | "cancelled" | "skipped" | "done_outside";
 export const LIVE_STATES: readonly ItemState[] = ["queued", "sizing", "downloading", "merging", "scanning", "waiting"];
 export const ACTIVE_STATES: readonly ItemState[] = ["sizing", "downloading", "merging", "scanning"];
@@ -56,7 +60,7 @@ export interface ItemRow {
   id: number;
   job_id: number;
   video_id: string;
-  source: Source;
+  source: ItemSource;
   source_url: string;
   title: string;
   queue_pos: number;
@@ -74,6 +78,8 @@ export interface ItemRow {
   log_path: string;
   started_at: string | null;
   finished_at: string | null;
+  /** A Home Server item's snapshot (JSON of `HomeSnapshot`); null for the yt-dlp sites. */
+  home_json: string | null;
 }
 
 export interface Runner {
@@ -105,7 +111,19 @@ export interface QueueDeps {
   rootAvailable: (rootId: number) => boolean;
   /** The first mounted Root in Root order (a card's destination). */
   defaultRoot: () => { id: number; path: string } | null;
-  scanFile: (rootId: number, relPath: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  scanFile: (rootId: number, relPath: string) => Promise<{ ok: true; videoId?: string } | { ok: false; error: string }>;
+  /** Home Server downloads (§8). The queued Video's snapshot from the home index, or null when the Home Server does not have it. */
+  homeResolve?: (videoId: string) => HomeSnapshot | null;
+  /** The Home Server's Library Server base URL, or null when none is set. */
+  homeBase?: () => string | null;
+  /** The fetch behind the proxy (tests). */
+  homeFetch?: typeof fetch;
+  /** The scan's new Video takes the Home Server's titles, Type and Chapters as its Unshared data (§8). `since`: when this run began. */
+  applyHomeData?: (videoId: string, snap: HomeSnapshot, since: string) => void;
+  /** How long without a byte counts as a drop (tests shorten it). */
+  homeStallMs?: number;
+  /** Free bytes of the volume holding a directory (tests). */
+  homeFree?: (dir: string) => number | null;
   /** A Copy appeared by other means (§4.2 `skipped`). Default: a non-Missing Copy of the Video. */
   hasCopy?: (videoId: string) => boolean;
   /** Is a JS runtime installed now (§4.4 `no_js_runtime`). Default: always true. */
@@ -123,14 +141,14 @@ export interface QueueDeps {
 
 interface Ctl {
   itemId: number;
-  source: Source;
+  source: ItemSource;
   /** Set when the row has been taken over by whoever killed it: this run must write nothing more. */
   dead: boolean;
-  run: ItemRun | null;
+  run: Pick<ItemRun, "kill"> | null;
 }
 
 export type StartReq = { option: string; quality: string; destDir: string; videoIds: string[]; estBytes?: Record<string, number> };
-export type CardReq = { videoId: string; quality?: string; destDir?: string };
+export type CardReq = { videoId: string; quality?: string; destDir?: string; /** `home`: from the Home Server (§8) */ source?: string };
 
 const OPTIONS = new Set(["full", "random", "type", "artist", "favorites"]);
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -197,8 +215,9 @@ export class DownloadQueue {
   private started = false;
   private offline: { since: number; delay: number; nextProbeAt: number } | null = null;
   private diskFull: { dir: string } | null = null;
-  private sitePause = new Map<Source, number>();
-  private siteStrikes = new Map<Source, number>();
+  private sitePause = new Map<ItemSource, number>();
+  private siteStrikes = new Map<ItemSource, number>();
+  private homeTries = new Map<number, number>();
   private rlCount = new Map<number, number>();
   private jsTried = new Set<number>();
   private igNextAt = 0;
@@ -393,10 +412,10 @@ export class DownloadQueue {
     return { jobId, added, moved, alreadyRunning, rejected };
   }
 
-  private insertItemRow(jobId: number, videoId: string, source: Source, url: string, title: string, pos: number, est: number | null): number {
+  private insertItemRow(jobId: number, videoId: string, source: ItemSource, url: string, title: string, pos: number, est: number | null, homeJson: string | null = null): number {
     const r = this.db
-      .prepare("INSERT INTO download_item (job_id, video_id, source, source_url, title, queue_pos, state, est_bytes, log_path) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, '')")
-      .run(jobId, videoId, source, url, title, pos, est);
+      .prepare("INSERT INTO download_item (job_id, video_id, source, source_url, title, queue_pos, state, est_bytes, log_path, home_json) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, '', ?)")
+      .run(jobId, videoId, source, url, title, pos, est, homeJson);
     const id = Number(r.lastInsertRowid);
     this.db.prepare("UPDATE download_item SET log_path = ? WHERE id = ?").run(join(this.jobDir(jobId), `${id}.log`), id);
     return id;
@@ -416,6 +435,8 @@ export class DownloadQueue {
       this.tick();
       return { jobId: live.job_id, itemId: live.id, moved: true };
     }
+    if (req.source === "home") return this.addHomeCard(req, id);
+    if (req.source !== undefined && req.source !== "") throw new QueueError(400, "source must be home, or left out");
     const v = this.videosFor([id]).get(id);
     if (!v || v.deleted_at) throw new QueueError(404, "unknown Video");
     const [source, sourceId] = v.youtube_id ? (["youtube", v.youtube_id] as const) : v.instagram_id ? (["instagram", v.instagram_id] as const) : v.rutube_id ? (["rutube", v.rutube_id] as const) : [null, null];
@@ -445,6 +466,46 @@ export class DownloadQueue {
       }
       jobId = this.newJob("card", null, quality!, dest.dir, dest.rootId);
       itemId = this.insertItemRow(jobId, id, source, sourceUrlOf(source, sourceId), v.title, this.minPos(), null);
+    })();
+    for (const s of stale) rmSync(s.dir, { recursive: true, force: true });
+    this.started = true;
+    this.resumeJobId = null;
+    this.tick();
+    return { jobId, itemId, moved: false };
+  }
+
+  /**
+   * A card's download button for a Video On the Home Server (§8): a job of one at the front whose source is the Home
+   * Server. The destination must be one of this Mac's Roots (the file goes to the Home Server's `rel_path` inside it);
+   * without one, the first mounted Root.
+   */
+  private addHomeCard(req: CardReq, id: string): { jobId: number; itemId: number; moved: boolean } {
+    const snap = this.deps.homeResolve?.(id) ?? null;
+    if (!snap) throw new QueueError(409, "the Home Server does not have this Video, or is not connected");
+    if (this.hasCopy(id)) throw new QueueError(409, "this Video is already on this machine");
+    let dest: { dir: string; rootId: number | null };
+    if (req.destDir) dest = this.destination(req.destDir);
+    else {
+      const root = this.deps.defaultRoot();
+      if (!root) throw new QueueError(409, "no Root is mounted");
+      dest = this.destination(root.path);
+    }
+    const root = this.deps.rootFor(dest.dir);
+    if (!root || root.path !== dest.dir) throw new QueueError(400, "pick one of this Mac's Roots: the file goes in at the same place as on the Home Server");
+    let jobId = 0;
+    let itemId = 0;
+    const stale: { id: number; dir: string }[] = [];
+    this.db.transaction(() => {
+      for (const o of this.db.query("SELECT i.id, i.job_id FROM download_item i JOIN download_job j ON j.id = i.job_id WHERE i.video_id = ? AND j.kind = 'card' AND i.state IN ('failed', 'cancelled')").all(id) as { id: number; job_id: number }[]) {
+        this.db.prepare("DELETE FROM download_item WHERE id = ?").run(o.id);
+        if (!this.db.query("SELECT 1 FROM download_item WHERE job_id = ?").get(o.job_id)) {
+          this.db.prepare("DELETE FROM download_job WHERE id = ?").run(o.job_id);
+          stale.push({ id: o.job_id, dir: this.jobDir(o.job_id) });
+        }
+      }
+      // `quality` is yt-dlp's choice; the Home Server's Preferred Copy is fetched as it is, so the column only holds a value.
+      jobId = this.newJob("card", null, "best", dest.dir, dest.rootId);
+      itemId = this.insertItemRow(jobId, id, "home", `Home Server: ${snap.relPath ?? snap.title}`, snap.title, this.minPos(), snap.size, JSON.stringify(snap));
     })();
     for (const s of stale) rmSync(s.dir, { recursive: true, force: true });
     this.started = true;
@@ -559,13 +620,14 @@ export class DownloadQueue {
 
   /** `cookies`: the Instagram retry after a login wall (§5.4); every first run is signed out (§5.1). */
   private async execute(item: ItemRow & { dest_dir: string; quality: JobRow["quality"] }, ctl: Ctl, cookies: Cookies | null) {
+    if (item.source === "home") return this.executeHome(item, ctl);
     const tools = await this.deps.tools();
     if (ctl.dead) return;
     if (!tools) return this.fail(item, ctl, "unknown", "yt-dlp is not installed");
     const quality: Quality = item.quality === "best" ? "best" : (`${item.quality}p` as Quality);
     const base = {
       url: item.source_url,
-      source: item.source,
+      source: item.source as Source,
       quality,
       ffmpegLocation: tools.ffmpegLocation,
       jsRuntime: tools.jsRuntime,
@@ -615,6 +677,126 @@ export class DownloadQueue {
     if (ctl.dead) return;
     if (!res.ok) return this.fail(item, ctl, "unknown", res.error);
     return this.finishOk(item, ctl, "done", abs, size);
+  }
+
+  /** §8: fetch the Copy from the Home Server, check it, move it into the Root at the Home Server's `rel_path`, scan it. */
+  private async executeHome(item: ItemRow & { dest_dir: string; quality: JobRow["quality"] }, ctl: Ctl) {
+    let snap: HomeSnapshot;
+    try {
+      snap = JSON.parse(item.home_json ?? "") as HomeSnapshot;
+    } catch {
+      return this.fail(item, ctl, "unknown", "the Home Server item has no Copy recorded");
+    }
+    const base = this.deps.homeBase?.() ?? null;
+    if (!base) return this.homeWait(item, ctl, "no Home Server is set");
+    const root = this.job(item.job_id)?.dest_root_id ?? null;
+    const rootPath = root === null ? null : this.rootPathOf(root);
+    if (root === null || !rootPath) return this.fail(item, ctl, "unknown", "the destination is not one of this Mac's Roots");
+    const part = join(this.jobDir(item.job_id), `${item.id}.part`);
+    const since = iso(this.now());
+    const ac = new AbortController();
+    let finish!: () => void;
+    const over = new Promise<void>((r) => (finish = r));
+    ctl.run = {
+      kill: async () => {
+        ac.abort();
+        await over;
+      },
+    };
+    try {
+      this.patch(item.id, { state: "downloading", exact_bytes: snap.size, started_at: since, done_bytes: 0, speed_bps: null, eta_s: null });
+      let last = { at: this.now(), bytes: -1, speed: null as number | null };
+      const out = await fetchHomeCopy({
+        base,
+        copyId: snap.copyId,
+        partPath: part,
+        expectedSize: snap.size,
+        signal: ac.signal,
+        doFetch: this.deps.homeFetch,
+        stallMs: this.deps.homeStallMs,
+        free: this.deps.homeFree,
+        onProgress: (done) => {
+          if (ctl.dead) return;
+          const t = this.now();
+          if (last.bytes < 0) last = { at: t, bytes: done, speed: null };
+          if (t - last.at < 1000) return;
+          const inst = ((done - last.bytes) * 1000) / (t - last.at);
+          const speed = last.speed === null ? inst : last.speed * 0.6 + inst * 0.4;
+          last = { at: t, bytes: done, speed };
+          this.patch(item.id, { done_bytes: done, speed_bps: speed, eta_s: speed > 0 ? (snap.size - done) / speed : null });
+        },
+      });
+      if (ctl.dead) return;
+      if (!out.ok) {
+        this.note(item, `${out.kind}: ${out.message}`);
+        if (out.kind === "unreachable") return this.homeWait(item, ctl, out.message);
+        if (out.kind === "disk_full") return this.onFailure(item, ctl, "disk_full", out.message, null);
+        if (out.kind === "gone") return this.fail(item, ctl, "unavailable", out.message);
+        if (out.kind === "cancelled") return;
+        return this.fail(item, ctl, "unknown", out.message);
+      }
+      this.homeTries.delete(item.id);
+
+      // The Copy is whole: check it (§8), then it becomes a Copy here.
+      this.patch(item.id, { state: "scanning", done_bytes: out.bytes, speed_bps: null, eta_s: null });
+      let hash: string | null = null;
+      if (snap.contentHash) {
+        try {
+          hash = await sha256File(part);
+        } catch (e) {
+          return this.fail(item, ctl, "unknown", `could not read the fetched file: ${(e as Error).message}`);
+        }
+        if (ctl.dead) return;
+      }
+      const bad = checkFetched({ size: statSync(part).size, expectedSize: snap.size, hash, expectedHash: snap.contentHash });
+      if (bad) {
+        rmSync(part, { force: true });
+        return this.fail(item, ctl, bad.reason, bad.line);
+      }
+      const rel = freeRelPath(safeRelPath(snap.relPath) ?? fallbackRelPath(snap.title, snap.container), (r) => existsSync(join(rootPath, r)));
+      const abs = join(rootPath, rel);
+      try {
+        mkdirSync(dirname(abs), { recursive: true });
+        try {
+          renameSync(part, abs);
+        } catch (e) {
+          if ((e as { code?: string }).code !== "EXDEV") throw e;
+          copyFileSync(part, abs); // another volume: the Root is usually the external drive
+          unlinkSync(part);
+        }
+      } catch (e) {
+        if ((e as { code?: string }).code === "ENOSPC") {
+          rmSync(abs, { force: true });
+          return this.onFailure(item, ctl, "disk_full", "No space left on device", null);
+        }
+        return this.fail(item, ctl, "unknown", `could not move the file into ${rootPath}: ${(e as Error).message}`);
+      }
+      this.patch(item.id, { file_path: abs });
+      const res = await this.deps.scanFile(root, rel);
+      if (ctl.dead) return;
+      if (!res.ok) return this.fail(item, ctl, "unknown", res.error);
+      if (snap.homeOnly && res.videoId) {
+        try {
+          this.deps.applyHomeData?.(res.videoId, snap, since);
+        } catch (e) {
+          this.note(item, `could not apply the Home Server's titles and Chapters: ${(e as Error).message}`);
+        }
+      }
+      return this.finishOk(item, ctl, "done", abs, out.bytes);
+    } finally {
+      finish();
+    }
+  }
+
+  /** The Home Server did not answer (§9): the item waits and tries again, the partial file kept for Range. */
+  private homeWait(item: ItemRow, ctl: Ctl, why: string) {
+    this.release(ctl);
+    const n = (this.homeTries.get(item.id) ?? 0) + 1;
+    this.homeTries.set(item.id, n);
+    const until = iso(this.now() + retryDelayMs(n));
+    this.note(item, `Home Server unreachable (${why}): trying again at ${until}`);
+    this.requeue(item, "waiting", { reason: "home_unreachable", error_line: why, not_before: until, attempts: Math.max(0, item.attempts - 1) });
+    this.tick();
   }
 
   private rootPathOf(rootId: number): string | null {
@@ -869,6 +1051,10 @@ export class DownloadQueue {
 
   /** Partial files of one Video (§4.5 Cancel): yt-dlp's leftovers whose name carries the item's id. Finished files stay. */
   private deletePartials(item: ItemRow, dir: string) {
+    if (item.source === "home") {
+      rmSync(join(this.jobDir(item.job_id), `${item.id}.part`), { force: true });
+      return;
+    }
     const tag = fileTagOf(item.source, item.source_url);
     if (!tag) return;
     let names: string[] = [];

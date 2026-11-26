@@ -2,6 +2,7 @@
 // `GET /api/home/index` body. On a Mac: a `home_video` row as a read-only VideoDto, and the grid's marks. Pure.
 import type { ChapterDto, CopyDto, VideoDto } from "../shared/types";
 import type { HomeIndexChapter, HomeIndexDto, HomeIndexVideo, Identity } from "../shared/homeIndex";
+import type { HomeSnapshot } from "./downloads/homeFetch";
 import type { HomeCopyRow, HomeView } from "./homeServer";
 import { foldText } from "./search";
 import { rankCopies } from "./ranking";
@@ -14,7 +15,7 @@ export const homeThumbUrl = (id: string, key: string) => `/home/thumbs/${id}/pos
  * the browser Playback profile's decision per Copy (`playback`), and its titles, Type and Chapters. Titles go for every
  * Video, not only never-Shared ones: a Mac that does not Sync has no Shared data to show for an unmatched Shared Video.
  */
-export function homeIndexBody(server: string, videos: readonly VideoDto[], contentHash: ReadonlyMap<string, string | null>, chapters: ReadonlyMap<string, HomeIndexChapter[]>): HomeIndexDto {
+export function homeIndexBody(server: string, videos: readonly VideoDto[], contentHash: ReadonlyMap<string, string | null>, chapters: ReadonlyMap<string, HomeIndexChapter[]>, relPaths: ReadonlyMap<number, string> = new Map()): HomeIndexDto {
   const out: HomeIndexVideo[] = [];
   for (const v of videos) {
     const copies = v.copies.filter((c) => !c.missing);
@@ -30,7 +31,7 @@ export function homeIndexBody(server: string, videos: readonly VideoDto[], conte
       createdAt: v.createdAt,
       thumb: v.thumbnail?.generatedAt ?? null,
       chapters: chapters.get(v.id) ?? [],
-      copies: copies.map((c) => ({ id: c.id, size: c.size, container: c.container, videoCodec: c.videoCodec, audioCodec: c.audioCodec, width: c.width, height: c.height, durationS: c.durationS, available: c.available, playback: c.playback })),
+      copies: copies.map((c) => ({ id: c.id, size: c.size, ...(relPaths.has(c.id) ? { relPath: relPaths.get(c.id)! } : {}), container: c.container, videoCodec: c.videoCodec, audioCodec: c.audioCodec, width: c.width, height: c.height, durationS: c.durationS, available: c.available, playback: c.playback })),
     });
   }
   return { server, videos: out };
@@ -100,3 +101,35 @@ export function homeOnlySearch(view: HomeView, needle: string): HomeView["homeOn
 /** This Mac's own Videos' identities, for matching. */
 export const localIdentities = (db: { query(sql: string): { all(): unknown[] } }): Identity[] =>
   (db.query("SELECT id, youtube_id, content_hash FROM video_full").all() as { id: string; youtube_id: string | null; content_hash: string | null }[]).map((r) => ({ id: r.id, youtubeId: r.youtube_id, contentHash: r.content_hash }));
+
+/** The Home Server's Preferred Copy of a Video (§5.3), by the same ranking the Player uses. */
+export const preferredHomeCopy = (copies: readonly HomeCopyRow[]): HomeCopyRow => {
+  const top = homeCopies(copies)[0]!;
+  return copies.find((c) => c.id === top.homeId) ?? copies[0]!;
+};
+
+/**
+ * What a Download from the Home Server needs for a Video (§8): the Preferred Copy and its identity facts, and for a
+ * Video only the Home Server knows its titles, Type and Chapters. `videoId` is this Mac's id for a matched Video, the
+ * Home Server's for a `home_video` row; `localTitle` names a matched Video. Null when the Home Server has no usable Copy of it.
+ */
+export function homeDownloadSnapshot(view: HomeView, videoId: string, localTitle: string | null): HomeSnapshot | null {
+  const own = view.matched.get(videoId);
+  const only = own ? null : view.homeOnly.find((e) => e.row.id === videoId);
+  const copies = own ?? only?.copies;
+  if (!copies?.length) return null;
+  const c = preferredHomeCopy(copies);
+  const row = only?.row;
+  return {
+    copyId: c.id,
+    relPath: c.rel_path ?? null,
+    size: c.size,
+    contentHash: c.content_hash,
+    container: c.container,
+    homeOnly: !!row,
+    title: row?.title ?? localTitle ?? "Video",
+    titleLatin: row?.title_latin ?? null,
+    type: row?.type ?? "other",
+    chapters: only?.chapters.map((x) => ({ startS: x.startS, title: x.title, titleLatin: x.titleLatin })) ?? [],
+  };
+}

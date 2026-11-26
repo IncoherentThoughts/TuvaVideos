@@ -31,7 +31,7 @@ One of a fixed set — song, concert, interview, other — describing what the f
 _Avoid_: category, kind, genre, tag
 
 **Favorite**:
-A Video or a Chapter the user has starred. Filterable and searchable; listed in the order they were starred.
+A Video or a Chapter the user has starred. Filterable and searchable; listed in the order they were starred. Follows the user across their own machines through the Home Server, like the Resume position; never Shared with other Members.
 _Avoid_: star (the gesture), like, bookmark, pin
 
 **Missing (a Copy)**:
@@ -39,7 +39,7 @@ A Copy whose Root is mounted but whose file is no longer there. Kept, not delete
 _Avoid_: deleted, gone, orphaned, stale
 
 **Resume position**:
-The timestamp the user last left a Video at; playback reopens there without asking. One per Video, shared by every player (the browser and the TV app), the last writer winning. A position within the last 30 seconds counts as finished and reopens at the start.
+The timestamp the user last left a Video at; playback reopens there without asking. One per Video, shared by every player (the browser and the TV app) and, through the Home Server, by every machine of the user's own, the newest one winning. A position within the last 30 seconds counts as finished and reopens at the start.
 _Avoid_: progress, watch position, bookmark
 
 **Preferred Copy**:
@@ -54,9 +54,9 @@ _Avoid_: remux (the act), transcode (the act), converted file, pipe
 The containers, codecs and limits one player (the browser, or the TV app) plays as-is. Each Copy is judged against each Playback profile once, at scan time, and judged again when the profile changes.
 _Avoid_: device profile, client profile, capabilities, codec support
 
-**Live remux**:
-A stream made on the fly while the TV app plays a Copy that neither the Copy itself nor its Fallback suits: the video copied untouched, the audio copied or converted. Leaves nothing cached; one at a time.
-_Avoid_: transcode, pipe, live Fallback, on-the-fly conversion
+**Live stream**:
+A stream the server makes on the fly while a player plays a Copy at a quality the user picked below Original, or a Copy that neither the Copy itself nor its Fallback suits: the video copied untouched or re-encoded, the audio copied or converted. Leaves nothing cached; at most two at a time on one server.
+_Avoid_: Live remux (the former name, before it could re-encode), transcode, pipe, live Fallback, on-the-fly conversion
 
 ### Enrichment
 
@@ -156,13 +156,17 @@ _Avoid_: Apple Music mode, audio mode, track preview
 The app installed on the Samsung TV for browsing and watching the library with the remote. Read-only: no editing, Studio playback, Rescan or screenshots.
 _Avoid_: TV client, Tizen app, TV version
 
-**TV Server**:
-The home-network listener that the TV app talks to, started from a button in the browser app and off at every launch. Runs alongside the localhost app over the same library; the localhost app is unchanged.
-_Avoid_: LAN mode, remote server, second server, TV mode
+**Library Server**:
+The network listener of the app on any Mac, serving that Mac's library and Copies to Approved devices, at home or over Tailscale. Runs alongside the localhost app over the same library; the localhost app is unchanged. Off at launch unless the Mac is set to serve on launch.
+_Avoid_: TV Server (the former name, before Macs could connect), LAN mode, remote server, second server
 
-**Approved TV**:
-A TV whose IP address the user allowed, with one click in the browser, the first time it reached the TV Server. Remembered across launches until removed; only Approved TVs get anything beyond the health check.
-_Avoid_: paired device, trusted client, whitelisted IP
+**Home Server**:
+The one Mac whose Library Server the user's other machines stream from (the Mac mini with the library's drive), and the place their Resume positions and Favorites are kept. A TV may use any Library Server; the user's other Macs use only the Home Server. Reached by its Tailscale name, set once on each machine.
+_Avoid_: NAS, main Mac, primary, the server (ambiguous with any Library Server)
+
+**Approved device**:
+A TV or Mac allowed to use a Library Server: a device signed in to the user's own Tailscale account is approved on sight, and any other (a TV on the home network) once the user clicks Allow on any machine already approved. Remembered across launches until removed; only Approved devices get anything beyond the health check.
+_Avoid_: Approved TV (the former name), paired device, trusted client, whitelisted IP
 
 ### Sharing
 
@@ -213,7 +217,7 @@ Refreshing this machine's local copy of the Shared data from the archive. Runs w
 _Avoid_: refresh, pull, download, cache (the copy, not the act)
 
 **Session record**:
-The companion's token-free note of who this machine is signed in as and what they may do: user id, email, display name, avatar, grant level, archive role and when it was last verified. Written at each Sync, read by the chip, every tab and the TV Server, and cleared only by Sign out, a dead session or a cancelled sign-in. The machine fact behind the modes; it grants nothing on its own, since the browser's session is what carries the token.
+The companion's token-free note of who this machine is signed in as and what they may do: user id, email, display name, avatar, grant level, archive role and when it was last verified. Written at each Sync, read by the chip, every tab and the Library Server, and cleared only by Sign out, a dead session or a cancelled sign-in. The machine fact behind the modes; it grants nothing on its own, since the browser's session is what carries the token.
 _Avoid_: profile, login, account cache, token, session (the browser's, which it is not)
 
 **Local copy**:
@@ -225,8 +229,12 @@ A Video whose Copies all sit on a Root that is not mounted right now. Shown grey
 _Avoid_: offline, disconnected, unavailable (which also covered the next term)
 
 **Not on this machine (a Video)**:
-A Video with no Copy here at all, or only Copies that have vanished or were trashed. Shown greyed with the download mark; opening it gives the source link and says the content must be downloaded to play. Playable again as soon as a scan finds a Copy.
+A Video with no Copy here at all, or only Copies that have vanished or were trashed, and none on the Home Server either (or the Home Server cannot be reached). Shown greyed with the download mark; opening it gives the source link and says the content must be downloaded to play. Playable again as soon as a scan finds a Copy.
 _Avoid_: missing, remote, unavailable, no copy
+
+**On the Home Server (a Video)**:
+A Video with no usable Copy on this machine but at least one on the Home Server, while it can be reached. Shown with the server mark, not greyed; plays by streaming from the Home Server, and can be Downloaded to this machine from it. A Video only the Home Server knows (never Shared) shows the Home Server's titles and tags, read-only here.
+_Avoid_: remote, streamed, cloud, online
 
 **Shelved (edits)**:
 The title, Type, Song and Version pointers, Artists and Chapters a Video carried on this machine before sign-in reconciliation replaced them with the Shared row. Kept locally, read-only, never synced; shown in a drawer on the Video, copyable back into the Shared data by a Video Editor as an ordinary edit, and clearable by hand. Made only by reconciliation.
@@ -235,7 +243,7 @@ _Avoid_: backup, history, old tags, overlay, local edits
 ### Downloading
 
 **Download (a Video)**:
-Fetching a Video's file from its source (YouTube, Instagram or Rutube) onto this machine, named with the source's id so a scan makes it a Copy. Only a Video with a source id can be downloaded; one known by content hash alone cannot. Never the act of Sync, which moves link data and posters, not Video files.
+Fetching a Video's file from its source (YouTube, Instagram or Rutube), or from the Home Server, onto this machine, named so a scan makes it a Copy. From a source, only a Video with a source id can be downloaded; from the Home Server, any Video On the Home Server can, kept at the path it has there. Never the act of Sync, which moves link data and posters, not Video files.
 _Avoid_: sync, import, fetch, pull, install
 
 **Download queue**:

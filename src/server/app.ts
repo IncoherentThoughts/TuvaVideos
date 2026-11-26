@@ -1,12 +1,13 @@
 import { createHandler, type Services } from "./api";
 import { TvServer } from "./tv";
 import { cliRunner, TailscaleCheck, tailscaleCli } from "./tailscale";
-import { homeServerFromEnv } from "./homeApprovals";
+import { HomeServer } from "./homeServer";
+import { localIdentities } from "./homeVideos";
 import { LiveStreams } from "./live/streams";
 import { defaultLoginAgent, ServeOnLaunch } from "./serveOnLaunch";
 import { judgeStaleCopies } from "./tvJudge";
 import { judgeBrowserCopies } from "./browserJudge";
-import type { Config } from "./config";
+import { DEFAULT_TV_PORT, type Config } from "./config";
 import { checkpoint, openDb } from "./db";
 import { FallbackQueue } from "./fallback";
 import { KeyframeIndex } from "./keyframes";
@@ -72,8 +73,10 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
   // off at every launch: only POST /api/tv/on binds the port; Tailscale devices of this Mac's own user are approved on sight
   // (`TUVA_TAILSCALE`, a stub CLI, with TUVA_TV_LOOPBACK=1 also checks this Mac's own addresses: smoke runs only)
-  const tv = new TvServer({ cfg, db, roots, tailscale: new TailscaleCheck(cliRunner(tailscaleCli())), tailscaleOwn: !!process.env.TUVA_TAILSCALE });
-  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit, homeServer: homeServerFromEnv() };
+  // home-server-spec §4.1: the stored Home Server setting (`TUVA_HOME_SERVER` overrides it, for tests and smoke runs)
+  const home = new HomeServer({ db, defaultPort: DEFAULT_TV_PORT, localIdentities: () => localIdentities(db) });
+  const tv = new TvServer({ cfg, db, roots, home: () => home.self, tailscale: new TailscaleCheck(cliRunner(tailscaleCli())), tailscaleOwn: !!process.env.TUVA_TAILSCALE });
+  const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit, homeServer: home.target, home };
   const handler = createHandler(services);
   tv.setHandler(handler);
   tv.setBundle(tvBundle);

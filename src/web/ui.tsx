@@ -2,6 +2,7 @@
 import { useState } from "preact/hooks";
 import type { ArtistRef, VideoDto } from "../shared/types";
 import { tileForTime } from "../server/stripGeometry";
+import { isOnHome } from "../shared/presence";
 
 export function fmtDuration(s: number | null | undefined): string {
   if (s == null || !Number.isFinite(s)) return "";
@@ -232,6 +233,25 @@ export function AvailabilityIcon({ availability }: { availability: "local" | "ex
   );
 }
 
+/** home-server-spec §5.2: the server mark in the corner of a Video On the Home Server (where §7.1's mark would be). */
+export function HomeMark({ server }: { server: string | null | undefined }) {
+  const title = `On the Home Server${server ? ` (${server})` : ""}`;
+  return (
+    <span class="home-mark" title={title} aria-label={title}>
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="7" rx="1.5" />
+        <rect x="3" y="13" width="18" height="7" rx="1.5" />
+        <path d="M7 7.5h.01M7 16.5h.01" />
+      </svg>
+    </span>
+  );
+}
+
+/** Where a Video plays from, as one icon: this Mac's drive (AvailabilityIcon), or the Home Server (§5.2). */
+export function WhereIcon({ video }: { video: Pick<VideoDto, "availability" | "available" | "home" | "homeOnly" | "copies"> }) {
+  return isOnHome(video) ? <HomeMark server={video.home?.server} /> : <AvailabilityIcon availability={video.availability} />;
+}
+
 /** §7.1: the one small download mark in a Not on this machine card's corner. */
 export function NotHereMark() {
   return (
@@ -264,11 +284,13 @@ export function UnsharedMark() {
 export const phColor = (id: string) => `var(--t${((parseInt(id.slice(-8), 16) || 0) % 8) + 1})`;
 
 /** Poster for a Video; a tinted placeholder when no Thumbnail has been generated or it fails to load. */
-export function Poster({ video, dur }: { video: Pick<VideoDto, "id" | "thumbnail" | "available" | "durationS">; dur?: boolean }) {
+export function Poster({ video, dur }: { video: Pick<VideoDto, "id" | "thumbnail" | "available" | "durationS" | "home" | "homeOnly">; dur?: boolean }) {
   const [failed, setFailed] = useState(false);
   const has = !!video.thumbnail && !failed;
+  // home-server-spec §5.2: On the Home Server is not greyed
+  const lit = video.available || video.homeOnly || !!video.home?.copies;
   return (
-    <div class={`thumb${has ? "" : " ph"}${video.available ? "" : " unavail"}`} style={has ? undefined : { "--ph": phColor(video.id) }}>
+    <div class={`thumb${has ? "" : " ph"}${lit ? "" : " unavail"}`} style={has ? undefined : { "--ph": phColor(video.id) }}>
       {has && <img src={video.thumbnail!.poster} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />}
       {dur && video.durationS != null && <span class="dur">{fmtDuration(video.durationS)}</span>}
     </div>

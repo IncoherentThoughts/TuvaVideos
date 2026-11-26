@@ -8,7 +8,8 @@ export type TvRouteKind =
   | "api" // a localhost handler, for Approved TVs
   | "ui" // the TV app's UI files, served by the Library Server
   | "live" // the Live streams (home-server-spec 7)
-  | "approvals"; // pending TV approvals and Allow / Deny, for Approved Macs only (home-server-spec §3.2)
+  | "approvals" // pending TV approvals and Allow / Deny, for Approved Macs only (home-server-spec §3.2)
+  | "mac"; // a localhost handler, for Approved Macs only (the home index, home-server-spec §2.3)
 
 export interface TvRoute {
   method: "GET" | "POST";
@@ -46,6 +47,7 @@ export const TV_ROUTES: readonly TvRoute[] = [
   // Approved Macs only (home-server-spec §2.3, §3.2)
   { method: "GET", pattern: /^\/api\/approvals$/, kind: "approvals", sample: "/api/approvals" },
   { method: "POST", pattern: /^\/api\/approvals\/[0-9A-Fa-f.:%]{2,64}$/, kind: "approvals", sample: "/api/approvals/192.168.4.56" },
+  { method: "GET", pattern: /^\/api\/home\/index$/, kind: "mac", sample: "/api/home/index" },
   // TV-only
   { method: "GET", pattern: /^\/$/, kind: "ui", sample: "/" },
   { method: "GET", pattern: /^\/tv\.js$/, kind: "ui", sample: "/tv.js" },

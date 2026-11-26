@@ -11,6 +11,10 @@ import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import type { TvServer } from "./tv";
 import { answerHomeApproval, homeApprovals, type HomeServerTarget } from "./homeApprovals";
+import type { HomeServer, HomeView } from "./homeServer";
+import { homeIndexBody, homeIndexEtag, homeOnlyChapters, homeOnlyDto, homeOnlySearch, localIdentities, withHome } from "./homeVideos";
+import { computerName } from "./libraryServerHealth";
+import type { HomeIndexChapter } from "../shared/homeIndex";
 import type { ServeOnLaunch } from "./serveOnLaunch";
 import { factsOfRow, parseDecision } from "./tvJudge";
 import { isTvRequest } from "./tvRequest";
@@ -34,7 +38,7 @@ import { listSongs, songDto, songRef, videosPerforming } from "./songs";
 import { createLocalSong, createLocalVersion, deleteLocalSong, deleteLocalVersion, patchLocalSong, patchLocalVersion } from "./localSongs";
 import { relocateCopy } from "./relocate";
 import { deletePreset, getVideoAudio, listPresets, savePreset, setVideoAudio } from "./audio";
-import type { VideoType } from "../shared/filters";
+import { effectiveGroups, type VideoType } from "../shared/filters";
 import { storedLoop, type StoredLoop } from "../shared/playerMath";
 import type { ArtistRef, ChapterDto, FavoriteItem, SongDto, TvCopyDto } from "../shared/types";
 import type { SharedChanges } from "../shared/sharedRows";
@@ -89,6 +93,8 @@ export interface Services {
   downloads?: DownloadQueue;
   /** This Mac's Home Server (home-server-spec §3.2, §4.1), for its pending TV approvals; absent or null, none is set. */
   homeServer?: HomeServerTarget;
+  /** This Mac's Home Server setting, connection and home index (home-server-spec §4.1, §5.1); set by startApp. */
+  home?: HomeServer;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -315,6 +321,49 @@ export function createHandler(s: Services) {
     return videos.map((v) => videoJson(v, byVideo.get(v.id) ?? [], ex.get(v.id)));
   };
 
+  // home-server-spec §5.2: what the connected Home Server adds to the lists of this Mac's browser tab. Never for a
+  // request the Library Server passes in (a TV, or another Mac: they see this Mac's own Videos only).
+  const homeViewFor = (req: Request): { view: HomeView; server: string | null } | null => {
+    if (!s.home || isTvRequest(req)) return null;
+    const view = s.home.view(localIdentities(s.db));
+    return view.matched.size || view.homeOnly.length ? { view, server: s.home.status().server } : null;
+  };
+  /** The grid's list: this Mac's Videos, marked On the Home Server where they are, then the `home_video` rows. */
+  const gridVideos = (req: Request) => {
+    const videos = allVideos();
+    const h = homeViewFor(req);
+    if (!h) return videos;
+    return [...videos.map((v) => withHome(v, h.view, h.server)), ...h.view.homeOnly.map((e) => homeOnlyDto(e, h.server))];
+  };
+  const homeOnlyEntry = (req: Request, id: string) => homeViewFor(req)?.view.homeOnly.find((e) => e.row.id === id) ?? null;
+  /** §2.3: `GET /api/home/index`, the body the Library Server answers Approved Macs. */
+  const homeIndexResponse = (req: Request): Response => {
+    const hashes = new Map((s.db.query("SELECT id, content_hash FROM video_full").all() as { id: string; content_hash: string | null }[]).map((r) => [r.id, r.content_hash]));
+    const chapters = new Map<string, HomeIndexChapter[]>();
+    for (const c of s.db.query("SELECT video_id, start_s, title, title_latin FROM chapter_full WHERE suggested = 0 ORDER BY video_id, start_s").all() as { video_id: string; start_s: number; title: string; title_latin: string | null }[]) {
+      const arr = chapters.get(c.video_id) ?? [];
+      arr.push({ startS: c.start_s, title: c.title, titleLatin: c.title_latin });
+      chapters.set(c.video_id, arr);
+    }
+    const body = JSON.stringify(homeIndexBody(computerName(), allVideos(), hashes, chapters));
+    const etag = homeIndexEtag(body);
+    const headers = { etag, "cache-control": "no-cache" };
+    if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+    return new Response(req.method === "HEAD" ? null : body, { headers: { "content-type": "application/json", ...headers } });
+  };
+  /** The Home Server's poster for a `home_video` row, through this Mac (the browser never calls another machine). */
+  const homeThumb = async (id: string, v: string | null): Promise<Response> => {
+    const base = s.home?.base();
+    if (!base) return json({ error: "no Home Server" }, 404);
+    try {
+      const r = await fetch(`${base}/thumbs/${id}/poster.webp${v ? `?v=${encodeURIComponent(v)}` : ""}`, { signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) return json({ error: "no such poster on the Home Server" }, 404);
+      return new Response(r.body, { headers: { "content-type": "image/webp", "cache-control": THUMB_CACHE } });
+    } catch {
+      return json({ error: "the Home Server did not answer" }, 502);
+    }
+  };
+
   const trashInfo = () => {
     const t = resolveTrash(s.cfg.trash);
     return t ? { available: true, command: t.label } : { available: false, notice: NO_TRASH_NOTICE };
@@ -473,9 +522,12 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/thumbs\/([0-9a-fA-F-]{36})\/(poster|strip)\.webp$/))) return thumbRoute(req, m[1]!, m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
         if (p === "/api/tv") return json(s.tv.state());
-        if (p === "/api/home/approvals") return json(await homeApprovals(s.homeServer ?? (() => null)));
+        if (p === "/api/home/approvals") return json(await homeApprovals(s.homeServer ?? s.home?.target ?? (() => null)));
+        if (p === "/api/home") return json(s.home?.status() ?? null);
+        if (p === "/api/home/index") return homeIndexResponse(req);
+        if ((m = p.match(/^\/home\/thumbs\/([0-9a-fA-F-]{36})\/poster\.webp$/))) return homeThumb(m[1]!, url.searchParams.get("v"));
         if (p === "/api/serve-on-launch") return json(s.serveOnLaunch?.state() ?? { available: false, serveOnLaunch: false, openAtLogin: false });
-        if (p === "/api/videos") return json(allVideos());
+        if (p === "/api/videos") return json(gridVideos(req));
         // The client write seam's reads (sharing-spec §4.3, §4.5, §4.9; src/server/sharedWrites.ts).
         if (p === "/api/kinds") return json(kindsOf(s.db, url.searchParams));
         if ((m = p.match(/^\/api\/rows\/(song|version|artist)\/([0-9a-zA-Z_-]{8,64})$/))) {
@@ -494,12 +546,21 @@ export function createHandler(s: Services) {
         if (p === "/api/shelved/unseen") return json(unseenShelvedVideos(s.db));
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})$/))) {
           const v = s.db.query("SELECT * FROM video_full WHERE id = ?").get(m[1]!) as VideoDbRow | null;
-          if (!v) return json({ error: "no such video" }, 404);
-          return json(videoJson(v, s.db.query(`${COPY_SQL} WHERE c.video_id = ?`).all(v.id) as CopyDbRow[], extrasFor([v.id]).get(v.id)));
+          if (!v) {
+            const e = homeOnlyEntry(req, m[1]!);
+            return e ? json(homeOnlyDto(e, s.home?.status().server ?? null)) : json({ error: "no such video" }, 404);
+          }
+          const dto = videoJson(v, s.db.query(`${COPY_SQL} WHERE c.video_id = ?`).all(v.id) as CopyDbRow[], extrasFor([v.id]).get(v.id));
+          const h = homeViewFor(req);
+          return json(h ? withHome(dto, h.view, h.server) : dto);
         }
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/chapters$/))) {
           const list = listChapters(s.db, m[1]!);
-          return list ? json(list) : json({ error: "no such video" }, 404);
+          if (!list) {
+            const e = homeOnlyEntry(req, m[1]!);
+            return e ? json(homeOnlyChapters(e)) : json({ error: "no such video" }, 404);
+          }
+          return json(list);
         }
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/audio$/))) {
           const a = getVideoAudio(s.db, m[1]!);
@@ -526,7 +587,8 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/favorites") {
           const rows = listFavoriteRows(s.db);
-          const vids = videosByIds(rows.map((r) => r.video_id));
+          const h = homeViewFor(req);
+          const vids = new Map([...videosByIds(rows.map((r) => r.video_id))].map(([id, v]) => [id, h ? withHome(v, h.view, h.server) : v]));
           const chapters = new Map<string, ChapterRow>();
           for (const c of s.db.query("SELECT * FROM chapter_full WHERE favorited_at IS NOT NULL").all() as ChapterRow[]) chapters.set(c.id, c);
           const items: FavoriteItem[] = [];
@@ -540,6 +602,20 @@ export function createHandler(s: Services) {
         }
         if (p === "/api/search") {
           const r = runSearch(s.db, { isRootAvailable: (id) => s.roots.isAvailable(id) }, url.searchParams.get("q") ?? "", { cap: Math.min(500, Number(url.searchParams.get("limit")) || 0) });
+          // §5.2: the Home Server's own Videos (`home_video`) join the Videos group by title
+          const h = homeViewFor(req);
+          const hits = h ? homeOnlySearch(h.view, r.needle) : [];
+          const order = effectiveGroups(r.parsed);
+          let group = r.groups.find((g) => g.key === "videos");
+          if (hits.length && !group && order.includes("videos")) {
+            group = { key: "videos", label: "Videos", total: 0, rows: [] };
+            const after = r.groups.findIndex((g) => order.indexOf(g.key) > order.indexOf("videos"));
+            r.groups.splice(after < 0 ? r.groups.length : after, 0, group);
+          }
+          if (hits.length && group) {
+            group.rows.push(...hits.map((e) => ({ kind: "video" as const, id: e.row.id, title: e.row.title, type: e.row.type as VideoType, durationS: e.copies[0]?.duration_s ?? null, available: false, songs: [], songSuggested: false })));
+            group.total += hits.length;
+          }
           return json({ needle: r.needle, groups: r.groups, ms: r.ms });
         }
         if (p === "/app.js" || p === "/app.css") return s.web.serve(p);
@@ -604,7 +680,34 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/api\/home\/approvals\/([0-9A-Fa-f.:%]{2,64})$/))) {
           const b = await readJson(req);
           if (!b || typeof b.allow !== "boolean") return json({ error: "allow (true or false) is required" }, 400);
-          return json(await answerHomeApproval(s.homeServer ?? (() => null), decodeURIComponent(m[1]!), b.allow));
+          return json(await answerHomeApproval(s.homeServer ?? s.home?.target ?? (() => null), decodeURIComponent(m[1]!), b.allow));
+        }
+        // The Home Server setting (home-server-spec §4.1): the field, the toggle, Test, and the connect / refresh.
+        if (p === "/api/home") {
+          if (!s.home) return json({ error: "no Home Server here" }, 404);
+          const b = await readJson(req);
+          const patch: { address?: string | null; self?: boolean } = {};
+          if (b && "address" in b) {
+            if (b.address !== null && typeof b.address !== "string") return json({ error: "address must be text or null" }, 400);
+            patch.address = b.address as string | null;
+          }
+          if (b && "self" in b) {
+            if (typeof b.self !== "boolean") return json({ error: "self must be true or false" }, 400);
+            patch.self = b.self;
+          }
+          const r = s.home.set(patch);
+          if (!r.ok) return json({ error: r.error }, 400);
+          return json(r.status.configured ? await s.home.refresh({ force: true }) : r.status);
+        }
+        if (p === "/api/home/test") {
+          const b = await readJson(req);
+          if (!s.home || !b || typeof b.address !== "string") return json({ error: "address is required" }, 400);
+          return json(await s.home.test(b.address));
+        }
+        if (p === "/api/home/refresh") {
+          if (!s.home) return json({ error: "no Home Server here" }, 404);
+          const b = await readJson(req);
+          return json(await s.home.refresh({ force: b?.force === true }));
         }
         if ((m = p.match(/^\/api\/(videos|chapters)\/([0-9a-fA-F-]{36})\/favorite$/))) {
           const table = m[1] === "videos" ? "video" : "chapter";

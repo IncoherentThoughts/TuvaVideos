@@ -65,7 +65,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   log(`search index: ${idx.total} rows (${idx.video} video, ${idx.chapter} chapter, ${idx.artist} artist, ${idx.song} song, ${idx.lyric} lyric) in ${idx.ms} ms`);
 
   const studio = new Studio(db, cfg, opts.studio); // the osascript child starts on first use, never here
-  const tv = new TvServer({ cfg, db }); // off at every launch: only POST /api/tv/on binds the port
+  const tv = new TvServer({ cfg, db, roots }); // off at every launch: only POST /api/tv/on binds the port
   const services: Services = { cfg, db, roots, scanner, fallback, thumbs, keyframes, studio, web, tv, startedAt: Date.now(), quit: opts.quit };
   const handler = createHandler(services);
   tv.setHandler(handler);

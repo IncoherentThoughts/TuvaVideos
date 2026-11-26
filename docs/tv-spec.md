@@ -2,23 +2,23 @@
 
 Assembled 2026-10-16 in [issue #53](https://github.com/IncoherentThoughts/TuvaVideos/issues/53) from every closed ticket on [map #43](https://github.com/IncoherentThoughts/TuvaVideos/issues/43), with the map's open items decided in the same grilling. Normative for the TV build tickets (§9). Vocabulary: `CONTEXT.md` (the **TV** section and Playback profile, Live remux, Approved TV, Playlist). The v1 spec (`docs/spec.md`) is the baseline: everything not said here is as the browser app does it, and the TV reads the same library through the same handlers.
 
-Sources folded in: [#47](https://github.com/IncoherentThoughts/TuvaVideos/issues/47) Tizen facts ([research/tizen-2026-r85h.md](research/tizen-2026-r85h.md)), [#44](https://github.com/IncoherentThoughts/TuvaVideos/issues/44) the Plex sample ([research/plex-sample.md](research/plex-sample.md)), [#45](https://github.com/IncoherentThoughts/TuvaVideos/issues/45) how Plex decides ([research/plex-decision.md](research/plex-decision.md)), [#46](https://github.com/IncoherentThoughts/TuvaVideos/issues/46) how Plex stays instant ([research/plex-low-lag.md](research/plex-low-lag.md)), [#52](https://github.com/IncoherentThoughts/TuvaVideos/issues/52) playback strategy, [#48](https://github.com/IncoherentThoughts/TuvaVideos/issues/48) hello-world on the TV (branch `task/hello-world-tv`, `tv/hello-world/`), [#49](https://github.com/IncoherentThoughts/TuvaVideos/issues/49) TV Server scope and security ([ADR 0004](adr/0004-tv-server-on-the-home-network.md)), [#50](https://github.com/IncoherentThoughts/TuvaVideos/issues/50) home and navigation and [#51](https://github.com/IncoherentThoughts/TuvaVideos/issues/51) Player (prototype `tv/home-prototype/`, branches `prototype/tv-home` and `prototype/tv-player`; home variant B "Rails" and Player variant B "Overlay" won, A and C stay there as rejected).
+Sources folded in: [#47](https://github.com/IncoherentThoughts/TuvaVideos/issues/47) Tizen facts ([research/tizen-2026-r85h.md](research/tizen-2026-r85h.md)), [#44](https://github.com/IncoherentThoughts/TuvaVideos/issues/44) the Plex sample ([research/plex-sample.md](research/plex-sample.md)), [#45](https://github.com/IncoherentThoughts/TuvaVideos/issues/45) how Plex decides ([research/plex-decision.md](research/plex-decision.md)), [#46](https://github.com/IncoherentThoughts/TuvaVideos/issues/46) how Plex stays instant ([research/plex-low-lag.md](research/plex-low-lag.md)), [#52](https://github.com/IncoherentThoughts/TuvaVideos/issues/52) playback strategy, [#48](https://github.com/IncoherentThoughts/TuvaVideos/issues/48) hello-world on the TV (branch `task/hello-world-tv`, `tv/hello-world/`), [#49](https://github.com/IncoherentThoughts/TuvaVideos/issues/49) Library Server scope and security ([ADR 0004](adr/0004-tv-server-on-the-home-network.md)), [#50](https://github.com/IncoherentThoughts/TuvaVideos/issues/50) home and navigation and [#51](https://github.com/IncoherentThoughts/TuvaVideos/issues/51) Player (prototype `tv/home-prototype/`, branches `prototype/tv-home` and `prototype/tv-player`; home variant B "Rails" and Player variant B "Overlay" won, A and C stay there as rejected).
 
 ---
 
 ## 1. Product, constraints and TV facts
 
-A sideloaded app on the living-room TV (the Samsung set below; the same shell also installs on LG webOS, §4.5) that browses and plays the library with the remote, fed by a **TV Server** the user switches on in the browser app. The TV is read-only: it writes Resume positions and view counts and nothing else.
+A sideloaded app on the living-room TV (the Samsung set below; the same shell also installs on LG webOS, §4.5) that browses and plays the library with the remote, fed by a **Library Server** the user switches on in the browser app. The TV is read-only: it writes Resume positions and view counts and nothing else.
 
 ### Standing constraints
 
 - The TV app is **read-only**: no editing (Chapters, headers, Artists, Songs, lyrics, merges), no Studio playback, no Rescan, no screenshots, no Favorites starring, no deleting.
-- **Home network only.** The TV Server listens on the LAN behind a per-request IP allowlist (ADR 0004 supersedes the v1 "`localhost` only, no auth" rule for the TV Server alone). Nothing is reachable from outside the home network and the app still never touches the internet.
-- The **localhost app is unchanged**: same port, same binding, same behaviour. The TV Server is a second listener in the same process over the same database and scan.
-- The TV Server is **off at every launch** and only runs while the user has turned it on.
+- **Home network only.** The Library Server listens on the LAN behind a per-request IP allowlist (ADR 0004 supersedes the v1 "`localhost` only, no auth" rule for the Library Server alone). Nothing is reachable from outside the home network and the app still never touches the internet.
+- The **localhost app is unchanged**: same port, same binding, same behaviour. The Library Server is a second listener in the same process over the same database and scan.
+- The Library Server is **off at every launch** and only runs while the user has turned it on.
 - The TV **never creates cached files** on the Mac (64 GB free on a 93 % full disk): conversion for the TV is live or not at all.
 - One person, one library: the TV and the browser share one Resume position per Video, last writer wins.
-- Under the sharing spec ([sharing-spec.md](sharing-spec.md) §7.6) the TV Server reads the Local copy as a Member through the same handle; its video lists exclude Not on this machine Videos and keep Unmounted ones as today. Nothing else here changes.
+- Under the sharing spec ([sharing-spec.md](sharing-spec.md) §7.6) the Library Server reads the Local copy as a Member through the same handle; its video lists exclude Not on this machine Videos and keep Unmounted ones as today. Nothing else here changes.
 - Themes stay in the browser. The TV UI wears the default tokens of `docs/design-direction.md`.
 
 ### The TV (facts from #47 and #48)
@@ -40,7 +40,7 @@ The Mac is an M1 with no hardware AV1 decode; the app's ffmpeg is the native arm
 
 ---
 
-## 2. TV Server
+## 2. Library Server
 
 Decided in #49 and written as [ADR 0004](adr/0004-tv-server-on-the-home-network.md); this section is the normative form.
 
@@ -48,14 +48,14 @@ Decided in #49 and written as [ADR 0004](adr/0004-tv-server-on-the-home-network.
 
 - A second `Bun.serve` in the same process, port **4401** (`TUVA_TV_PORT` overrides it, for tests only), bound to **all IPv4 interfaces**, `idleTimeout` as the localhost listener's. It shares the database, the Scanner, the Thumbnail pool, the Fallback queue and the keyframe index: nothing is duplicated.
 - Started by the **TV button** in the browser's top bar; **off at every launch**. Turning it on binds the port and logs the Mac's LAN addresses; the first time, macOS's firewall asks whether `bun` may accept incoming connections (and again after each Bun upgrade).
-- **Off is a hard stop**: the listener closes, open streams and any Live remux are cut, in-flight ffmpeg for a Live remux is killed. The TV shows "TV Server turned off" over its paused frame (§4.3) and the last saved Resume position stands.
-- The browser's localhost listener on 4400 is untouched; a passive server (another port on the default data dir, spec §3.2) never starts a TV Server.
+- **Off is a hard stop**: the listener closes, open streams and any Live remux are cut, in-flight ffmpeg for a Live remux is killed. The TV shows "Library Server turned off" over its paused frame (§4.3) and the last saved Resume position stands.
+- The browser's localhost listener on 4400 is untouched; a passive server (another port on the default data dir, spec §3.2) never starts a Library Server.
 
 ### 2.2 Approved TVs and the allowlist
 
-- Every request's **source IP** is checked. `GET /api/health` answers anyone with `{ app: "TuvaVideos TV Server" }` and nothing else, so the TV app can find the Mac (§4.2).
+- Every request's **source IP** is checked. `GET /api/health` answers anyone with `{ app: "TuvaVideos Library Server" }` and nothing else, so the TV app can find the Mac (§4.2).
 - Any other **listed** route from an unknown IP gets **403** with `{ error: "approve" }`; the TV shows "Approve this TV on the Mac" (a route not on the §2.3 list is a **404** for everyone, strangers included, and raises no prompt). The browser's top bar raises **"Allow TV at ‹IP›? Allow / Deny"**.
-- **Allow** adds an **Approved TV** (`approved_tv(ip, model, approved_at, last_seen_at)`, a new migration) that persists across launches. A DHCP change costs one more click. **Deny** silences that IP until the TV Server is next turned on (in memory only).
+- **Allow** adds an **Approved TV** (`approved_tv(ip, model, approved_at, last_seen_at)`, since migration 0025 `approved_device`, home-server-spec §3, a new migration) that persists across launches. A DHCP change costs one more click. **Deny** silences that IP until the Library Server is next turned on (in memory only).
 - The TV identifies itself with a `X-Tuva-TV: <model>` header (the shell sets it from `webapis.productinfo` when available, else the user agent), stored as the Approved TV's model and shown in the indicator.
 - No token, no pairing code: on a single-user home network, inheriting the TV's address is the only threat and it costs one click to notice.
 
@@ -84,7 +84,7 @@ The top bar's TV button shows one of:
 | approval pending | **Allow TV at ‹IP›? Allow / Deny** |
 | on, an Approved TV made a request in the last 60 s | **TV · ‹model› · playing ‹title›** (title of the Video whose `/copy` or `/live` stream was last requested; "browsing" when none) |
 
-Its menu: **Turn off**; **This Mac, for the TV**: every LAN address with the port, the last number highlighted, and a line saying what to press on the TV's number pad if it asks (§4.2); **Waiting for approval**: every pending TV with Allow and Deny (the top bar raises only the first); and the **Approved TVs** with a Remove per row (removing one puts its next request back through the prompt). The menu opens by itself when the TV Server is turned on, so pairing is done from the Mac: start the TV app, read the address here if it asks, click Allow. Nothing is approved without that click (the approval rules of §2.2 and §2.6 are unchanged).
+Its menu: **Turn off**; **This Mac, for the TV**: every LAN address with the port, the last number highlighted, and a line saying what to press on the TV's number pad if it asks (§4.2); **Waiting for approval**: every pending TV with Allow and Deny (the top bar raises only the first); and the **Approved TVs** with a Remove per row (removing one puts its next request back through the prompt). The menu opens by itself when the Library Server is turned on, so pairing is done from the Mac: start the TV app, read the address here if it asks, click Allow. Nothing is approved without that click (the approval rules of §2.2 and §2.6 are unchanged).
 
 ### 2.5 Writes
 
@@ -146,9 +146,9 @@ Specified here, built last and deferrable (§9): no Copy in the library needs it
 
 - An **HLS stream made on the fly** at `/live/:copyId/index.m3u8`: `-c:v copy`, audio copied or converted to AAC, `-noaccurate_seek`, `-ss <t>` before `-i`, about **10 s segments** cut at source keyframes, a **full-length VOD playlist up front** (`ceil(duration/10)` entries, a segment request blocks until the segment exists), encode about **60 s ahead** of the last request then pause the encoder, prune segments more than 300 s behind, and on a request outside the produced range **kill and restart** at `-ss` with the matching start number. Shape from Plex's copy mode (#46): about 100× realtime, 0.3 s to start or seek.
 - **One at a time**: a new Live remux stops the previous one. It **bypasses the single ffmpeg queue** and the Thumbnail pool's gate, so nothing in the background delays the TV. It uses the arm64 ffmpeg.
-- **Leaves nothing cached**: segments live in a temp dir that is deleted when the stream stops, the TV Server turns off, or the process exits.
+- **Leaves nothing cached**: segments live in a temp dir that is deleted when the stream stops, the Library Server turns off, or the process exits.
 - HLS through native `<video>` on Tizen is capped at 1080p (MSE is FHD-only); acceptable for the exception, another reason 4K stays on direct play.
-- Until it is built, the decision function still returns "live remux" for such a Copy and the Player shows "This Copy needs the TV Server's remux (not built yet)" (§6.6).
+- Until it is built, the decision function still returns "live remux" for such a Copy and the Player shows "This Copy needs the Library Server's remux (not built yet)" (§6.6).
 
 ---
 
@@ -157,7 +157,7 @@ Specified here, built last and deferrable (§9): no Copy in the library needs it
 ### 4.1 The shell
 
 - The installed app is a **thin signed shell** (`tv/shell/`, `.wgt`): `config.xml` with `<content src="index.html"/>`, the `internet` and `tv.inputdevice` privileges, `<access origin="*" subdomains="true"/>` (a Tizen access origin cannot be `http://*`; the address is only known at run time, so the discovery below is the restriction in practice), a permissive CSP meta tag as jellyfin-tizen ships, `webapis.js` injected, the olchey icon at 512×423 (the knot centred on a full-bleed `#1f1e1d` fill, no rounded tile) and app id `TuvaVideos.TuvaTV`.
-- At launch it finds the TV Server (§4.2), then loads the UI **live from it**: `index.html` fetches `/tv.js` and `/tv.css` from the TV Server and runs them, so UI updates ship with the Mac code and only the shell needs the certificate. Tizen APIs stay available because the page is packaged, not hosted.
+- At launch it finds the Library Server (§4.2), then loads the UI **live from it**: `index.html` fetches `/tv.js` and `/tv.css` from the Library Server and runs them, so UI updates ship with the Mac code and only the shell needs the certificate. Tizen APIs stay available because the page is packaged, not hosted.
 - The shell stays on screen ("Starting TuvaVideos…", Back exits) until the UI has run: `/tv.js` loaded, ran without throwing and drew into `#tv`, or called `window.tuvaTv.ready()` (the UI calls it after its first render; older shells lack it, so the UI guards the call). A load error, a parse or boot error, or nothing drawn within 20 s shows **"The TV app could not start"** with Enter to try again and Back to exit, never a black screen with dead keys (audit TV-4). On an engine older than Chrome 94 it also names the TV's version and the minimum.
 - **Minimum engine: Chromium 94**, so `config.xml` sets `required_version="7.0"` (Tizen 7.0, 2023 sets; LG has no install gate, the minimum there is webOS 23). The UI bundle cannot be lowered (`Bun.build` has no syntax target): its script uses `?.`, `??` and `??=` (Chromium 85) and its stylesheet `inset` and `aspect-ratio` (Chromium 88); `color-mix` tints (Chromium 111) only fade out on older engines. The shell itself is plain ES2020 without `inset`, so its screens draw on older engines too.
 - The shell registers the media keys (MediaPlayPause, MediaPlay, MediaPause, MediaRewind, MediaFastForward, MediaTrackPrevious, MediaTrackNext), the four colour keys, ChannelUp/Down, Info and the digits 0–9 (the typed-address field needs them) with `registerKeyBatch` (Exit, long Back, stays unregistered and the system handles it), and maps every key through one table (§8) that the UI code shares.
@@ -169,21 +169,21 @@ In order, each step with a 2 s timeout:
 
 1. the **last address** the shell stored (`localStorage`), `GET http://‹addr›:4401/api/health`;
 2. a **sweep of the TV's own /24** on 4401 (the TV's address from `webapis.network`, else the last address's subnet), 32 requests in flight at a time;
-3. **typed**: the shell shows a numeric field for the Mac's address with an **on-screen number pad** under it (1–9, dot, 0, delete, then Connect), walked with the arrows and pressed with Enter, since newer remotes hide their digits behind a 123 panel; the remote's digits type too and Back deletes. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`), so only the last number is typed; it says the Mac's TV button shows the address (§2.4). **The first time nothing answers after a launch, the field opens by itself** with the pad focused, so no Enter or remote menu is needed; Back on the empty field returns to the looking screen, which offers the field again with Enter (§4.3) and does not reopen it by itself. The sequence keeps retrying every 5 s **also while the field is open**: a TV Server switched on meanwhile, or a sweep that succeeds on a later round, takes the screen without anything typed. Any state other than looking (Approve, ready, turned off) replaces the field.
+3. **typed**: the shell shows a numeric field for the Mac's address with an **on-screen number pad** under it (1–9, dot, 0, delete, then Connect), walked with the arrows and pressed with Enter, since newer remotes hide their digits behind a 123 panel; the remote's digits type too and Back deletes. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`), so only the last number is typed; it says the Mac's TV button shows the address (§2.4). **The first time nothing answers after a launch, the field opens by itself** with the pad focused, so no Enter or remote menu is needed; Back on the empty field returns to the looking screen, which offers the field again with Enter (§4.3) and does not reopen it by itself. The sequence keeps retrying every 5 s **also while the field is open**: a Library Server switched on meanwhile, or a sweep that succeeds on a later round, takes the screen without anything typed. Any state other than looking (Approve, ready, turned off) replaces the field.
 
-The first health answer naming "TuvaVideos TV Server" wins and is stored. The shell then requests `/api/videos`; a 403 shows "Approve this TV on the Mac" and retries every 3 s until the user clicks Allow.
+The first health answer naming "TuvaVideos Library Server" wins and is stored. The shell then requests `/api/videos`; a 403 shows "Approve this TV on the Mac" and retries every 3 s until the user clicks Allow.
 
 ### 4.3 Offline states
 
 - No server found: **"Looking for TuvaVideos on the Mac…"** with the step it is on; retries the whole sequence every 5 s; the first time nothing answers the typed field opens by itself (§4.2); Enter opens it again; Back exits the app.
 - The UI did not start (§4.1): **"The TV app could not start"** with the reason; Enter reloads the shell, Back exits.
-- Server stops mid-session (health stops answering twice in a row, 5 s apart; the shell watches it after every success and the UI may call `window.tuvaTv.restart()` on a 403 or a dead stream): the shell shows **"TV Server turned off"** over the paused frame or the current screen, keeps the last Resume write, and offers Enter to look again (back to the discovery screen) or Back to exit.
+- Server stops mid-session (health stops answering twice in a row, 5 s apart; the shell watches it after every success and the UI may call `window.tuvaTv.restart()` on a 403 or a dead stream): the shell shows **"Library Server turned off"** over the paused frame or the current screen, keeps the last Resume write, and offers Enter to look again (back to the discovery screen) or Back to exit.
 - Denied (a 403 after an earlier success, or Remove in the menu): the same "Approve this TV on the Mac" screen.
 
 ### 4.4 Install and update
 
 - `bun run tv-install` (`scripts/tv-install.ts`): `sdb connect ‹tv›` → `tizen build-web` → `tizen package -t wgt -s TuvaVideos` → `tizen install -n TuvaTV.wgt -t ‹target›` → `tizen run`. `tizen install-permit` runs once per certificate. Installing a newer version uninstalls the previous one. TV and target names come from `tv/shell/tv.json` (ip, target, duid), not from the code.
-- **UI changes need no reinstall**: the shell loads the UI from the TV Server at every launch. Only changes under `tv/shell/` do (the 2026-11 audit fixes to discovery, the boot error screen and `required_version` are such a change).
+- **UI changes need no reinstall**: the shell loads the UI from the Library Server at every launch. Only changes under `tv/shell/` do (the 2026-11 audit fixes to discovery, the boot error screen and `required_version` are such a change).
 - **Certificate renewal is a yearly chore, not automated** (it needs a Samsung account sign-in in Certificate Manager): the shell's README carries the checklist (quit Certificate Manager before `sdb connect`, Developer Mode on with the Mac's IP, Apps › App Settings › 12345, re-create the distributor certificate with the DUID, `install-permit`, reinstall). The expiry date **2027-10-14** is recorded there. A major Tizen upgrade may wipe sideloaded apps: reinstall after one. No in-app warning.
 
 ### 4.5 LG webOS (added after the build, 2026-10-22)
@@ -193,7 +193,7 @@ The spec above targets the Samsung R85H. The same shell also runs on an **LG web
 - **Package**: `tv/shell/appinfo.json` (app id `local.tuvavideos.tuvatv`, `icon-80.png` / `icon-130.png`, `disableBackHistoryAPI` so Back arrives as key 461) beside the Tizen `config.xml`; one shell folder serves both.
 - **Install**: `bun run lg-install [device]` (`scripts/lg-install.ts`, default device `lgtv`) runs `ares-package` → `ares-install` → `ares-launch` with the webOS CLI (`@webos-tools/cli`, installed with npm under `~/.webos-cli`). The one-time Developer Mode and `ares-setup-device` steps are in `tv/shell/README.md` ("Install on an LG TV"). LG's Developer Mode lasts 50 hours and is extended from its app on the TV.
 - **Differences in the shell**: no key registration (LG sends the keys unregistered; where a code differs, such as Back 461, it is the `alt` code in `src/tv/keys.ts`); the TV's own address for the /24 sweep (§4.2) comes from `luna://com.palm.connectionmanager/getStatus` instead of `webapis.network` (`tv/shell/shell.js`).
-- **CORS**: the webOS app runs from `file://` and sends `X-Tuva-TV`, so its requests are preflighted; the TV Server answers CORS on every TV route (`src/server/tv.ts`). Access is still decided by the TV's IP and the allowlist (§2.2).
+- **CORS**: the webOS app runs from `file://` and sends `X-Tuva-TV`, so its requests are preflighted; the Library Server answers CORS on every TV route (`src/server/tv.ts`). Access is still decided by the TV's IP and the allowlist (§2.2).
 
 ---
 
@@ -251,7 +251,7 @@ Orbs of colour flowing over a dark ground, loosely following what is on screen (
 - **Cost**: the orbs are radial gradients drawn with screen blending into a **90×120 canvas at about 30 fps** (every second refresh at 60 Hz, counted in refreshes so the frames stay evenly spaced), stretched over the column by the stylesheet: a few thousand pixels a frame, no blur filter, no read-back of the video.
 - then a light vignette, a dark tint gradient and faint grain.
 
-The text shadow stays tight (`0 1px 2px`): a wide one on dense 44 px text veils the backdrop. The strip and poster are loaded with `crossorigin` so the canvas sample works from the TV Server's origin; the TV Server sends `Access-Control-Allow-Origin` for `/thumbs`.
+The text shadow stays tight (`0 1px 2px`): a wide one on dense 44 px text veils the backdrop. The strip and poster are loaded with `crossorigin` so the canvas sample works from the Library Server's origin; the Library Server sends `Access-Control-Allow-Origin` for `/thumbs`.
 
 ### 6.3 Zones and keys
 
@@ -286,7 +286,7 @@ Held arrows are throttled as in the browser: one seek in flight, the latest targ
 - A **top band** with the Video title, the tag row and "Playing from" shows with the bar, on a dark rounded panel so it reads over a light video.
 - Shuffle and Repeat changes, the seek step, "Resuming at m:ss", "Playlist ended", "No chapters", a Copy switch and errors flash in the OSD.
 - "Next:" is read as: in the last 20 s of a Playlist Entry (a Chapter Entry's end, else the Video's) the next Entry's Video title; otherwise, in the last 20 s of a Chapter that has a next one, that Chapter; the last Chapter of a Video with no Playlist names nothing. A Repeat-list wrap names nothing (the reshuffle happens only when it does).
-- **"Press Enter to play"** shows when autoplay is refused and clears on the first `play` event. A Copy that fails to decode while the TV Server answers (one retry first) shows "This Copy did not play (container codecs)"; a TV Server that does not answer, or a stream that drops, is not a failure: the Player shows "Lost the TV Server · retrying…" and loads the same Copy again with backoff (1.5, 3, 5, 8, 12, then every 15 s) until the server answers, and a network error that persists while the server answers ends in "Copy unavailable" (`src/tv/playRetry.ts`, audit TV-2); a Copy needing a Live remux before it exists shows "This Copy needs the TV Server's remux (not built yet)". A Root that unmounts mid-play follows spec §4.2 (next Available Copy at the same time, else "Copy unavailable").
+- **"Press Enter to play"** shows when autoplay is refused and clears on the first `play` event. A Copy that fails to decode while the Library Server answers (one retry first) shows "This Copy did not play (container codecs)"; a Library Server that does not answer, or a stream that drops, is not a failure: the Player shows "Lost the Library Server · retrying…" and loads the same Copy again with backoff (1.5, 3, 5, 8, 12, then every 15 s) until the server answers, and a network error that persists while the server answers ends in "Copy unavailable" (`src/tv/playRetry.ts`, audit TV-2); a Copy needing a Live remux before it exists shows "This Copy needs the Library Server's remux (not built yet)". A Root that unmounts mid-play follows spec §4.2 (next Available Copy at the same time, else "Copy unavailable").
 
 ### 6.7 Playlist on the TV
 
@@ -347,7 +347,7 @@ Nothing frequent lives only on a colour key: lyrics (Up, side arrow), Script (Bl
 Five chained task tickets (Claude Sonnet 5.5), each a PR on `task/<slug>` with `bun test` on the pure parts it introduces, `tsc --noEmit` clean, a scripted or hand smoke run recorded in a comment, and this spec amended in the same PR where it got something wrong. 3 and 4 need 1 and 2; 2 can run beside 1; 5 is deferrable.
 
 1. **`tv-server`** (§2, §3.1–3.3): the second listener and the TV button, Approved TVs (migration, allowlist, prompt, menu, indicator), the fixed route list, `X-Tuva-TV`, CORS for `/thumbs`, the TV Playback profile as data with the pure decision and the per-Copy scan-time result (migration, stale-version re-judging), `/api/videos` carrying it, the Resume and view writes over the TV listener, the hard stop. Tests: route list (every unlisted route 404s on 4401), allowlist states, the decision over the census combinations and portrait files, profile-version staleness.
-2. **`tv-shell`** (§4): `tv/shell/` with config.xml, discovery, offline states, key registration, loading the UI from the TV Server, `scripts/tv-install.ts`, `tv/shell/tv.json`, the README with the certificate checklist. HITL: Developer Mode, Certificate Manager. Serves a placeholder `/tv.js` until 3 lands.
+2. **`tv-shell`** (§4): `tv/shell/` with config.xml, discovery, offline states, key registration, loading the UI from the Library Server, `scripts/tv-install.ts`, `tv/shell/tv.json`, the README with the certificate checklist. HITL: Developer Mode, Certificate Manager. Serves a placeholder `/tv.js` until 3 lands.
 3. **`tv-home`** (§5, §7, §8): `src/tv/` in Preact bundled by `web.ts`, the key map, focus engine, rails, side pane, grids (Shuffle tile, Chapter tiles), Search with the keyboard, Random, Playing from snapshots. Tests: the key map, the focus geometry, the Favorites tile builder.
 4. **`tv-player`** (§6): layout, lyrics column and backdrop, zones, button row, Chapter and Copy lists, OSD, seeks with the keyframe index, Playlist without the panel, Resume and views, Audio settings with the Web Audio test and the untouched fallback. HITL on the TV: type size, the backdrop, Web Audio. Tests: seek acceleration, zone transitions, Playlist stepping through `src/shared/playlist.ts`, the "via remux" marking.
 5. **`tv-live-remux`** (§3.4): the HLS Live remux endpoint, one at a time, bypassing the queue, temp segments, kill-and-restart on seek, the Copy list's "via remux" rows becoming playable. Deferrable: no Copy needs it today.

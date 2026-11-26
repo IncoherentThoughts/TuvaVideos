@@ -1,4 +1,4 @@
-// TuvaVideos TV UI (docs/tv-spec.md 5, 7, 8). Loaded by the signed shell from the TV Server (/tv.js, /tv.css), or
+// TuvaVideos TV UI (docs/tv-spec.md 5, 7, 8). Loaded by the signed shell from the Library Server (/tv.js, /tv.css), or
 // standalone in a desktop browser at http://127.0.0.1:4401/ for development. A stack of screens (nav.ts), a pane
 // over them, one key dispatch (input.ts) and the geometry focus engine (focus.ts).
 import { render } from "preact"

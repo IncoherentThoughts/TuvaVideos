@@ -3,7 +3,7 @@ import { isTvRequest } from "./tvRequest";
 // checks of docs/sharing-spec.md §5.2 for the routes that write the Local copy from the browser (`POST
 // /api/cache/apply`) or take an access token (`/api/sync`). The companion listens on 127.0.0.1 only; these checks stop
 // a page of another site (DNS rebinding, a cross-site form or `fetch(…, {mode: "no-cors"})`) from reaching it.
-// Requests the TV Server passes in (tv.ts) are marked and judged by the TV Server instead. Pure but for that mark.
+// Requests the Library Server passes in (tv.ts) are marked and judged by the Library Server instead. Pure but for that mark.
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -17,7 +17,7 @@ const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  */
 const BODY_TYPES = new Set(["application/json", "image/png"]);
 
-// The TV Server marks each request it hands to the localhost handler (src/server/tvRequest.ts): its Host is the Mac's
+// The Library Server marks each request it hands to the localhost handler (src/server/tvRequest.ts): its Host is the Mac's
 // LAN address and its IP was checked by that listener.
 export { markTvRequest } from "./tvRequest";
 
@@ -77,7 +77,7 @@ export interface Refusal {
  * Every request: the Host must be this machine's loopback name and port (DNS rebinding). Every write: the Origin, or
  * the Referer when a client sent no Origin, must be this companion's own; a write with neither is a non-browser
  * client on this machine (curl, a script), which the Host check already admits. A write with a body must carry one of
- * `BODY_TYPES`. The TV Server's requests pass: it checks them itself (source IP, route list, tv.ts).
+ * `BODY_TYPES`. The Library Server's requests pass: it checks them itself (source IP, route list, tv.ts).
  */
 export function localGuard(req: Request, port: number | null): Refusal | null {
   if (isTvRequest(req)) return null;

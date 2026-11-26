@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { startApp, type App } from "../src/server/app";
 import { loadConfig } from "../src/server/config";
 
-process.env.TUVA_TV_LOOPBACK = "1"; // the test TV is 127.0.0.1, which a loopback-refusing TV Server would not approve
+process.env.TUVA_TV_LOOPBACK = "1"; // the test TV is 127.0.0.1, which a loopback-refusing Library Server would not approve
 const base = mkdtempSync(join(tmpdir(), "tuva-tvcopy-"));
 const localDir = join(base, "local");
 mkdirSync(localDir, { recursive: true });

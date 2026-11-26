@@ -1,4 +1,4 @@
-// The TV Server (docs/tv-spec.md 2, ADR 0004): a second `Bun.serve` in this process on all IPv4 interfaces, started
+// The Library Server (docs/tv-spec.md 2, ADR 0004): a second `Bun.serve` in this process on all IPv4 interfaces, started
 // and stopped from the browser's TV button, off at every launch. Every request is checked against the Approved TVs by
 // source IP; the routes are a fixed list (tvRoutes.ts) that reuses the localhost handler.
 import { existsSync } from "node:fs";
@@ -11,17 +11,18 @@ import { FRAME_HEADERS } from "./localOnly";
 import { markTvRequest } from "./tvRequest";
 import { excludeNotHere, matchTvRoute, notHereVideoIds, stripPaths, tvListOf } from "./tvRoutes";
 import type { TvBundle } from "./web";
-import type { ApprovedTvDto, TvStateDto } from "../shared/types";
+import type { ApprovedDeviceDto, TvStateDto } from "../shared/types";
+import { appVersion, computerName, healthBody, LIBRARY_SERVER_NAME } from "./libraryServerHealth";
+import type { Roots } from "./roots";
 
 type Handler = (req: Request) => Promise<Response>;
 
-export const TV_APP_NAME = "TuvaVideos TV Server";
 /** An Approved TV that made a request this recently is "talking" (spec 2.4). */
 export const ACTIVE_WINDOW_MS = 60_000;
 /** `last_seen_at` is written at most this often per TV. */
 const SEEN_WRITE_MS = 5_000;
 
-export type { ApprovedTvDto, TvStateDto };
+export type { ApprovedDeviceDto, TvStateDto };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
@@ -104,7 +105,16 @@ export class TvServer {
   private activity: Activity | null = null;
   private stopHooks: (() => void)[] = [];
 
-  constructor(private deps: { cfg: Pick<Config, "tvPort" | "passive" | "webDir" | "tvLoopback">; db: Db }) {}
+  constructor(
+    private deps: {
+      cfg: Pick<Config, "tvPort" | "passive" | "webDir" | "tvLoopback">;
+      db: Db;
+      /** For health's `drive`: no Roots means "unmounted". */
+      roots?: Pick<Roots, "list" | "isAvailable">;
+      /** Health's `home`: true on the Home Server (the toggle arrives with #240). */
+      home?: () => boolean;
+    },
+  ) {}
 
   /** An address that may be approved and served: not this machine's own (unless `tvLoopback`). */
   private mayBeTv(ip: string): boolean {
@@ -115,7 +125,7 @@ export class TvServer {
     this.handler = h;
   }
 
-  /** The built TV UI (`/tv.js`, `/tv.css`); without one the TV Server serves empty files. */
+  /** The built TV UI (`/tv.js`, `/tv.css`); without one the Library Server serves empty files. */
   setBundle(b: Pick<TvBundle, "serve">) {
     this.bundle = b;
   }
@@ -134,7 +144,7 @@ export class TvServer {
   }
 
   start(): { ok: true } | { ok: false; status: number; error: string } {
-    if (this.deps.cfg.passive) return { ok: false, status: 409, error: "a passive server never starts the TV Server" };
+    if (this.deps.cfg.passive) return { ok: false, status: 409, error: "a passive server never starts the Library Server" };
     if (this.server) return { ok: true };
     if (!this.handler) return { ok: false, status: 500, error: "no handler" };
     this.denied.clear(); // Deny lasts until the next turn-on
@@ -150,7 +160,7 @@ export class TvServer {
       return { ok: false, status: 500, error: `could not listen on port ${this.deps.cfg.tvPort}: ${String((e as Error).message ?? e)}` };
     }
     const addrs = lanAddresses();
-    log(`TV Server on, port ${this.server.port}, addresses ${addrs.length ? addrs.map((a) => `http://${a}:${this.server!.port}`).join(" ") : "(none)"}`);
+    log(`Library Server on, port ${this.server.port}, addresses ${addrs.length ? addrs.map((a) => `http://${a}:${this.server!.port}`).join(" ") : "(none)"}`);
     return { ok: true };
   }
 
@@ -167,26 +177,36 @@ export class TvServer {
       try {
         fn();
       } catch (e) {
-        log("TV Server stop hook failed", String(e));
+        log("Library Server stop hook failed", String(e));
       }
     }
-    log("TV Server off");
+    log("Library Server off");
   }
 
   // ---- the allowlist ----
 
-  approved(): ApprovedTvDto[] {
-    return (this.deps.db.query("SELECT ip, model, approved_at, last_seen_at FROM approved_tv ORDER BY approved_at, ip").all() as { ip: string; model: string | null; approved_at: string; last_seen_at: string | null }[]).map((r) => ({
+  approved(): ApprovedDeviceDto[] {
+    type Row = { ip: string; kind: "tv" | "mac"; name: string | null; model: string | null; via: "tailscale" | "click"; approved_at: string; last_seen_at: string | null };
+    return (this.deps.db.query("SELECT ip, kind, name, model, via, approved_at, last_seen_at FROM approved_device ORDER BY approved_at, ip").all() as Row[]).map((r) => ({
       ip: r.ip,
+      kind: r.kind,
+      name: r.name,
       model: r.model,
+      via: r.via,
       approvedAt: r.approved_at,
       lastSeenAt: r.last_seen_at,
     }));
   }
 
+  /** `GET /api/health` (spec §2.1). */
+  health() {
+    const { roots, home } = this.deps;
+    return healthBody({ name: computerName(), home: home?.() ?? false, rootsMounted: roots ? roots.list().map((r) => roots.isAvailable(r.id)) : [], version: appVersion() });
+  }
+
   private isApproved(ip: string): boolean {
     // a row for this machine's own address (stored before SEC-1, or under TUVA_TV_LOOPBACK) is listed, not served
-    return this.mayBeTv(ip) && this.deps.db.query("SELECT 1 FROM approved_tv WHERE ip = ?").get(ip) != null;
+    return this.mayBeTv(ip) && this.deps.db.query("SELECT 1 FROM approved_device WHERE ip = ?").get(ip) != null;
   }
 
   /** False, and nothing stored, for an empty address or this machine's own (`isOwnAddress`). */
@@ -196,7 +216,7 @@ export class TvServer {
     const model = this.pending.get(ip) ?? null;
     const now = new Date().toISOString();
     this.deps.db
-      .query("INSERT INTO approved_tv (ip, model, approved_at, last_seen_at) VALUES (?, ?, ?, NULL) ON CONFLICT(ip) DO UPDATE SET model = COALESCE(excluded.model, model)")
+      .query("INSERT INTO approved_device (ip, kind, model, via, approved_at, last_seen_at) VALUES (?, 'tv', ?, 'click', ?, NULL) ON CONFLICT(ip) DO UPDATE SET model = COALESCE(excluded.model, model)")
       .run(ip, model, now);
     this.pending.delete(ip);
     this.denied.delete(ip);
@@ -212,7 +232,7 @@ export class TvServer {
   /** Remove puts the TV's next request back through the prompt. */
   remove(ip: string): boolean {
     ip = normalizeIp(ip.trim());
-    const r = this.deps.db.query("DELETE FROM approved_tv WHERE ip = ?").run(ip);
+    const r = this.deps.db.query("DELETE FROM approved_device WHERE ip = ?").run(ip);
     this.denied.delete(ip);
     this.seenWritten.delete(ip);
     if (this.activity?.ip === ip) this.activity = null;
@@ -256,7 +276,7 @@ export class TvServer {
       this.refusedLogged.set(key, { at: now, more: 0 });
       log(`TV ${ip || "?"}: 403 ${req.method} ${path} (${reason})${prev?.more ? `, ${prev.more} more since the last line` : ""}`);
     } else if (path === "/tv.js" && req.method === "GET") {
-      log(`TV ${ip || "?"}: loaded the TV app (/tv.js)${quietS == null ? ", first request since the TV Server came on" : `, ${quietS} s after its previous request`}`);
+      log(`TV ${ip || "?"}: loaded the TV app (/tv.js)${quietS == null ? ", first request since the Library Server came on" : `, ${quietS} s after its previous request`}`);
     }
   }
 
@@ -264,13 +284,13 @@ export class TvServer {
     const now = Date.now();
     const db = this.deps.db;
     if (now - (this.seenWritten.get(ip) ?? 0) >= SEEN_WRITE_MS) {
-      db.query("UPDATE approved_tv SET last_seen_at = ?, model = COALESCE(?, model) WHERE ip = ?").run(new Date(now).toISOString(), model, ip);
+      db.query("UPDATE approved_device SET last_seen_at = ?, model = COALESCE(?, model) WHERE ip = ?").run(new Date(now).toISOString(), model, ip);
       this.seenWritten.set(ip, now);
     }
     let title = this.activity?.ip === ip ? this.activity.title : null;
     const m = path.match(/^\/(?:copy|live)\/(\d+)/);
     if (m) title = (db.query("SELECT v.title FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.id = ?").get(Number(m[1])) as { title: string } | null)?.title ?? title;
-    this.activity = { ip, model: model ?? (db.query("SELECT model FROM approved_tv WHERE ip = ?").get(ip) as { model: string | null } | null)?.model ?? null, at: now, title };
+    this.activity = { ip, model: model ?? (db.query("SELECT model FROM approved_device WHERE ip = ?").get(ip) as { model: string | null } | null)?.model ?? null, at: now, title };
   }
 
   // CORS for the TV app only (tvCorsOrigin): the LG (webOS) shell runs from file:// (Origin `null`) and sends
@@ -324,7 +344,7 @@ export class TvServer {
     const path = new URL(req.url).pathname;
     const route = matchTvRoute(req.method, path);
     if (!route) return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "content-type": "application/json", "cache-control": "no-store", "x-tv-route": "unlisted" } });
-    if (route.kind === "health") return json({ app: TV_APP_NAME });
+    if (route.kind === "health") return json(this.health());
 
     const model = req.headers.get("x-tuva-tv")?.trim().slice(0, 120) || null;
     if (!this.isApproved(ip)) {
@@ -368,8 +388,8 @@ export class TvServer {
     // `/`: what a desktop browser opens (http://127.0.0.1:4401/) to run the UI without the shell. On the TV the shell
     // loads /tv.css and /tv.js itself; `#boot` (the server's name and address) is removed by the UI when it starts.
     const addrs = lanAddresses().map((a) => `${a}:${this.port}`);
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${TV_APP_NAME}</title><meta name="viewport" content="width=1920"><link rel="icon" href="/olchey.svg"><link rel="stylesheet" href="/tv.css"></head>
-<body><div id="tv"></div><div id="boot" style="position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:#1f1e1d;color:#d9d8d5;font:28px system-ui"><div><img src="/olchey.svg" width="96" height="96" alt=""><h1>${TV_APP_NAME}</h1><p>${addrs.length ? addrs.join(" · ") : "no network address"}</p></div></div><script src="/tv.js"></script></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>TuvaVideos ${LIBRARY_SERVER_NAME}</title><meta name="viewport" content="width=1920"><link rel="icon" href="/olchey.svg"><link rel="stylesheet" href="/tv.css"></head>
+<body><div id="tv"></div><div id="boot" style="position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:#1f1e1d;color:#d9d8d5;font:28px system-ui"><div><img src="/olchey.svg" width="96" height="96" alt=""><h1>TuvaVideos ${LIBRARY_SERVER_NAME}</h1><p>${addrs.length ? addrs.join(" · ") : "no network address"}</p></div></div><script src="/tv.js"></script></body></html>`;
     return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...noStore, ...FRAME_HEADERS } });
   }
 }

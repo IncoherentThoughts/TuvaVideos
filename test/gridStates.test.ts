@@ -1,5 +1,5 @@
 // Grid states (sharing-spec §7.1, §7.2, §7.6): presence per Video, the "On this machine" chip, the source link, and the
-// TV Server's exclusion of Not on this machine Videos from its lists.
+// Library Server's exclusion of Not on this machine Videos from its lists.
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { openDb } from "../src/server/db";
@@ -61,7 +61,7 @@ describe("sourceLink (§7.1)", () => {
   });
 });
 
-describe("TV Server lists exclude Not on this machine (§7.6)", () => {
+describe("Library Server lists exclude Not on this machine (§7.6)", () => {
   test("the list routes", () => {
     expect(tvListOf("GET", "/api/videos")).toBe("videos");
     expect(tvListOf("HEAD", "/api/favorites")).toBe("favorites");

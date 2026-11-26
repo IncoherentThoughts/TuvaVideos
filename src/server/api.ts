@@ -362,11 +362,11 @@ export function createHandler(s: Services) {
     if (c.missing_since) return json({ error: "copy is missing", missingSince: c.missing_since }, 404);
     if (isTvRequest(req)) {
       // The TV plays by its own Playback profile (tv-spec 3.2): the own file when it plays as-is, else an existing
-      // Fallback it plays. It never asks the Fallback queue to make anything; the Live remux is not built yet.
+      // Fallback it plays, else it plays a Live stream (`/live/:id/index.m3u8`). It never asks the Fallback queue for anything.
       const order = tvJson(c).order;
       if (order === "file") return serveFile(req, join(c.root_path, c.rel_path));
       if (order === "fallback" && c.fallback_file) return serveFile(req, join(s.cfg.remuxDir, c.fallback_file), contentTypeFor(extensionOf(c.fallback_file)));
-      return json({ error: "the TV does not play this Copy as-is and the Live remux is not built yet", order }, 409);
+      return json({ error: "the TV does not play this Copy as-is: it plays as a Live stream", order, live: `/live/${id}/index.m3u8?q=orig` }, 409);
     }
     if (c.playback !== "native") {
       if (!c.fallback_file) {

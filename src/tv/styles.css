@@ -153,6 +153,13 @@ svg { display: block; flex: none; }
 .pane .navb { font-size: var(--fs-lg); padding: 10px 22px; width: 320px; }
 .pane .pchips { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 8px 54px; }
 .pane .chip { font-size: var(--fs-sm); padding: 6px 16px; width: 290px; }
+.pane .navb.srv { margin-top: auto; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane > * { flex-shrink: 0; }
+.pane .psrv { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 0 54px; }
+.pane .psrv .navb { font-size: var(--fs-sm); padding: 6px 16px; width: 290px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane .psrv .navb:not(:focus) small { color: var(--fg2); }
+.pane .psrv .navb.on:not(:focus) { color: var(--fg2); }
+.pane .pnote { font-size: var(--fs-sm); color: var(--fg2); padding: 6px 16px; }
 
 /* ---- search ---- */
 .se { flex-direction: row; }

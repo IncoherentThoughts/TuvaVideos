@@ -31,7 +31,8 @@ cd tv/shell && python3 -m http.server 8081
 # open http://127.0.0.1:8081/?addr=127.0.0.1
 ```
 
-`?addr=` stands in for the address the TV would have stored. Use `127.0.0.1` (not `localhost`) as the page's own host.
+`?addr=` stands in for the address the TV would have stored, `?ip=` for the TV's own address (whose /24 is swept;
+without it the stored address's /24 is). Use `127.0.0.1` (not `localhost`) as the page's own host.
 Approving 127.0.0.1 needs `TUVA_TV_LOOPBACK=1` on the server (development only: loopback approvals are refused otherwise).
 Keys: Enter, digits, the arrows (walk the on-screen number pad of the typing screen), Backspace (stands in for Back). The server must answer CORS for
 `X-Tuva-TV` from a page on another port; the packaged app on the TV has the same constraint. Without `TUVA_TV_LOOPBACK=1`
@@ -101,16 +102,27 @@ After a **Tizen OS upgrade** the TV may wipe sideloaded apps: re-enable Develope
 
 ## What the shell shows
 
-- **Looking for TuvaVideos on the Mac…** with the step it is on (last address, sweep of the TV's /24 on 4401, 32 at a
-  time with 2 s timeouts); the whole sequence repeats every 5 s. Enter opens the typed field, Back exits.
+- **Looking for TuvaVideos on the Mac…** with the step it is on: the last address and a sweep of the TV's /24 on
+  4401 run together (32 at a time with 2 s timeouts) and every Library Server that answers is collected, with the
+  names found so far on screen; the whole sequence repeats every 5 s while nothing answers. Enter opens the typed
+  field, Back exits.
+- **Choose a Library Server**: more than one answered (docs/home-server-spec.md §4.2). The Home Server first and
+  marked, then by name, the last used one focused; Up/Down choose, Enter connects, Back exits. One answer connects
+  straight away.
 - **The Mac's address**: opens by itself the first time nothing answers, with the number pad focused. The TV's own
   subnet is pre-filled, so the last number is enough (the Mac's TV button menu shows the address with that number
   highlighted). The arrows walk the pad and Enter presses a key; the remote's digits type too; Back deletes (and leaves
-  the field when empty); Connect connects. The search keeps retrying behind the field, so a TV Server switched on
+  the field when empty); Connect connects. The search keeps retrying behind the field, so a Library Server switched on
   meanwhile is found without typing.
 - **Starting TuvaVideos…**: the UI is loading from the Mac; it goes away once the UI has drawn.
 - **The TV app could not start**: `/tv.js` did not load, did not parse, threw while starting, or drew nothing within
   20 s. Enter tries again, Back exits.
 - **Approve this TV on the Mac**: a 403 from `/api/videos`; retried every 3 s until Allow is clicked.
-- **TV Server turned off**: the health check missed twice (5 s apart) after a success; Enter reloads the shell and
-  looks again, Back exits.
+- **‹name› stopped answering**: the health check missed twice (5 s apart) after a success; Enter (Look again)
+  reloads the shell, which sweeps again and shows the picker when several answer; Back exits.
+- **Switching by hand**: the TV UI's side pane shows **Server: ‹name›**; Enter lists the servers a fresh sweep finds,
+  and picking another one stores it (`tuva.tv.pin`) and reloads the shell, which goes straight to it and loads the UI
+  from it. The shell gives the UI `window.tuvaTv.server`, `servers()` and `switchTo(address)`; a UI on an older
+  shell (no `servers`) hides the item. `restart()` pins the current server too, so a 403 or dead stream reconnects to
+  the same Mac instead of showing the picker.
+- Changing any of this needs a shell reinstall (`bun run tv-install`); the health mark stays "TuvaVideos TV Server".

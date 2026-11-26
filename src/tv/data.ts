@@ -10,6 +10,18 @@ export interface TuvaTvShell {
   restart: () => void
   /** The UI has drawn its first screen: the shell takes its "Starting…" screen down (older shells lack it). */
   ready?: () => void
+  /** The server the UI runs from (shells from #245 on; older shells lack it and the side pane hides Server). */
+  server?: ShellServer | null
+  /** A fresh sweep for the side pane's Server list. */
+  servers?: () => Promise<(ShellServer & { current: boolean })[]>
+  /** Switch by hand: the shell reloads and loads the UI from that server. Write Resume first. */
+  switchTo?: (address: string) => void
+}
+
+export interface ShellServer {
+  address: string
+  name: string
+  home: boolean
 }
 
 declare global {

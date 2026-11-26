@@ -16,8 +16,8 @@ import type { ChapterDto, CopyDto, SongDto, VideoDto } from "../shared/types"
 import { AudioEngine } from "../web/audioEngine"
 import { artistSlot } from "../web/ui"
 import { AudioChain, audioTag, type AudioMode } from "./audioChain"
-import { REMUX_MESSAGE, busyMessage, failedMessage, liveUrl, pickPlayable } from "./copies"
-import { liveSegmentStarts } from "../shared/liveQuality"
+import { REMUX_MESSAGE, busyMessage, failedMessage, liveUrl, pickPlayable, playsLive } from "./copies"
+import { keepQuality, liveSegmentStarts, qualityLabel, qualityOptions, type LiveQuality } from "../shared/liveQuality"
 import { copyLabel, copyRows } from "./copyList"
 import { api, url, writes } from "./data"
 import { useKeyHandler } from "./input"
@@ -86,6 +86,12 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const [phase, setPhase] = useState<Phase>("loading")
   const [failedCopy, setFailedCopy] = useState<CopyDto | null>(null)
   const [busyText, setBusyText] = useState<string | null>(null) // the server's two Live streams are taken
+  const [quality, setQualityState] = useState<LiveQuality>("orig") // Original on every play, never remembered (home-server-spec 7.1)
+  const Q = useRef<LiveQuality>("orig")
+  const setQuality = (q: LiveQuality) => {
+    Q.current = q
+    setQualityState(q)
+  }
   const [t, setT] = useState(0)
   const [paused, setPaused] = useState(true)
   const [needsEnter, setNeedsEnter] = useState(false)
@@ -179,7 +185,19 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const tags = video ? focusableTags(video) : []
   const rows = copyRows(copies, copyId)
   const chIdx = curChapter ? chapters.indexOf(curChapter) : -1
-  const zctx: ZoneCtx = { hasLyrics, lyricsShown: showLyrics, versionCount: lview?.versions.length ?? 0, tagCount: tags.length, chapterCount: chapters.length, currentChapter: chIdx, copySwitchable: rows.map((r) => r.switchable), currentCopy: Math.max(0, rows.findIndex((r) => r.playing)) }
+  const qualities: LiveQuality[] = copy ? qualityOptions(copy.width, copy.height) : ["orig"]
+  const zctx: ZoneCtx = {
+    hasLyrics,
+    lyricsShown: showLyrics,
+    versionCount: lview?.versions.length ?? 0,
+    tagCount: tags.length,
+    chapterCount: chapters.length,
+    currentChapter: chIdx,
+    copySwitchable: rows.map((r) => r.switchable),
+    currentCopy: Math.max(0, rows.findIndex((r) => r.playing)),
+    qualityCount: qualities.length,
+    currentQuality: Math.max(0, qualities.indexOf(quality)),
+  }
   const S = useRef({ video, copies, chapters, range, duration, playable, zctx })
   S.current = { video, copies, chapters, range, duration, playable, zctx }
 
@@ -256,7 +274,9 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     setPhase("loading")
     setNeedsEnter(false)
     setBusyText(null)
-    if (c.tv.order !== "live") {
+    const q = keepQuality(Q.current, c.width, c.height) // another Copy keeps the pick when it offers it
+    if (q !== Q.current) setQuality(q)
+    if (!playsLive(c, q)) {
       v.src = url(c.url)
       v.load()
       void fetchKeyframes(c.id, token)
@@ -264,8 +284,14 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     }
     // a Live stream (home-server-spec 7.1): ask for its playlist first, so a busy server is said, not a broken Copy;
     // seeks snap to segment starts, where every segment begins with a keyframe
-    void api.liveBusy(liveUrl(c.id)).then((holders) => {
+    void api.liveBusy(liveUrl(c.id, q)).then((holders) => {
       if (token !== R.current.token) return
+      if (holders && q !== "orig" && c.tv.order !== "live") {
+        // a picked quality the server cannot make: the Copy plays as it is
+        say(`${busyMessage(holders)}: back to Original`, 4000)
+        setQuality("orig")
+        return attach(c, at, play, announce)
+      }
       if (holders) {
         r.hold = at
         r.copyId = null
@@ -273,7 +299,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         return setPhase("remux")
       }
       r.keyframes = liveSegmentStarts(c.durationS)
-      v.src = url(liveUrl(c.id))
+      v.src = url(liveUrl(c.id, q))
       v.load()
     })
   }
@@ -316,6 +342,25 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     R.current.failed.delete(row.id)
     say(`Copy: ${copyLabel(row)} · ${row.rootKind}`)
     attach(row, pos, v ? !v.paused : true) // exact seek at the same time; the choice is never remembered
+  }
+
+  /** The quality list's row `index` (home-server-spec 7.1): a busy server is asked first, so the play goes on as it was. */
+  const pickQuality = async (index: number) => {
+    const r = R.current
+    const c = S.current.copies.find((x) => x.id === r.copyId)
+    const v = vid.current
+    const q = c ? qualityOptions(c.width, c.height)[index] : undefined
+    if (!c || !v || !q || q === Q.current) return
+    if (playsLive(c, q)) {
+      const holders = await api.liveBusy(liveUrl(c.id, q))
+      if (r.copyId !== c.id) return
+      if (holders) return say(busyMessage(holders), 4000)
+    }
+    const pos = v.readyState > 0 ? v.currentTime : r.lastPos
+    writeResume()
+    setQuality(q)
+    say(`Quality: ${qualityLabel(q)}`)
+    attach(c, pos, !v.paused || !r.started)
   }
 
   // ---- seeking (spec 3.3) ----
@@ -481,6 +526,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
         return
       }
       case "copy": return pickCopy(fx.index)
+      case "quality": return void pickQuality(fx.index)
       case "copyBlocked": {
         const row = rows[fx.index]
         return say(row?.viaRemux ? REMUX_MESSAGE : "Copy unavailable", 3000)
@@ -773,7 +819,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
   const z = zs.zone
   const pinned = paused || phase !== "ready"
   const osdOn = osdVisible({ now: Date.now(), wokeAt: awakeAt, paused: pinned, zonePinned: false })
-  const listOpen = z === "chapters" || z === "copies"
+  const listOpen = z === "chapters" || z === "copies" || z === "qualities"
   const topOn = osdOn && !listOpen
   const faces = buttonFaces(pl)
   const next = nextUp({
@@ -803,6 +849,15 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
     current: r.playing,
     focused: z === "copies" && i === zs.row,
     dim: !r.switchable,
+  }))
+  const qualityRows: ListRow[] = qualities.map((q, i) => ({
+    key: q,
+    lead: qualityLabel(q),
+    title: q === "orig" ? "The Copy as it is" : "Live stream, made as it plays",
+    marks: q === quality ? [{ text: "playing", cls: "now" }] : [],
+    current: q === quality,
+    focused: z === "qualities" && i === zs.row,
+    dim: false,
   }))
 
   return (
@@ -881,7 +936,11 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
           </div>
           <div class="btns">
             {BUTTONS.map((b, i) => {
-              const face = b === "shuffle" ? faces.shuffle : b === "repeat" ? faces.repeat : { text: "Copy", on: false, disabled: false }
+              const face =
+                b === "shuffle" ? faces.shuffle
+                : b === "repeat" ? faces.repeat
+                : b === "quality" ? { text: `Quality · ${qualityLabel(quality)}`, on: quality !== "orig", disabled: qualities.length < 2 }
+                : { text: "Copy", on: false, disabled: false }
               return (
                 <span key={b} class={`pbtn${z === "buttons" && zs.button === i ? " f" : ""}${face.on ? " lit" : ""}${face.disabled ? " off" : ""}`}>
                   {b === "shuffle" ? SHUFFLE : b === "repeat" ? REPEAT : null}
@@ -894,6 +953,7 @@ export function Player({ videoId, startS, playingFrom, nav, active, step }: Play
 
         {z === "chapters" && <PlList title="Chapters" rows={chapterRows} focus={zs.row} />}
         {z === "copies" && <PlList title="Copies" rows={copyListRows} focus={zs.row} />}
+        {z === "qualities" && <PlList title="Quality · this play only" rows={qualityRows} focus={zs.row} />}
       </div>
       {showLyrics && lview && (
         <LyricsColumn

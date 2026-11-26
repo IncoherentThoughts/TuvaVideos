@@ -82,6 +82,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   tv.setBundle(tvBundle);
   const live = new LiveStreams({ db, roots, ffmpeg: cfg.ffmpeg }); // home-server-spec 7: off with the Library Server, gone at exit
   tv.setLive(live);
+  services.live = live; // the desktop Player's quality pick (home-server-spec §7.1), the same two slots
   tv.onStop(() => live.stopAll());
   services.serveOnLaunch = new ServeOnLaunch({ db, tv, agent: defaultLoginAgent(cfg.dataDir), passive: cfg.passive });
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });

@@ -136,6 +136,10 @@ describe("Live stream", () => {
     expect(body.streams).toHaveLength(2);
     expect(body.streams.every((s) => s.title.length > 0)).toBe(true);
     expect((await tv(`/live/${ids.enc}/index.m3u8?q=bogus`, TVS[0])).status).toBe(400);
+    // the desktop Player (home-server-spec 7.1) is one more device in the same two slots
+    const mine = await fetch(`${local}/live/${ids.enc}/index.m3u8?q=480`);
+    expect(mine.status).toBe(503);
+    expect(((await mine.json()) as { error: string }).error).toBe("busy");
   });
 
   test("turning the server off kills every stream and deletes its temp dir", async () => {
@@ -146,4 +150,17 @@ describe("Live stream", () => {
     expect(app.live.streams()).toHaveLength(0);
     for (const d of dirs) expect(existsSync(d)).toBe(false);
   });
+
+  test("the localhost app serves this Mac's Live streams to the desktop Player, its segments relative to the playlist", async () => {
+    const pl = await fetch(`${local}/live/${ids.enc}/index.m3u8?q=480`);
+    expect(pl.status).toBe(200);
+    expect(pl.headers.get("content-type")).toBe("application/vnd.apple.mpegurl");
+    const text = await pl.text();
+    expect(text).toContain("seg0.ts?q=480");
+    expect(app.live.streams().map((s) => s.key)).toEqual([`${ids.enc}:480`]);
+    const seg = await fetch(`${local}/live/${ids.enc}/seg0.ts?q=480`);
+    expect(seg.status).toBe(200);
+    expect((await seg.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+    app.live.stopAll();
+  }, 30_000);
 });

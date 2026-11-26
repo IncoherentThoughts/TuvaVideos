@@ -186,7 +186,7 @@ describe("a media error: retry the network, fail only a real decode error", () =
 
 // ---- zones ----
 
-const ctx = (o: Partial<ZoneCtx> = {}): ZoneCtx => ({ hasLyrics: true, lyricsShown: false, versionCount: 1, tagCount: 3, chapterCount: 4, currentChapter: 2, copySwitchable: [true, false, true], currentCopy: 0, ...o })
+const ctx = (o: Partial<ZoneCtx> = {}): ZoneCtx => ({ hasLyrics: true, lyricsShown: false, versionCount: 1, tagCount: 3, chapterCount: 4, currentChapter: 2, copySwitchable: [true, false, true], currentCopy: 0, qualityCount: 3, currentQuality: 0, ...o })
 const press = (s: ZoneState, k: TvAction, c: ZoneCtx = ctx()) => reduceZone(s, k, c)
 const at = (zone: ZoneState["zone"], o: Partial<ZoneState> = {}): ZoneState => ({ ...initialZone(), zone, ...o })
 
@@ -234,13 +234,14 @@ describe("zones (spec 6.3 to 6.5)", () => {
   test("Down opens the button row; Left/Right move, Enter acts, Up and Back return", () => {
     const b = press(initialZone(), "down").state
     expect(b.zone).toBe("buttons")
-    expect([...BUTTONS]).toEqual(["shuffle", "repeat", "copy"])
+    expect([...BUTTONS]).toEqual(["shuffle", "repeat", "copy", "quality"])
     expect(press(b, "enter").fx).toEqual([{ t: "button", id: "shuffle" }])
     const r = press(b, "right").state
     expect(press(r, "enter").fx).toEqual([{ t: "button", id: "repeat" }])
     const c = press(r, "right").state
     expect(c.button).toBe(2)
-    expect(press(c, "right").state.button).toBe(2)
+    expect(press(c, "right").state.button).toBe(3)
+    expect(press(press(c, "right").state, "right").state.button).toBe(3)
     expect(press(b, "left").state.button).toBe(0)
     expect(press(b, "up").state.zone).toBe("video")
     expect(press(b, "back").state.zone).toBe("video")
@@ -285,8 +286,27 @@ describe("zones (spec 6.3 to 6.5)", () => {
     expect(press(l, "back").state).toMatchObject({ zone: "buttons", button: 2 })
   })
 
+  test("the quality list (home-server-spec 7.1) opens from the Quality button on the playing row; Enter picks, Back returns to the Quality button", () => {
+    const b = at("buttons", { button: 3 })
+    expect(press(b, "enter", ctx({ currentQuality: 1 })).state).toMatchObject({ zone: "qualities", row: 1 })
+    const only = press(b, "enter", ctx({ qualityCount: 1 }))
+    expect(only.state.zone).toBe("buttons")
+    expect(only.fx).toEqual([{ t: "say", text: "Only Original for this Copy" }])
+    const l = at("qualities", { row: 0 })
+    expect(press(l, "down").state.row).toBe(1)
+    expect(press(at("qualities", { row: 2 }), "down").state.row).toBe(2) // three rows: clamped
+    expect(press(l, "up").state.row).toBe(0)
+    const pick = press(at("qualities", { row: 2 }), "enter")
+    expect(pick.fx).toEqual([{ t: "quality", index: 2 }])
+    expect(pick.state.zone).toBe("video")
+    expect(press(l, "enter").fx).toEqual([]) // the playing one: nothing to switch
+    expect(press(l, "back").state).toMatchObject({ zone: "buttons", button: 3 })
+    expect(press(l, "left").state).toMatchObject({ zone: "buttons", button: 3 })
+    expect(press(l, "forward").fx).toEqual([]) // no seek from a list
+  })
+
   test("the colour keys, Channel, track keys and play/pause mean the same in every zone", () => {
-    for (const zone of ["video", "lyrics", "tags", "buttons", "chapters", "copies"] as const) {
+    for (const zone of ["video", "lyrics", "tags", "buttons", "chapters", "copies", "qualities"] as const) {
       const s = at(zone)
       expect(press(s, "yellow").fx).toEqual([{ t: "lyrics", on: "toggle" }])
       expect(press(s, "blue").fx).toEqual([{ t: "script" }])

@@ -4,7 +4,10 @@
 // (one decoded frame instead of a GOP); Shift-arrows, frame steps, Chapters, `?t=` and Resume are exact.
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { createPortal } from "preact/compat";
-import { bestCopy, copyRoutes, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
+import { bestCopy, copyRoutes, liveRoute, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
+import { busyMessage, keepQuality, liveSegmentStarts, qualityLabel, readBusy, type LiveQuality } from "../shared/liveQuality";
+import { attachLive, type LiveSource } from "./hlsPlay";
+import { QualityPicker } from "./QualityPicker";
 import { preferredCopies } from "../server/ranking";
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
@@ -152,6 +155,9 @@ const PAUSE_ICON = (
 const playable = (v: Pick<VideoDto, "copies" | "homeCopies">): CopyDto[] => preferredCopies(v.copies, v.homeCopies ?? []);
 /** A Copy's routes by its id in the list (a Home Server Copy's is its id there, negated). */
 const routes = (id: number) => copyRoutes(id < 0 ? { id, homeId: -id } : { id });
+const liveOf = (id: number, q: LiveQuality) => liveRoute(id < 0 ? { id, homeId: -id } : { id }, q);
+/** Who a busy answer names as the server (home-server-spec 7.2). */
+const serverOf = (id: number) => (id < 0 ? "The Home Server" : "This Mac");
 
 export function Player({ video, startT, chapters, onStep, onAddChapter, onChapterLoop, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistEnded, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
   const box = useRef<HTMLDivElement>(null);
@@ -161,6 +167,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
   const [phase, setPhase] = useState<Phase>("loading");
   const [prep, setPrep] = useState<number | null>(null);
   const [copyId, setCopyId] = useState<number | null>(null);
+  const [quality, setQuality] = useState<LiveQuality>("orig"); // Original on every play, never remembered (home-server-spec 7.1)
   const [time, setTime] = useState(0);
   const [bufEnd, setBufEnd] = useState(0);
   const [paused, setPaused] = useState(true);
@@ -192,6 +199,8 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
   PL.current = { playlist, entry, next: onPlaylistNext, widen: onPlaylistWiden };
   const R = useRef({
     copyId: null as number | null,
+    quality: "orig" as LiveQuality, // below Original the Copy plays as a Live stream
+    live: null as LiveSource | null, // hls.js (or the native player) on a Live stream
     token: 0, // bumped by every load and on unmount; a stale async load stops when it sees a newer one
     started: false, // metadata loaded and the start position applied: only then may Resume be written
     resumeOn: true, // false while no Copy plays, so the Resume position is kept as it was
@@ -286,8 +295,68 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     r.keyframes = null;
     r.seekTarget = null;
     throttle.current.reset();
-    v.src = routes(id).file;
-    v.load();
+    dropLive();
+    if (r.quality === "orig") {
+      v.src = routes(id).file;
+      v.load();
+      return;
+    }
+    // a Live stream (home-server-spec 7.2): seeks snap to segment starts, where every segment begins on a keyframe
+    const q = r.quality;
+    r.live = attachLive(v, liveOf(id, q), at, () => void onLiveError(id, q));
+    if (!r.live) {
+      say("This browser plays no Live stream: back to Original", 3000);
+      r.quality = "orig";
+      setQuality("orig");
+      return attach(id, at, play);
+    }
+    r.keyframes = liveSegmentStarts(playable(V.current).find((c) => c.id === id)?.durationS ?? V.current.durationS);
+  };
+
+  /** Lets go of a Live stream's hls.js before the element gets another source or none. */
+  const dropLive = () => {
+    R.current.live?.detach();
+    R.current.live = null;
+  };
+
+  /** A Live stream failed: a busy server is said; either way the Copy plays on at Original from the same place. */
+  const onLiveError = async (id: number, q: LiveQuality) => {
+    const r = R.current;
+    const v = vid.current;
+    if (r.copyId !== id || r.quality !== q || !v) return;
+    const pos = r.started ? v.currentTime : r.pending.at;
+    const play = r.started ? !v.paused : r.pending.play;
+    const res = await fetch(liveOf(id, q)).catch(() => null);
+    const holders = res ? readBusy(res.status, await res.json().catch(() => null)) : null;
+    if (R.current.copyId !== id || R.current.quality !== q) return;
+    say(holders ? `${busyMessage(holders, serverOf(id))}: back to Original` : `The ${qualityLabel(q)} Live stream stopped: back to Original`, 5000);
+    r.quality = "orig";
+    setQuality("orig");
+    void loadCopy(id, pos, play);
+  };
+
+  /** The quality pick (home-server-spec 7.1): for this play only. A busy server is asked first, so the play goes on as it was. */
+  const pickQuality = async (q: LiveQuality) => {
+    const r = R.current;
+    const id = r.copyId;
+    const v = vid.current;
+    if (id == null || !v || q === r.quality) return;
+    if (q !== "orig") {
+      const res = await fetch(liveOf(id, q)).catch(() => null);
+      if (R.current.copyId !== id) return;
+      const body = res && !res.ok ? await res.json().catch(() => null) : null;
+      void (res?.ok ? res.body?.cancel() : null);
+      const holders = res ? readBusy(res.status, body) : null;
+      if (holders) return say(busyMessage(holders, serverOf(id)), 5000);
+      if (!res?.ok) return say(`${qualityLabel(q)} is not available: ${(body as { error?: string } | null)?.error ?? "no answer"}`, 3000);
+    }
+    const pos = v.readyState > 0 ? v.currentTime : r.lastPos;
+    const play = r.started ? !v.paused : r.pending.play;
+    writeResume();
+    r.quality = q;
+    setQuality(q);
+    say(`Quality: ${qualityLabel(q)}`);
+    void loadCopy(id, pos, play);
   };
 
   /** The Copy's keyframe index (spec 4.1): asked for on load; a Copy being indexed is polled, one that cannot be is left exact. */
@@ -327,13 +396,19 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     setPhase("loading");
     setPrep(null);
     const c = playable(V.current).find((x) => x.id === id);
-    if (forcePrepare || (c && needsPrepare(c))) {
+    // another Copy keeps the picked quality when it offers it, else plays at Original
+    if (c && r.quality !== keepQuality(r.quality, c.width, c.height)) {
+      r.quality = "orig";
+      setQuality("orig");
+    }
+    // a Live stream is made from the file itself: no Fallback to wait for
+    if (r.quality === "orig" && (forcePrepare || (c && needsPrepare(c)))) {
       const ok = await prepare(id, token);
       if (token !== r.token) return;
       if (!ok) return void lose(id, true, at, play);
     }
     attach(id, at, play);
-    void fetchKeyframes(id, token);
+    if (r.quality === "orig") void fetchKeyframes(id, token);
   };
 
   /** The playing Copy is gone (Root unmounted) or broken: next Available Copy at the same timestamp, else "Copy unavailable". */
@@ -356,6 +431,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     r.wasPlaying = wasPlaying;
     r.resumeOn = false;
     r.started = false;
+    dropLive();
     if (v) {
       v.pause();
       v.removeAttribute("src");
@@ -392,6 +468,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
       clearTimeout(r.flashTimer);
       clearTimeout(r.seekWrite);
       writeResume(true); // leaving the Player (route change) writes the position
+      dropLive();
       const v = vid.current;
       if (v) {
         v.pause();
@@ -668,6 +745,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     const id = r.copyId;
     const v = vid.current;
     if (id == null || !v || !v.getAttribute("src")) return;
+    if (r.quality !== "orig") return void onLiveError(id, r.quality); // a native Live stream fails through the element
     const pos = r.started ? v.currentTime : r.pending.at;
     const play = r.started ? !v.paused : r.pending.play;
     const res = await fetch(routes(id).file, { headers: { range: "bytes=0-0" } }).catch(() => null);
@@ -1040,6 +1118,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
         <button class={`cbtn studiobtn${studio ? " on" : ""}`} tabIndex={-1} aria-pressed={!!studio} title="Studio playback in Music.app (t)" onClick={() => (studio ? void closeStudio() : void openStudio(), refocus())}>
           Studio
         </button>
+        <QualityPicker copy={copy} quality={quality} onPick={(q) => void pickQuality(q)} refocus={refocus} />
         <CopyPicker copies={copies} playingId={copyId} onPick={pickCopy} refocus={refocus} />
         <button
           class="ib"

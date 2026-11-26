@@ -26,3 +26,36 @@ export const LIVE_SEGMENT_S = 10;
 /** Segment starts, the points a seek over a Live stream snaps to (home-server-spec 7.2). */
 export const liveSegmentStarts = (durationS: number | null): number[] =>
   durationS && durationS > 0 ? Array.from({ length: Math.ceil(durationS / LIVE_SEGMENT_S - 1e-9) }, (_, i) => i * LIVE_SEGMENT_S) : [0];
+
+/** What the players' quality pick shows: "Original", "1080p", "720p", "480p". */
+export const qualityLabel = (q: LiveQuality): string => (q === "orig" ? "Original" : `${q}p`);
+
+/**
+ * The quality kept when the Player moves to another Copy (a switch or a failover): the pick stays when that Copy
+ * offers it, else Original. Never remembered past the play (home-server-spec 7.1).
+ */
+export const keepQuality = (q: LiveQuality, width: number | null, height: number | null): LiveQuality => (qualityOptions(width, height).includes(q) ? q : "orig");
+
+/**
+ * How the desktop Player plays a Live stream (home-server-spec 7.2): natively when the element answers
+ * `canPlayType('application/vnd.apple.mpegurl')` ("maybe" or "probably"), else through hls.js when Media Source
+ * Extensions are there, else not at all.
+ */
+export const hlsMode = (canPlayHls: string, hlsJsSupported: boolean): "native" | "hlsjs" | null => (canPlayHls !== "" ? "native" : hlsJsSupported ? "hlsjs" : null);
+
+/** The 503 `busy` answer of `/live/...` (home-server-spec 7.2): "‹server› is busy streaming to ‹devices›". */
+export function busyMessage(streams: readonly { device: string; title: string }[] | null | undefined, server = "The server"): string {
+  const who = (streams ?? []).map((s) => (s.title ? `${s.device} (${s.title})` : s.device)).join(" and ");
+  return `${server} is busy streaming to ${who || "other devices"}`;
+}
+
+/** A `/live/...` answer read as the busy holders (a 503 `{ error: "busy", streams }`), else null (anything else). */
+export function readBusy(status: number, body: unknown): { device: string; title: string }[] | null {
+  if (status !== 503 || !body || typeof body !== "object") return null;
+  const b = body as { error?: unknown; streams?: unknown };
+  if (b.error !== "busy") return null;
+  if (!Array.isArray(b.streams)) return [];
+  return b.streams
+    .filter((s): s is { device: string; title?: unknown } => !!s && typeof (s as { device?: unknown }).device === "string")
+    .map((s) => ({ device: s.device, title: typeof s.title === "string" ? s.title : "" }));
+}

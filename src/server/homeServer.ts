@@ -28,6 +28,9 @@ export interface HomeVideoRow {
   created_at: string;
   thumb: string | null;
   chapters: string;
+  /** From `home_me` (§6): the Home Server's Favorite and Resume of it. */
+  me_favorited_at?: string | null;
+  me_resume_s?: number | null;
 }
 
 /** A Home Server Copy, as stored. */
@@ -225,6 +228,7 @@ export class HomeServer {
     this.deps.db.transaction(() => {
       this.deps.db.query("DELETE FROM home_copy").run();
       this.deps.db.query("DELETE FROM home_video").run();
+      this.deps.db.query("DELETE FROM home_me").run(); // §6: the old Home Server's own Videos' Resume and Favorites
       for (const k of ["home_index_etag", "home_index_at", "home_index_server"]) setKey(this.deps.db, k, null);
     })();
   }
@@ -295,7 +299,9 @@ export class HomeServer {
     if (!this.base() || !this.check?.ok) return EMPTY_VIEW;
     const copies = this.deps.db.query("SELECT * FROM home_copy").all() as HomeCopyRow[];
     if (!copies.length) return EMPTY_VIEW;
-    return homeView(local, copies, this.deps.db.query("SELECT * FROM home_video").all() as HomeVideoRow[]);
+    // §6: with the Home Server's Resume and Favorite of its own Videos (`home_me`)
+    const rows = this.deps.db.query("SELECT h.*, m.favorited_at AS me_favorited_at, m.resume_s AS me_resume_s FROM home_video h LEFT JOIN home_me m ON m.video_id = h.id").all() as HomeVideoRow[];
+    return homeView(local, copies, rows);
   }
 }
 

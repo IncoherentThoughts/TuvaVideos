@@ -12,7 +12,7 @@ export type TvRouteKind =
   | "mac"; // a localhost handler, for Approved Macs only (the home index, home-server-spec §2.3)
 
 export interface TvRoute {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT";
   pattern: RegExp;
   kind: TvRouteKind;
   /** A path that matches, for tests. */
@@ -48,6 +48,9 @@ export const TV_ROUTES: readonly TvRoute[] = [
   { method: "GET", pattern: /^\/api\/approvals$/, kind: "approvals", sample: "/api/approvals" },
   { method: "POST", pattern: /^\/api\/approvals\/[0-9A-Fa-f.:%]{2,64}$/, kind: "approvals", sample: "/api/approvals/192.168.4.56" },
   { method: "GET", pattern: /^\/api\/home\/index$/, kind: "mac", sample: "/api/home/index" },
+  // Resume and Favorites follow you (home-server-spec §6): Approved Macs only
+  { method: "GET", pattern: /^\/api\/me\/state$/, kind: "mac", sample: "/api/me/state" },
+  { method: "PUT", pattern: /^\/api\/me\/(resume|favorite|favorites)$/, kind: "mac", sample: "/api/me/resume" },
   // TV-only
   { method: "GET", pattern: /^\/$/, kind: "ui", sample: "/" },
   { method: "GET", pattern: /^\/tv\.js$/, kind: "ui", sample: "/tv.js" },

@@ -344,7 +344,7 @@ export class TvServer {
     }
     // a Mac polling its approvals (every 5 s, §3.2) is seen, not "talking": the button keeps its own state
     // the same for its home index fetches (§5.1) and the posters of the Home Server's own Videos (§5.2)
-    if (path === "/api/approvals" || path.startsWith("/api/approvals/") || path === "/api/home/index" || (path.startsWith("/thumbs/") && this.kindOf(ip) === "mac")) return;
+    if (path === "/api/approvals" || path.startsWith("/api/approvals/") || path === "/api/home/index" || path.startsWith("/api/me/") || (path.startsWith("/thumbs/") && this.kindOf(ip) === "mac")) return;
     let title = this.activity?.ip === ip ? this.activity.title : null;
     const m = path.match(/^\/(?:copy|live)\/(\d+)/);
     if (m) title = (db.query("SELECT v.title FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.id = ?").get(Number(m[1])) as { title: string } | null)?.title ?? title;

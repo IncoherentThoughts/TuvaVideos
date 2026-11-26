@@ -25,6 +25,8 @@ interface Props {
   onClose(): void;
   /** the Video's Copies: the Auto wand sizes the one playing to decide whether to warn before decoding it whole */
   copies: CopyDto[];
+  /** home-server-spec §5.4: a `home_video` row's settings are the Home Server's (named here), shown read-only. */
+  readOnly?: string;
 }
 
 const METER_MS = 70;
@@ -69,7 +71,7 @@ const Meter = ({ v, label }: { v: number; label: string }) => (
 
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n}`;
 
-export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose, copies }: Props) {
+export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePreset, onDeletePreset, onClose, copies, readOnly }: Props) {
   const lv = useLevels(vid);
   const preset = presetFor(s.eq, presets);
   const [naming, setNaming] = useState(false);
@@ -99,9 +101,10 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
   const [auto, setAuto] = useState<{ phase: "idle" } | { phase: "ask"; copy: CopyDto } | { phase: "busy"; label: string }>({ phase: "idle" });
   const [autoReport, setAutoReport] = useState<ReportRow[] | null>(null);
   const abort = useRef<AbortController | null>(null);
-  // the Copy the Player is on: its id is in the <video> src
+  // the Copy the Player is on: its id is in the <video> src (a Home Server Copy's `/home/copy/:id` is not one of
+  // `copies` and has no PCM route here: Auto samples it through the live chain)
   const playingCopy = (): CopyDto | null => {
-    const m = vid.current?.src.match(/\/copy\/(\d+)/);
+    const m = vid.current?.src.match(/^[a-z]+:\/\/[^/]+\/copy\/(\d+)/);
     return (m && copies.find((c) => c.id === Number(m[1]))) ?? null;
   };
   const isBig = (c: CopyDto) => c.size > BIG_BYTES || (c.durationS ?? 0) > BIG_SECS;
@@ -176,7 +179,7 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
       <div class="hd">
         <div class="row">
           <span class="ttl">Audio</span>
-          {auto.phase === "busy" ? (
+          {readOnly ? null : auto.phase === "busy" ? (
             <button class="btn small wand" onClick={cancelAuto} title="Stop">
               <WandIcon /> {auto.label} <CloseIcon />
             </button>
@@ -185,11 +188,12 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
               <WandIcon /> Auto
             </button>
           )}
-          {!isDefaultAudio(s) && <button class="btn small" onClick={onReset} title="Back to the sound as recorded">Reset</button>}
+          {!readOnly && !isDefaultAudio(s) && <button class="btn small" onClick={onReset} title="Back to the sound as recorded">Reset</button>}
           <button class="ib" aria-label="Close audio" title="Close (a while the Player has focus)" onClick={onClose}><CloseIcon /></button>
         </div>
       </div>
       <div class="body">
+        <fieldset class="editgate" disabled={!!readOnly}>
         {auto.phase === "ask" && (
           <div class="au-report stpanel au-ask">
             <div class="au-rhd"><span class="st-tag">auto</span><span class="dim">large Copy</span><button class="ib" aria-label="Cancel" onClick={cancelAuto}><CloseIcon /></button></div>
@@ -291,7 +295,8 @@ export function AudioPanel({ vid, state: s, onChange, onReset, presets, onSavePr
           <span>Per band <span class="dim">low · mid · high</span></span>
           <span />
         </label>
-        <p class="note dim">Saved for this Video. <kbd>Esc</kbd> returns to the Player.</p>
+        </fieldset>
+        <p class="note dim">{readOnly ? `${readOnly}'s settings for this Video, read-only here.` : "Saved for this Video."} <kbd>Esc</kbd> returns to the Player.</p>
       </div>
     </aside>
   );

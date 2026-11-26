@@ -94,7 +94,8 @@ export const api = {
   /** Show the Copy's file in the Finder. */
   revealCopy: (id: number) => send<{ ok: true }>("POST", `/api/copies/${id}/reveal`),
   /** The Copy's keyframe index (spec 4.1): `ready` with the times, `indexing` while ffprobe reads it, `none` when it cannot be made now. */
-  keyframes: (id: number) => get<KeyframeStatusDto>(`/api/copies/${id}/keyframes`),
+  /** A Copy's keyframe index, by its route (`copyRoutes`: this Mac's, or the Home Server's through `/home`). */
+  keyframes: (url: string) => get<KeyframeStatusDto>(url),
   relocate: (videoId: string, body: { path: string; copyId?: number | null; merge?: boolean }) => post<VideoDto>(`/api/videos/${videoId}/relocate`, body),
   chooseFile: (start: string) => post<{ path?: string; cancelled?: true }>("/api/choose-file", { start }),
   /** The A-B loop kept on a Video; null clears it (spec 4.3). */
@@ -111,6 +112,8 @@ export const api = {
   chapters: (videoId: string) => get<ChapterDto[]>(`/api/videos/${videoId}/chapters`),
   // Audio settings (spec 4.7): per Video; `state: null` clears them. Presets: built-in and custom EQ curves.
   audio: (videoId: string) => get<{ state: AudioState | null }>(`/api/videos/${videoId}/audio`),
+  /** home-server-spec §5.4: a `home_video` row's Audio settings, the Home Server's (read-only here). */
+  homeAudio: (videoId: string) => get<{ state: AudioState | null }>(`/home/api/videos/${videoId}/audio`),
   /** `keepalive`: the request outlives the page (a write flushed as the Video or the tab goes away). */
   setAudio: (videoId: string, state: AudioState | null, opts: { keepalive?: boolean } = {}) => send<{ state: AudioState | null }>("PUT", `/api/videos/${videoId}/audio`, { state }, opts),
   audioPresets: () => get<AudioPreset[]>("/api/audio-presets"),

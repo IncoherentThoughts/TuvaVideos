@@ -8,7 +8,7 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { log } from "./log";
 import { FRAME_HEADERS } from "./localOnly";
-import { markTvRequest } from "./tvRequest";
+import { markMacRequest, markTvRequest } from "./tvRequest";
 import { excludeNotHere, matchTvRoute, notHereVideoIds, stripPaths, tvListOf } from "./tvRoutes";
 import type { TvBundle } from "./web";
 import type { LiveStreams } from "./live/streams";
@@ -419,6 +419,7 @@ export class TvServer {
     if (route.kind === "live") return this.live ? this.live.serve(req, ip, this.activity?.model ?? ip) : json({ error: "Live streams are not set up" }, 404);
     if (!this.handler) return json({ error: "not ready" }, 503);
     markTvRequest(req); // the localhost guard leaves it to this listener's checks; `/copy/:id` serves by the TV Playback profile (spec 3.2)
+    if (this.kindOf(ip) === "mac") markMacRequest(req); // home-server-spec §5.4: an Approved Mac gets the browser profile
     const res = await this.handler(req);
     // §7.6: the video lists leave out Not on this machine Videos (Unmounted ones stay); no answer carries a Copy's
     // absolute file path (SEC-6).

@@ -19,7 +19,8 @@ import { computerName } from "./libraryServerHealth";
 import type { HomeIndexChapter } from "../shared/homeIndex";
 import type { ServeOnLaunch } from "./serveOnLaunch";
 import { factsOfRow, parseDecision } from "./tvJudge";
-import { isTvRequest } from "./tvRequest";
+import { isMacRequest, isTvRequest } from "./tvRequest";
+import { homeUpstream, proxyHome } from "./homeProxy";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
 import { deleteVideo, removeCopies } from "./deleteVideo";
 import { deletedMatches, kindsOf, rowInfo, sharedSuggestions } from "./sharedWrites";
@@ -419,7 +420,8 @@ export function createHandler(s: Services) {
     const c = s.db.query(`${COPY_SQL.replace("c.fallback_file, c.missing_since", "c.fallback_file, c.missing_since, r.path AS root_path")} WHERE c.id = ?`).get(id) as (CopyDbRow & { root_path: string }) | null;
     if (!c) return json({ error: "no such copy" }, 404);
     if (c.missing_since) return json({ error: "copy is missing", missingSince: c.missing_since }, 404);
-    if (isTvRequest(req)) {
+    // home-server-spec §5.4: an Approved Mac (its companion proxying `/home/copy/:id`) takes the browser branch below.
+    if (isTvRequest(req) && !isMacRequest(req)) {
       // The TV plays by its own Playback profile (tv-spec 3.2): the own file when it plays as-is, else an existing
       // Fallback it plays, else it plays a Live stream (`/live/:id/index.m3u8`). It never asks the Fallback queue for anything.
       const order = tvJson(c).order;
@@ -537,6 +539,11 @@ export function createHandler(s: Services) {
         if (p === "/api/home") return json(s.home?.status() ?? null);
         if (p === "/api/home/index") return homeIndexResponse(req);
         if ((m = p.match(/^\/home\/thumbs\/([0-9a-fA-F-]{36})\/poster\.webp$/))) return homeThumb(m[1]!, url.searchParams.get("v"));
+        if (p.startsWith("/home/") && !isTvRequest(req)) {
+          // home-server-spec §5.4: a Home Server Copy, its Live stream, keyframe index, Fallback state or Audio settings
+          const up = homeUpstream(p, url.search);
+          if (up) return proxyHome(req, s.home?.base() ?? null, up);
+        }
         if (p === "/api/serve-on-launch") return json(s.serveOnLaunch?.state() ?? { available: false, serveOnLaunch: false, openAtLogin: false });
         if (p === "/api/videos") return json(gridVideos(req));
         // The client write seam's reads (sharing-spec §4.3, §4.5, §4.9; src/server/sharedWrites.ts).

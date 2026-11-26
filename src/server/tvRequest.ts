@@ -11,3 +11,15 @@ export function markTvRequest(req: Request): void {
 
 /** True for a request that came in through the TV listener. */
 export const isTvRequest = (req: Request): boolean => viaTv.has(req);
+
+// home-server-spec §5.4: of those, the ones from an Approved device of `kind = 'mac'`. `/copy/:id` serves them by the
+// browser Playback profile (a Mac's browser tab streams through its own companion), not the TV's.
+const viaMac = new WeakSet<Request>();
+
+/** Called by the TV listener, with `markTvRequest`, for a request from an Approved Mac. */
+export function markMacRequest(req: Request): void {
+  viaMac.add(req);
+}
+
+/** True for a request the Library Server passed in from an Approved Mac. */
+export const isMacRequest = (req: Request): boolean => viaMac.has(req);

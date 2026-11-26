@@ -18,14 +18,14 @@ import { navigate, playHref } from "./router";
 import { AcceptAll, HeaderFields, HeaderTitle } from "./HeaderEdit";
 import { LyricsReader } from "./Lyrics";
 import { RelocateButton } from "./Relocate";
-import { AvailabilityIcon, FavoriteBadge, UnsharedMark, fmtDuration, CloseIcon } from "./ui";
+import { FavoriteBadge, UnsharedMark, WhereIcon, fmtDuration, CloseIcon } from "./ui";
 import { AudioPanel } from "./AudioPanel";
 import { DeleteVideoDialog } from "./DeleteVideo";
 import { RELOADED_EVENT, writeLink } from "./writeLink";
 import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
 import { useSession } from "./session";
-import { NotHerePanel } from "./NotHere";
-import { isNotHere, sharingMark } from "../shared/presence";
+import { NotHerePanel, OnHomePanel } from "./NotHere";
+import { isNotHere, isOnHome, sharingMark } from "../shared/presence";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
@@ -378,16 +378,18 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
   if (v === null || v.id !== videoId) return <div class="empty-state">No such Video.</div>;
 
   // §7.3: edit controls on a Shared Video follow the session (hidden for a Member, disabled when offline or unsettled).
-  const gate = editGate(v, session);
+  // home-server-spec §5.2: a `home_video` row is read-only here (no tag or Chapter editing, no Share)
+  const gate = v.homeOnly ? "hidden" : editGate(v, session);
   const gated = (el: preact.ComponentChild) => (gate === "enabled" ? el : gate === "disabled" ? <fieldset class="editgate" disabled title={EDIT_DISABLED_NOTICE}>{el}</fieldset> : null);
   // §7.1: Not on this machine puts the panel where the Player would be; the poll above swaps the Player in when a
   // scan finds a Copy.
   const notHere = isNotHere(v);
+  const onHome = isOnHome(v);
 
   return (
     <div class="np">
       <div class="np-main">
-        {notHere ? <NotHerePanel video={v} /> : <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onChapterLoop={setLoopId} onAddChapter={gate === "enabled" ? (at) => void addChapter(at) : undefined} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />}
+        {notHere ? <NotHerePanel video={v} /> : onHome ? <OnHomePanel video={v} /> : <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onChapterLoop={setLoopId} onAddChapter={gate === "enabled" ? (at) => void addChapter(at) : undefined} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />}
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">
@@ -400,7 +402,7 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
             </span>
           </div>
           <div class="np-meta">
-            {!notHere && <AvailabilityIcon availability={v.availability} />}
+            {!notHere && <WhereIcon video={v} />}
             {sharingMark(v, !!session.record?.grantLevel) === "unshared" && <UnsharedMark />}
             <button
               class="favtoggle"

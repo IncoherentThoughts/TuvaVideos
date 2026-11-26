@@ -6,7 +6,7 @@ import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio
 import type { VersionInput } from "../shared/lyrics/types";
 import type { ArtistDto, HomeApprovalsDto, TvStateDto,ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { isUuid } from "../shared/ids";
-import type { ServeSettingsDto } from "../shared/types";
+import type { HomeStatusDto, HomeTestDto, ServeSettingsDto } from "../shared/types";
 import { navigate, PLAY_PATH, playHref } from "./router";
 import { syncLanded, withFavorite, type SyncSeen } from "../shared/clientCache";
 import { useSession } from "./session";
@@ -52,6 +52,11 @@ export const api = {
   tv: () => get<TvStateDto>("/api/tv"),
   homeApprovals: () => get<HomeApprovalsDto>("/api/home/approvals"),
   homeApprove: (ip: string, allow: boolean) => post<HomeApprovalsDto>(`/api/home/approvals/${encodeURIComponent(ip)}`, { allow }),
+  /** This Mac's Home Server (home-server-spec §4.1, §5.1): setting, Test, connect / refresh of the home index. */
+  home: () => get<HomeStatusDto | null>("/api/home"),
+  setHome: (p: { address?: string | null; self?: boolean }) => post<HomeStatusDto>("/api/home", p),
+  testHome: (address: string) => post<HomeTestDto>("/api/home/test", { address }),
+  refreshHome: (force: boolean) => post<HomeStatusDto>("/api/home/refresh", { force }),
   tvOn: () => post<TvStateDto>("/api/tv/on"),
   tvOff: () => post<TvStateDto>("/api/tv/off"),
   tvApprove: (ip: string) => post<TvStateDto>("/api/tv/approve", { ip }),

@@ -5,6 +5,26 @@ import type { VideoDto } from "../shared/types";
 import { NOT_HERE_MESSAGE, sourceLink } from "../shared/presence";
 import { PanelDownload } from "./cardDownload";
 
+/**
+ * home-server-spec §5.2: a Video On the Home Server. Streaming it is the next step (§5.4, #241); until then Now playing
+ * says where it is instead of opening a Player with no Copy to play.
+ */
+export function OnHomePanel({ video }: { video: VideoDto }) {
+  const server = video.home?.server ?? "the Home Server";
+  return (
+    <div class="nothere-panel" role="status" data-onhome="">
+      {video.thumbnail && <img class="bg" src={video.thumbnail.poster} alt="" />}
+      <div class="box">
+        <h3>On the Home Server</h3>
+        <p>
+          This Video's file is on {server}, not on this Mac. Playing it from there is not built yet.
+          {video.homeOnly && " It is shown here read-only, with the Home Server's titles, Type and Chapters."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function NotHerePanel({ video }: { video: VideoDto }) {
   const link = sourceLink(video);
   return (

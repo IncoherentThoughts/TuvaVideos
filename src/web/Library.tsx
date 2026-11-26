@@ -12,8 +12,8 @@ import { libraryFiltered, libraryStart } from "../shared/playlistStart";
 import { savePlayingFrom } from "./playingFrom";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
-import { AvailabilityIcon, FavoriteBadge, NotHereMark, Poster, SpecTags, Tags, UnsharedMark, CloseIcon, StarIcon } from "./ui";
-import { isNotHere, sharingMark, showOnThisMachineChip } from "../shared/presence";
+import { AvailabilityIcon, FavoriteBadge, HomeMark, NotHereMark, Poster, SpecTags, Tags, UnsharedMark, CloseIcon, StarIcon } from "./ui";
+import { isNotHere, isOnHome, sharingMark, showOnThisMachineChip } from "../shared/presence";
 import { useWindowed } from "./windowed";
 import { CardDownload } from "./cardDownload";
 import { hasSourceId } from "./cardDownloadState";
@@ -29,15 +29,18 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
   // §7.1: Not on this machine is the greyed poster plus one corner mark; title and tags stay, "n copies" and the
   // availability icon go. The click-through is the ordinary card link (Now playing explains).
   const notHere = isNotHere(v);
+  // home-server-spec §5.2: On the Home Server is a lit card with the server mark in the same corner
+  const onHome = isOnHome(v);
   // #158: with the grant, the Unshared exceptions carry one corner mark (opposite §7.1's); Shared cards stay plain.
   const unshared = sharingMark(v, !!useSession().record?.grantLevel) === "unshared";
   // #159: Shelved edits not looked at yet: a small dot before the title (the corners are §7.1's and #158's).
   const shelfNew = hasUnseenShelved(useUnseenShelved(), v.id);
   return (
-    <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}${unshared ? " unshared" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={(e: MouseEvent) => !(e.target as Element).closest?.(".cdl") && onOpen()}>
+    <Link href={playHref(v.id, startS)} class={`card${notHere ? " nothere" : ""}${onHome ? " onhome" : ""}${unshared ? " unshared" : ""}`} data-item="" data-id={v.id} data-fav-kind="video" onClickCapture={(e: MouseEvent) => !(e.target as Element).closest?.(".cdl") && onOpen()}>
       <Poster video={v} dur />
       {/* downloader-spec §8: a downloadable Video's corner is the download button and its states; hash-only keeps the mark. */}
       {notHere && (hasSourceId(v) ? <CardDownload video={v} /> : <NotHereMark />)}
+      {onHome && <HomeMark server={v.home?.server} />}
       {unshared && <UnsharedMark />}
       <div class="ttl">
         {shelfNew && <span class="shelf-dot" title="Shelved edits you have not looked at (History tab on the Video)" />}
@@ -47,10 +50,10 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
       {why}
       <Tags video={v} />
       {!notHere && <SpecTags video={v} />}
-      {((!notHere && v.availability !== "local") || v.chapterCount > 0 || v.viewCount > 0) && (
+      {((!notHere && !onHome && v.availability !== "local") || v.chapterCount > 0 || v.viewCount > 0) && (
         <div class="meta">
           {/* Nearly every Copy is local, so only the exceptions (external, unavailable) get an icon here; Now playing always shows it. */}
-          {!notHere && v.availability !== "local" && <AvailabilityIcon availability={v.availability} />}
+          {!notHere && !onHome && v.availability !== "local" && <AvailabilityIcon availability={v.availability} />}
           {v.chapterCount > 0 && <span>{v.chapterCount} ch</span>}
           {v.viewCount > 0 && <span>{v.viewCount} {v.viewCount === 1 ? "view" : "views"}</span>}
         </div>

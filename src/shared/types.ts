@@ -125,7 +125,46 @@ export interface VideoDto {
     strip: StripDto | null;
   };
   copies: CopyDto[];
+  /**
+   * home-server-spec §5.2: the connected Home Server has a usable Copy of this Video (a match by id, youtube_id or
+   * content_hash, or a `homeOnly` row). With no usable local Copy the Video is On the Home Server. Absent = false.
+   */
+  home?: { copies: number; server: string | null };
+  /** A `home_video` row: a Video only the Home Server has, shown read-only with its titles, Type and Chapters. */
+  homeOnly?: boolean;
 }
+
+// ---- the Home Server (docs/home-server-spec.md §4.1, §5.1) ----
+
+/** `GET /api/home` (localhost): this Mac's Home Server setting and connection. */
+export interface HomeStatusDto {
+  /** A Home Server is set (and this Mac is not it). */
+  configured: boolean;
+  /** "This Mac is the Home Server". */
+  self: boolean;
+  /** The stored field, as typed. */
+  address: string | null;
+  /** `TUVA_HOME_SERVER` overrides the field (tests, smoke runs). */
+  override: boolean;
+  /** The Library Server base URL the field resolves to. */
+  base: string | null;
+  /** The last check answered. */
+  connected: boolean;
+  checkedAt: string | null;
+  /** The Home Server's computer name (from health, else from the last index). */
+  server: string | null;
+  version: string | null;
+  drive: "mounted" | "unmounted" | null;
+  /** Why the last check failed. */
+  error: string | null;
+  /** The stored home index, when one was fetched. */
+  index: { at: string; videos: number; copies: number; homeOnly: number } | null;
+}
+
+/** `POST /api/home/test` (localhost): one health check of an address, not saved. */
+export type HomeTestDto =
+  | { ok: true; base: string; name: string | null; version: string | null; drive: "mounted" | "unmounted"; home: boolean }
+  | { ok: false; base: string | null; error: string };
 
 export interface ArtistDto {
   id: string;

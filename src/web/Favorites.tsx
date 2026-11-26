@@ -12,7 +12,7 @@ import { savePlayingFrom } from "./playingFrom";
 import { sortKeysOf } from "./sortHold";
 import { startShuffle } from "./playlist";
 import { Link, navigate, playHref } from "./router";
-import { AvailabilityIcon, FavoriteBadge, Poster, StripFrame, Tags, fmtDuration } from "./ui";
+import { FavoriteBadge, Poster, StripFrame, Tags, WhereIcon, fmtDuration } from "./ui";
 import { showOnThisMachineChip } from "../shared/presence";
 
 const SORT_LABEL: Record<FavSort, string> = { starred: "Date starred", title: "Title", duration: "Duration", added: "Date added", views: "Views" };
@@ -59,7 +59,7 @@ function VideoRow({ item, onOpen }: { item: Extract<FavoriteItem, { kind: "video
       </div>
       <div class="right">
         <span>{fmtDuration(v.durationS)}</span>
-        <AvailabilityIcon availability={v.availability} />
+        <WhereIcon video={v} />
       </div>
     </Link>
   );
@@ -87,7 +87,7 @@ function ChapterRow({ item, onOpen }: { item: Extract<FavoriteItem, { kind: "cha
       <div class="right">
         <span class="kindmark">chapter</span>
         <span>{fmtDuration(c.startS)}</span>
-        <AvailabilityIcon availability={v.availability} />
+        <WhereIcon video={v} />
       </div>
     </Link>
   );

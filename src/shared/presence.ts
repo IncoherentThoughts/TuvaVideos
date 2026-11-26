@@ -2,14 +2,19 @@
 //   available     an Available Copy: plays now
 //   unmounted     a Copy on a Root that is not mounted: dashed drive, "plug the drive in", auto-resume (as today)
 //   notHere       Not on this machine: no Copy row, or every Copy Missing (a trashed Copy leaves no row)
+//   home          On the Home Server (home-server-spec §5.2): no usable Copy here, and the connected Home Server has one
+//                 (a matched Video, or a `home_video` row). It wins over unmounted: it plays without the drive.
 import type { CopyDto, VideoDto } from "./types";
 
-export type Presence = "available" | "unmounted" | "notHere";
+export type Presence = "available" | "unmounted" | "notHere" | "home";
 
-export function videoPresence(v: Pick<VideoDto, "available"> & { copies: Pick<CopyDto, "missing">[] }): Presence {
+export function videoPresence(v: Pick<VideoDto, "available"> & { copies: Pick<CopyDto, "missing">[]; home?: VideoDto["home"]; homeOnly?: boolean }): Presence {
   if (v.available) return "available";
+  if (v.homeOnly || v.home?.copies) return "home";
   return v.copies.some((c) => !c.missing) ? "unmounted" : "notHere";
 }
+
+export const isOnHome = (v: Parameters<typeof videoPresence>[0]) => videoPresence(v) === "home";
 
 export const isNotHere = (v: Parameters<typeof videoPresence>[0]) => videoPresence(v) === "notHere";
 

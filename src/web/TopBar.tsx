@@ -4,6 +4,7 @@ import { SearchBox } from "./SearchBox";
 import { api, apiError, getLastPlayed, playRandom, reloadAll, useStore } from "./data";
 import { TvButton } from "./TvButton";
 import { HomeApprovals } from "./HomeApprovals";
+import { HomeServer } from "./HomeServer";
 import { AccountChip } from "./Account";
 import { refreshDeletedMatches } from "./ConflictNotice";
 import { drainSharedSuggestions } from "./writeLink";
@@ -123,6 +124,7 @@ export function TopBar({ route }: { route: Route }) {
         {scan && <ScanIndicator scan={scan} />}
         <SearchBox />
         <HomeApprovals />
+        <HomeServer />
         <TvButton />
         <button class="btn" onClick={rescan} disabled={busy || !!scan?.running} title="Scan the Roots for new files">
           Rescan

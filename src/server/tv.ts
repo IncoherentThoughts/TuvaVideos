@@ -118,7 +118,7 @@ export class TvServer {
       db: Db;
       /** For health's `drive`: no Roots means "unmounted". */
       roots?: Pick<Roots, "list" | "isAvailable">;
-      /** Health's `home`: true on the Home Server (the toggle arrives with #240). */
+      /** Health's `home`: true on the Home Server ("This Mac is the Home Server", home-server-spec §4.1). */
       home?: () => boolean;
       /** Tailscale devices on sight (home-server-spec §3.1); absent, every device goes through the Allow prompt. */
       tailscale?: Pick<TailscaleCheck, "check">;
@@ -343,7 +343,8 @@ export class TvServer {
       this.seenWritten.set(ip, now);
     }
     // a Mac polling its approvals (every 5 s, §3.2) is seen, not "talking": the button keeps its own state
-    if (path === "/api/approvals" || path.startsWith("/api/approvals/")) return;
+    // the same for its home index fetches (§5.1) and the posters of the Home Server's own Videos (§5.2)
+    if (path === "/api/approvals" || path.startsWith("/api/approvals/") || path === "/api/home/index" || (path.startsWith("/thumbs/") && this.kindOf(ip) === "mac")) return;
     let title = this.activity?.ip === ip ? this.activity.title : null;
     const m = path.match(/^\/(?:copy|live)\/(\d+)/);
     if (m) title = (db.query("SELECT v.title FROM copy c JOIN videos v ON v.id = c.video_id WHERE c.id = ?").get(Number(m[1])) as { title: string } | null)?.title ?? title;
@@ -412,6 +413,8 @@ export class TvServer {
     this.touch(ip, model, path);
 
     if (route.kind === "approvals") return this.approvals(req, ip, path);
+    // §2.3: the home index is for Approved Macs only
+    if (route.kind === "mac" && this.kindOf(ip) !== "mac") return json({ error: "Approved Macs only" }, 403);
     if (route.kind === "ui") return this.ui(path);
     if (route.kind === "live") return this.live ? this.live.serve(req, ip, this.activity?.model ?? ip) : json({ error: "Live streams are not set up" }, 404);
     if (!this.handler) return json({ error: "not ready" }, 503);

@@ -11,6 +11,7 @@ import { FRAME_HEADERS } from "./localOnly";
 import { markTvRequest } from "./tvRequest";
 import { excludeNotHere, matchTvRoute, notHereVideoIds, stripPaths, tvListOf } from "./tvRoutes";
 import type { TvBundle } from "./web";
+import type { LiveStreams } from "./live/streams";
 import type { ApprovedDeviceDto, TvStateDto } from "../shared/types";
 import { appVersion, computerName, healthBody, LIBRARY_SERVER_NAME } from "./libraryServerHealth";
 import type { Roots } from "./roots";
@@ -108,6 +109,8 @@ export class TvServer {
   private refusedLogged = new Map<string, { at: number; more: number }>();
   private activity: Activity | null = null;
   private stopHooks: (() => void)[] = [];
+  private live: Pick<LiveStreams, "serve"> | null = null;
+  private startHooks: (() => void)[] = [];
 
   constructor(
     private deps: {
@@ -138,9 +141,19 @@ export class TvServer {
     this.bundle = b;
   }
 
-  /** Called on every hard stop; the Live remux (tv-live-remux) registers its ffmpeg kill here. */
+  /** The Live streams (`/live/...`, home-server-spec 7); without them that route answers 404. */
+  setLive(l: Pick<LiveStreams, "serve">) {
+    this.live = l;
+  }
+
+  /** Called on every hard stop; the Live streams register their ffmpeg kill here. */
   onStop(fn: () => void) {
     this.stopHooks.push(fn);
+  }
+
+  /** Called after the listener is up (keep-awake, #238). */
+  onStart(fn: () => void) {
+    this.startHooks.push(fn);
   }
 
   get on(): boolean {
@@ -169,6 +182,13 @@ export class TvServer {
     }
     const addrs = lanAddresses();
     log(`Library Server on, port ${this.server.port}, addresses ${addrs.length ? addrs.map((a) => `http://${a}:${this.server!.port}`).join(" ") : "(none)"}`);
+    for (const fn of this.startHooks) {
+      try {
+        fn();
+      } catch (e) {
+        log("Library Server start hook failed", String(e));
+      }
+    }
     return { ok: true };
   }
 
@@ -393,7 +413,7 @@ export class TvServer {
 
     if (route.kind === "approvals") return this.approvals(req, ip, path);
     if (route.kind === "ui") return this.ui(path);
-    if (route.kind === "live") return json({ error: "the Live remux is not built yet" }, 404);
+    if (route.kind === "live") return this.live ? this.live.serve(req, ip, this.activity?.model ?? ip) : json({ error: "Live streams are not set up" }, 404);
     if (!this.handler) return json({ error: "not ready" }, 503);
     markTvRequest(req); // the localhost guard leaves it to this listener's checks; `/copy/:id` serves by the TV Playback profile (spec 3.2)
     const res = await this.handler(req);

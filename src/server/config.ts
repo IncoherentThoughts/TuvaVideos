@@ -89,7 +89,7 @@ export function dataDirFor(platform: NodeJS.Platform, env: Record<string, string
   return join(env.XDG_DATA_HOME || join(home, ".local", "share"), "TuvaVideos");
 }
 
-export function loadConfig(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform): Config {
+export function loadConfig(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform, argv: readonly string[] = process.argv): Config {
   const dataDir = dataDirFor(platform, env, homedir());
   const port = Number(env.TUVA_PORT ?? DEFAULT_PORT);
   return {
@@ -111,7 +111,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ffprobe: findBin("ffprobe", env),
     cwebp: findBin("cwebp", env),
     trash: env.TUVA_TRASH ?? "/usr/bin/trash",
-    openTab: env.TUVA_NO_OPEN !== "1",
+    openTab: env.TUVA_NO_OPEN !== "1" && !argv.includes("--background"), // --background: the login start, no tab (home-server-spec §2.2)
     migrationsDir: join(import.meta.dir, "..", "..", "migrations"),
     webDir: join(import.meta.dir, "..", "web"),
     archive: archiveEndpoint(env),

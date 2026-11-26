@@ -69,7 +69,17 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await r.json()) as T
 }
 
+/** The 503 `busy` holders when the server cannot start this Live stream, else null (home-server-spec 7.2). */
+async function liveBusy(path: string): Promise<{ device: string; title: string }[] | null> {
+  const r = await fetch(url(path)).catch(() => null)
+  if (r?.status !== 503) return null
+  const b = (await r.json().catch(() => null)) as { error?: string; streams?: { device: string; title: string }[] } | null
+  return b?.error === "busy" ? (b.streams ?? []) : null
+}
+
 export const api = {
+  liveBusy,
+  health: () => get<{ drive?: "mounted" | "unmounted" }>("/api/health"),
   videos: () => get<VideoDto[]>("/api/videos"),
   artists: () => get<ArtistDto[]>("/api/artists"),
   songs: () => get<SongListDto[]>("/api/songs"),

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { TvStateDto } from "../shared/types";
 import { api, apiError } from "./data";
+import { ServeSettings } from "./ServeSettings";
 import { ChevronDownIcon } from "./ui";
 
 /** The indicator's text: one of the four states of the spec's table. */
@@ -147,6 +148,7 @@ export function TvButton() {
               </span>
             </div>
           ))}
+          <ServeSettings />
           <div class="tvhd">Approved devices</div>
           {tv.approved.length === 0 && <div class="tvnone">none yet</div>}
           {tv.approved.map((t) => (

@@ -7,7 +7,7 @@ export type TvRouteKind =
   | "health" // answered to anyone, by the Library Server itself
   | "api" // a localhost handler, for Approved TVs
   | "ui" // the TV app's UI files, served by the Library Server
-  | "live" // the Live remux streams (tv-live-remux)
+  | "live" // the Live streams (home-server-spec 7)
   | "approvals"; // pending TV approvals and Allow / Deny, for Approved Macs only (home-server-spec §3.2)
 
 export interface TvRoute {

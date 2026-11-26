@@ -2,6 +2,8 @@ import { createHandler, type Services } from "./api";
 import { TvServer } from "./tv";
 import { cliRunner, TailscaleCheck, tailscaleCli } from "./tailscale";
 import { homeServerFromEnv } from "./homeApprovals";
+import { LiveStreams } from "./live/streams";
+import { defaultLoginAgent, ServeOnLaunch } from "./serveOnLaunch";
 import { judgeStaleCopies } from "./tvJudge";
 import { judgeBrowserCopies } from "./browserJudge";
 import type { Config } from "./config";
@@ -18,6 +20,7 @@ import { TvBundle, WebBundle } from "./web";
 
 export interface App extends Services {
   server: ReturnType<typeof Bun.serve>;
+  live: LiveStreams;
   stop(): Promise<void>;
   /** The second Ctrl-C: kill every ffmpeg/ffprobe child at once, without waiting (audit PLAY-6). */
   kill(): void;
@@ -74,6 +77,10 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   const handler = createHandler(services);
   tv.setHandler(handler);
   tv.setBundle(tvBundle);
+  const live = new LiveStreams({ db, roots, ffmpeg: cfg.ffmpeg }); // home-server-spec 7: off with the Library Server, gone at exit
+  tv.setLive(live);
+  tv.onStop(() => live.stopAll());
+  services.serveOnLaunch = new ServeOnLaunch({ db, tv, agent: defaultLoginAgent(cfg.dataDir), passive: cfg.passive });
   const server = Bun.serve({ port: cfg.port, hostname: "127.0.0.1", idleTimeout: 120, fetch: handler });
   log(`listening on http://localhost:${server.port}`);
 
@@ -82,10 +89,12 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
   await roots.pollAll(); // availability only: nothing is scanned at startup
   started = true;
   roots.start(10_000);
+  services.serveOnLaunch?.applyAtLaunch(); // Serve on launch: the Library Server is up before the first tab
 
   // The same object the handler reads (`quit` may be set later, e.g. by tests), not a copy.
   return Object.assign(services, {
     server,
+    live,
     async stop() {
       // The jobs in flight are killed, not waited for: a Fallback, a keyframe index and a Thumbnail are all rebuilt
       // later. The port stays bound until they have stopped (audit PLAY-2).
@@ -93,6 +102,8 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
       roots.stop();
       await services.downloads?.shutdown(); // yt-dlp killed, partials kept; the items wait for the next launch
       tv.stop();
+      live.stopAll();
+      services.serveOnLaunch?.stopAwake();
       studio.shutdown(); // kills the osascript child
       keyframes.shutdown();
       await Promise.race([Promise.all([fallback.shutdown(), thumbs.shutdown()]), new Promise((r) => setTimeout(r, 10_000))]);
@@ -107,6 +118,7 @@ export async function startApp(cfg: Config, opts: { studio?: StudioOptions; quit
       keyframes.shutdown();
       void thumbs.shutdown(); // kills its children synchronously
       studio.shutdown();
+      live.stopAll();
     },
   });
 }

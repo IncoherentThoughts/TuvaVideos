@@ -79,6 +79,8 @@ export function mergeStaleVideoInto(db: Db, from: string, to: string) {
     // comes from whichever row was played last, and the A-B loop is kept when the incoming row has none.
     db.query(`UPDATE video_local AS t SET
         favorited_at = COALESCE(t.favorited_at, f.favorited_at),
+        favorite_at = CASE WHEN COALESCE(f.favorite_at, '') > COALESCE(t.favorite_at, '') THEN f.favorite_at ELSE t.favorite_at END,
+        resume_at = CASE WHEN COALESCE(f.last_played_at, '') > COALESCE(t.last_played_at, '') THEN f.resume_at ELSE COALESCE(t.resume_at, f.resume_at) END,
         view_count = t.view_count + f.view_count,
         resume_s = CASE WHEN COALESCE(f.last_played_at, '') > COALESCE(t.last_played_at, '') THEN f.resume_s ELSE COALESCE(t.resume_s, f.resume_s) END,
         last_played_at = CASE WHEN COALESCE(f.last_played_at, '') > COALESCE(t.last_played_at, '') THEN f.last_played_at ELSE t.last_played_at END,

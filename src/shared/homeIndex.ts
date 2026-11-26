@@ -7,6 +7,8 @@ export interface HomeIndexCopy {
   /** The Copy's id on the Home Server (its `/copy/:id`). */
   id: number;
   size: number;
+  /** Where the file is inside its Root there (`copy.rel_path`): a Download puts it at the same place in this Mac's Root (§8). */
+  relPath?: string | null;
   container: string | null;
   videoCodec: string | null;
   audioCodec: string | null;

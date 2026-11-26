@@ -52,9 +52,10 @@ export function setFavorite(db: Db, table: "video" | "chapter", id: string, want
   if (!row) return undefined;
   const on = want ?? !row.favorited_at;
   if (on && row.favorited_at) return row.favorited_at; // already a Favorite: keep its place in the order
-  const next = on ? new Date().toISOString() : null;
-  if (table === "video") setVideoLocal(db, id, { favorited_at: next });
-  else setChapterFavorite(db, id, next);
+  const now = new Date().toISOString();
+  const next = on ? now : null;
+  if (table === "video") setVideoLocal(db, id, { favorited_at: next, favorite_at: now, me_changed_at: now });
+  else setChapterFavorite(db, id, next, now);
   return next;
 }
 
@@ -108,7 +109,8 @@ export function recordResume(db: Db, videoId: string, positionS: number, copyId?
     duration = (db.query("SELECT MAX(duration_s) d FROM copy WHERE video_id = ?").get(videoId) as { d: number | null }).d;
   }
   const resumeS = storedResume(positionS, duration);
-  setVideoLocal(db, videoId, { resume_s: resumeS, last_played_at: new Date().toISOString() });
+  const now = new Date().toISOString();
+  setVideoLocal(db, videoId, { resume_s: resumeS, last_played_at: now, resume_at: now, me_changed_at: now });
   return { resumeS, finished: resumeS === 0 && positionS > 0 };
 }
 

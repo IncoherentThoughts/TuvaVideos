@@ -41,9 +41,17 @@ export function setVideoLocal(db: Db, videoId: string, cols: Record<string, Valu
   ).run(videoId, ...keys.map((k) => cols[k]!));
 }
 
-/** Sets a Chapter's Favorite (`chapter_local`). */
-export function setChapterFavorite(db: Db, chapterId: string, at: string | null) {
-  if (at == null) db.query("DELETE FROM chapter_local WHERE chapter_id = ?").run(chapterId);
+/**
+ * Sets a Chapter's Favorite (`chapter_local`). `stamp`: a star or unstar by the owner, kept with its time so it can
+ * win or lose against another machine's (home-server-spec §6.1); an unstar then keeps the row.
+ */
+export function setChapterFavorite(db: Db, chapterId: string, at: string | null, stamp?: string) {
+  if (stamp)
+    db.query(
+      `INSERT INTO chapter_local (chapter_id, favorited_at, favorite_at, me_changed_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(chapter_id) DO UPDATE SET favorited_at = excluded.favorited_at, favorite_at = excluded.favorite_at, me_changed_at = excluded.me_changed_at`,
+    ).run(chapterId, at, stamp, nowIso());
+  else if (at == null) db.query("DELETE FROM chapter_local WHERE chapter_id = ?").run(chapterId);
   else db.query("INSERT INTO chapter_local (chapter_id, favorited_at) VALUES (?, ?) ON CONFLICT(chapter_id) DO UPDATE SET favorited_at = excluded.favorited_at").run(chapterId, at);
 }
 

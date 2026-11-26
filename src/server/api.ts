@@ -13,6 +13,8 @@ import type { TvServer } from "./tv";
 import type { LiveStreams } from "./live/streams";
 import { answerHomeApproval, homeApprovals, type HomeServerTarget } from "./homeApprovals";
 import type { HomeServer, HomeView } from "./homeServer";
+import { HomeSync } from "./homeSync";
+import { createMeRoutes } from "./meRoutes";
 import { homeIndexBody, homeIndexEtag, homeOnlyChapters, homeOnlyDto, homeOnlySearch, localIdentities, withHome } from "./homeVideos";
 import { computerName } from "./libraryServerHealth";
 import type { HomeIndexChapter } from "../shared/homeIndex";
@@ -99,6 +101,8 @@ export interface Services {
   home?: HomeServer;
   /** This Mac's Live streams (home-server-spec 7), shared with the Library Server's `/live/...`; set by startApp. */
   live?: Pick<LiveStreams, "serve">;
+  /** Resume and Favorites through the Home Server (home-server-spec §6). Built by `createHandler` from `home`. */
+  homeSync?: HomeSync;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -167,7 +171,10 @@ export function createHandler(s: Services) {
   const sync = createSync(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const reconcile = createReconcile(s.db, s.cfg.archive, { cacheDir: s.cfg.ytCacheDir, thumbsDir: s.cfg.thumbsDir });
   const downloaderTools = createDownloaderTools({ dataDir: s.cfg.dataDir, db: s.db });
-  const downloads = (s.downloads ??= createDownloadService({ cfg: s.cfg, db: s.db, roots: s.roots, scanner: s.scanner, tools: downloaderTools }));
+  const downloads = (s.downloads ??= createDownloadService({ cfg: s.cfg, db: s.db, roots: s.roots, scanner: s.scanner, tools: downloaderTools, home: s.home }));
+  // home-server-spec §6: Resume and Favorites follow you (the outbox and pull here, `/api/me/*` for the other Macs)
+  const homeSync = (s.homeSync ??= s.home ? new HomeSync({ db: s.db, home: s.home, machine: computerName }) : undefined) ?? null;
+  const meRoute = createMeRoutes({ db: s.db, dataDir: s.cfg.dataDir, machine: computerName, sync: () => homeSync });
   const tvJson = (c: CopyDbRow): TvCopyDto => {
     const decision = parseDecision(c.tv_playback);
     const fb = c.fallback_file ? decideTvPlayback(fallbackFacts(factsOfRow(c), c.playback, c.fallback_file), TV_PROFILE) : null;
@@ -349,7 +356,8 @@ export function createHandler(s: Services) {
       arr.push({ startS: c.start_s, title: c.title, titleLatin: c.title_latin });
       chapters.set(c.video_id, arr);
     }
-    const body = JSON.stringify(homeIndexBody(computerName(), allVideos(), hashes, chapters));
+    const relPaths = new Map((s.db.query("SELECT id, rel_path FROM copy").all() as { id: number; rel_path: string }[]).map((r) => [r.id, r.rel_path]));
+    const body = JSON.stringify(homeIndexBody(computerName(), allVideos(), hashes, chapters, relPaths));
     const etag = homeIndexEtag(body);
     const headers = { etag, "cache-control": "no-cache" };
     if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
@@ -416,6 +424,13 @@ export function createHandler(s: Services) {
     const c = s.db.query(`${COPY_SQL.replace("c.fallback_file, c.missing_since", "c.fallback_file, c.missing_since, r.path AS root_path")} WHERE c.id = ?`).get(id) as (CopyDbRow & { root_path: string }) | null;
     if (!c) return json({ error: "no such copy" }, 404);
     if (c.missing_since) return json({ error: "copy is missing", missingSince: c.missing_since }, 404);
+    // home-server-spec §2.3, §8: `?download=1` is the whole file as it is, whatever the Playback profile says, for a
+    // Download from the Home Server (Range-resumable). Macs only: a TV is Approved to play, not to take a Copy.
+    if (new URL(req.url).searchParams.get("download") === "1") {
+      if (isTvRequest(req) && !isMacRequest(req)) return json({ error: "Approved Macs only" }, 403);
+      if (!s.roots.isAvailable(c.root_id)) return json({ error: "the drive is not mounted" }, 503, { "retry-after": "30" });
+      return serveFile(req, join(c.root_path, c.rel_path));
+    }
     // home-server-spec §5.4: an Approved Mac (its companion proxying `/home/copy/:id`) takes the browser branch below.
     if (isTvRequest(req) && !isMacRequest(req)) {
       // The TV plays by its own Playback profile (tv-spec 3.2): the own file when it plays as-is, else an existing
@@ -521,6 +536,10 @@ export function createHandler(s: Services) {
     const p = url.pathname;
     let m: RegExpMatchArray | null;
     try {
+      if (p.startsWith("/api/me/") || p === "/api/home/sync" || p === "/api/home/first-sync" || p === "/api/favorites/export" || p === "/api/favorites/import") {
+        const r = await meRoute(req, url);
+        if (r) return r;
+      }
       if (req.method === "GET" || req.method === "HEAD") {
         if ((m = p.match(/^\/copy\/(\d+)$/))) return copyRoute(req, Number(m[1]));
         if ((m = p.match(/^\/copy\/(\d+)\/pcm$/))) return pcmRoute(req, Number(m[1]));
@@ -611,6 +630,12 @@ export function createHandler(s: Services) {
             if (r.kind === "video") items.push({ kind: "video", favoritedAt: r.favorited_at, video });
             else items.push({ kind: "chapter", favoritedAt: r.favorited_at, video, chapter: chapterJson(chapters.get(r.chapter_id!)!) });
           }
+          // home-server-spec §6: the starred Videos only the Home Server has (`home_me`), in the same order
+          for (const e of h?.view.homeOnly ?? []) {
+            const v = homeOnlyDto(e, h!.server);
+            if (v.favoritedAt) items.push({ kind: "video", favoritedAt: v.favoritedAt, video: v });
+          }
+          items.sort((a, b) => (a.favoritedAt < b.favoritedAt ? 1 : a.favoritedAt > b.favoritedAt ? -1 : 0));
           return json(items);
         }
         if (p === "/api/search") {
@@ -710,7 +735,10 @@ export function createHandler(s: Services) {
           }
           const r = s.home.set(patch);
           if (!r.ok) return json({ error: r.error }, 400);
-          return json(r.status.configured ? await s.home.refresh({ force: true }) : r.status);
+          if (!r.status.configured) return json(r.status);
+          const st = await s.home.refresh({ force: true });
+          await homeSync?.sync(); // §6.1: at connect
+          return json(st);
         }
         if (p === "/api/home/test") {
           const b = await readJson(req);
@@ -720,7 +748,9 @@ export function createHandler(s: Services) {
         if (p === "/api/home/refresh") {
           if (!s.home) return json({ error: "no Home Server here" }, 404);
           const b = await readJson(req);
-          return json(await s.home.refresh({ force: b?.force === true }));
+          const st = await s.home.refresh({ force: b?.force === true });
+          await homeSync?.sync(); // §6.1: at connect and on each focus check
+          return json(st);
         }
         if ((m = p.match(/^\/api\/(videos|chapters)\/([0-9a-fA-F-]{36})\/favorite$/))) {
           const table = m[1] === "videos" ? "video" : "chapter";
@@ -730,7 +760,14 @@ export function createHandler(s: Services) {
             if (typeof b.favorite === "boolean") want = b.favorite;
           } catch {}
           const at = setFavorite(s.db, table, m[2]!, want);
-          if (at === undefined) return json({ error: `no such ${table}` }, 404);
+          if (at === undefined) {
+            // home-server-spec §6: a Video only the Home Server has is starred there (through `home_me` and the outbox)
+            const e = table === "video" && homeSync ? homeOnlyEntry(req, m[2]!) : null;
+            if (!e) return json({ error: `no such ${table}` }, 404);
+            const fav = homeSync!.starHomeOnly(e.row, want);
+            return json({ id: m[2]!, favorite: fav !== null, favoritedAt: fav });
+          }
+          homeSync?.wroteFavorite(table, m[2]!);
           return json({ id: m[2]!, favorite: at !== null, favoritedAt: at });
         }
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/chapters$/))) {
@@ -776,6 +813,7 @@ export function createHandler(s: Services) {
           if (typeof body.resumeS !== "number" || !Number.isFinite(body.resumeS) || body.resumeS < 0) return json({ error: "resumeS must be a number >= 0" }, 400);
           const r = recordResume(s.db, m[1]!, body.resumeS, typeof body.copyId === "number" ? body.copyId : null);
           if (!r) return json({ error: "no such video" }, 404);
+          homeSync?.wroteResume(m[1]!); // §6.3: a TV on this Mac's Library Server too
           return json({ id: m[1]!, ...r });
         }
         if ((m = p.match(/^\/api\/videos\/([0-9a-fA-F-]{36})\/loop$/))) {

@@ -41,6 +41,7 @@ export function Card({ v, onOpen, titleHtml, why, startS }: { v: VideoDto; onOpe
       {/* downloader-spec §8: a downloadable Video's corner is the download button and its states; hash-only keeps the mark. */}
       {notHere && (hasSourceId(v) ? <CardDownload video={v} /> : <NotHereMark />)}
       {onHome && <HomeMark server={v.home?.server} />}
+      {onHome && <CardDownload video={v} />}
       {unshared && <UnsharedMark />}
       <div class="ttl">
         {shelfNew && <span class="shelf-dot" title="Shelved edits you have not looked at (History tab on the Video)" />}

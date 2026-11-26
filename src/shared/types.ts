@@ -166,6 +166,19 @@ export interface HomeStatusDto {
   error: string | null;
   /** The stored home index, when one was fetched. */
   index: { at: string; videos: number; copies: number; homeOnly: number } | null;
+  /** Resume and Favorites following through it (home-server-spec §6); added by the routes. */
+  sync?: HomeSyncDto;
+}
+
+/** home-server-spec §6: this Mac's Resume and Favorites sync with its Home Server. */
+export interface HomeSyncDto {
+  /** The first-connect replace (§6.2) has run against the Home Server set now; until then Favorites stay here. */
+  firstSyncDone: boolean;
+  firstSyncAt: string | null;
+  /** Writes waiting in `home_outbox`. */
+  outbox: number;
+  pulledAt: string | null;
+  error: string | null;
 }
 
 /** `POST /api/home/test` (localhost): one health check of an address, not saved. */

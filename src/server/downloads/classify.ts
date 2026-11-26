@@ -13,6 +13,10 @@ export type FailureReason =
   | "disk_full"
   | "network"
   | "no_js_runtime"
+  // Download from the Home Server (home-server-spec §8); never produced by yt-dlp output
+  | "home_unreachable"
+  | "size_mismatch"
+  | "hash_mismatch"
   | "unknown";
 
 const COOKIES_EXPIRED = /account cookies are no longer valid/i;

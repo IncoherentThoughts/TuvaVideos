@@ -3,7 +3,7 @@
 // toggle, and the home index's refresh button. The index is fetched at connect (this tab opening, a saved field), on
 // window focus once it is older than 10 minutes, and from the button; never on a timer.
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { HomeStatusDto, HomeTestDto } from "../shared/types";
+import type { HomeStatusDto, HomeSyncDto, HomeTestDto } from "../shared/types";
 import { homeLabel } from "../shared/homeIndex";
 import { api, apiError, loadVideos } from "./data";
 
@@ -22,6 +22,11 @@ export function HomeServer() {
   const [test, setTest] = useState<HomeTestDto | null>(null);
   const [busy, setBusy] = useState(false);
   const shown = useRef("");
+  // home-server-spec §6: Resume and Favorites following through it; §6.2 the first-connect question, once per connect
+  const [sync, setSync] = useState<HomeSyncDto | null>(null);
+  const [ask, setAsk] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const asked = useRef("");
 
   const take = (next: HomeStatusDto | null) => {
     setS(next);
@@ -31,6 +36,29 @@ export function HomeServer() {
       shown.current = k;
       if (!first || next?.connected) void loadVideos();
     }
+    if (next?.connected && next.configured) {
+      void api.homeSync().then((y) => {
+        setSync(y);
+        // asked again at the next connect (a new tab, or connected again after unreachable)
+        if (y && !y.firstSyncDone && asked.current !== (next.base ?? "")) {
+          asked.current = next.base ?? "";
+          setAsk(true);
+        }
+      }, () => {});
+    } else if (!next?.connected) asked.current = "";
+  };
+  const favorites = async (f: () => Promise<{ cancelled: true } | Record<string, unknown>>, done: (r: Record<string, unknown>) => string) => {
+    setBusy(true);
+    try {
+      const r = await f();
+      if (!("cancelled" in r)) {
+        setNote(done(r));
+        void loadVideos();
+      }
+    } catch (e) {
+      setNote(apiError(e));
+    }
+    setBusy(false);
   };
 
   useEffect(() => {
@@ -64,12 +92,36 @@ export function HomeServer() {
     setBusy(false);
   };
   const label = homeLabel(s) ?? "Home Server";
+  const firstSync = () =>
+    favorites(
+      async () => {
+        const r = await api.firstSync();
+        if (!("cancelled" in r)) (setSync(r.sync), setAsk(false));
+        return r as never;
+      },
+      (r) => `Saved ${r.exported} Favorites to ${r.path}; they replaced the Home Server's (its earlier ones are in ${(r.replaced as { backup: string }).backup} there)`,
+    );
   return (
     <span class="home-status">
       <button class={`btn small${s.configured || s.self ? "" : " dim"}`} aria-haspopup="menu" aria-expanded={open} title={s.error ?? (s.configured ? s.base ?? undefined : "Set this Mac's Home Server")} onClick={() => setOpen(!open)}>
         {(s.configured || s.self) && <span class={`dot${s.connected || s.self ? " on" : ""}`} />}
         {label}
       </button>
+      {ask && sync && !sync.firstSyncDone && (
+        <div class="menu" role="dialog" aria-label="Favorites and the Home Server">
+          <div class="tvhd">Favorites and {s.server ?? "the Home Server"}</div>
+          <div class="tvtip">This Mac's Favorites will replace the Home Server's, and from then on follow you between your Macs. Save a copy of this Mac's Favorites first; the Home Server keeps a copy of its own.</div>
+          {note && <div class="tvtip">{note}</div>}
+          <div class="row">
+            <button class="btn small primary" disabled={busy} onClick={() => void firstSync()}>
+              Export Favorites…
+            </button>
+            <button class="btn small" disabled={busy} onClick={() => setAsk(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {open && (
         <div class="menu" role="menu">
           <div class="tvhd">Home Server</div>
@@ -114,10 +166,32 @@ export function HomeServer() {
                       Refresh
                     </button>
                   </div>
+                  {sync && (
+                    <div class="tvtip">
+                      {sync.firstSyncDone ? "Resume and Favorites follow you through it" : "Resume follows you; Favorites stay on this Mac until you export them"}
+                      {sync.outbox ? ` · ${sync.outbox} waiting to be sent` : ""}
+                      {sync.error ? ` · ${sync.error}` : ""}
+                    </div>
+                  )}
+                  {sync && !sync.firstSyncDone && s.connected && (
+                    <button class="btn small" disabled={busy} onClick={() => void firstSync()}>
+                      Export Favorites and sync…
+                    </button>
+                  )}
                 </>
               )}
             </>
           )}
+          {/* §6.2: also on the Home Server itself, to read back its favorites.before-home-sync-<date>.json */}
+          <div class="row">
+            <button class="btn small" disabled={busy} onClick={() => void favorites(api.exportFavorites as never, (r) => `Saved ${r.count} Favorites to ${r.path}`)}>
+              Export Favorites…
+            </button>
+            <button class="btn small" disabled={busy} onClick={() => void favorites(api.importFavorites as never, (r) => `Imported ${r.applied} (${r.older} older than here, ${r.unknown} not on this Mac)`)}>
+              Import Favorites…
+            </button>
+          </div>
+          {note && <div class="tvtip">{note}</div>}
         </div>
       )}
     </span>

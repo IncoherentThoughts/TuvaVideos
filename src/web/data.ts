@@ -47,6 +47,9 @@ export const forgetSong = (id: string) => void songCache.delete(id);
 /** Forgets every cached Song (a Sync changed the Local copy). */
 export const forgetAllSongs = () => songCache.clear();
 
+/** Fired with the status each Player check brings, so the Home menu and the grid follow a drop or a return (§9). */
+export const HOME_PING_EVENT = "tuva-home-ping";
+
 export const api = {
   /** The Library Server (docs/tv-spec.md 2): state, turn on/off, and the Approved TVs prompt. */
   tv: () => get<TvStateDto>("/api/tv"),
@@ -57,6 +60,12 @@ export const api = {
   setHome: (p: { address?: string | null; self?: boolean }) => post<HomeStatusDto>("/api/home", p),
   testHome: (address: string) => post<HomeTestDto>("/api/home/test", { address }),
   refreshHome: (force: boolean) => post<HomeStatusDto>("/api/home/refresh", { force }),
+  /** Health only, now (the Player's check while a Home Server stream plays, home-server-spec §9). */
+  pingHome: () =>
+    post<HomeStatusDto>("/api/home/refresh", { health: true }).then((st) => {
+      window.dispatchEvent(new CustomEvent(HOME_PING_EVENT, { detail: st })); // the Home menu and the grid follow
+      return st;
+    }),
   /** Resume and Favorites through the Home Server (home-server-spec §6). */
   homeSync: () => get<HomeSyncDto | null>("/api/home/sync"),
   /** §6.2 first connect: Export Favorites… (the save dialog), then this Mac's Favorites replace the Home Server's. */

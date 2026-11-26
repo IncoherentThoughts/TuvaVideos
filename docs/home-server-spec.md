@@ -132,7 +132,7 @@ The selection rule gains one step: a **local** Copy that is usable (Root mounted
   - The Library Server marks a request from an Approved Mac (`markMacRequest`, `src/server/tvRequest.ts`) besides marking it as passed in; `/copy/:id` gives such a request the browser branch (file, else Fallback, else 503 while the Fallback is made on the mini). Everything else about passed-in requests (no `/api/home/*` view, paths stripped) is unchanged.
   - The Player reads the playing Copy's routes from `copyRoutes` (`src/shared/copies.ts`); a Resume write while a Home Server Copy plays sends `copyId: null` (the id is not one of this Mac's).
   - Audio settings for a `home_video`: the Audio panel shows the mini's settings with its controls disabled and no Auto or Reset ("‹server›'s settings for this Video, read-only here"); nothing is written. Auto never reads a Home Server Copy whole (no PCM route through the proxy).
-  - The 30 s health check while streaming, the "Home Server unreachable" pause and Retry are §9, ticket #247, not built here: a dropped stream fails like a broken Copy (the next usable Copy, else "Copy unavailable").
+  - The 30 s health check while streaming, the "Home Server unreachable" pause and Retry are §9 (#247, as built there); until then a dropped stream failed like a broken Copy.
   - A Mac streaming from the Library Server counts as its activity like a TV (the top bar's "playing" line names its address).
 
 ---
@@ -226,6 +226,12 @@ Builds tv-spec §3.4, which was specified but never built (`src/server/tv.ts` an
 
 - On a Mac: Videos On the Home Server go back to **Not on this machine**; `home_video` rows hide; Resume and Favorite writes wait in `home_outbox`; a stream already playing pauses with **"Home Server unreachable"**, keeps the Resume position, and offers Retry. Downloads from it wait (§8).
 - On a TV: tv-spec §4.3 with the server's name, and the picker (§4.2).
+
+- **As built (#247):**
+  - **Connection state** (`HomeServer`, in memory) is the one switch: not connected means the grid gets an empty view (On the Home Server goes back to Not on this machine, `home_video` rows hide, the stored index is kept), `HomeSync.sync` does not flush (the outbox holds; writes still queue), and a Home download backs off to `waiting` (§8). These existed from #240, #242 and #246; #247 added the ways to learn of a drop.
+  - **Detection**: the proxy (`proxyHome`) reports "did not answer" (not a tab that gave up) to `markUnreachable`, which flips the state at once. While a Home Server Copy plays the Player also asks `POST /api/home/refresh {health: true}` every 30 s (health only; the index is refetched only when the state was not connected, so a return costs one index fetch and an outbox flush). Each answer is broadcast to the Home menu, so the grid reloads on a drop and on a return.
+  - **Pause**: a Home Server Copy that errors (element error, Live stream error) or a failed 30 s check, with the Home Server not answering, **pauses** on "‹name› does not answer" under the title "Home Server unreachable", keeps the position and writes it to Resume (the outbox holds it), and shows Retry. Retry asks health; when it answers the same Copy loads at the kept place and plays on. No automatic resume. **Decision:** a usable Copy on this Mac (any local Copy that is Available and has not failed; Preferred Copy makes that rare while a Home Server Copy plays, but the switcher can pick one) takes over exactly like a broken Copy instead of pausing (`homeDropAction`, `src/shared/copies.ts`). With the Home Server answering, a failing Home Server Copy is a broken Copy as before (next Copy, else "Copy unavailable").
+  - **TV**: nothing to build. The shell's drop screen reads "‹name› stopped answering" (`serverName` in `tv/shell/shell.js`, "The Library Server" without a name) and the picker (#245) lists servers by name. The TV Player's own "Lost the Library Server · retrying…" line does not name the server.
 
 ---
 

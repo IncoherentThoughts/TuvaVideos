@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { HomeStatusDto, HomeSyncDto, HomeTestDto } from "../shared/types";
 import { homeLabel } from "../shared/homeIndex";
-import { api, apiError, loadVideos } from "./data";
+import { api, apiError, HOME_PING_EVENT, loadVideos } from "./data";
 
 /** What the grid shows depends on these: a change reloads the Videos. */
 const gridKey = (s: HomeStatusDto | null) => (s ? `${s.connected}|${s.index?.at ?? ""}|${s.base ?? ""}` : "");
@@ -75,9 +75,13 @@ export function HomeServer() {
       .catch(() => {});
     const onFocus = () => void api.refreshHome(false).then((r) => alive && take(r), () => {});
     window.addEventListener("focus", onFocus);
+    // the Player's check while a Home Server stream plays (§9): a change of state reloads the grid like a focus check
+    const onPing = (e: Event) => alive && take((e as CustomEvent<HomeStatusDto>).detail);
+    window.addEventListener(HOME_PING_EVENT, onPing);
     return () => {
       alive = false;
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener(HOME_PING_EVENT, onPing);
     };
   }, []);
 

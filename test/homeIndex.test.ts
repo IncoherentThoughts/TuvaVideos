@@ -251,6 +251,22 @@ describe("HomeServer (this Mac's setting and connection)", () => {
     expect(s.error).toContain("does not know this Mac");
   });
 
+  test("a proxy failure marks it unreachable at once (the grid hides, the name stays); a health check brings it back and refetches the index (§9)", async () => {
+    const { home, calls, tick } = make();
+    home.set({ address: "mac-mini" });
+    await home.refresh({ force: true });
+    expect(home.view(LOCAL).homeOnly.length).toBe(1);
+    home.markUnreachable("The Home Server did not answer");
+    expect(home.status()).toMatchObject({ connected: false, server: "Mac mini", error: "The Home Server did not answer" });
+    expect(home.view(LOCAL).homeOnly).toEqual([]);
+    calls.length = 0;
+    tick(1_000); // within the 60 s focus window: only `health: true` asks again
+    await home.refresh({ health: true });
+    expect(calls).toEqual(["http://mac-mini:4401/api/health", "http://mac-mini:4401/api/home/index (if-none-match)"]);
+    expect(home.status().connected).toBe(true);
+    expect(home.view(LOCAL).homeOnly.length).toBe(1);
+  });
+
   test("another Home Server drops the old index", async () => {
     const { home, db } = make();
     home.set({ address: "mac-mini" });

@@ -8,7 +8,7 @@ import { preferredCopies } from "../src/server/ranking";
 import { homeUpstream, proxyHome } from "../src/server/homeProxy";
 import { homeCopyDto, homeOnlyDto, withHome } from "../src/server/homeVideos";
 import type { HomeCopyRow, HomeView } from "../src/server/homeServer";
-import { bestCopy, copyRoutes } from "../src/shared/copies";
+import { bestCopy, copyRoutes, homeDropAction, type PickableCopy } from "../src/shared/copies";
 import { awaitCopy } from "../src/shared/prepare";
 import { TailscaleCheck } from "../src/server/tailscale";
 import { TvServer } from "../src/server/tv";
@@ -100,6 +100,13 @@ describe("the /home proxy (§5.4)", () => {
     expect(await r.text()).toBe("abcd");
     expect((await proxyHome(req, null, "/copy/9", up)).status).toBe(404);
     expect((await proxyHome(req, "http://x", "/copy/9", (async () => { throw new Error("down"); }) as unknown as typeof fetch)).status).toBe(502);
+    let marked = 0;
+    await proxyHome(req, "http://x", "/copy/9", (async () => { throw new Error("down"); }) as unknown as typeof fetch, () => marked++);
+    expect(marked).toBe(1); // §9: the connection state hears of it
+    const gone = new AbortController();
+    gone.abort();
+    await proxyHome(new Request("http://127.0.0.1:4400/home/copy/9", { signal: gone.signal }), "http://x", "/copy/9", (async () => { throw new Error("aborted"); }) as unknown as typeof fetch, () => marked++);
+    expect(marked).toBe(1); // the tab giving up is not the Home Server dropping
     expect((await proxyHome(req, "http://x", "/copy/9", (async () => Response.json({ error: "approve" }, { status: 403 })) as unknown as typeof fetch)).status).toBe(502);
   });
 
@@ -138,5 +145,20 @@ describe("the Library Server marks an Approved Mac's requests (§5.4)", () => {
     await tv.fetch(req(), "192.168.77.5");
     await tv.fetch(req(), "100.101.1.2"); // a Mac of the same Tailscale user
     expect(marks).toEqual([{ tv: true, mac: false }, { tv: true, mac: true }]);
+  });
+});
+
+describe("homeDropAction (pure, §9)", () => {
+  const cp = (id: number, o: Partial<PickableCopy> = {}) => ({ id, available: true, ...o }) as PickableCopy;
+  test("Home Server unreachable and no usable local Copy: pause", () => {
+    expect(homeDropAction([cp(-1), cp(2, { available: false })], -1, new Set(), false)).toBe("pause");
+    expect(homeDropAction([cp(-1)], -1, new Set(), false)).toBe("pause");
+  });
+  test("a usable local Copy takes over; a failed one does not count", () => {
+    expect(homeDropAction([cp(-1), cp(2)], -1, new Set(), false)).toBe("failover");
+    expect(homeDropAction([cp(-1), cp(2)], -1, new Set([2]), false)).toBe("pause");
+  });
+  test("the Home Server answering means the Copy is broken: the usual failover", () => {
+    expect(homeDropAction([cp(-1)], -1, new Set(), true)).toBe("failover");
   });
 });

@@ -98,7 +98,7 @@ LOG="$HOME/Library/Application Support/${NAME}/launcher.log"
 mkdir -p "$(dirname "$LOG")"
 CHECKOUT=${shQuote(checkout)}
 cd "$CHECKOUT" || { echo "checkout missing: $CHECKOUT" >> "$LOG"; exit 1; }
-nohup ${shQuote(bun)} run start >> "$LOG" 2>&1 < /dev/null &
+nohup ${shQuote(bun)} run start "$@" >> "$LOG" 2>&1 < /dev/null &
 disown
 `,
 );

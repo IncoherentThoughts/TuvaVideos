@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { TvStateDto } from "../shared/types";
 import { api, apiError } from "./data";
+import { ServeSettings } from "./ServeSettings";
 import { ChevronDownIcon } from "./ui";
 
 /** The indicator's text: one of the four states of the spec's table. */
@@ -147,6 +148,7 @@ export function TvButton() {
               </span>
             </div>
           ))}
+          <ServeSettings />
           <div class="tvhd">Approved devices</div>
           {tv.approved.length === 0 && <div class="tvnone">none yet</div>}
           {tv.approved.map((t) => (
@@ -154,7 +156,7 @@ export function TvButton() {
               <span class="tvname" title={t.lastSeenAt ? `last seen ${t.lastSeenAt}` : "not seen yet"}>
                 {(t.name ?? t.model ?? (t.kind === "mac" ? "Mac" : "TV")).slice(0, 32)} <span class="dim">{t.ip} · {t.kind === "mac" ? "Mac" : "TV"}, {t.via === "tailscale" ? "Tailscale" : "clicked Allow"}</span>
               </span>
-              <button class="linkbtn" disabled={busy} onClick={() => act(() => api.tvRemove(t.ip))} title="Remove: its next request asks again">
+              <button class="linkbtn" disabled={busy} onClick={() => act(() => api.tvRemove(t.ip))} title={t.via === "tailscale" ? "Remove: clears the row; a device of your Tailscale user is approved again on its next request" : "Remove: its next request asks again"}>
                 Remove
               </button>
             </div>

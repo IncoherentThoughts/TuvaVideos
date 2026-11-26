@@ -10,6 +10,8 @@ import type { Roots } from "./roots";
 import type { Studio } from "./studio/service";
 import type { Scanner } from "./scan";
 import type { TvServer } from "./tv";
+import { answerHomeApproval, homeApprovals, type HomeServerTarget } from "./homeApprovals";
+import type { ServeOnLaunch } from "./serveOnLaunch";
 import { factsOfRow, parseDecision } from "./tvJudge";
 import { isTvRequest } from "./tvRequest";
 import { decideTvPlayback, fallbackFacts, TV_PROFILE, tvOrder } from "../shared/playbackProfile";
@@ -78,11 +80,15 @@ export interface Services {
   web: WebBundle;
   /** The second listener for the TV (docs/tv-spec.md 2): off until the TV button turns it on. */
   tv: TvServer;
+  /** Serve on launch / Open at login / keep-awake (home-server-spec §2.2); set by startApp. */
+  serveOnLaunch?: ServeOnLaunch;
   startedAt: number;
   /** Set by the launcher: stops the server (the power button). Absent under tests and the smoke runs. */
   quit?: () => void;
   /** The Download queue (downloader-spec §4). Built on first use by `createHandler` when the caller did not supply one. */
   downloads?: DownloadQueue;
+  /** This Mac's Home Server (home-server-spec §3.2, §4.1), for its pending TV approvals; absent or null, none is set. */
+  homeServer?: HomeServerTarget;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -359,11 +365,11 @@ export function createHandler(s: Services) {
     if (c.missing_since) return json({ error: "copy is missing", missingSince: c.missing_since }, 404);
     if (isTvRequest(req)) {
       // The TV plays by its own Playback profile (tv-spec 3.2): the own file when it plays as-is, else an existing
-      // Fallback it plays. It never asks the Fallback queue to make anything; the Live remux is not built yet.
+      // Fallback it plays, else it plays a Live stream (`/live/:id/index.m3u8`). It never asks the Fallback queue for anything.
       const order = tvJson(c).order;
       if (order === "file") return serveFile(req, join(c.root_path, c.rel_path));
       if (order === "fallback" && c.fallback_file) return serveFile(req, join(s.cfg.remuxDir, c.fallback_file), contentTypeFor(extensionOf(c.fallback_file)));
-      return json({ error: "the TV does not play this Copy as-is and the Live remux is not built yet", order }, 409);
+      return json({ error: "the TV does not play this Copy as-is: it plays as a Live stream", order, live: `/live/${id}/index.m3u8?q=orig` }, 409);
     }
     if (c.playback !== "native") {
       if (!c.fallback_file) {
@@ -467,6 +473,8 @@ export function createHandler(s: Services) {
         if ((m = p.match(/^\/thumbs\/([0-9a-fA-F-]{36})\/(poster|strip)\.webp$/))) return thumbRoute(req, m[1]!, m[2] as "poster" | "strip");
         if (p === "/api/health") return json(health());
         if (p === "/api/tv") return json(s.tv.state());
+        if (p === "/api/home/approvals") return json(await homeApprovals(s.homeServer ?? (() => null)));
+        if (p === "/api/serve-on-launch") return json(s.serveOnLaunch?.state() ?? { available: false, serveOnLaunch: false, openAtLogin: false });
         if (p === "/api/videos") return json(allVideos());
         // The client write seam's reads (sharing-spec §4.3, §4.5, §4.9; src/server/sharedWrites.ts).
         if (p === "/api/kinds") return json(kindsOf(s.db, url.searchParams));
@@ -575,6 +583,12 @@ export function createHandler(s: Services) {
           const r = s.tv.start();
           return r.ok ? json(s.tv.state()) : json({ error: r.error }, r.status);
         }
+        if (p === "/api/serve-on-launch") {
+          const b = await readJson(req);
+          const r = s.serveOnLaunch?.set({ serveOnLaunch: typeof b?.serveOnLaunch === "boolean" ? b.serveOnLaunch : undefined, openAtLogin: typeof b?.openAtLogin === "boolean" ? b.openAtLogin : undefined });
+          if (!r) return json({ error: "not available" }, 409);
+          return r.ok ? json(r.state) : json({ error: r.error }, 422);
+        }
         if (p === "/api/tv/off") {
           s.tv.stop();
           return json(s.tv.state());
@@ -586,6 +600,11 @@ export function createHandler(s: Services) {
             if (!s.tv.approve(b.ip)) return json({ error: "this machine's own address is never a TV" }, 422);
           } else s.tv.deny(b.ip);
           return json(s.tv.state());
+        }
+        if ((m = p.match(/^\/api\/home\/approvals\/([0-9A-Fa-f.:%]{2,64})$/))) {
+          const b = await readJson(req);
+          if (!b || typeof b.allow !== "boolean") return json({ error: "allow (true or false) is required" }, 400);
+          return json(await answerHomeApproval(s.homeServer ?? (() => null), decodeURIComponent(m[1]!), b.allow));
         }
         if ((m = p.match(/^\/api\/(videos|chapters)\/([0-9a-fA-F-]{36})\/favorite$/))) {
           const table = m[1] === "videos" ? "video" : "chapter";

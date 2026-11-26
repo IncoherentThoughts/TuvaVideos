@@ -4,8 +4,9 @@ import type { AudioPreset, AudioState } from "../shared/audio";
 import { pickRandomVideo } from "../shared/random";
 import type { DumpHitDto, SongStudioDto, StudioStateDto } from "../shared/studio";
 import type { VersionInput } from "../shared/lyrics/types";
-import type { ArtistDto, TvStateDto, ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
+import type { ArtistDto, HomeApprovalsDto, TvStateDto,ChapterCreate, ChapterDto, ChapterPatch, FavoriteItem, KeyframeStatusDto, LocalSongCreate, OnboardingDto, ScanDto, SearchResponse, SongDto, SongListDto, VideoDto, VideoPatch } from "../shared/types";
 import { isUuid } from "../shared/ids";
+import type { ServeSettingsDto } from "../shared/types";
 import { navigate, PLAY_PATH, playHref } from "./router";
 import { syncLanded, withFavorite, type SyncSeen } from "../shared/clientCache";
 import { useSession } from "./session";
@@ -49,10 +50,15 @@ export const forgetAllSongs = () => songCache.clear();
 export const api = {
   /** The Library Server (docs/tv-spec.md 2): state, turn on/off, and the Approved TVs prompt. */
   tv: () => get<TvStateDto>("/api/tv"),
+  homeApprovals: () => get<HomeApprovalsDto>("/api/home/approvals"),
+  homeApprove: (ip: string, allow: boolean) => post<HomeApprovalsDto>(`/api/home/approvals/${encodeURIComponent(ip)}`, { allow }),
   tvOn: () => post<TvStateDto>("/api/tv/on"),
   tvOff: () => post<TvStateDto>("/api/tv/off"),
   tvApprove: (ip: string) => post<TvStateDto>("/api/tv/approve", { ip }),
   tvDeny: (ip: string) => post<TvStateDto>("/api/tv/deny", { ip }),
+  /** Serve on launch / Open at login (home-server-spec §2.2). */
+  serveSettings: () => get<ServeSettingsDto>("/api/serve-on-launch"),
+  setServeSettings: (p: { serveOnLaunch?: boolean; openAtLogin?: boolean }) => post<ServeSettingsDto>("/api/serve-on-launch", p),
   tvRemove: (ip: string) => send<TvStateDto>("DELETE", `/api/tv/approved/${encodeURIComponent(ip)}`),
   /** A Song with its Versions and the Videos performing it. Cached: local edits call forgetSong, a Sync clears the
    *  cache (useReloadAfterSync), and so does a Video's Song pointer changing (replaceVideo). Readers of `videos` (who

@@ -35,7 +35,7 @@ describe("TV Playback profile decision", () => {
     expect(decide(facts("mp4", "h264", "aac", 1080, 1920))).toEqual(ok);
     expect(decide(facts("mp4", "h264", "aac", 2160, 3840))).toEqual(ok);
     const over = decide(facts("mp4", "h264", "aac", 1080, 5000));
-    expect(over.video).toBe("copy");
+    expect(over.video).toBe("transcode"); // the Live stream scales it down
     expect(over.reason).toContain("5000");
   });
 
@@ -61,16 +61,21 @@ describe("TV Playback profile decision", () => {
     expect(d.reason).toContain(".avi");
     expect(decide(facts("avi", "h264", "wmapro")).audio).toBe("transcode");
     expect(decide(facts("MKV", "h264", "aac"))).toEqual(ok); // the extension is case-insensitive
+    // only h264 and hevc go into a Live stream's segments as they are; the rest is re-encoded
+    expect(decide(facts("avi", "hevc", "aac")).video).toBe("copy");
+    expect(decide(facts("avi", "mpeg4", "mp3")).video).toBe("transcode");
+    expect(decide(facts("avi", "vp9", "aac")).video).toBe("transcode");
+    expect(decide(facts("avi", "h264", "aac", 1920, 1080, 120)).video).toBe("transcode");
   });
 
-  test("an unplayable video codec or a frame rate over the codec's limit is a video copy", () => {
-    expect(decide(facts("mkv", "mpeg4", "aac")).video).toBe("copy");
-    expect(decide(facts("mp4", "h264", "aac", 1920, 1080, 120)).video).toBe("copy"); // h264 is limited to 60 fps
+  test("an unplayable video codec or a frame rate over the codec's limit is a video transcode (home-server-spec 7.1)", () => {
+    expect(decide(facts("mkv", "mpeg4", "aac")).video).toBe("transcode");
+    expect(decide(facts("mp4", "h264", "aac", 1920, 1080, 120)).video).toBe("transcode"); // h264 is limited to 60 fps
     expect(decide(facts("mkv", "hevc", "aac", 1920, 1080, 120))).toEqual(ok); // hevc to 120
     expect(decide(facts("mkv", "av1", "opus", 1920, 1080, 120))).toEqual(ok);
     expect(decide(facts("webm", "vp9", "opus", 1920, 1080, 1000)).video).toBe("directplay"); // a time base, not a rate
     expect(decide(facts("webm", "vp9", "opus", 1920, 1080, null))).toEqual(ok); // no frame rate known
-    expect(decide(facts("mkv", null, "aac")).video).toBe("copy");
+    expect(decide(facts("mkv", null, "aac")).video).toBe("transcode");
   });
 
   test("the order: own file, else an existing Fallback the profile plays, else live", () => {
@@ -95,8 +100,9 @@ describe("route list", () => {
     }
   });
 
-  test("the writes are exactly resume and view; nothing editable is listed", () => {
-    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual([`/api/videos/${V(1)}/resume`, `/api/videos/${V(1)}/view`]);
+  test("the writes are exactly resume and view, plus the Approved Macs' Allow / Deny; nothing editable is listed", () => {
+    expect(TV_ROUTES.filter((r) => r.method !== "GET").map((r) => r.sample)).toEqual([`/api/videos/${V(1)}/resume`, `/api/videos/${V(1)}/view`, "/api/approvals/192.168.4.56"]);
+    expect(TV_ROUTES.filter((r) => r.kind === "approvals").map((r) => `${r.method} ${r.sample}`)).toEqual(["GET /api/approvals", "POST /api/approvals/192.168.4.56"]);
     for (const bad of ["/copy/1/pcm", "/api/studio/state", "/api/roots", "/api/scan", "/api/rescan", "/api/quit", "/app.js", "/api/tv", "/favorites", "/themes/a/b.css"]) {
       expect(matchTvRoute("GET", bad)).toBeNull();
     }
@@ -278,7 +284,8 @@ describe("Library Server listener", () => {
       const path = r.sample.replace(`/videos/${V(1)}`, `/videos/${vid}`).replace("/copies/1", `/copies/${copy}`).replace("/copy/1", `/copy/${copy}`).replace(`/thumbs/${V(1)}/`, `/thumbs/${vid}/`).replace("/live/1/", `/live/${copy}/`);
       const res = await tvReq(path, { method: r.method, headers: tvModel, body: r.method === "POST" ? JSON.stringify({ resumeS: 3 }) : undefined });
       expect([r.method, path, res.headers.get("x-tuva-route") ?? res.headers.get("x-tv-route")]).toEqual([r.method, path, null]);
-      if (r.kind === "live") expect(res.status).toBe(404); // until tv-live-remux
+      if (r.kind === "live") expect(res.status).toBe(200); // the playlist (home-server-spec 7.2)
+      else if (r.kind === "approvals") expect(res.status).toBe(403); // Approved Macs only (home-server-spec §3.2)
       else if (path.startsWith("/thumbs/")) expect(res.status).toBe(404); // no Thumbnail in a fixture library, still the handler's answer
       else expect(res.status).toBeLessThan(500); // some samples name nothing in the fixture library (a Song): still the handler's own answer
     }

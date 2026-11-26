@@ -7,7 +7,8 @@ export type TvRouteKind =
   | "health" // answered to anyone, by the Library Server itself
   | "api" // a localhost handler, for Approved TVs
   | "ui" // the TV app's UI files, served by the Library Server
-  | "live"; // the Live remux streams (tv-live-remux)
+  | "live" // the Live streams (home-server-spec 7)
+  | "approvals"; // pending TV approvals and Allow / Deny, for Approved Macs only (home-server-spec §3.2)
 
 export interface TvRoute {
   method: "GET" | "POST";
@@ -42,6 +43,9 @@ export const TV_ROUTES: readonly TvRoute[] = [
   // the only writes
   { method: "POST", pattern: new RegExp(`^/api/videos/${VID}/resume$`), kind: "api", sample: `/api/videos/${V1}/resume` },
   { method: "POST", pattern: new RegExp(`^/api/videos/${VID}/view$`), kind: "api", sample: `/api/videos/${V1}/view` },
+  // Approved Macs only (home-server-spec §2.3, §3.2)
+  { method: "GET", pattern: /^\/api\/approvals$/, kind: "approvals", sample: "/api/approvals" },
+  { method: "POST", pattern: /^\/api\/approvals\/[0-9A-Fa-f.:%]{2,64}$/, kind: "approvals", sample: "/api/approvals/192.168.4.56" },
   // TV-only
   { method: "GET", pattern: /^\/$/, kind: "ui", sample: "/" },
   { method: "GET", pattern: /^\/tv\.js$/, kind: "ui", sample: "/tv.js" },

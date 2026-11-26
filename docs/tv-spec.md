@@ -171,13 +171,13 @@ In order, each step with a 2 s timeout:
 2. a **sweep of the TV's own /24** on 4401 (the TV's address from `webapis.network`, else the last address's subnet), 32 requests in flight at a time;
 3. **typed**: the shell shows a numeric field for the Mac's address with an **on-screen number pad** under it (1–9, dot, 0, delete, then Connect), walked with the arrows and pressed with Enter, since newer remotes hide their digits behind a 123 panel; the remote's digits type too and Back deletes. The field is pre-filled with the TV's subnet (a bare `83` means `192.168.4.83`), so only the last number is typed; it says the Mac's TV button shows the address (§2.4). **The first time nothing answers after a launch, the field opens by itself** with the pad focused, so no Enter or remote menu is needed; Back on the empty field returns to the looking screen, which offers the field again with Enter (§4.3) and does not reopen it by itself. The sequence keeps retrying every 5 s **also while the field is open**: a Library Server switched on meanwhile, or a sweep that succeeds on a later round, takes the screen without anything typed. Any state other than looking (Approve, ready, turned off) replaces the field.
 
-The first health answer naming "TuvaVideos Library Server" wins and is stored. The shell then requests `/api/videos`; a 403 shows "Approve this TV on the Mac" and retries every 3 s until the user clicks Allow.
+**Superseded by docs/home-server-spec.md §4.2 (#245):** steps 1 and 2 run together and every answer is collected; one answer connects, several show a server picker. The health answer must contain "TuvaVideos TV Server" (the wire string, unchanged); the server connected to is stored. The shell then requests `/api/videos`; a 403 shows "Approve this TV on the Mac" and retries every 3 s until the user clicks Allow.
 
 ### 4.3 Offline states
 
 - No server found: **"Looking for TuvaVideos on the Mac…"** with the step it is on; retries the whole sequence every 5 s; the first time nothing answers the typed field opens by itself (§4.2); Enter opens it again; Back exits the app.
 - The UI did not start (§4.1): **"The TV app could not start"** with the reason; Enter reloads the shell, Back exits.
-- Server stops mid-session (health stops answering twice in a row, 5 s apart; the shell watches it after every success and the UI may call `window.tuvaTv.restart()` on a 403 or a dead stream): the shell shows **"Library Server turned off"** over the paused frame or the current screen, keeps the last Resume write, and offers Enter to look again (back to the discovery screen) or Back to exit.
+- Server stops mid-session (health stops answering twice in a row, 5 s apart; the shell watches it after every success and the UI may call `window.tuvaTv.restart()` on a 403 or a dead stream): the shell shows **"‹name› stopped answering"** (home-server-spec §4.2; "The Library Server" when the server sends no name) over the paused frame or the current screen, keeps the last Resume write, and offers Enter to look again (back to the discovery screen: sweep, then the picker when several answer) or Back to exit.
 - Denied (a 403 after an earlier success, or Remove in the menu): the same "Approve this TV on the Mac" screen.
 
 ### 4.4 Install and update
@@ -210,7 +210,7 @@ Verdict of #50 (variant B "Rails"); the prototype's `tv/home-prototype/variants.
 
 ### 5.2 Side pane
 
-- **Back** on the home, or **Left** at the start of a rail, slides in a Netflix-style pane from the left: **Library** (with filter chips under it: Type, Favorites, Sort, direction; Enter cycles a chip; the chips are held in memory for the session and are the same ones the Library grid shows in its chip row), **Favorites**, **Artists**, **Songs**, **Search**, **Random**, **Shuffle** (starts a whole-library Playlist, §6.7). Each of the first four opens a full grid in the main area.
+- **Back** on the home, or **Left** at the start of a rail, slides in a Netflix-style pane from the left: **Library** (with filter chips under it: Type, Favorites, Sort, direction; Enter cycles a chip; the chips are held in memory for the session and are the same ones the Library grid shows in its chip row), **Favorites**, **Artists**, **Songs**, **Search**, **Random**, **Shuffle** (starts a whole-library Playlist, §6.7), and at the bottom **Server: ‹name›** (home-server-spec §4.2: Enter lists the Library Servers a fresh sweep finds, picking another reloads the shell onto it; hidden on shells older than #245). Each of the first four opens a full grid in the main area.
 - **Right** closes the pane back to the grid or rails; **Back** inside the pane opened over the home **exits the app** (Samsung remotes have no Menu key; Back is the convention); opened over a grid (Left at the first column) it only closes. Back from a grid that was opened from the pane reopens the pane on the same item.
 
 ### 5.3 Grids

@@ -1,4 +1,4 @@
-// Finding the TV Server (docs/tv-spec.md §4.2, §4.3). No DOM, no Tizen: every outside thing is injected, so bun tests
+// Finding the Library Servers (docs/tv-spec.md §4.2, §4.3; docs/home-server-spec.md §4.2). No DOM, no Tizen: every outside thing is injected, so bun tests
 // drive it with a fake fetch and a fake clock. Plain ES2020 in a classic script (the packaged shell has no bundler);
 // it publishes `TuvaDiscovery` on the global object.
 //
@@ -13,18 +13,23 @@
 // }
 //
 // States passed to onState:
-//   { kind: "looking", step: "last" | "sweep" | "typed" | "access", detail }   typed = nothing answered; Enter opens the field
+//   { kind: "looking", step: "pinned" | "sweep" | "typed" | "access", detail, found? }
+//                                              sweep = the last address and the /24 together (found: names so far);
+//                                              pinned = the server chosen by hand before a reload;
+//                                              typed = nothing answered; Enter opens the field
 //   { kind: "typing", prefix, error? }         the typed field; opened by itself the first time nothing answers. The
 //                                              search keeps retrying behind it and a server it finds takes the screen.
 //   { kind: "denied", base }                  403 from /api/videos: approve this TV on the Mac
-//   { kind: "ready", base }
-//   { kind: "off", base }                     health stopped answering after a success
+//   { kind: "picker", servers: [{ address, name, home }], focus }   several answered: the user picks (choose(address))
+//   { kind: "ready", base, address, name }
+//   { kind: "off", base, address, name }      health stopped answering after a success
 (function (root) {
   "use strict"
 
   const PORT = 4401
   const HEALTH_MARK = "TuvaVideos TV Server"
   const STORE_KEY = "tuva.tv.last"
+  const PIN_KEY = "tuva.tv.pin" // the server picked by hand (side pane, or the UI's restart): one reload goes straight to it
   const PROBE_TIMEOUT_MS = 2000
   const ACCESS_TIMEOUT_MS = 10000
   const SWEEP_IN_FLIGHT = 32
@@ -32,6 +37,7 @@
   const DENIED_RETRY_MS = 3000
   const WATCH_MS = 5000
   const WATCH_MISSES = 2
+  const PIN_TRIES = 3
 
   const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
@@ -55,9 +61,56 @@
 
   const baseOf = (addr) => `http://${addr}:${PORT}`
 
+  /** A health body -> { name, home }, or null when it is not a Library Server's. Older servers have no name. */
+  function parseHealth(text) {
+    const t = String(text)
+    if (!t.includes(HEALTH_MARK)) return null
+    try {
+      const j = JSON.parse(t)
+      return { name: typeof j.name === "string" && j.name.trim() ? j.name.trim() : null, home: j.home === true }
+    } catch {
+      return { name: null, home: false }
+    }
+  }
+
+  const octets = (a) => a.split(".").map(Number)
+  function compareAddr(a, b) {
+    const x = octets(a)
+    const y = octets(b)
+    for (let i = 0; i < 4; i++) if (x[i] !== y[i]) return x[i] - y[i]
+    return 0
+  }
+
+  /**
+   * The picker's list: one entry per address, the Home Server first, then by name (a server without a name sorts by
+   * its address after the named ones), and the focus on the last used one (else the first).
+   */
+  function orderServers(list, lastAddr) {
+    const seen = {}
+    const servers = []
+    for (const s of list) {
+      if (!s || seen[s.address]) continue
+      seen[s.address] = true
+      servers.push({ address: s.address, name: s.name || null, home: s.home === true })
+    }
+    servers.sort((a, b) => {
+      if (a.home !== b.home) return a.home ? -1 : 1
+      if (!a.name !== !b.name) return a.name ? -1 : 1
+      if (a.name && b.name) {
+        const x = a.name.toLowerCase()
+        const y = b.name.toLowerCase()
+        if (x !== y) return x < y ? -1 : 1
+      }
+      return compareAddr(a.address, b.address)
+    })
+    const i = servers.findIndex((s) => s.address === lastAddr)
+    return { servers, focus: i < 0 ? 0 : i }
+  }
+
   function create(env) {
     const clock = env.clock
     let gen = 0 // bumping it cancels every loop of the previous run
+    const known = {} // every address that answered health in this run (lost on reload)
     let typing = false
     let autoOpened = false // the typed field opens by itself once per start(), the first time nothing answers
     let current = null
@@ -98,34 +151,70 @@
       })
     }
 
-    /** Does a TuvaVideos TV Server answer on addr:4401? */
-    async function probe(addr) {
+    /** { address, name, home } when a Library Server answers on addr:4401, else null. */
+    async function probeInfo(addr) {
       try {
         return await timed(PROBE_TIMEOUT_MS, async (signal) => {
           const res = await env.fetch(`${baseOf(addr)}/api/health`, { signal })
-          if (!res.ok) return false
-          return String(await res.text()).includes(HEALTH_MARK)
+          if (!res.ok) return null
+          const h = parseHealth(await res.text())
+          return h ? { address: addr, name: h.name, home: h.home } : null
         })
       } catch {
-        return false
+        return null
       }
     }
+    const probe = async (addr) => !!(await probeInfo(addr))
 
-    /** First address on prefix.1-254 whose health answers, 32 requests in flight. */
-    async function sweep(prefix, skip, myGen) {
+    /** Every address on prefix.1-254 (minus skip) whose health answers, 32 requests in flight. */
+    async function sweep(prefix, skip, alive, onFound) {
       const hosts = []
       for (let i = 1; i <= 254; i++) if (!skip.includes(prefix + i)) hosts.push(prefix + i)
       let next = 0
-      let found = null
       const worker = async () => {
-        while (found === null && myGen === gen) {
+        while (alive()) {
           const i = next++
           if (i >= hosts.length) return
-          if (await probe(hosts[i])) found = found || hosts[i]
+          const info = await probeInfo(hosts[i])
+          if (info && alive()) onFound(info)
         }
       }
       await Promise.all(Array.from({ length: SWEEP_IN_FLIGHT }, worker))
+    }
+
+    /**
+     * The last address and the sweep of the TV's /24, together, collecting every answer (home-server-spec §4.2).
+     * Servers that answered earlier in this run (a typed address on another subnet, say) are asked again too.
+     * onStep(names) reports progress. Resolves to the answers in the order they came.
+     */
+    async function collect(alive, onStep) {
+      const last = lastAddress()
+      const found = []
+      const add = (info) => {
+        known[info.address] = true
+        if (found.some((f) => f.address === info.address)) return
+        found.push(info)
+        if (onStep) onStep(found.map((f) => f.name || f.address))
+      }
+      const ownIp = safe(env.localIp)
+      const prefix = subnetPrefix(ownIp) || subnetPrefix(last)
+      const jobs = []
+      const direct = []
+      if (last && isAddress(last)) direct.push(last)
+      for (const a in known) if (direct.indexOf(a) < 0 && (!prefix || a.indexOf(prefix) !== 0)) direct.push(a)
+      if (onStep && (prefix || direct.length)) onStep([])
+      for (const a of direct) jobs.push(probeInfo(a).then((info) => info && alive() && add(info)))
+      if (prefix) {
+        const skip = direct.slice()
+        if (ownIp) skip.push(ownIp)
+        jobs.push(sweep(prefix, skip, alive, add))
+      }
+      await Promise.all(jobs)
       return found
+    }
+    const sweepDetail = () => {
+      const p = subnetPrefix(safe(env.localIp)) || subnetPrefix(lastAddress())
+      return p ? `${p}1–254` : ""
     }
 
     /** "ok" | "denied" | "down": GET /api/videos with this TV's name. */
@@ -146,6 +235,15 @@
         env.storage.setItem(STORE_KEY, addr)
       } catch {}
     }
+    function takePin() {
+      try {
+        const p = env.storage.getItem(PIN_KEY)
+        if (p) env.storage.removeItem(PIN_KEY)
+        return p && isAddress(p) ? p : null
+      } catch {
+        return null
+      }
+    }
     function lastAddress() {
       try {
         return env.storage.getItem(STORE_KEY) || env.seedAddress || null
@@ -154,17 +252,21 @@
       }
     }
 
-    // Server found at addr: keep asking /api/videos until the Mac approves this TV, then watch its health.
-    async function connect(addr, myGen) {
+    // Server found: keep asking /api/videos until the Mac approves this TV, then watch its health.
+    let connected = null // { address, name, home } of the server the UI runs from
+    async function connect(info, myGen) {
+      const addr = info.address
       const base = baseOf(addr)
       for (;;) {
-        emit({ kind: "looking", step: "access", detail: addr })
+        emit({ kind: "looking", step: "access", detail: addr, name: info.name })
         const r = await checkAccess(base)
         if (myGen !== gen) return false
         if (r === "ok") {
           remember(addr)
-          emit({ kind: "ready", base })
-          watch(addr, base, myGen)
+          known[addr] = true
+          connected = info
+          emit({ kind: "ready", base, address: addr, name: info.name })
+          watch(info, base, myGen)
           return true
         }
         if (r === "down") return false
@@ -175,45 +277,46 @@
     }
 
     // After a success: two health misses in a row (each its own 2 s timeout) is "turned off".
-    async function watch(addr, base, myGen) {
+    async function watch(info, base, myGen) {
       let misses = 0
       while (myGen === gen) {
         await sleep(WATCH_MS)
         if (myGen !== gen) return
-        misses = (await probe(addr)) ? 0 : misses + 1
+        misses = (await probe(info.address)) ? 0 : misses + 1
         if (misses >= WATCH_MISSES) {
-          if (myGen === gen) emit({ kind: "off", base })
+          if (myGen === gen) emit({ kind: "off", base, address: info.address, name: info.name })
           return
         }
       }
     }
 
-    async function search(myGen) {
+    async function search(myGen, pin) {
+      const alive = () => myGen === gen
+      if (pin) {
+        // Picked by hand before this reload: straight to it, no picker. Gone meanwhile: look for all as usual.
+        // A few tries: it answered a moment ago, and a picked server must not lose to whichever answers the sweep.
+        emit({ kind: "looking", step: "pinned", detail: pin })
+        let info = null
+        for (let i = 0; i < PIN_TRIES && !info; i++) {
+          if (i) await sleep(RETRY_MS / 5)
+          if (!alive()) return
+          info = await probeInfo(pin)
+        }
+        if (!alive()) return
+        if (info && (await connect(info, myGen))) return
+        if (!alive()) return
+      }
       for (;;) {
-        const last = lastAddress()
-        const tried = []
-        let addr = null
-        if (last && isAddress(last)) {
-          emit({ kind: "looking", step: "last", detail: last })
-          tried.push(last)
-          if (await probe(last)) addr = last
-          if (myGen !== gen) return
+        const found = await collect(alive, (names) => emit({ kind: "looking", step: "sweep", detail: sweepDetail(), found: names }))
+        if (!alive()) return
+        if (found.length > 1) {
+          const o = orderServers(found, lastAddress())
+          emit({ kind: "picker", servers: o.servers, focus: o.focus })
+          return // the user picks: choose()
         }
-        if (!addr) {
-          let ownIp = null
-          try {
-            ownIp = env.localIp()
-          } catch {}
-          const prefix = subnetPrefix(ownIp) || subnetPrefix(last)
-          if (prefix) {
-            emit({ kind: "looking", step: "sweep", detail: `${prefix}1–254` })
-            addr = await sweep(prefix, ownIp ? tried.concat(ownIp) : tried, myGen)
-            if (myGen !== gen) return
-          }
-        }
-        if (addr) {
-          if (await connect(addr, myGen)) return
-          if (myGen !== gen) return
+        if (found.length === 1) {
+          if (await connect(found[0], myGen)) return
+          if (!alive()) return
           // the server stopped answering between health and /api/videos: look again
         } else if (!autoOpened && !typing) {
           // Nothing answered: open the field (and its number pad) at once, so no remote menu is needed to get there.
@@ -223,7 +326,7 @@
           emit({ kind: "looking", step: "typed", detail: "" })
         }
         await sleep(RETRY_MS) // keeps retrying behind an open field: a server switched on meanwhile is still found
-        if (myGen !== gen) return
+        if (!alive()) return
       }
     }
 
@@ -231,7 +334,8 @@
       const myGen = ++gen
       typing = false
       autoOpened = false
-      search(myGen)
+      connected = null
+      search(myGen, takePin())
     }
 
     return {
@@ -257,10 +361,38 @@
         }
         const myGen = ++gen
         typing = false
-        if (!(await connect(addr, myGen)) && myGen === gen) search(myGen)
+        const info = (await probeInfo(addr)) || { address: addr, name: null, home: false }
+        if (myGen !== gen) return true
+        if (!(await connect(info, myGen)) && myGen === gen) search(myGen)
         return true
       },
-      /** Enter on "TV Server turned off". */
+      /** Enter on a picker row. */
+      async choose(address) {
+        const row = current && current.kind === "picker" ? current.servers.find((s) => s.address === address) : null
+        const myGen = ++gen
+        const info = row || (await probeInfo(address)) || { address, name: null, home: false }
+        if (myGen !== gen) return
+        if (!(await connect(info, myGen)) && myGen === gen) search(myGen)
+      },
+      /**
+       * The side pane's Server list: a fresh collection, without touching the running session. Each entry says
+       * whether it is the server the UI runs from (listed even when its health missed this once).
+       */
+      async listServers() {
+        const found = await collect(() => true)
+        if (connected && !found.some((f) => f.address === connected.address)) found.push(connected)
+        const o = orderServers(found, connected ? connected.address : lastAddress())
+        return o.servers.map((s) => ({ address: s.address, name: s.name, home: s.home, current: !!connected && s.address === connected.address }))
+      },
+      /** The next start() goes straight to this address (the shell reloads right after). */
+      pin(address) {
+        try {
+          if (isAddress(address)) env.storage.setItem(PIN_KEY, address)
+        } catch {}
+      },
+      /** The server the UI runs from, or null. */
+      connected: () => connected,
+      /** Look again on "‹name› stopped answering": sweep and picker. */
       lookAgain: start,
       stop() {
         gen++
@@ -282,6 +414,8 @@
     isAddress,
     subnetPrefix,
     normalizeTyped,
-    constants: { PORT, HEALTH_MARK, PROBE_TIMEOUT_MS, SWEEP_IN_FLIGHT, RETRY_MS, DENIED_RETRY_MS, WATCH_MS, STORE_KEY },
+    parseHealth,
+    orderServers,
+    constants: { PORT, HEALTH_MARK, PROBE_TIMEOUT_MS, SWEEP_IN_FLIGHT, RETRY_MS, DENIED_RETRY_MS, WATCH_MS, STORE_KEY, PIN_KEY },
   }
 })(typeof globalThis !== "undefined" ? globalThis : window)

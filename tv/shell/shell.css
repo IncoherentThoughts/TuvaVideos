@@ -18,3 +18,9 @@ html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; backgro
 #shell .pad span { height: 80px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: var(--bg3); font: 600 46px/1 "JetBrains Mono", "Tuva Symbols", ui-monospace, monospace; }
 #shell .pad span.go { grid-column: 1 / -1; font: 600 36px/1 "IBM Plex Sans", "Inter", "Tuva Symbols", system-ui, sans-serif; }
 #shell .pad span.f { background: var(--accent); color: var(--accent-fg); }
+#shell .servers { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; min-width: 900px; }
+#shell .servers .row { display: flex; align-items: baseline; gap: 24px; padding: 18px 32px; border-radius: 14px; background: var(--bg3); text-align: left; }
+#shell .servers .row.f { background: var(--accent); color: var(--accent-fg); }
+#shell .servers .nm { flex: 1; font-size: 44px; font-weight: 600; }
+#shell .servers .tag { font-size: 28px; font-weight: 600; padding: 2px 14px; border: 2px solid currentColor; border-radius: 10px; }
+#shell .servers .ad { font: 32px/1 "JetBrains Mono", ui-monospace, monospace; opacity: .8; }

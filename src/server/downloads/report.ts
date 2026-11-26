@@ -15,6 +15,9 @@ export const REASON_WORDS: Record<FailureReason, string> = {
   disk_full: "disk full",
   network: "network",
   no_js_runtime: "no JavaScript runtime",
+  home_unreachable: "Home Server unreachable",
+  size_mismatch: "size mismatch",
+  hash_mismatch: "hash mismatch",
   unknown: "unknown error",
 };
 

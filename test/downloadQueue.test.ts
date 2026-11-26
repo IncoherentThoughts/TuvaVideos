@@ -841,7 +841,7 @@ describe("the log and the Failure report (§6, §9)", () => {
 
   test("reason words cover every class", () => {
     expect(Object.values(REASON_WORDS).sort()).toEqual(
-      ["unavailable", "private", "not available in your country", "login wall or removed post", "private: follow required", "cookies expired", "needs sign-in", "rate limited", "rate limited", "disk full", "network", "no JavaScript runtime", "unknown error"].sort(),
+      ["unavailable", "private", "not available in your country", "login wall or removed post", "private: follow required", "cookies expired", "needs sign-in", "rate limited", "rate limited", "disk full", "network", "no JavaScript runtime", "Home Server unreachable", "size mismatch", "hash mismatch", "unknown error"].sort(),
     );
     expect(reasonWords(null)).toBe("unknown error");
     expect(reasonWords("something new")).toBe("unknown error");

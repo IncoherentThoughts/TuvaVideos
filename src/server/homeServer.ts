@@ -45,6 +45,8 @@ export interface HomeCopyRow {
   duration_s: number | null;
   available: number;
   playback: "native" | "remux" | "transcode";
+  /** Where the Home Server keeps the file inside its Root; null from a Home Server that does not say (§8). */
+  rel_path?: string | null;
 }
 
 /** What the grid needs from the home index, for this Mac's Videos as they are now. */
@@ -73,12 +75,12 @@ export function storeHomeIndex(db: Db, index: HomeIndexDto, local: readonly Iden
   db.transaction(() => {
     db.query("DELETE FROM home_copy").run();
     db.query("DELETE FROM home_video").run();
-    const ic = db.prepare("INSERT OR REPLACE INTO home_copy (id, video_id, youtube_id, content_hash, size, container, video_codec, audio_codec, width, height, duration_s, available, playback) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const ic = db.prepare("INSERT OR REPLACE INTO home_copy (id, video_id, youtube_id, content_hash, size, container, video_codec, audio_codec, width, height, duration_s, available, playback, rel_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     const iv = db.prepare("INSERT OR REPLACE INTO home_video (id, youtube_id, content_hash, shared, title, title_latin, type, created_at, thumb, chapters) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     for (const v of index.videos) {
       for (const c of v.copies) {
         const playback = c.playback === "native" || c.playback === "remux" ? c.playback : "transcode";
-        ic.run(c.id, v.id, v.youtubeId ?? null, v.contentHash ?? null, c.size ?? 0, c.container ?? null, c.videoCodec ?? null, c.audioCodec ?? null, c.width ?? null, c.height ?? null, c.durationS ?? null, c.available ? 1 : 0, playback);
+        ic.run(c.id, v.id, v.youtubeId ?? null, v.contentHash ?? null, c.size ?? 0, c.container ?? null, c.videoCodec ?? null, c.audioCodec ?? null, c.width ?? null, c.height ?? null, c.durationS ?? null, c.available ? 1 : 0, playback, c.relPath ?? null);
         copies++;
       }
       if (!matched.has(v.id)) {

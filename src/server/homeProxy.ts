@@ -8,7 +8,8 @@ import { UUID_PATTERN } from "../shared/ids";
 export function homeUpstream(pathname: string, search = ""): string | null {
   if (!pathname.startsWith("/home/")) return null;
   const rest = pathname.slice("/home".length);
-  if (/^\/copy\/\d+$/.test(rest)) return rest;
+  // `?download=1` (the whole file for a Download, §8) is allowed on the Copy route only, and nothing else rides along.
+  if (/^\/copy\/\d+$/.test(rest)) return rest + (search === "?download=1" ? search : "");
   if (/^\/live\/\d+\/(index\.m3u8|seg\d+\.ts)$/.test(rest)) return rest + (/^\?q=(orig|\d{3,4})$/.test(search) ? search : "");
   if (/^\/api\/copies\/\d+(\/keyframes)?$/.test(rest)) return rest;
   if (new RegExp(`^/api/videos/${UUID_PATTERN}/audio$`).test(rest)) return rest;

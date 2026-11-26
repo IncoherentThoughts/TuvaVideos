@@ -52,7 +52,7 @@ Everything Approved TVs get (tv-spec §2.3), plus:
 | `GET /api/me/state?since=<ts>` | Resume positions and Favorites changed since `ts` (§6). |
 | `PUT /api/me/resume`, `PUT /api/me/favorite` | Writes from another machine of the owner's (§6). |
 | `GET /api/approvals`, `POST /api/approvals/:ip` | Pending TV approvals and Allow / Deny (§3.2). |
-| `GET /copy/:id` with `download=1` | The whole file for a Download from the Home Server (§8), Range-resumable. |
+| `GET /copy/:id` with `download=1` | The whole file for a Download from the Home Server (§8), Range-resumable. **As built (#246):** Macs only (403 to a TV), 503 `retry-after` while the Copy's Root is unmounted; the index's Copies carry `relPath`. |
 
 Macs never get anything the TV is denied (tv-spec §2.3, "Never exposed").
 
@@ -196,6 +196,15 @@ Builds tv-spec §3.4, which was specified but never built (`src/server/tv.ts` an
 - **[proposed]** For a `home_video` (never Shared), the scan's new local Video takes the mini's title, Latin title, Type and Chapters as its own Unshared data; Song and Version pointers to the mini's Local rows are dropped.
 - Failure classes added to the Failure report: **Home Server unreachable** (retried when it returns), **disk full**, **size or hash mismatch**.
 - Reuses the downloader's queue, dialog, card and Failure report (`docs/downloader-spec.md` §4, §7–§9).
+- **As built (#246):**
+  - **The index tells where the file is.** The spec said the file goes in "at the mini's `rel_path`", but the home index (§5.1) did not carry it. Each index Copy now has `relPath` (the Home Server's `copy.rel_path`), stored in `home_copy.rel_path`. A Home Server too old to say falls back to the title in the Root's top folder. The path is made safe (no `..`, nothing absolute), and a name already taken in the Root becomes `name (home).ext` rather than overwriting.
+  - **Migration 0028** rebuilds `download_item` (the CHECK gains `'home'`, a `home_json` column holds the item's snapshot: the Preferred Copy's id, size, `rel_path`, the Video's SHA-256 if it has one, and for a `home_video` its titles, Type and Chapters), adds `home_copy.rel_path` and drops the stored index ETag so the next fetch brings the new field. A run does not depend on the index staying put.
+  - **The card.** An On the Home Server card gets the download button (top right, opposite the server mark). It opens a small dialog: source line "Home Server · name · size" (no quality choice), destination = this Mac's mounted Roots, a note that the file lands at the same place as on the Home Server. It posts `POST /api/downloads/card { videoId, source: "home", destDir }`. The destination must be a Root itself (not a folder inside one), since the file goes to the Home Server's `rel_path` inside it. The bulk dialog is unchanged (it is for yt-dlp sites).
+  - **`/copy/:id?download=1`** (§2.3) is the Copy's file as it is, whatever the Playback profile says, `Range`-resumable; refused (403) to a TV and answered 503 `retry-after` while its Root is unmounted. The proxy (§5.4) allows `?download=1` on `/home/copy/:id` and nothing else in the query. The queue calls the proxy function in this process (no loopback hop), so the same allowlist and header rules apply.
+  - **The run.** Partial file `downloads/<job>/<item>.part` in the data dir; a drop, a 30 s stall, a 5xx or a short body is "Home Server unreachable": the item waits (`waiting`, retried after 30 s, 1, 2, then every 5 min) and the next attempt continues with `Range: bytes=<size>-` (a `200` restarts from byte 0). After that the size must equal the index's; a Video identified by its bytes also has its SHA-256 checked. Then the file is renamed into the Root (copied when the Root is on another volume) and scanned (`scanFile`). Cancel deletes the partial. No yt-dlp is needed.
+  - **Unshared data.** Only for a `home_video` and only for a Video the scan just made (not Shared by a Sync): its title, Latin title (marked manual), Type and Chapters (confirmed, `source = manual`) become the new local Video's own data. The index carries no Song or Version pointers, so "dropped" is automatic. A matched Video keeps its own data.
+  - **Failure classes** in the Failure report: "Home Server unreachable" (never terminal), "disk full" (free space is checked before the fetch against what is left to fetch, and `ENOSPC` while writing or moving; it pauses the queue as for yt-dlp), "size mismatch", "hash mismatch" (the file is deleted; Retry starts over); a Copy the Home Server no longer has fails as "unavailable".
+  - After the download the Video is no longer On the Home Server (it has an Available Copy), but it still carries `home` and `homeCopies` while the Home Server holds a twin, which is how Preferred Copy (§5.3) can still pick the Home Server's Copy.
 
 ---
 

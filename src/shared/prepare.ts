@@ -1,7 +1,9 @@
 // The client side of the "preparing" contract (spec 3.3, 3.4): `GET /copy/:id` answers 503 + JSON state while a
 // Fallback is made; the UI polls `/api/copies/:id` and starts playback when it is ready. The fetch and the clock are
 // injected so a stub can drive it in tests.
-import { readPrepare } from "./copies";
+import { copyRoutes, readPrepare } from "./copies";
+
+type Routes = ReturnType<typeof copyRoutes>;
 
 export type PrepareResult = "ready" | "failed" | "cancelled";
 
@@ -26,8 +28,8 @@ const MAX_WAIT_MS = 60 * 60_000;
 type First = { done: PrepareResult } | { progress: number | null };
 
 /** One `GET /copy/:id` (a 1-byte Range): ready, failed, or a Fallback being made (a 503 carrying its state). */
-async function requestCopy(id: number, deps: PrepareDeps): Promise<First> {
-  const first = await deps.fetch(`/copy/${id}`, { headers: { range: "bytes=0-0" } }).catch(() => null);
+async function requestCopy(routes: Routes, deps: PrepareDeps): Promise<First> {
+  const first = await deps.fetch(routes.file, { headers: { range: "bytes=0-0" } }).catch(() => null);
   if (deps.cancelled()) return { done: "cancelled" };
   if (!first) return { done: "failed" };
   if (first.status !== 503) {
@@ -46,8 +48,10 @@ async function requestCopy(id: number, deps: PrepareDeps): Promise<First> {
  * failures fail, a Fallback state of `none` (the job was dropped, or the Copy now plays as-is) asks `/copy/:id` again,
  * and an overall deadline ends it.
  */
-export async function awaitCopy(id: number, deps: PrepareDeps): Promise<PrepareResult> {
-  let r = await requestCopy(id, deps);
+export async function awaitCopy(copy: number | { id: number; homeId?: number }, deps: PrepareDeps): Promise<PrepareResult> {
+  // a Home Server Copy (home-server-spec §5.4) is asked for, and its Fallback there watched, through the `/home` proxy
+  const routes = copyRoutes(typeof copy === "number" ? { id: copy } : copy);
+  let r = await requestCopy(routes, deps);
   if ("done" in r) return r.done;
   deps.onProgress(r.progress);
   const pollMs = deps.pollMs ?? 700;
@@ -59,7 +63,7 @@ export async function awaitCopy(id: number, deps: PrepareDeps): Promise<PrepareR
     waited += pollMs;
     if (deps.cancelled()) return "cancelled";
     if (waited > (deps.maxWaitMs ?? MAX_WAIT_MS)) return "failed";
-    const res = await deps.fetch(`/api/copies/${id}`).catch(() => null);
+    const res = await deps.fetch(routes.info).catch(() => null);
     if (res?.status === 404) return "failed"; // the Copy was deleted meanwhile
     const c = res && res.ok ? ((await res.json().catch(() => null)) as { fallback?: { state: string; progress?: number | null; error?: string } } | null) : null;
     if (!c) {
@@ -69,7 +73,7 @@ export async function awaitCopy(id: number, deps: PrepareDeps): Promise<PrepareR
     failures = 0;
     if (c.fallback?.state === "none" || !c.fallback) {
       if (++rerequests > MAX_REREQUESTS) return "failed";
-      r = await requestCopy(id, deps);
+      r = await requestCopy(routes, deps);
       if ("done" in r) return r.done;
       deps.onProgress(r.progress);
       continue;

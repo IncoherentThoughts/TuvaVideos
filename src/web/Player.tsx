@@ -4,7 +4,8 @@
 // (one decoded frame instead of a GOP); Shift-arrows, frame steps, Chapters, `?t=` and Resume are exact.
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { createPortal } from "preact/compat";
-import { bestCopy, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
+import { bestCopy, copyRoutes, needsPrepare, nextCopy, readPrepare } from "../shared/copies";
+import { preferredCopies } from "../server/ranking";
 import { awaitCopy } from "../shared/prepare";
 import { dispatchKey, type PlayerAction } from "../shared/keymap";
 import {
@@ -147,6 +148,11 @@ const PAUSE_ICON = (
   </svg>
 );
 
+/** The Copies this play may use, best first (home-server-spec §5.3): this Mac's usable ones, then the Home Server's. */
+const playable = (v: Pick<VideoDto, "copies" | "homeCopies">): CopyDto[] => preferredCopies(v.copies, v.homeCopies ?? []);
+/** A Copy's routes by its id in the list (a Home Server Copy's is its id there, negated). */
+const routes = (id: number) => copyRoutes(id < 0 ? { id, homeId: -id } : { id });
+
 export function Player({ video, startT, chapters, onStep, onAddChapter, onChapterLoop, onTime, ctl, studioSongs, stateOpen, onVideo, onStateToggle, onLyricsToggle, stateHost, audioOpen, onAudioToggle, audioSettings, playlist = null, entry = null, onPlaylistNext, onPlaylistPrev, onPlaylistShuffle, onPlaylistRepeat, onPlaylistEnded, onPlaylistPanelToggle, playlistPanelOpen, onPlaylistWiden }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const vid = useRef<HTMLVideoElement>(null);
@@ -224,7 +230,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
   R.current.phase = phase;
   R.current.copyId = copyId;
 
-  const copies = video.copies;
+  const copies = useMemo(() => playable(video), [video]);
   const copy = copies.find((c) => c.id === copyId) ?? null;
   const duration = (vid.current && Number.isFinite(vid.current.duration) ? vid.current.duration : null) ?? copy?.durationS ?? video.durationS;
 
@@ -260,7 +266,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     const v = vid.current;
     const pos = v && v.readyState > 0 ? v.currentTime : r.lastPos;
     const url = `/api/videos/${V.current.id}/resume`;
-    const body = JSON.stringify({ resumeS: pos, copyId: r.copyId });
+    const body = JSON.stringify({ resumeS: pos, copyId: r.copyId != null && r.copyId < 0 ? null : r.copyId });
     clock.current.wrote(Date.now());
     r.known = storedResume(pos, duration);
     r.wroteAt = Date.now();
@@ -280,14 +286,14 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     r.keyframes = null;
     r.seekTarget = null;
     throttle.current.reset();
-    v.src = `/copy/${id}`;
+    v.src = routes(id).file;
     v.load();
   };
 
   /** The Copy's keyframe index (spec 4.1): asked for on load; a Copy being indexed is polled, one that cannot be is left exact. */
   const fetchKeyframes = async (id: number, token: number) => {
     for (let tries = 0; tries < 60; tries++) {
-      const st = await api.keyframes(id).catch(() => null);
+      const st = await api.keyframes(routes(id).keyframes).catch(() => null);
       if (token !== R.current.token || !st || st.state === "none") return;
       if (st.state === "ready") {
         R.current.keyframes = st.keyframes;
@@ -299,7 +305,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
 
   /** Waits out a "preparing" Fallback (spec 3.4): the overlay shows while `awaitCopy` polls. */
   const prepare = async (id: number, token: number): Promise<boolean> => {
-    const res = await awaitCopy(id, {
+    const res = await awaitCopy(id < 0 ? { id, homeId: -id } : id, {
       fetch: (url, init) => fetch(url, init),
       sleep,
       cancelled: () => token !== R.current.token,
@@ -320,7 +326,7 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     setCopyId(id);
     setPhase("loading");
     setPrep(null);
-    const c = V.current.copies.find((x) => x.id === id);
+    const c = playable(V.current).find((x) => x.id === id);
     if (forcePrepare || (c && needsPrepare(c))) {
       const ok = await prepare(id, token);
       if (token !== r.token) return;
@@ -338,9 +344,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     const wasPlaying = playOverride ?? (v ? !v.paused : r.wasPlaying);
     if (markFailed) r.failed.add(id);
     writeResume();
-    const n = nextCopy(V.current.copies, id, r.failed);
+    const n = nextCopy(playable(V.current), id, r.failed);
     if (n) {
-      say(`Switching to ${n.rootKind} Copy · ${copyLabel(n)}`, 2200);
+      say(`Switching to ${n.homeId != null ? "Home Server" : n.rootKind} Copy · ${copyLabel(n)}`, 2200);
       void loadCopy(n.id, pos, wasPlaying);
       return;
     }
@@ -364,14 +370,14 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     const pos = v && v.readyState > 0 ? v.currentTime : R.current.lastPos;
     writeResume();
     R.current.failed.delete(id);
-    say(`Copy: ${copyLabel(V.current.copies.find((c) => c.id === id) ?? { container: null, height: null })}`);
+    say(`Copy: ${copyLabel(playable(V.current).find((c) => c.id === id) ?? { container: null, height: null })}`);
     void loadCopy(id, pos, v ? !v.paused : true);
   };
 
   // open: pick the Preferred Copy and start at ?t= or the Resume position
   useEffect(() => {
     const r = R.current;
-    const c = bestCopy(video.copies);
+    const c = bestCopy(copies);
     if (!c) {
       r.resumeOn = false;
       r.hold = startPosition({ t: startT, resumeS: video.resumeS, durationS: video.durationS });
@@ -429,9 +435,9 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
   // the library poll: a Root unmounting under the playing Copy, or a Copy coming back after "unavailable"
   useEffect(() => {
     const r = R.current;
-    const cur = copyId != null ? video.copies.find((c) => c.id === copyId) : null;
+    const cur = copyId != null ? copies.find((c) => c.id === copyId) : null;
     if (phase === "unavailable" || phase === "failed") {
-      const b = bestCopy(video.copies, r.failed);
+      const b = bestCopy(copies, r.failed);
       if (b) {
         say(`Copy available again · ${copyLabel(b)}`, 2200);
         void loadCopy(b.id, r.hold, r.wasPlaying);
@@ -664,11 +670,11 @@ export function Player({ video, startT, chapters, onStep, onAddChapter, onChapte
     if (id == null || !v || !v.getAttribute("src")) return;
     const pos = r.started ? v.currentTime : r.pending.at;
     const play = r.started ? !v.paused : r.pending.play;
-    const res = await fetch(`/copy/${id}`, { headers: { range: "bytes=0-0" } }).catch(() => null);
+    const res = await fetch(routes(id).file, { headers: { range: "bytes=0-0" } }).catch(() => null);
     if (R.current.copyId !== id) return;
     void res?.body?.cancel();
     if (res && res.status === 503) {
-      const body = (await fetch(`/api/copies/${id}`).then((x) => x.json()).catch(() => null)) as CopyDto | null;
+      const body = (await fetch(routes(id).info).then((x) => x.json()).catch(() => null)) as CopyDto | null;
       if (body && body.playback !== "native" && readPrepare(body.fallback).kind !== "ready") return void loadCopy(id, pos, play, true);
       const tries = r.retries.get(id) ?? 0; // the drive hiccuped (EIO): try the same Copy twice more before giving up
       if (tries < 2) {

@@ -24,8 +24,8 @@ import { DeleteVideoDialog } from "./DeleteVideo";
 import { RELOADED_EVENT, writeLink } from "./writeLink";
 import { EDIT_DISABLED_NOTICE, editGate } from "./chipView";
 import { useSession } from "./session";
-import { NotHerePanel, OnHomePanel } from "./NotHere";
-import { isNotHere, isOnHome, sharingMark } from "../shared/presence";
+import { NotHerePanel } from "./NotHere";
+import { isNotHere, sharingMark } from "../shared/presence";
 import { DEFAULT_AUDIO, isDefaultAudio, type AudioPreset, type AudioState } from "../shared/audio";
 
 const POLL_MS = 3000;
@@ -307,9 +307,14 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
     audioWrite.current = null;
     void api.setAudio(videoId, isDefaultAudio(w.state) ? null : w.state, { keepalive: leaving }).catch((e) => !leaving && ctl.current?.say(apiError(e)));
   };
+  // home-server-spec §5.4: a `home_video` row plays with the Home Server's saved Audio settings, read-only here
+  const homeOnly = v === undefined ? undefined : !!v?.homeOnly;
+  const readOnlyAudio = useRef(false);
+  readOnlyAudio.current = !!homeOnly;
   useEffect(() => {
+    if (homeOnly === undefined) return; // the Video is still loading: which settings apply is not known yet
     let alive = true;
-    api.audio(videoId).then((r) => alive && setAudio(r.state ?? DEFAULT_AUDIO)).catch(() => alive && setAudio(DEFAULT_AUDIO));
+    (homeOnly ? api.homeAudio : api.audio)(videoId).then((r) => alive && setAudio(r.state ?? DEFAULT_AUDIO)).catch(() => alive && setAudio(DEFAULT_AUDIO));
     const onHide = () => flushAudio(true);
     window.addEventListener("pagehide", onHide);
     return () => {
@@ -317,8 +322,9 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
       window.removeEventListener("pagehide", onHide);
       flushAudio(true);
     };
-  }, [videoId]);
+  }, [videoId, homeOnly]);
   const changeAudio = (patch: Partial<AudioState>) =>
+    !readOnlyAudio.current &&
     setAudio((prev) => {
       // functional: two changes in one tick (a click and a slider, say) must both land
       const next = { ...(prev ?? DEFAULT_AUDIO), ...patch };
@@ -384,12 +390,11 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
   // §7.1: Not on this machine puts the panel where the Player would be; the poll above swaps the Player in when a
   // scan finds a Copy.
   const notHere = isNotHere(v);
-  const onHome = isOnHome(v);
 
   return (
     <div class="np">
       <div class="np-main">
-        {notHere ? <NotHerePanel video={v} /> : onHome ? <OnHomePanel video={v} /> : <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onChapterLoop={setLoopId} onAddChapter={gate === "enabled" ? (at) => void addChapter(at) : undefined} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />}
+        {notHere ? <NotHerePanel video={v} /> : <Player key={`${v.id}:${nonce}`} video={v} playlist={playlist} entry={entry} onPlaylistNext={playlistNext} onPlaylistPrev={playlistPrev} onPlaylistShuffle={playlistShuffle} onPlaylistRepeat={playlistRepeat} onPlaylistEnded={() => { const pl = loadPlaylist(); if (pl) setEnded(markEnded(pl, playlistStarts())); }} onPlaylistPanelToggle={() => setPlOpen(!plOpen && !!loadPlaylist())} playlistPanelOpen={plOpen} onPlaylistWiden={() => { const pl = loadPlaylist(); if (pl) updatePlaylist(widenToVideo(pl)); }} startT={t} chapters={marks} onStep={onStep} onChapterLoop={setLoopId} onAddChapter={gate === "enabled" ? (at) => void addChapter(at) : undefined} onTime={onTime} ctl={ctl} studioSongs={() => studioSongs.current} stateOpen={stateOpen} onVideo={setV} onStateToggle={() => (setAudioOpen(false), setStateOpen((on) => !on))} stateHost={drawer ? undefined : stateHost} onLyricsToggle={toggleLyrics} audioOpen={audioOpen} onAudioToggle={toggleAudio} audioSettings={audio} />}
         <div class="np-head">
           <div class="np-titlerow">
             <div class="np-titles">
@@ -485,6 +490,7 @@ function NowPlaying({ videoId, t, lyrics, lyricsVersion, screen }: PlayProps & {
               onDeletePreset={deletePreset}
               onClose={() => (setAudioOpen(false), ctl.current?.focus())}
               copies={v.copies}
+              readOnly={v.homeOnly ? (v.home?.server ?? "the Home Server") : undefined}
             />
           )}
           {!drawer && stateOpen && <div class="drawer statehost" ref={stateHost} />}

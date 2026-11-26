@@ -16,6 +16,15 @@ export function nextCopy<T extends PickableCopy>(ranked: readonly T[], lostId: n
   return ranked.find((c) => c.id !== lostId && c.available && !failed.has(c.id)) ?? null;
 }
 
+/**
+ * Where a Copy is asked for (home-server-spec §5.4): this Mac's `/copy/:id` and `/api/copies/:id`, or for a Home
+ * Server Copy the same routes of the Home Server under this Mac's `/home` proxy, by its id there.
+ */
+export function copyRoutes(c: { id: number; homeId?: number }): { file: string; info: string; keyframes: string } {
+  const [pre, id] = c.homeId != null ? ["/home", c.homeId] : ["", c.id];
+  return { file: `${pre}/copy/${id}`, info: `${pre}/api/copies/${id}`, keyframes: `${pre}/api/copies/${id}/keyframes` };
+}
+
 /** Does this Copy need the "preparing" state before it can be requested as a stream? */
 export function needsPrepare(c: { playback: string; fallback: { state: string } }): boolean {
   return c.playback !== "native" && c.fallback.state !== "ready";

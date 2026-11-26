@@ -4,6 +4,7 @@ import type { ChapterDto, CopyDto, VideoDto } from "../shared/types";
 import type { HomeIndexChapter, HomeIndexDto, HomeIndexVideo, Identity } from "../shared/homeIndex";
 import type { HomeCopyRow, HomeView } from "./homeServer";
 import { foldText } from "./search";
+import { rankCopies } from "./ranking";
 
 /** `/home/thumbs/<id>/poster.webp?v=<key>`: the Home Server's poster, proxied by this Mac's localhost app. */
 export const homeThumbUrl = (id: string, key: string) => `/home/thumbs/${id}/poster.webp?v=${encodeURIComponent(key)}`;
@@ -40,14 +41,22 @@ export const homeIndexEtag = (body: string) => `"${Bun.hash(body).toString(36)}"
 
 const best = (copies: readonly HomeCopyRow[]) => [...copies].sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || a.size - b.size)[0]!;
 
-/** A Home Server Copy as the Player's list knows Copies. Not playable from here until streaming arrives (#241). */
-function homeCopyDto(c: HomeCopyRow): CopyDto {
+/**
+ * A Home Server Copy as the Player's list knows Copies (§5.3, §5.4): `homeId` is its id on the Home Server, `id` its
+ * negation (unique beside this Mac's own Copy ids in one list), and it streams through this Mac's `/home/copy/:id`.
+ * Only usable Copies get here (`homeView` drops those whose Root is not mounted there), so it is Available. `playback`
+ * is the Home Server's browser Playback profile decision; a Fallback there is waited for like a local one.
+ */
+export function homeCopyDto(c: HomeCopyRow): CopyDto {
   return {
-    id: c.id, rootKind: "external", size: c.size, container: c.container, videoCodec: c.video_codec, audioCodec: c.audio_codec, width: c.width, height: c.height,
-    durationS: c.duration_s, rFrameRate: null, frameRate: null, available: false, missing: false, playback: c.playback,
-    tv: { decision: null, order: "file" }, fallback: { state: "none" }, url: "", path: "",
+    id: -c.id, homeId: c.id, rootKind: "external", size: c.size, container: c.container, videoCodec: c.video_codec, audioCodec: c.audio_codec, width: c.width, height: c.height,
+    durationS: c.duration_s, rFrameRate: null, frameRate: null, available: true, missing: false, playback: c.playback,
+    tv: { decision: null, order: "file" }, fallback: { state: "none" }, url: `/home/copy/${c.id}`, path: "",
   };
 }
+
+/** The Home Server's Copies of a Video, best first by the existing rule (§5.3). */
+const homeCopies = (copies: readonly HomeCopyRow[]): CopyDto[] => rankCopies(copies.map(homeCopyDto));
 
 /** A `home_video` row as a read-only VideoDto: the Home Server's titles, Type and Chapters; On the Home Server. */
 export function homeOnlyDto(e: HomeView["homeOnly"][number], server: string | null): VideoDto {
@@ -61,7 +70,8 @@ export function homeOnlyDto(e: HomeView["homeOnly"][number], server: string | nu
     createdAt: row.created_at, durationS: top.duration_s, available: false, preferredCopyId: null, width: top.width, height: top.height,
     addedAt: row.created_at, chapterCount: e.chapters.length, artists: [], availability: null,
     thumbnail: row.thumb ? { generatedAt: row.thumb, copyId: null, poster: homeThumbUrl(row.id, row.thumb), strip: null } : null,
-    copies: copies.map(homeCopyDto),
+    copies: [],
+    homeCopies: homeCopies(copies),
     home: { copies: copies.length, server },
     homeOnly: true,
   };
@@ -78,7 +88,7 @@ export function homeOnlyChapters(e: HomeView["homeOnly"][number]): ChapterDto[] 
 /** This Mac's Video, marked when the connected Home Server has a usable Copy of it. */
 export function withHome<T extends VideoDto>(v: T, view: HomeView, server: string | null): T {
   const cs = view.matched.get(v.id);
-  return cs?.length ? { ...v, home: { copies: cs.length, server } } : v;
+  return cs?.length ? { ...v, home: { copies: cs.length, server }, homeCopies: homeCopies(cs) } : v;
 }
 
 /** Search's share of the `home_video` rows (§5.2): a folded title or Latin title containing the needle. */

@@ -71,6 +71,11 @@ export interface CopyDto {
   url: string;
   /** Absolute path of the file on disk. */
   path: string;
+  /**
+   * home-server-spec §5.3: a Copy on the Home Server, with its id there (`id` is then its negation, `url` this Mac's
+   * `/home/copy/:homeId` proxy, and its keyframe index and Fallback state come through `/home/api/copies/:homeId`).
+   */
+  homeId?: number;
 }
 
 /** `GET /api/copies/:id/keyframes` (spec 4.1). */
@@ -130,6 +135,8 @@ export interface VideoDto {
    * content_hash, or a `homeOnly` row). With no usable local Copy the Video is On the Home Server. Absent = false.
    */
   home?: { copies: number; server: string | null };
+  /** The Home Server's usable Copies of it, best first (§5.3); `copies` stays this Mac's own. Present with `home`. */
+  homeCopies?: CopyDto[];
   /** A `home_video` row: a Video only the Home Server has, shown read-only with its titles, Type and Chapters. */
   homeOnly?: boolean;
 }

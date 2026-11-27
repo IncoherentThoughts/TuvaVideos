@@ -836,8 +836,8 @@ fieldset.editgate[data-edit="disabled"] :is(.confirm, .x, .linkbtn) { opacity: .
 .home-status > .btn { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .home-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg3, var(--fg2)); display: inline-block; }
 .home-status .dot.on { background: var(--accent); }
-.home-status .menu { left: auto; right: 0; min-width: 320px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.home-status .menu input[type="text"] { width: 100%; }
+.home-status .menu { left: auto; right: 0; min-width: 340px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.home-status .menu input[type="text"] { width: 100%; min-width: 0; text-overflow: ellipsis; }
 .home-status .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .home-status .err { color: var(--danger, var(--accent)); }
 .nothere-panel { position: relative; aspect-ratio: 16 / 7; min-height: 260px; border-radius: var(--r-lg); overflow: hidden; background: #000; box-shadow: 0 0 0 1px var(--line); display: grid; place-items: center; }

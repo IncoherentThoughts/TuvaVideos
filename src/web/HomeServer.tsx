@@ -107,7 +107,7 @@ export function HomeServer() {
     );
   return (
     <span class="home-status">
-      <button class={`btn small${s.configured || s.self ? "" : " dim"}`} aria-haspopup="menu" aria-expanded={open} title={s.error ?? (s.configured ? s.base ?? undefined : "Set this Mac's Home Server")} onClick={() => setOpen(!open)}>
+      <button class={`btn${s.configured || s.self ? "" : " dim"}`} aria-haspopup="menu" aria-expanded={open} title={s.error ?? (s.configured ? s.base ?? undefined : "Set this Mac's Home Server")} onClick={() => setOpen(!open)}>
         {(s.configured || s.self) && <span class={`dot${s.connected || s.self ? " on" : ""}`} />}
         {label}
       </button>
@@ -138,7 +138,7 @@ export function HomeServer() {
             <>
               <input
                 type="text"
-                placeholder="Tailscale name or address (mac-mini)"
+                placeholder="Tailscale name, e.g. mac-mini"
                 value={field}
                 disabled={busy || s.override}
                 onInput={(e) => (setField(e.currentTarget.value), setTest(null))}
